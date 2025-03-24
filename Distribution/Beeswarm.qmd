@@ -1,3 +1,491 @@
 ---
-title: Beeswarm
+title: Beeswarm Plot
+author:
+  - "**[Editor]** KeXin Huang;"
+  - "**[Contributors]** ShiXiang Wang, Peng Luo, Hong Yang, KeXin Li, Ying Shi."
 ---
+
+A beeswarm plot disperses data points slightly to prevent overlap, making distribution density and trends clearer. It is especially useful for visualizing categorical data in small datasets. This section presents examples using R and the `beeswarm` and `ggbeeswarm` packages.
+
+## Example
+
+![](../images/Beeswarm_demo.png){fig-alt="Beeswarm DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming Language: R
+
+-   Dependencies: `readr`, `beeswarm`, `ggbeeswarm`, `ggsignif`, `plyr` ,`tidyverse`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Installing necessary packages
+if (!requireNamespace("readr", quietly = TRUE)) {
+  install.packages("readr")
+}
+if (!requireNamespace("beeswarm", quietly = TRUE)) {
+  install.packages("beeswarm")
+}
+if (!requireNamespace("ggbeeswarm", quietly = TRUE)) {
+  install.packages("ggbeeswarm")
+}
+if (!requireNamespace("ggsignif", quietly = TRUE)) {
+  install.packages("ggsignif")
+}
+if (!requireNamespace("plyr", quietly = TRUE)) {
+  install.packages("plyr")
+}
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+  install.packages("tidyverse")
+}
+
+
+# Loading the libraries
+library(readr)
+library(beeswarm) # This simple and easy-to-use package allows the construction of bee swarm plots in R with just one or two lines of code.
+library(ggbeeswarm) # This package is an extension of ggplot2, allowing direct construction of bee swarm plots from the ggplot2 package, with more adjustable options and greater flexibility, facilitating statistical difference analysis.
+library(ggsignif)
+library(plyr)
+library(tidyverse)
+```
+
+## Data Preparation
+
+We used the built-in R dataset (`iris`), along with the `TCGA.LIHC.clinicalMatrix` and `TCGA-LIHC.star_fpkm` datasets from [UCSC Xena DATASETS](https://xenabrowser.net/datapages/?cohort=GDC%20TCGA%20Liver%20Cancer%20(LIHC)&removeHub=https%3A%2F%2Fxena.treehouse.gi.ucsc.edu%3A443). Selected genes were chosen for demonstration purposes.
+
+```{r load data, message=FALSE}
+# Load iris dataset
+data("iris")
+
+# Load the TCGA-LIHC gene expression dataset from a processed CSV file  
+TCGA_gene_expression <- read.csv("https://raw.githubusercontent.com/DrRobinLuo/Bizard/refs/heads/main/files/TCGA-LIHC.star_fpkm_processed.csv")
+
+# Load the TCGA-LIHC clinical info dataset
+TCGA_clinic <- read.csv("https://raw.githubusercontent.com/DrRobinLuo/Bizard/refs/heads/main/files/TCGA.LIHC.clinicalMatrix.csv") %>%
+  mutate(T = as.factor(T))
+
+#Prepare Statistics data
+data_summary <- function(data, varname, groupnames) {
+  summary_func <- function(x, col) {
+    c(mean = mean(x[[col]], na.rm = TRUE),
+      sd = sd(x[[col]], na.rm = TRUE))
+  }
+  data_sum <- ddply(data, groupnames, .fun = summary_func, varname)
+  
+  data_sum <- rename_with(data_sum, ~ varname, "mean")
+  
+  return(data_sum)
+}
+iris_sum <- data_summary(iris, varname="Sepal.Length", groupnames="Species")
+TCGA_gene_sum <- data_summary(TCGA_gene_expression, varname="gene_expression", groupnames="sample")
+```
+
+## Visualization
+
+### 1. Basic Beeswarm Plot (`beeswarm` package)
+
+@fig-BasicBee illustrates the distribution of the Sepal.Length variable in the iris dataset.
+
+```{r fig1BasicBee}
+#| label: fig-BasicBee
+#| fig-cap: "Basic Beeswarm"
+#| out.width: "95%"
+#| warning: false
+
+p1 <- beeswarm(iris$Sepal.Length)
+```
+
+@fig-BasicBee2 illustrates the distribution of the expression levels of the RAB4B gene in the LICH database.
+
+```{r fig2BasicBee2}
+#| label: fig-BasicBee2
+#| fig-cap: "Basic Beeswarm"
+#| out.width: "95%"
+#| warning: false
+
+TCGA_gene_expression_RAB4B <- subset(TCGA_gene_expression, sample == "RAB4B")
+p1_2 <- beeswarm(TCGA_gene_expression_RAB4B$gene_expression)
+```
+
+### 2. Flipping the Beeswarm Plot (`beeswarm` package)
+
+@fig-Flip illustrates the distribution of the OS.time variable in TCGA dataset.
+
+```{r fig3Flip}
+#| label: fig-Flip
+#| fig-cap: "Flipping the Beeswarm"
+#| out.width: "95%"
+#| warning: false
+
+p2 <- beeswarm(TCGA_clinic$OS.time, horizontal=TRUE)
+```
+
+### 3. Changing Basic Features of the Beeswarm Plot (`beeswarm` package)
+
+::: callout-tip
+**Key Parameters:**
+
+**(1) Color**
+
+By modifying the `col` parameter, we can change the color of the points.
+
+**(2) the Symbol of Points**
+
+The `pch` parameter allows the symbol of the points to be changed.
+
+**(3) the Size of Points**
+
+The `cex` parameter allows the size of the points to be changed.
+
+**(4) the Position of Points**
+
+The `method` parameter allows the position of the points to be changed. The available options are:
+
+-   `swarm` (default): Points are randomly placed but do not overlap.
+
+-   `center`: Points are symmetrically distributed around the center of the chart.
+
+-   `hex`: Points are placed on a hexagonal grid.
+
+-   `square`: Points are located on a square grid.
+:::
+
+@fig-Features illustrates the distribution of the Sepal.Length variable in the iris dataset.
+
+```{r fig4BasicFeatures}
+#| label: fig-Features
+#| fig-cap: "Basic Features"
+#| fig.width: 8
+#| fig.heright: 2
+#| out.width: "95%"
+#| warning: false
+
+p3_1 <- beeswarm(iris$Sepal.Length,col= "blue",pch=16,
+         cex=1.5,method="center" )
+```
+
+@fig-Features2 illustrates the distribution of the OS.time variable in TCGA dataset.
+
+```{r fig5BasicFeatures2}
+#| label: fig-Features2
+#| fig-cap: "Basic Features"
+#| fig.width: 8
+#| fig.heright: 2
+#| out.width: "95%"
+#| warning: false
+
+p3_2 <- beeswarm(TCGA_clinic$OS.time,col= "blue",pch=16,
+         cex=1.5,method="center" )
+```
+
+### 4. Grouping (`beeswarm` package)
+
+Using the `~` operator, we can easily create a grouped bee swarm plot.
+
+@fig-grouping illustrates the distribution of the Sepal.Length variable across different Species.
+
+```{r fig6grouping}
+#| label: fig-grouping
+#| fig-cap: "grouping"
+#| out.width: "95%"
+#| warning: false
+
+p4_1 <- beeswarm( Sepal.Length ~ Species, data=iris, 
+         col=c("orange", "lightblue", "magenta"), pch =19)
+```
+
+@fig-grouping2 illustrates the distribution of the OS.time variable across different tumor stages.
+
+```{r fig7grouping2}
+#| label: fig-grouping2
+#| fig-cap: "grouping"
+#| out.width: "95%"
+#| warning: false
+
+p4_2 <- beeswarm(OS.time ~ T, data=TCGA_clinic, 
+         col=c("orange", "lightblue", "magenta"), pch =19)
+```
+
+### 5. Custom Position Behavior (`beeswarm` package)
+
+::: callout-tip
+When there are many data points, changing the position behavior of the points can prevent overlap between groups.
+
+The available options are:
+
+-   `none` (default): No correction is applied.
+
+-   `gutter`: Sets higher and lower limits for each group.
+
+-   `wrap`: Similar to `gutter`, but **adds random noise** to the position of the points.
+
+-   `random`: Randomly positions the points.
+
+-   `omit`: Omits overlapping points.
+:::
+
+@fig-CustomPositionBehavior illustrates the distribution of the Sepal.Length variable across different Species.
+
+```{r fig8CustomPositionBehavior}
+#| label: fig-CustomPositionBehavior
+#| fig-cap: "Custom Position Behavior"
+#| out.width: "95%"
+#| warning: false
+
+p5_1 <- beeswarm( Sepal.Length ~ Species, data=iris,
+         col=c("orange", "lightblue", "magenta"), pch =19,corral ="gutter")
+```
+
+@fig-CustomPositionBehavior2 illustrates the distribution of the OS.time variable across different tumor stages.
+
+```{r fig9CustomPositionBehavior2}
+#| label: fig-CustomPositionBehavior2
+#| fig-cap: "Custom Position Behavior"
+#| out.width: "95%"
+#| warning: false
+
+p5_2 <- beeswarm( OS.time ~ T, data=TCGA_clinic, 
+         col=c("orange", "lightblue", "magenta"), pch =15,corral = "gutter")
+```
+
+### 6. Basic Beeswarm (`ggbeeswarm` package)
+
+@fig-Basicggbeeswarm illustrates the distribution of the Sepal.Length variable in the iris dataset.
+
+```{r fig10Basicggbeeswarm}
+#| label: fig-Basicggbeeswarm
+#| fig-cap: "Basic Beeswarm"
+#| out.width: "95%"
+#| warning: false
+
+p6_1 <- ggplot(iris,aes(y=Sepal.Length,x='')) + 
+  geom_beeswarm()
+p6_1
+```
+
+@fig-BasicggBee2 illustrates the distribution of the OS.time variable in TCGA dataset.
+
+```{r fig11BasicggBee2}
+#| label: fig-BasicggBee2
+#| fig-cap: "Basic Beeswarm"
+#| out.width: "95%"
+#| warning: false
+
+p6_2 <- ggplot(TCGA_clinic,aes(y=OS.time,x='')) + 
+  geom_beeswarm()
+p6_2
+```
+
+### 7. Flipping the Beeswarm Plot (`ggbeeswarm` package)
+
+@fig-ggFlip illustrates the distribution of the Sepal.Length variable in the iris dataset.
+
+```{r fig12ggFlip}
+#| label: fig-ggFlip
+#| fig-cap: "Flipping the Beeswarm"
+#| out.width: "95%"
+#| warning: false
+
+p7_1 <- ggplot(iris,aes(x=Sepal.Length,y='')) +
+  geom_beeswarm()
+p7_1
+```
+
+@fig-ggFlip2 illustrates the distribution of the OS.time variable in TCGA dataset.
+
+```{r fig13ggFlip2}
+#| label: fig-ggFlip2
+#| fig-cap: "Flipping the Beeswarm"
+#| out.width: "95%"
+#| warning: false
+
+p7_2 <- ggplot(TCGA_clinic,aes(x=OS.time,y='')) + 
+  geom_beeswarm()
+p7_2
+```
+
+### 8. Customization of the Beeswarm Plot (`ggbeeswarm` package)
+
+::: callout-tip
+**Key Parameters:**
+
+We can use the theme() function to change the color of the points and the overall theme of the chart.
+:::
+
+@fig-ggFeatures illustrates the distribution of the Sepal.Length variable in the iris dataset.
+
+```{r fig14ggFeatures}
+#| label: fig-ggFeatures
+#| fig-cap: "Changing Basic Features"
+#| out.width: "95%"
+#| warning: false
+
+p8_1 <- ggplot(iris,aes(y=Sepal.Length,x='')) +  
+  geom_beeswarm(color='blue') +    
+  theme_minimal()
+p8_1
+```
+
+@fig-ggFeatures2 illustrates the distribution of the OS.time variable in TCGA dataset.
+
+```{r fig14ggFeatures2}
+#| label: fig-ggFeatures2
+#| fig-cap: "Changing Basic Features"
+#| out.width: "95%"
+#| warning: false
+
+p8_2 <- ggplot(TCGA_clinic,aes(y=OS.time,x='')) + 
+  geom_beeswarm(color='blue') +    
+  theme_minimal()
+p8_2
+```
+
+### 9. Changing the Position of Points (`ggbeeswarm` package)
+
+By default, the `geom_beeswarm()` function uses the swarm method to position the points. We can change this behavior using the `method` parameter. The available options are:
+
+-   `swarm`: The default method.
+
+-   `compactswarm`: Similar to swarm, but the points are more compact.
+
+-   `center`: Points are centered on the x-axis.
+
+-   `hex`: Points are located within hexagons.
+
+-   `square`: Points are located within squares.
+
+@fig-PositionOfPoint illustrates the distribution of the Sepal.Length variable across different Species.
+
+```{r fig15PositionOfPoint}
+#| label: fig-PositionOfPoint
+#| fig-cap: "Changing the Position of Points"
+#| out.width: "95%"
+#| warning: false
+
+p9_1 <- ggplot(iris,aes(y=Sepal.Length,x='')) +
+   geom_beeswarm(method='center')
+p9_1
+```
+
+### 10. Customizing the Color of Points (`ggbeeswarm` package)
+
+We can also use the `scale_color_manual()` function to customize the colors. Additionally, the `theme_minimal()` function can make the chart look more elegant.
+
+@fig-ColorPoints illustrates the distribution of the OS.time variable across different tumor stages.
+
+```{r fig16ColorPoints}
+#| label: fig-ColorPoints
+#| fig-cap: "Customizing the Color of Points"
+#| out.width: "95%"
+#| warning: false
+
+p10_1 <- ggplot(TCGA_clinic,aes(x=T, y=OS.time, colour=T)) +
+  geom_beeswarm() + 
+  scale_color_manual(values=c("#999999", "#E69F00", "#56B4E9","blue")) +  
+  theme_minimal()
+p10_1
+```
+
+### 11. Grouping and Adding Statistical Analysis (`ggbeeswarm` package)
+
+@fig-ggGrouping illustrates the distribution of the Sepal.Length variable in the iris dataset.
+
+```{r fig17ggGrouping}
+#| label: fig-ggGrouping
+#| fig-cap: "Grouping"
+#| out.width: "95%"
+#| warning: false
+
+p11_1 <- ggplot()+
+  geom_bar(iris_sum,
+           mapping=aes(x=Species,y=Sepal.Length,fill=Species),
+           stat="identity",width=.6,
+           alpha=0.5,position=position_dodge())+
+  geom_errorbar(iris_sum,
+                mapping=aes(x=Species,y=Sepal.Length,
+                            ymin=Sepal.Length-sd,
+                            ymax=Sepal.Length+sd),
+                width=.4,position=position_dodge(.8))+
+  geom_beeswarm(iris,
+                mapping=aes(x=Species,y=Sepal.Length,fill=Species),
+                shape=21,color='black',size=3.5,cex=1.2,stroke=0.6)+
+  geom_signif(iris,
+              mapping=aes(x=Species,y=Sepal.Length),
+              comparisons=list(c("setosa","versicolor"),c("setosa","virginica")),
+              test="t.test",step_increase=0.2,tip_length=0,textsize=6,size=1,
+              map_signif_level=T)
+p11_1
+
+```
+
+@fig-ggGrouping2 illustrates the gene expression data of three genes in liver cancer.
+
+```{r fig18ggGrouping2}
+#| label: fig-ggGrouping2
+#| fig-cap: "Grouping"
+#| out.width: "95%"
+#| warning: false
+
+p11_2 <- ggplot()+
+  geom_bar(TCGA_gene_sum,
+           mapping=aes(x=sample,y=gene_expression,fill=sample),
+           stat="identity",width=.6,alpha=0.5,position=position_dodge())+
+ geom_errorbar(TCGA_gene_sum,
+               mapping=aes(x=sample,y=gene_expression,
+                           ymin=gene_expression-sd,ymax=gene_expression+sd),
+                          width=.4,position=position_dodge(.8))+
+ geom_beeswarm(TCGA_gene_expression,
+               mapping=aes(x=sample,y=gene_expression,fill=sample),
+               shape=21,color='black',size=3.5,cex=1.2,stroke=0.6)+
+  geom_signif(TCGA_gene_expression,
+              mapping=aes(x=sample,y=gene_expression),
+              comparisons=list(c("RAB4B","TIGAR"),c("RAB4B","RNF44"),c("TIGAR","RNF44")),
+              test="t.test",step_increase=0.2, tip_length=0,textsize=6,
+              size=1,map_signif_level=T)
+p11_2
+```
+
+## Applications
+
+<!-- ### 1. Correlation Analysis of Clinical Data -->
+
+<!-- ::: {#fig-BeeswarmApplications1 layout-ncol="2"} -->
+<!-- ![](../images/Beeswarm_app1.png){fig-alt="BeeswarmApp1" fig-align="center" width="60%"} -->
+
+<!-- ![](../images/Beeswarm_app2.png){fig-alt="BeeswarmApp2" fig-align="center" width="60%"} -->
+
+<!-- Applications of Correlation Analysis of Clinical Data -->
+<!-- ::: -->
+
+<!-- Correlation between MM and GS of all miRNAs in each module. -->
+
+<!-- It can be seen that the GS in the turquoise module is highly correlated with MM, illustrating that miRNAs significantly associated with cancer status are often also the important elements of the turquoise module. -->
+
+<!-- ### 2.Displaying Gene Expression Data Across Different Samples -->
+
+<!-- ::: {#fig-BeeswarmApplications2} -->
+<!-- ![](../images/Beeswarm_app3.png){fig-alt="BeeswarmApp1" fig-align="center" width="60%"} -->
+
+<!-- Applications of Basic Histogram -->
+<!-- ::: -->
+
+<!-- Using bee swarm plots to display the results of single-cell multi-omics data analysis, identifying factors predicting survival in ovarian cancer, breast cancer, and melanoma samples through the jDR method. -->
+
+## Reference
+
+1.Li J, Zhou D, Qiu W, Shi Y, Yang JJ, Chen S, Wang Q, Pan H. Application of Weighted Gene Co-expression Network Analysis for Data from Paired Design. Sci Rep. 2018 Jan 12;8(1):622. doi: 10.1038/s41598-017-18705-z. PMID: 29330528; PMCID: PMC5766625.
+
+2.Cantini L, Zakeri P, Hernandez C, Naldi A, Thieffry D, Remy E, Baudot A. Benchmarking joint multi-omics dimensionality reduction approaches for the study of cancer. Nat Commun. 2021 Jan 5;12(1):124. doi: 10.1038/s41467-020-20430-7. PMID: 33402734; PMCID: PMC7785750.
+
+3.Wickham, H. (2009). ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. ISBN 978-0-387-98140-6 (Print) 978-0-387-98141-3 (E-Book). \[DOI: 10.1007/978-0-387-98141-3\] (<https://doi.org/10.1007/978-0-387-98141-3>)
+
+4.Erik Clarke, Scott Sherrill-Mix, Charlotte Dawson (2023). ggbeeswarm: Categorical Scatter (Violin Point) Plots. R package version 0.7.2. [https://CRAN.R-project.org/package=ggbeeswarm](https://cran.r-project.org/package=ggbeeswarm)
+
+5.Aron Eklund, James Trimble (2021). beeswarm: The Bee Swarm Plot, an Alternative to Stripchart. R package version 0.4.0. [https://CRAN.R-project.org/package=beeswarm](https://cran.r-project.org/package=beeswarm)
+
+6.Wickham, H. (2017). dplyr: A Grammar of Data Manipulation (Version 0.7.4). Retrieved from [https://CRAN.R-project.org/package=dplyr](https://cran.r-project.org/package=dplyr)
+
+7.Huber, W., Carey, V. J., Gentleman, R., Anders, S., & Carlson, M. (2015). Bioconductor: Support for the analysis and comprehension of high-throughput genomic data. R package version 3.2. *F1000Research, 4*, 1-22. Retrieved from <https://www.bioconductor.org/> ^54\^^
+
+8.The R Graph Gallery – Help and inspiration for R charts (r-graph-gallery.com)
