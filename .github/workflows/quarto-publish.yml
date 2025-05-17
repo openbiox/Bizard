@@ -2,7 +2,9 @@
 on:
   workflow_dispatch:
   push:
-    branches: main
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
 
 name: Quarto Publish
 
@@ -11,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pages: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -28,9 +31,24 @@ jobs:
         with:
           cache-version: 1
 
-      - name: Render and Publish
+      - name: Render Quarto Project
+        uses: quarto-dev/quarto-actions/render@v2
+        env:
+          QUARTO_PROFILE: preview
+
+      # upload artifacts for reviewing of the PR
+      - name: Upload Quarto artifacts
+        if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "_site"
+
+      # Don't deploy for PR
+      - name: Deploy to GitHub Pages
+        if: github.event_name != 'pull_request'
         uses: quarto-dev/quarto-actions/publish@v2
         with:
           target: gh-pages
+          render: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
