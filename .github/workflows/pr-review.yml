@@ -35,12 +35,22 @@ jobs:
         with:
           cache-version: 1
 
+      - name: Get the new quarto files
+        id: new-qmd-files
+        uses: tj-actions/changed-files
+        with:
+          files: |
+            **.Qmd
+            **.qmd
+
       - name: Render the new quarto files
+        if: steps.new-qmd-files.outputs.test_any_changed == 'true'
+        env:
+          QMD_FILES: ${{ steps.new-qmd-files.outputs.all_changed_files }}
         run: |
-          QMD_FILES=($(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | grep '[.][Qq]md$'))
           Rscript -e '
             args <- commandArgs(TRUE);
-            if (dir.exists("_QMD_RENDER_REVIEW")) dir.create("_QMD_RENDER_REVIEW");
+            if (!dir.exists("_QMD_RENDER_REVIEW")) dir.create("_QMD_RENDER_REVIEW");
             ofile <- function(file) sprint("_QMD_RENDER_REVIEW/%s.html", tools::file_path_sans_ext(basename(file)));
             for (f in args) if (file.exists(f)) quarto::quarto_render(f, output_format = "html", output_file = ofile(f))'
             ${QMD_FILES[*]}
