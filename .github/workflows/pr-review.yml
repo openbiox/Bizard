@@ -1,0 +1,52 @@
+on:
+  pull_request:
+    branches: [main, master]
+
+name: Render the new Quarto files
+
+# https://github.com/r-lib/actions/tree/v2/examples#render-rmarkdown
+# https://github.com/quarto-dev/quarto-actions
+
+env:
+  isExtPR: ${{ github.event.pull_request.head.repo.fork == true }}
+  RUST_BACKTRACE: 1
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Install R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4.1'
+
+      - name: Install R Dependencies
+        uses: r-lib/actions/setup-renv@v2
+        with:
+          cache-version: 1
+
+      - name: Render the new quarto files
+        run: |
+          QMD_FILES=($(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '[.][Qq]md$'))
+          Rscript -e '
+            args <- commandArgs(TRUE);
+            if (dir.exists("_QMD_RENDER_REVIEW")) dir.create("_QMD_RENDER_REVIEW");
+            ofile <- function(file) sprint("_QMD_RENDER_REVIEW/%s.html", tools::file_path_sans_ext(basename(file)));
+            for (f in args) if (file.exists(f)) quarto::quarto_render(f, output_format = "html", output_file = ofile(f))'
+            ${QMD_FILES[*]}
+
+      - name: Upload Quarto artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: _QMD_RENDER_REVIEW/*.html
+          if-no-files-found: "ignore"
