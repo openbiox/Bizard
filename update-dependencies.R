@@ -1,5 +1,8 @@
-# scan_qmd_packages: find used R packages in .qmd files without
+# scan_qmd_packages: find used R packages in .qmd files
 scan_qmd_packages <- function(root = ".") {
+    # Skip scanning `library()` and `require()` calls, since we cannot reliably
+    # determine whether the packages come from CRAN, Bioconductor, or a remote
+    # source.
     # pak::pkg_install()
     # BiocManager::install() // install is a common pattern,
     # remotes::install_github()
