@@ -41,10 +41,13 @@ deps <- used
 remote <- grepl("/", deps)
 local_deps <- deps[!remote]
 local_deps <- setdiff(local_deps, current)
+local_deps <- grep("^[a-zA-Z][a-zA-Z0-9]*$", local_deps, value = TRUE)
 
 remote_name <- deps[remote]
 remote_deps <- sub("^.*/", "", remote_name)
-remote_valid <- !remote_deps %in% c(local_deps, current)
+remote_valid <- !remote_deps %in% c(local_deps, current) &
+    grep("^[a-zA-Z][a-zA-Z0-9]*$", remote_deps, value = TRUE)
+
 remote_name <- remote_name[remote_valid]
 remote_deps <- remote_deps[remote_valid]
 
