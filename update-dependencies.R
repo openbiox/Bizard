@@ -11,7 +11,7 @@ scan_qmd_packages <- function(root = ".") {
     patterns <- c(
         "(?:install\\.packages|pkg_install|BiocManager::install|install_github|install_gitlab)\\((?:'|\")([a-zA-z].*)(?:'|\")\\)"
     )
-    paths <- list.files(".",
+    paths <- list.files(root,
         pattern = "\\.qmd$", recursive = TRUE,
         ignore.case = TRUE
     )
