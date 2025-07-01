@@ -46,7 +46,7 @@ local_deps <- grep("^[a-zA-Z][a-zA-Z0-9]*$", local_deps, value = TRUE)
 remote_name <- deps[remote]
 remote_deps <- sub("^.*/", "", remote_name)
 remote_valid <- !remote_deps %in% c(local_deps, current) &
-    grep("^[a-zA-Z][a-zA-Z0-9]*$", remote_deps, value = TRUE)
+    grepl("^[a-zA-Z][a-zA-Z0-9]*$", remote_deps)
 
 remote_name <- remote_name[remote_valid]
 remote_deps <- remote_deps[remote_valid]
