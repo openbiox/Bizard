@@ -1,49 +1,73 @@
-# ref: https://quarto.org/docs/publishing/github-pages.html#example-knitr-with-renv
 on:
-  workflow_dispatch:
   push:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  # to be able to trigger a manual build
+  workflow_dispatch:
+  schedule:
+    # run every day at 11 PM
+    - cron: '0 23 * * *'
 
-name: Quarto Publish
+name: Render and deploy site to Github Page
+
+# https://github.com/r-lib/actions/tree/v2/examples#render-rmarkdown
+# https://github.com/quarto-dev/quarto-actions
+
+env:
+  isExtPR: ${{ github.event.pull_request.head.repo.fork == true }}
+  RUST_BACKTRACE: 1
 
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
     permissions:
       contents: write
-      pages: write
     steps:
-      - name: Check out repository
+      - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
-
-      - name: Install R
-        uses: r-lib/actions/setup-r@v2
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          r-version: '4.4.1'
+          tinytex: true
 
-      - name: Install R Dependencies
-        uses: r-lib/actions/setup-renv@v2
+      - uses: r-lib/actions/setup-r@v2
         with:
-          cache-version: 1
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+
+      - name: Scan .qmd for dependencies and update
+        run: Rscript update-dependencies.R
+
+      - name: Commit the updated DESCRIPTION
+        if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+        run: |
+          git config --local user.name "$GITHUB_ACTOR"
+          git config --local user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          git commit DESCRIPTION -m 'chore: Update dependencies' || echo "No changes to commit"
+          git push origin || echo "No changes to commit"
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
 
       - name: Render Quarto Project
         uses: quarto-dev/quarto-actions/render@v2
         env:
           QUARTO_PROFILE: preview
 
-      # upload artifacts for reviewing of the PR
       - name: Upload Quarto artifacts
         if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: "_site"
 
-      # Don't deploy for PR
       - name: Deploy to GitHub Pages
         if: github.event_name != 'pull_request'
         uses: quarto-dev/quarto-actions/publish@v2
