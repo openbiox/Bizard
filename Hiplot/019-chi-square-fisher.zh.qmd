@@ -1,0 +1,105 @@
+---
+title: "卡方与 Fisher 检验"
+author:
+  - "**[编辑]** 郑虎;"
+  - "**[审核]** ."
+---
+
+卡方与 Fisher 检验可用于分类变量频数差异检验，该工具将自动选择卡方和 Fisher 确切性检验统计方法。
+
+## 环境配置
+
+-   系统: Cross-platform (Linux/MacOS/Windows)
+
+-   编程语言: R
+
+-   依赖包: `ggplot2`; `visdat`; `aplot`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("visdat", quietly = TRUE)) {
+  install.packages("visdat")
+}
+if (!requireNamespace("aplot", quietly = TRUE)) {
+  install.packages("aplot")
+}
+
+# 加载包
+library(ggplot2)
+library(visdat)
+library(aplot)
+```
+
+## 数据准备
+
+数据表支持两种格式：列联表（示例 1）和单行记录表（示例 2）
+
+```{r load data, message=FALSE, warning=FALSE}
+# 加载数据
+data <- read.table("files/Hiplot/019-chi-square-fisher-data.txt", header = T)
+
+# 整理数据格式
+rownames(data) <- data[,1]
+data <- data[,-1]
+cb <- combn(nrow(data), 2)
+final <- data.frame()
+for (i in 1:ncol(cb)) {
+  tmp <- data[cb[,i],]
+  groups <- paste0(rownames(data)[cb[,i]], collapse = " | ")
+  
+  res <- tryCatch({
+    chisq.test(tmp)
+    }, warning = function(w) {
+      tryCatch({fisher.test(tmp)}, error = function(e) {
+        return(fisher.test(tmp, simulate.p.value = TRUE))
+        })
+  })
+  val_percent <- apply(tmp, 1, function(x) {
+    sprintf("%s (%s%%)", x, round(x / sum(x), 2) * 100)
+  })
+  val_percent1 <- paste0(colnames(tmp), ":", val_percent[,1])
+  val_percent1 <- paste0(val_percent1, collapse = " | ")
+  val_percent2 <- paste0(colnames(tmp), ":", val_percent[,2])
+  val_percent2 <- paste0(val_percent2, collapse = " | ")
+  tmp <- data.frame(
+    groups = groups,
+    val_percent_left = val_percent1,
+    val_percent_right = val_percent2,
+    statistic = ifelse(is.null(res$statistic), NA,
+      as.numeric(res$statistic)),
+    pvalue = as.numeric(res$p.value),
+    method = res$method
+  )
+  final <- rbind(final, tmp)
+}
+final <- as.data.frame(final)
+final$pvalue < as.numeric(final$pvalue)
+final$statistic < as.numeric(final$statistic)
+
+# 查看数据
+head(final)
+```
+
+## 可视化
+
+```{r fig-1Chi-square-fisher}
+#| label: fig-1Chi-square-fisher
+#| fig-cap: "卡方与 Fisher 检验"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# 卡方与 Fisher 检验
+p1 <- vis_value(final["statistic"]) + 
+  scale_fill_gradientn(colours = c("#3362ab","#87b7d7","#e8e0db","#eea07d","#ad1c2e"))
+
+p2 <- vis_expect(final["pvalue"], ~.x < 0.05) +
+  scale_fill_manual(values = c("#1c438a","#e7120c"))
+
+p <- p1+p2
+p
+```
+

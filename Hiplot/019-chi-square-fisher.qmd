@@ -1,0 +1,105 @@
+---
+title: "Chi-square-fisher Test"
+author:
+  - "**[Editor]** Hu Zheng;"
+  - "**[Contributors]** "
+---
+
+Chi-square and Fisher test can be used to test the frequency difference of categorical variables. The tool will automatically select the statistical method of Chi-square and Fisher exact test.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `visdat`; `aplot`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("visdat", quietly = TRUE)) {
+  install.packages("visdat")
+}
+if (!requireNamespace("aplot", quietly = TRUE)) {
+  install.packages("aplot")
+}
+
+# Load packages
+library(ggplot2)
+library(visdat)
+library(aplot)
+```
+
+## Data Preparation
+
+The data table supports two formats: contingency table (example 1) and single-row record table (example 2)
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- read.table("files/Hiplot/019-chi-square-fisher-data.txt", header = T)
+
+# convert data structure
+rownames(data) <- data[,1]
+data <- data[,-1]
+cb <- combn(nrow(data), 2)
+final <- data.frame()
+for (i in 1:ncol(cb)) {
+  tmp <- data[cb[,i],]
+  groups <- paste0(rownames(data)[cb[,i]], collapse = " | ")
+  
+  res <- tryCatch({
+    chisq.test(tmp)
+    }, warning = function(w) {
+      tryCatch({fisher.test(tmp)}, error = function(e) {
+        return(fisher.test(tmp, simulate.p.value = TRUE))
+        })
+  })
+  val_percent <- apply(tmp, 1, function(x) {
+    sprintf("%s (%s%%)", x, round(x / sum(x), 2) * 100)
+  })
+  val_percent1 <- paste0(colnames(tmp), ":", val_percent[,1])
+  val_percent1 <- paste0(val_percent1, collapse = " | ")
+  val_percent2 <- paste0(colnames(tmp), ":", val_percent[,2])
+  val_percent2 <- paste0(val_percent2, collapse = " | ")
+  tmp <- data.frame(
+    groups = groups,
+    val_percent_left = val_percent1,
+    val_percent_right = val_percent2,
+    statistic = ifelse(is.null(res$statistic), NA,
+      as.numeric(res$statistic)),
+    pvalue = as.numeric(res$p.value),
+    method = res$method
+  )
+  final <- rbind(final, tmp)
+}
+final <- as.data.frame(final)
+final$pvalue < as.numeric(final$pvalue)
+final$statistic < as.numeric(final$statistic)
+
+# View data
+head(final)
+```
+
+## Visualization
+
+```{r fig-1Chi-square-fisher}
+#| label: fig-1Chi-square-fisher
+#| fig-cap: "Chi-square-fisher Test"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# Chi-square-fisher Test
+p1 <- vis_value(final["statistic"]) + 
+  scale_fill_gradientn(colours = c("#3362ab","#87b7d7","#e8e0db","#eea07d","#ad1c2e"))
+
+p2 <- vis_expect(final["pvalue"], ~.x < 0.05) +
+  scale_fill_manual(values = c("#1c438a","#e7120c"))
+
+p <- p1+p2
+p
+```
+
