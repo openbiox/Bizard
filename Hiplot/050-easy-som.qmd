@@ -1,0 +1,124 @@
+---
+title: "Easy SOM"
+author:
+  - "**[Editor]** Hu Zheng;"
+  - "**[Contributors]** "
+---
+
+Establish the SOM model and conduct the visulization.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `kohonen`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("kohonen", quietly = TRUE)) {
+  install.packages("kohonen")
+}
+
+# Load packages
+library(kohonen)
+```
+
+## Data Preparation
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- read.delim("files/Hiplot/050-easy-som-data.txt", header = T)
+
+# convert data structure
+target <- data[,1]
+target <- factor(target, levels = unique(target))
+data <- data[,-1]
+data <- as.data.frame(data)
+for (i in 1:ncol(data)) {
+  data[,i] <- as.numeric(data[,i])
+}
+data <- as.matrix(data)
+set.seed(7)
+kohmap <- xyf(scale(data), target, grid = somgrid(xdim=6, ydim=4, topo="hexagonal"), rlen=100)
+
+color_key <- c("#A50026","#D73027","#F46D43","#FDAE61","#FEE090","#FFFFBF","#E0F3F8",
+               "#ABD9E9","#74ADD1","#4575B4","#313695")
+colors <- function (n, alpha, rev = FALSE) {
+  colorRampPalette(color_key)(n)
+}
+
+# View data
+head(data)
+```
+
+## Visualization
+
+```{r fig-1Eeasy-som}
+#| label: fig-1Eeasy-som
+#| fig-cap: "Easy SOM"
+#| out.width: "95%"
+#| fig-height: 8
+#| fig-width: 8
+#| warning: false
+#| message: false
+
+# Easy SOM
+p <- function () {
+  par(mfrow = c(3,2))
+  xyfpredictions <- classmat2classvec(getCodes(kohmap, 2))
+  plot(kohmap, type="counts", col = as.integer(target),
+       palette.name = colors,
+       pchs = as.integer(target), 
+       main = "Counts plot", shape = "straight", border = NA)
+  
+  som.hc <- cutree(hclust(object.distances(kohmap, "codes")), 3)
+  add.cluster.boundaries(kohmap, som.hc)
+
+  plot(kohmap, type="mapping",
+       labels = as.integer(target), col = colors(3)[as.integer(target)],
+       palette.name = colors,
+       shape = "straight",
+       main = "Mapping plot")
+
+  ## add background colors to units according to their predicted class labels
+  xyfpredictions <- classmat2classvec(getCodes(kohmap, 2))
+  bgcols <- colors(3)
+  plot(kohmap, type="mapping", col = as.integer(target),
+       pchs = as.integer(target), bgcol = bgcols[as.integer(xyfpredictions)],
+       main = "Another mapping plot", shape = "straight", border = NA)
+  
+  similarities <- plot(kohmap, type="quality", shape = "straight",
+                       palette.name = colors)
+  
+  plot(kohmap, type="codes", shape = "straight", 
+       main = c("Codes X", "Codes Y"), palette.name = colors)
+
+  set.seed(7)
+  sommap <- som(scale(data), grid = somgrid(6, 4, "hexagonal"))
+
+  ## and the same for rectangular maps
+  plot(sommap, type="dist.neighbours", 
+       shape = "straight",
+       palette.name = colors,
+       main = "SOM neighbour distances")
+  ## use hierarchical clustering to cluster the codebook vectors
+  som.hc <- cutree(hclust(object.distances(sommap, "codes")), 3)
+  add.cluster.boundaries(sommap, som.hc)
+
+  ## Show 'component planes'
+  for (i in 1:ncol(getCodes(sommap, 1))) {
+    set.seed(7)
+    sommap <- som(scale(data), grid = somgrid(6, 4, "hexagonal"))
+    plot(sommap, shape = "straight", type = "property", 
+        property = getCodes(sommap, 1)[,i],
+        palette.name = colors,
+        main = colnames(getCodes(sommap, 1))[i])
+  }
+}
+
+p()
+```
+
+
