@@ -1,0 +1,141 @@
+---
+title: "扩散映射图"
+author:
+  - "**[编辑]** 郑虎;"
+  - "**[审核]** ."
+---
+
+扩散映射（diffusion-map）是一种非线性降维算法，可以用于可视化发育轨迹。
+
+## 环境配置
+
+-   系统: Cross-platform (Linux/MacOS/Windows)
+
+-   编程语言: R
+
+-   依赖包: `destiny`; `ggplotify`; `scatterplot3d`; `ggpubr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("destiny", quietly = TRUE)) {
+  install_github("theislab/destiny")
+}
+if (!requireNamespace("ggplotify", quietly = TRUE)) {
+  install.packages("ggplotify")
+}
+if (!requireNamespace("scatterplot3d", quietly = TRUE)) {
+  install.packages("scatterplot3d")
+}
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
+
+# 加载包
+library(destiny)
+library(ggplotify)
+library(scatterplot3d)
+library(ggpubr)
+```
+
+## 数据准备
+
+```{r load data, message=FALSE, warning=FALSE}
+# 加载数据
+data1 <- read.delim("files/Hiplot/042-diffusion-map-data1.txt", header = T)
+data2 <- read.delim("files/Hiplot/042-diffusion-map-data2.txt", header = T)
+
+# 整理数据格式
+sample.info <- data2
+rownames(data1) <- data1[, 1]
+data1 <- as.matrix(data1[, -1])
+## tsne
+set.seed(123)
+dm_info <- DiffusionMap(t(data1))
+dm_info <- cbind(DC1 = dm_info$DC1, DC2 = dm_info$DC2, DC3 = dm_info$DC3)
+dm_data <- data.frame(
+  sample = colnames(data1),
+  dm_info
+)
+
+colorBy <- sample.info[match(colnames(data1), sample.info[, 1]), "Group"]
+colorBy <- factor(colorBy, level = colorBy[!duplicated(colorBy)])
+dm_data$colorBy = colorBy
+
+# 查看数据
+head(dm_data)
+```
+
+## 可视化
+
+### 1. 2D
+
+```{r fig-1Diffusion-map2D}
+#| label: fig-1Diffusion-map2D
+#| fig-cap: "2D 扩散映射图"
+#| out.width: "95%"
+#| fig-height: 4
+#| fig-width: 5
+#| warning: false
+#| message: false
+
+# 2D 扩散映射图
+p <- ggscatter(data = dm_data,  x = "DC1", y = "DC2", color = "colorBy",
+               size = 2, palette = "lancet", alpha = 1) +
+  labs(color = "Group") +
+  ggtitle("Diffusion Map") +
+  scale_color_manual(values = c("#3B4992FF","#EE0000FF","#008B45FF")) +
+  theme_classic() +
+  theme(text = element_text(family = "Arial"),
+        plot.title = element_text(size = 12,hjust = 0.5),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 0, hjust = 0.5,vjust = 1),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))
+
+p
+```
+
+
+### 2. 3D
+
+```{r fig-2Diffusion-map3D}
+#| label: fig-2Diffusion-map3D
+#| fig-cap: "3D 扩散映射图"
+#| out.width: "95%"
+#| fig-height: 6
+#| fig-width: 8
+#| warning: false
+#| message: false
+
+# 3D 扩散映射图
+group.color <- c("#3B4992FF","#EE0000FF","#008B45FF")
+names(group.color) <- unique(dm_data$colorBy)
+group.color <- group.color[!is.na(names(group.color))]
+if (length(group.color) == 0) {
+  group.color <- c(Default="black")
+  dm_data$colorBy <- "Default"
+}
+p <- as.ggplot(function(){
+  scatterplot3d(x = dm_data$DC1, y = dm_data$DC2, z = dm_data$DC3,
+                color =  alpha(group.color[dm_data$colorBy], 1),
+                xlim=c(min(dm_data$DC1), max(dm_data$DC1)),
+                ylim=c(min(dm_data$DC2), max(dm_data$DC2)),
+                zlim=c(min(dm_data$DC3), max(dm_data$DC3)),
+                pch = 16, cex.symbols  = 0.6,
+                scale.y = 0.8,
+                xlab = "DC1", ylab = "DC2", zlab = "DC3",
+                angle = 40,
+                main = "Diffusion Map",
+                col.axis = "#444444", col.grid = "#CCCCCC")
+  legend("right", legend = names(group.color),
+         col = alpha(group.color, 0.8), pch = 16)
+    })
+p <- p + theme_classic()
+
+p
+```
+
+
