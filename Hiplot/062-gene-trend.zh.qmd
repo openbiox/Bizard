@@ -1,0 +1,99 @@
+---
+title: "基因聚类趋势图"
+author:
+  - "**[编辑]** 郑虎;"
+  - "**[审核]** ."
+---
+
+基因聚类趋势图用于显示不同的基因表达趋势，多条线显示了每个类群中相似的表达模式。
+
+## 环境配置
+
+-   系统: Cross-platform (Linux/MacOS/Windows)
+
+-   编程语言: R
+
+-   依赖包: `Mfuzz`; `ggplotify`; `RColorBrewer`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("Mfuzz", quietly = TRUE)) {
+  install_github("MatthiasFutschik/Mfuzz")
+}
+if (!requireNamespace("ggplotify", quietly = TRUE)) {
+  install.packages("ggplotify")
+}
+if (!requireNamespace("RColorBrewer", quietly = TRUE)) {
+  install.packages("RColorBrewer")
+}
+
+# 加载包
+library(Mfuzz)
+library(ggplotify)
+library(RColorBrewer)
+```
+
+## 数据准备
+
+加载的数据是行为基因列为时间点样本的基因表达矩阵。
+
+```{r load data, message=FALSE, warning=FALSE}
+# 加载数据
+data <- read.delim("files/Hiplot/062-gene-trend-data.txt", header = T)
+
+# 整理数据格式
+## 将基因表达矩阵转换为 ExpressionSet 对象
+row.names(data) <- data[,1]
+data <- data[,-1]
+data <- as.matrix(data)
+eset <- new("ExpressionSet", exprs = data)
+## 过滤缺失值超过 25% 的基因
+eset <- filter.NA(eset, thres=0.25)
+## 根据标准差去除样本间差异太小的基因
+eset <- filter.std(eset, min.std=0, visu = F)
+## 数据标准化
+eset <- standardise(eset)
+## 设定聚类数目
+c <- 6
+## 评估出最佳的m值
+m <- mestimate(eset)
+## 进行mfuzz聚类
+cl <- mfuzz(eset, c = c, m = m)
+
+# 查看数据
+head(data)
+```
+
+## 可视化
+
+```{r fig-1Gene-trend}
+#| label: fig-1Gene-trend
+#| fig-cap: "基因聚类趋势图"
+#| out.width: "95%"
+#| fig-height: 6
+#| fig-width: 10
+#| warning: false
+#| message: false
+
+# 基因聚类趋势图
+p <- as.ggplot(function(){
+  mfuzz.plot2(
+  eset,
+  cl,
+  xlab = "Time",
+  ylab = "Expression changes",
+  mfrow = c(2,(c/2+0.5)),
+  colo = "fancy",
+  centre = T,
+  centre.col = "red",
+  time.labels = colnames(eset),
+  x11=F)
+  })
+
+p
+```
+
+如示例图所示，将基因聚集到不同的组中，每个组在不同时间点上显示出相似的表达模式。每个类群中突出显示了平均表达趋势。
+
+
+

@@ -1,0 +1,99 @@
+---
+title: "基因差异表达排序图"
+author:
+  - "**[编辑]** 郑虎;"
+  - "**[审核]** ."
+---
+
+基因表达排序可视化。
+
+## 环境配置
+
+-   系统: Cross-platform (Linux/MacOS/Windows)
+
+-   编程语言: R
+
+-   依赖包: `ggrepel`; `ggplot2`; `RColorBrewer`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("ggrepel", quietly = TRUE)) {
+  install.packages("ggrepel")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("RColorBrewer", quietly = TRUE)) {
+  install.packages("RColorBrewer")
+}
+
+# 加载包
+library(ggrepel)
+library(ggplot2)
+library(RColorBrewer)
+```
+
+## 数据准备
+
+```{r load data, message=FALSE, warning=FALSE}
+# 加载数据
+data <- read.delim("files/Hiplot/061-gene-rank-data.txt", header = T)
+
+# 整理数据格式
+## 按 log2FoldChange 和 pvalue 排序
+data <- data[order(-data$log2FC, data$pvalue), ]
+## 添加 rank 列
+data$rank <- 1:nrow(data)
+## 获取 top n 上调和下调基因进行标记
+top_n <- 5
+top_n_up <- rownames(head(data, top_n))
+top_n_down <- rownames(tail(data, top_n))
+genes_to_label <- c(top_n_up, top_n_down)
+data2 <- data[genes_to_label, ]
+
+
+# 查看数据
+head(data)
+```
+
+## 可视化
+
+```{r fig-1Gene-rank}
+#| label: fig-1Gene-rank
+#| fig-cap: "基因差异表达排序图"
+#| out.width: "95%"
+#| fig-height: 4
+#| fig-width: 6
+#| warning: false
+#| message: false
+
+# 基因差异表达排序图
+p <- 
+  ggplot(data, aes(rank, log2FC, color = pvalue, size = abs(log2FC))) + 
+  geom_point() + 
+  scale_color_gradientn(colours = colorRampPalette(brewer.pal(11,'RdYlBu'))(100)) +
+  geom_hline(yintercept = c(-1, 1), linetype = 2, size = 0.3) +
+  geom_hline(yintercept = 0, linetype = 1, size = 0.5) +
+  geom_vline(xintercept = median(data$rank), linetype = 2, size = 0.3) + 
+  geom_text_repel(data = data2, aes(rank, log2FC, label = gene),
+                  size = 3, color = "red") +
+  xlab("") + ylab("") + 
+  ylim(c(-max(abs(data$log2FC)), max(abs(data$log2FC)))) +
+  labs(color = "Pvalue", size = "Log2FoldChange") +
+  theme_bw(base_size = 12) +
+  theme(text = element_text(family = "Arial"),
+        plot.title = element_text(size = 12,hjust = 0.5),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 0, hjust = 0.5,vjust = 1),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))
+
+p
+```
+
+
+
+
