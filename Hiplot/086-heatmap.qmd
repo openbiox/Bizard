@@ -1,0 +1,140 @@
+---
+title: "Heatmap"
+author:
+  - "**[Editor]** Hu Zheng;"
+  - "**[Contributors]** "
+---
+
+Heat map is an intuitive and visual method for analyzing the distribution of experimental data, which can be used for quality control of experimental data and visualization display of difference data, as well as clustering of data and samples to observe sample quality.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ComplexHeatmap`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
+  install_github("jokergoo/ComplexHeatmap")
+}
+if (!requireNamespace("genefilter", quietly = TRUE)) {
+  install.packages("genefilter")
+}
+
+# Load packages
+library(ComplexHeatmap)
+library(genefilter)
+```
+
+## Data Preparation
+
+The loaded data are Count (gene name and corresponding gene expression value), sampleInfo (sample name, group and other relevant information, such as age), and gene information (gene name and its pathway, such as tumor pathway and physiological pathway).
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data_count <- read.delim("files/Hiplot/086-heatmap-data1.txt", header = T)
+data_sample <- read.delim("files/Hiplot/086-heatmap-data2.txt", header = T)
+data_gene <- read.delim("files/Hiplot/086-heatmap-data3.txt", header = T)
+
+# Convert data structure
+data_count <- data_count[!is.na(data_count[, 1]), ]
+idx <- duplicated(data_count[, 1])
+data_count[idx, 1] <- paste0(data_count[idx, 1], "--dup-", cumsum(idx)[idx])
+for (i in 2:ncol(data_count)) {
+  data_count[, i] <- as.numeric(data_count[, i])
+}
+data <- as.matrix(data_count[, -1])
+rownames(data) <- data_count[, 1]
+
+## Add annotation information to samples
+sample.info <- data_sample[-1]
+row.names(sample.info) <- data_sample[, 1]
+sample_info_reorder <- as.data.frame(sample.info[match(
+  colnames(data), rownames(sample.info)
+  ), ])
+colnames(sample_info_reorder) <- colnames(sample.info)
+rownames(sample_info_reorder) <- colnames(data)
+
+## Add annotation information to genes
+gene_info <- data_gene[-1]
+rownames(gene_info) <- data_gene[, 1]
+gene_info_reorder <- as.data.frame(gene_info[match(
+  rownames(data), rownames(gene_info)
+  ), ])
+colnames(gene_info_reorder) <- colnames(gene_info)
+rownames(gene_info_reorder) <- rownames(data)
+
+# View data
+head(data)
+```
+
+## Visualization
+
+```{r fig-1heatmap}
+#| label: fig-1heatmap
+#| fig-cap: "Heatmap"
+#| out.width: "95%"
+#| fig-height: 6
+#| fig-width: 8
+#| warning: false
+#| error: false
+#| message: false
+
+# Heatmap
+## Set annotation_col and annotation_row to add annotations to samples and genes respectively
+top_var <- 100
+top_var_genes <- rownames(data)[head(
+  order(genefilter::rowVars(data), decreasing = TRUE),
+  nrow(data) * top_var / 100
+)]
+## Set annotation_colors
+col <- colorRampPalette(c("#0060BF","#FFFFFF","#CA1111"))(50)
+annotation_colors <- list()
+for(i in colnames(sample_info_reorder)) {
+  if (is.numeric(sample_info_reorder[,i])) {
+    annotation_colors[[i]] <- col
+  } else {
+    ref <- c("#323232","#1B6393")
+    annotation_colors[[i]] <- ref
+    names(annotation_colors[[i]]) <- unique(sample_info_reorder[,i])
+  }
+}
+for(i in colnames(gene_info_reorder)) {
+  if (is.numeric(gene_info_reorder[,i])) {
+    annotation_colors[[i]] <- col
+  } else {
+    ref <- c("#323232","#1B6393")
+    annotation_colors[[i]] <- ref
+    names(annotation_colors[[i]]) <- unique(gene_info_reorder[,i])
+  }
+}
+
+p <- 
+  ComplexHeatmap::pheatmap(
+    data[row.names(data) %in% top_var_genes,],
+    color = col, 
+    border_color = NA,
+    fontsize_row = 6, fontsize_col = 6,
+    main = "Heatmap Plot",
+    cluster_rows = T, cluster_cols = T,
+    scale = "none",
+    clustering_method = "ward.D2",
+    clustering_distance_cols = "euclidean",
+    clustering_distance_rows = "euclidean",
+    fontfamily = "Arial",
+    display_numbers = F,
+    number_color = "black",
+    annotation_col = sample_info_reorder,
+    annotation_row = gene_info_reorder,
+    annotation_colors = annotation_colors
+  )
+
+p
+```
+
+In the example figure, each small grid represents each gene, and the shade of color represents the expression level of this gene. The larger the expression level is, the darker the color will be (red is up-regulated, green is down-regulated).Each row represents the expression of each gene in a different sample, and each column represents the expression of all genes in each sample.The upper tree represents the clustering analysis results of different samples of different groups and ages, and the left tree represents the clustering analysis results of different genes from different samples.
+
+
