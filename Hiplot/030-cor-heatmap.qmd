@@ -1,0 +1,100 @@
+---
+title: "Correlation Heatmap"
+author:
+  - "**[Editor]** Hu Zheng;"
+  - "**[Contributors]** "
+---
+
+The correlation heat map is a graph that analyzes the correlation between two or more variables.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggcorrplot`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("ggcorrplot", quietly = TRUE)) {
+  install.packages("ggcorrplot")
+}
+
+# Load packages
+library(ggcorrplot)
+```
+
+## Data Preparation
+
+The loaded data are the gene names and the expression of each sample.
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- read.delim("files/Hiplot/030-cor-heatmap-data.txt", header = T)
+
+# convert data structure
+data <- data[!is.na(data[, 1]), ]
+idx <- duplicated(data[, 1])
+data[idx, 1] <- paste0(data[idx, 1], "--dup-", cumsum(idx)[idx])
+rownames(data) <- data[, 1]
+data <- data[, -1]
+str2num_df <- function(x) {
+  final <- NULL
+  for (i in seq_len(ncol(x))) {
+    final <- cbind(final, as.numeric(x[, i]))
+  }
+  colnames(final) <- colnames(x)
+  return(final)
+}
+tmp <- str2num_df(t(data))
+corr <- round(cor(tmp, use = "na.or.complete", method = "pearson"), 3)
+p_mat <- round(cor_pmat(tmp, method = "pearson"), 3)
+
+# View data
+head(data)
+```
+
+## Visualization
+
+```{r fig-1Cor-heatmap}
+#| label: fig-1Cor-heatmap
+#| fig-cap: "Correlation Heatmap"
+#| out.width: "95%"
+#| fig-height: 9
+#| fig-width: 9
+#| warning: false
+#| message: false
+
+# Correlation Heatmap
+p <- ggcorrplot(
+  corr,
+  colors = c("#4477AA", "#FFFFFF", "#BB4444"),
+  method = "circle",
+  hc.order = T,
+  hc.method = "ward.D2",
+  outline.col = "white",
+  ggtheme = theme_bw(),
+  type = "upper",
+  lab = F,
+  lab_size = 3,
+  legend.title = "Correlation"
+  ) +
+  ggtitle("Cor Heatmap Plot") +
+  theme(text = element_text(family = "Arial"),
+        plot.title = element_text(size = 12,hjust = 0.5),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))
+p
+```
+
+Red indicates positive correlation between two genes, blue indicates negative correlation between two genes, and the number in each cell indicates correlation coefficient.
+
+
+
+
