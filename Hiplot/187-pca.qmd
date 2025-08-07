@@ -1,0 +1,138 @@
+---
+title: "PCA Analysis"
+author:
+  - "**[Editor]** Yi Xuyang;"
+- "**[Contributors]** "
+---
+  
+  ## Setup
+  
+  -   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `gmodels`, `ggpubr`, `openxlsx`, `ggplot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install and load packages
+if (!requireNamespace("gmodels", quietly = TRUE)) {
+  install.packages("gmodels")
+}
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
+if (!requireNamespace("openxlsx", quietly = TRUE)) {
+  install.packages("openxlsx")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+# Load packages
+library(gmodels)
+library(ggpubr)
+library(openxlsx)
+library(ggplot2)
+
+## Data Preparation
+
+The loaded data are set (gene name and corresponding gene expression value) and sample information (sample name and grouping).
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- read.table("187-pca-data.txt", header = T,sep = ",")
+group <- read.table("187-pca-group.txt", header = T,sep = ",")
+
+rownames(data) <- data[, 1]
+data <- as.matrix(data[, -1])
+
+# Create configuration
+conf <- list(
+  dataArg = list(
+    list(list(value = "group")),  # Color by group column
+    list(list(value = ""))         # No shape grouping
+  ),
+  general = list(
+    title = "Principal Component Analysis",
+    palette = "Set1"
+  )
+)
+
+# Perform PCA - Note: data must be transposed because PCA analyzes samples (columns)
+pca_info <- prcomp(t(data), scale. = TRUE)
+
+# Prepare plot data
+axis <- sapply(conf$dataArg[[1]], function(x) x$value)
+
+# Process color grouping
+if (is.null(axis[1]) || axis[1] == "") {
+  colorBy <- rep('ALL', ncol(data))
+} else {
+  # Ensure sample order matches
+  colorBy <- group[match(colnames(data), group$sample), axis[1]]
+}
+colorBy <- factor(colorBy, levels = unique(colorBy))
+
+# Create PCA data frame
+pca_data <- data.frame(
+  sample = rownames(pca_info$x),
+  PC1 = pca_info$x[, 1],
+  PC2 = pca_info$x[, 2],
+  colorBy = colorBy
+)
+
+# Calculate explained variance
+variance_explained <- round(pca_info$sdev^2 / sum(pca_info$sdev^2) * 100, 1)
+
+# View prepared data
+str(data)
+str(group)
+head(pca_data)
+```
+
+## Visualization
+
+```{r fig-1interval-bar-chart}
+#| label: fig-pca
+#| fig-cap: "PCA Analysis"
+#| out.width: "95%"
+#| fig-height: 6
+#| fig-width: 8
+
+# Create PCA plot
+p <- ggplot(pca_data, aes(x = PC1, y = PC2, color = colorBy)) +
+  geom_point(size = 4, alpha = 0.8) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray70") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray70") +
+  stat_ellipse(level = 0.95, show.legend = FALSE) +
+  ggtitle(conf$general$title) +
+  labs(
+    x = paste0("PC1 (", variance_explained[1], "%)"),
+    y = paste0("PC2 (", variance_explained[2], "%)"),
+    color = axis[1]
+  ) +
+  
+  # Custom color scheme
+  scale_color_brewer(palette = conf$general$palette) +
+  
+  # Add sample labels
+  geom_text(aes(label = sample), 
+            hjust = 0.5, vjust = -1, size = 3.5, show.legend = FALSE) +
+  
+  # Theme settings
+  theme_bw(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    axis.title = element_text(size = 14, face = "bold"),
+    axis.text = element_text(size = 12),
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 11),
+    legend.position = "right",
+    panel.grid.major = element_line(color = "grey90", linewidth = 0.3),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(fill = NA, color = "grey50", linewidth = 0.5),
+    aspect.ratio = 1
+  )
+
+# Display plot
+p
+```
