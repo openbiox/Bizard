@@ -1,0 +1,97 @@
+---
+title: "Gene Cluster Trend"
+author:
+  - "**[Editor]** Hu Zheng;"
+  - "**[Contributors]** "
+---
+
+The gene cluster trend is used to display different gene expression trend with multiple lines showing the similar expression patterns in each cluster.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `Mfuzz`; `ggplotify`; `RColorBrewer`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("Mfuzz", quietly = TRUE)) {
+  install_github("MatthiasFutschik/Mfuzz")
+}
+if (!requireNamespace("ggplotify", quietly = TRUE)) {
+  install.packages("ggplotify")
+}
+if (!requireNamespace("RColorBrewer", quietly = TRUE)) {
+  install.packages("RColorBrewer")
+}
+
+# Load packages
+library(Mfuzz)
+library(ggplotify)
+library(RColorBrewer)
+```
+
+## Data Preparation
+
+The loaded data are a gene expression matrix with each row represent a gene and each column represent a time-point sample.
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- read.delim("files/Hiplot/062-gene-trend-data.txt", header = T)
+
+# Convert data structure
+## Convert a gene expression matrix to an ExpressionSet object
+row.names(data) <- data[,1]
+data <- data[,-1]
+data <- as.matrix(data)
+eset <- new("ExpressionSet", exprs = data)
+## Filter genes with more than 25% missing values
+eset <- filter.NA(eset, thres=0.25)
+## Remove genes with small differences between samples based on standard deviation
+eset <- filter.std(eset, min.std=0, visu = F)
+## Data Standardization
+eset <- standardise(eset)
+## Set the number of clusters
+c <- 6
+## Evaluate the optimal m value
+m <- mestimate(eset)
+## Perform mfuzz clustering
+cl <- mfuzz(eset, c = c, m = m)
+
+# View data
+head(data)
+```
+
+## Visualization
+
+```{r fig-1Gene-trend}
+#| label: fig-1Gene-trend
+#| fig-cap: "Gene Cluster Trend"
+#| out.width: "95%"
+#| fig-height: 6
+#| fig-width: 10
+#| warning: false
+#| message: false
+
+# Gene Cluster Trend
+p <- as.ggplot(function(){
+  mfuzz.plot2(
+  eset,
+  cl,
+  xlab = "Time",
+  ylab = "Expression changes",
+  mfrow = c(2,(c/2+0.5)),
+  colo = "fancy",
+  centre = T,
+  centre.col = "red",
+  time.labels = colnames(eset),
+  x11=F)
+  })
+
+p
+```
+
+As shown in the example figure, the genes are clustered into different groups, with each group showing similar expression patterns across different time-points. The average expression trend is highlighted in each cluster.
+
