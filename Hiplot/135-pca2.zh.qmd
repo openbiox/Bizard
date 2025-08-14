@@ -1,0 +1,105 @@
+---
+title: "主成分分析2"
+author:
+  - "**[编辑]** [郑虎](https://github.com/ZhengTiger);"
+  - "**[审核]** ."
+---
+
+::: callout-note
+**Hiplot 网站**
+
+本页面为 Hiplot `PCA2` 插件的源码版本教程，您也可以使用 Hiplot 网站实现无代码绘图，更多信息请查看以下链接:
+
+<https://hiplot.cn/basic/pca2?lang=zh_cn>
+:::
+
+主成分分析是以“降维”为核心，用较少的几个综合指标（主成分）代替多指标的数据，还原数据最本质特征的数据处理方式。
+
+## 环境配置
+
+-   系统: Cross-platform (Linux/MacOS/Windows)
+
+-   编程语言: R
+
+-   依赖包: `data.table`; `jsonlite`; `FactoMineR`; `factoextra`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("FactoMineR", quietly = TRUE)) {
+  install.packages("FactoMineR")
+}
+if (!requireNamespace("factoextra", quietly = TRUE)) {
+  install.packages("factoextra")
+}
+
+# 加载包
+library(data.table)
+library(jsonlite)
+library(FactoMineR)
+library(factoextra)
+```
+
+## 数据准备
+
+载入数据为数据集（基因名称及其对应的基因表达值）和样本信息（样本名称及分组）。
+
+```{r load data, message=FALSE, warning=FALSE}
+# 加载数据
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pca2/data.json")$exampleData[[1]]$textarea[[1]])
+data <- as.data.frame(data)
+sample_info <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pca2/data.json")$exampleData[[1]]$textarea[[2]])
+sample_info <- as.data.frame(sample_info)
+
+# 整理数据格式
+row.names(sample_info) <- sample_info[,1]
+sample_info <- sample_info[colnames(data)[-1],]
+## tsne
+rownames(data) <- data[, 1]
+data <- as.matrix(data[, -1])
+pca_data <- PCA(t(as.matrix(data)), scale.unit = TRUE, ncp = 5, graph = FALSE)
+
+# 查看数据
+head(data[,1:5])
+```
+
+## 可视化
+
+```{r fig-1pca2}
+#| label: fig-1pca2
+#| fig-cap: "主成分分析2"
+#| out.width: "95%"
+#| fig-height: 5
+#| fig-width: 6
+#| warning: false
+#| error: false
+#| message: false
+
+# 主成分分析2
+p <- fviz_pca_ind(pca_data, geom.ind = "point", pointsize = 6, addEllipses = TRUE,
+                  mean.point = F, col.ind = sample_info[,"Group"]) +
+  ggtitle("Principal Component Analysis") +
+  scale_fill_manual(values = c("#00468BFF","#ED0000FF")) +
+  scale_color_manual(values = c("#00468BFF","#ED0000FF")) +
+  theme_bw() +
+  theme(text = element_text(family = "Arial"),
+        plot.title = element_text(size = 12,hjust = 0.5),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 0, hjust = 0.5,vjust = 1),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))
+
+p
+```
+
+不同颜色表示不同样本，可解读主成分与原变量的关系，如：M1 对 PC1 具有较大的贡献，而 M8 与 PC1 呈较大的负相关性。
+
+

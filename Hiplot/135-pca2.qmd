@@ -1,0 +1,105 @@
+---
+title: "PCA2"
+author:
+  - "**[Editor]** [Hu Zheng](https://github.com/ZhengTiger);"
+  - "**[Contributors]** "
+---
+
+::: callout-note
+**Hiplot website**
+
+This page is the tutorial for source code version of the Hiplot `PCA2` plugin. You can also use the Hiplot website to achieve no code ploting. For more information please see the following link:
+
+<https://hiplot.cn/basic/pca2?lang=en>
+:::
+
+Principal component analysis (PCA) is a data processing method with "dimension reduction" as the core, replacing multi-index data with a few comprehensive indicators (PCA), and restoring the most essential characteristics of data.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `data.table`; `jsonlite`; `FactoMineR`; `factoextra`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("FactoMineR", quietly = TRUE)) {
+  install.packages("FactoMineR")
+}
+if (!requireNamespace("factoextra", quietly = TRUE)) {
+  install.packages("factoextra")
+}
+
+# Load packages
+library(data.table)
+library(jsonlite)
+library(FactoMineR)
+library(factoextra)
+```
+
+## Data Preparation
+
+The loaded data are set (gene name and corresponding gene expression value) and sample information (sample name and grouping).
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pca2/data.json")$exampleData[[1]]$textarea[[1]])
+data <- as.data.frame(data)
+sample_info <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pca2/data.json")$exampleData[[1]]$textarea[[2]])
+sample_info <- as.data.frame(sample_info)
+
+# Convert data structure
+row.names(sample_info) <- sample_info[,1]
+sample_info <- sample_info[colnames(data)[-1],]
+## tsne
+rownames(data) <- data[, 1]
+data <- as.matrix(data[, -1])
+pca_data <- PCA(t(as.matrix(data)), scale.unit = TRUE, ncp = 5, graph = FALSE)
+
+# View data
+head(data[,1:5])
+```
+
+## Visualization
+
+```{r fig-1pca2}
+#| label: fig-1pca2
+#| fig-cap: "PCA2"
+#| out.width: "95%"
+#| fig-height: 5
+#| fig-width: 6
+#| warning: false
+#| error: false
+#| message: false
+
+# PCA2
+p <- fviz_pca_ind(pca_data, geom.ind = "point", pointsize = 6, addEllipses = TRUE,
+                  mean.point = F, col.ind = sample_info[,"Group"]) +
+  ggtitle("Principal Component Analysis") +
+  scale_fill_manual(values = c("#00468BFF","#ED0000FF")) +
+  scale_color_manual(values = c("#00468BFF","#ED0000FF")) +
+  theme_bw() +
+  theme(text = element_text(family = "Arial"),
+        plot.title = element_text(size = 12,hjust = 0.5),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 0, hjust = 0.5,vjust = 1),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))
+
+p
+```
+
+Different colors represent different samples, which can explain the relationship between principal components and original variables. For example, M1 has a greater contribution to PC1, while M8 has a greater negative correlation with PC1.
+
+

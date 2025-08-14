@@ -1,0 +1,131 @@
+---
+title: "Pie Matrix"
+author:
+  - "**[Editor]** [Hu Zheng](https://github.com/ZhengTiger);"
+  - "**[Contributors]** "
+---
+
+::: callout-note
+**Hiplot website**
+
+This page is the tutorial for source code version of the Hiplot `Pie Matrix` plugin. You can also use the Hiplot website to achieve no code ploting. For more information please see the following link:
+
+<https://hiplot.cn/basic/pie-matrix?lang=en>
+:::
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `data.table`; `jsonlite`; `ggplot2`; `dplyr`; `tidyr`; `stringr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("tidyr", quietly = TRUE)) {
+  install.packages("tidyr")
+}
+if (!requireNamespace("stringr", quietly = TRUE)) {
+  install.packages("stringr")
+}
+
+# Load packages
+library(data.table)
+library(jsonlite)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(stringr)
+```
+
+## Data Preparation
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pie-matrix/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# Convert data structure
+data[,"genre"] <- factor(data[,"genre"], levels = unique(data[,"genre"]))
+data[,"mpaa"] <- factor(data[,"mpaa"], levels = unique(data[,"mpaa"]))
+data[,"status"] <- factor(data[,"status"], levels = unique(data[,"status"]))
+col <- c("#E64B35FF","#4DBBD5FF")
+df <- matrix(NA, nrow = length(unique(data[,"mpaa"])),
+             ncol = length(unique(data[,"genre"])))
+row.names(df) <- unique(data[,"mpaa"])
+colnames(df) <- unique(data[,"genre"])
+for (i in 1:nrow(df)) {
+    for (j in 1:ncol(df)) {
+      for (k in unique(data[,"status"])) {
+        if (is.na(df[i, j])) {
+          df[i, j] <- sum(data[,"genre"] == unique(data[,"genre"])[j] &
+            data[,"mpaa"] == unique(data[,"mpaa"])[i] &
+            data[,"status"] == k)
+        } else {
+          df[i, j] <- paste0(df[i, j], ",", 
+            sum(data[,"genre"] == unique(data[,"genre"])[j] &
+              data[,"mpaa"] == unique(data[,"mpaa"])[i] &
+              data[,"status"] == k))
+        }
+      }
+    }
+}
+df <- as.matrix(df)
+
+# View data
+head(data[,1:5])
+```
+
+## Visualization
+
+```{r fig-1pie-matrix}
+#| label: fig-1pie-matrix
+#| fig-cap: "Pie Matrix"
+#| out.width: "95%"
+#| fig-height: 4
+#| fig-width: 15
+#| warning: false
+#| error: false
+#| message: false
+
+# Pie Matrix
+p <- df %>% as.table() %>%
+  as.data.frame() %>%
+  mutate(Freq = str_split(Freq,",")) %>%
+  unnest(Freq) %>%
+  mutate(Freq = as.integer(Freq)) %>%
+  # Convert the values to a percentage (which adds up to 1 for each graph)
+  group_by(Var1, Var2) %>%
+  mutate(Freq = ifelse(is.na(Freq), NA, Freq / sum(Freq)),
+         color = row_number()) %>%
+  ungroup() %>%
+  # Plot
+  ggplot(aes("", Freq, fill=factor(color, labels = unique(data[,"status"])))) + 
+  geom_bar(width = 2, stat = "identity") +
+  coord_polar("y") +
+  facet_wrap(~Var1+Var2, ncol = ncol(df)) +
+  scale_fill_manual(values = col) +
+  theme_void() +
+  theme(axis.text = element_blank(), axis.ticks = element_blank(),
+        panel.grid = element_blank(), axis.title = element_blank(),
+        legend.position = "bottom", legend.direction = "horizontal") +
+  guides(fill = guide_legend(nrow = 1, title = "status"))
+  
+p
+```
+
+
+
