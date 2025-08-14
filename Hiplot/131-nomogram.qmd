@@ -1,0 +1,117 @@
+---
+title: "Nomogram"
+author:
+  - "**[Editor]** [Hu Zheng](https://github.com/ZhengTiger);"
+  - "**[Contributors]** "
+---
+
+::: callout-note
+**Hiplot website**
+
+This page is the tutorial for source code version of the Hiplot `Nomogram` plugin. You can also use the Hiplot website to achieve no code ploting. For more information please see the following link:
+
+<https://hiplot.cn/basic/nomogram?lang=en>
+:::
+
+Nomogram is often used to evaluate the prognosis of oncology and medicine, and can visualize the results of logistic regression or Cox regression.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `data.table`; `jsonlite`; `survival`; `rms`; `ggplotify`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("survival", quietly = TRUE)) {
+  install.packages("survival")
+}
+if (!requireNamespace("rms", quietly = TRUE)) {
+  install.packages("rms")
+}
+if (!requireNamespace("ggplotify", quietly = TRUE)) {
+  install.packages("ggplotify")
+}
+
+# Load packages
+library(data.table)
+library(jsonlite)
+library(survival)
+library(rms)
+library(ggplotify)
+```
+
+## Data Preparation
+
+Survival data frame with time, which sex and status are presented by number such as 0,1 according to example data.
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/nomogram/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# Convert data structure
+dd <- datadist(data)
+options(datadist = "dd")
+## Build COX model and run nomogram
+cox_res <- psm(
+  data = data,
+  as.formula(paste(
+    sprintf("Surv(%s, %s) ~ ", colnames(data)[1], colnames(data)[2]),
+    paste(colnames(data)[3:length(colnames(data))],
+      collapse = "+"
+    )
+  )),
+  # Surv(time, status) ~ age + sex + ph.ecog + ph.karno + pat.karno,
+  dist = "lognormal"
+)
+## Build survival probability function
+surv <- Survival(cox_res)
+## Build quantile survival time function
+med <- Quantile(cox_res)
+
+cox_nomo <- nomogram(
+  cox_res,
+  fun = list(function(x) surv(365, x), function(x) surv(1095, x),
+             function(x) surv(1825, x), function(x) med(lp = x)),
+  funlabel = c("1-year Survival Probability",
+               "3-year Survival Probability",
+               "5-year Survival Probability",
+               "Median Survival Time"),
+  maxscale = 100
+)
+
+# View data
+head(data)
+```
+
+## Visualization
+
+```{r fig-1nomogram}
+#| label: fig-1nomogram
+#| fig-cap: "Nomogram"
+#| out.width: "95%"
+#| fig-height: 9
+#| fig-width: 12
+#| warning: false
+#| error: false
+#| message: false
+
+# Nomogram
+p <- as.ggplot(function() {
+  plot(cox_nomo, scale = 1)
+  title(main = "Nomogram (COX)")
+})
+
+p
+```
+
+

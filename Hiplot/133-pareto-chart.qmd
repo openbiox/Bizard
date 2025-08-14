@@ -1,0 +1,89 @@
+---
+title: "Pareto Chart"
+author:
+  - "**[Editor]** [Hu Zheng](https://github.com/ZhengTiger);"
+  - "**[Contributors]** "
+---
+
+::: callout-note
+**Hiplot website**
+
+This page is the tutorial for source code version of the Hiplot `Pareto Chart` plugin. You can also use the Hiplot website to achieve no code ploting. For more information please see the following link:
+
+<https://hiplot.cn/basic/pareto-chart?lang=en>
+:::
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `data.table`; `jsonlite`; `ggplot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+
+# Load packages
+library(data.table)
+library(jsonlite)
+library(ggplot2)
+```
+
+## Data Preparation
+
+The case data represents the sales data of a product on multiple platforms. The plugin will automatically plot a bar chart with sales data in descending order and simultaneously calculate the cumulative sales to draw the cumulative line chart.
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pareto-chart/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# Convert data structure
+data <- data[order(-data[["sales"]]), ]
+data[["channel"]] <- factor(data[["channel"]], levels = data[["channel"]])
+## Calculate percentage number
+data$accumulating <- cumsum(data[["sales"]])
+max_y <- max(data[["sales"]])
+cal_num <- sum(data[["sales"]]) / max_y
+data$accumulating <- data$accumulating / cal_num
+
+# View data
+head(data)
+```
+
+## Visualization
+
+```{r fig-1pareto-chart}
+#| label: fig-1pareto-chart
+#| fig-cap: "Pareto Chart"
+#| out.width: "95%"
+#| fig-height: 4
+#| fig-width: 8
+#| warning: false
+#| error: false
+#| message: false
+
+# Pareto Chart
+p <- ggplot(data, aes(x = channel, y = sales, fill = channel)) +
+  geom_bar(stat = "identity") +
+  geom_line(aes(y = accumulating), group = 1) +
+  geom_point(aes(y = accumulating), show.legend = FALSE) +
+  scale_y_continuous(sec.axis = sec_axis(trans = ~ . / max_y * 100, name = "Percentage")) +
+  scale_fill_manual(values = c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF",
+                               "#F39B7FFF","#8491B4FF","#91D1C2FF","#DC0000FF")) +
+  theme_bw()
+
+p
+```
+
+
