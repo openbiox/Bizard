@@ -13,16 +13,32 @@ The word cloud is to visualize the "keywords" that appear frequently in the web 
 
 -   Programming language: R
 
--   Dependent packages: `ggwordcloud`
+-   Dependent packages: `data.table`; `jsonlite`; `ggwordcloud`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Install packages
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
 if (!requireNamespace("ggwordcloud", quietly = TRUE)) {
   install.packages("ggwordcloud")
 }
+if (!requireNamespace("curl", quietly = TRUE)) {
+  install.packages("curl")
+}
+if (!requireNamespace("png", quietly = TRUE)) {
+  install.packages("png")
+}
 
 # Load packages
+library(data.table)
+library(jsonlite)
 library(ggwordcloud)
+library(curl)
+library(png)
 ```
 
 ## Data Preparation
@@ -31,8 +47,9 @@ Load data nouns and noun frequencies.
 
 ```{r load data, message=FALSE, warning=FALSE}
 # Load data
-data <- read.delim("files/Hiplot/076-ggwordcloud-data.txt", header = T)
-inmask <- "files/Hiplot/076-ggwordcloud-hearth.png"
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/ggwordcloud/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+inmask <- "https://download.hiplot.cn/api/file/fetch/?path=public/demo/ggwordcloud/hearth.png"
 
 # Convert data structure
 col <- data[, 2]
@@ -58,7 +75,9 @@ head(data)
 p <- ggplot(data, aes(label = word, size = freq, color = col)) +
   scale_size_area(max_size = 40) +
   theme_minimal() + 
-  geom_text_wordcloud_area(mask = png::readPNG(inmask), rm_outside = TRUE) +
+  geom_text_wordcloud_area(
+    mask = png::readPNG(curl::curl_fetch_memory(inmask)$content), 
+    rm_outside = TRUE) +
   scale_color_gradient(low = "#8B0000", high = "#FF0000")
 
 p
