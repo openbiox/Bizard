@@ -1,0 +1,117 @@
+---
+title: "Pie"
+author:
+  - "**[Editor]** [Hu Zheng](https://github.com/ZhengTiger);"
+  - "**[Contributors]** "
+---
+
+::: callout-note
+**Hiplot website**
+
+This page is the tutorial for source code version of the Hiplot `Pie` plugin. You can also use the Hiplot website to achieve no code ploting. For more information please see the following link:
+
+<https://hiplot.cn/basic/pie?lang=en>
+:::
+
+The pie chart is a statistical chart that shows the proportion of each part by dividing a circle into sections.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `data.table`; `jsonlite`; `ggplot2`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+
+# Load packages
+library(data.table)
+library(jsonlite)
+library(ggplot2)
+library(dplyr)
+```
+
+## Data Preparation
+
+The loaded data are different groups and their data.
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pie/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+
+# Convert data structure
+colnames(data) <- c("Group", "Value")
+data <- data %>%
+  arrange(desc(Group)) %>%
+  mutate(prop = Value / sum(data$Value) * 100) %>%
+  mutate(ypos = Value / length(unique(Group)) +
+           c(0, cumsum(Value)[-length(Value)]) + 5)
+
+# View data
+head(data)
+```
+
+## Visualization
+
+```{r fig-1pie}
+#| label: fig-1pie
+#| fig-cap: "Pie"
+#| out.width: "95%"
+#| fig-height: 5
+#| fig-width: 6
+#| warning: false
+#| error: false
+#| message: false
+
+# Pie
+p <- ggplot(data, aes(x = "", y = Value, fill = Group)) +
+  geom_col(width = 1) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  geom_text(aes(y = ypos, 
+                label = sprintf("%s\n(n=%s, %s%%)", Group, Value,
+                                round(Value / sum(data$Value) * 100, 2))), 
+            color = "white", fontface = "bold") +
+  coord_polar(theta = "y", start = 0, direction = -1) +
+  guides(fill = guide_legend(title = "Group")) +
+  scale_fill_discrete(
+    breaks = data$Group,
+    labels = paste(data$Group," (", round(data$Value / sum(data$Value) * 100, 2),
+                   "%)", sep = "")) +
+  scale_fill_manual(values = c("#00468BFF","#ED0000FF","#42B540FF","#0099B4FF")) +
+  ggtitle("Pie Plot") + 
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    panel.border = element_blank(),
+    panel.grid = element_blank(),
+    axis.ticks = element_blank(),
+    plot.title = element_text(size = 14, face = "bold",
+                              hjust = 0.5, vjust = -1),
+    legend.position = "none"
+  )
+    
+  
+p
+```
+
+In a circle graph, the arc length of each slice (the arc length of its center Angle and the region corresponding to its center Angle) is proportional to the number represented. The pie chart shows the number of samples for the 1 to 4 components and the corresponding proportions. The number of samples in one group is 13, accounting for 11.71%; the number of samples in two groups is 34, accounting for 30.63%; the number of samples in three groups is 21, accounting for 18.92%; and the number of samples in four groups is 43, accounting for 38.74%.
+

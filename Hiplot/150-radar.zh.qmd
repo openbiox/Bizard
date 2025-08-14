@@ -1,0 +1,120 @@
+---
+title: "雷达图"
+author:
+  - "**[编辑]** [郑虎](https://github.com/ZhengTiger);"
+  - "**[审核]** ."
+---
+
+::: callout-note
+**Hiplot 网站**
+
+本页面为 Hiplot `Radar` 插件的源码版本教程，您也可以使用 Hiplot 网站实现无代码绘图，更多信息请查看以下链接:
+
+<https://hiplot.cn/basic/radar?lang=zh_cn>
+:::
+
+雷达图是以从同一点开始的轴上表示的三个或更多个定量变量的二维图表的形式显示多变量数据，以直观的表达某个研究对象在多种参数的对比。
+
+## 环境配置
+
+-   系统: Cross-platform (Linux/MacOS/Windows)
+
+-   编程语言: R
+
+-   依赖包: `data.table`; `jsonlite`; `ggradar`; `dplyr`; `scales`; `tibble`; `ggplot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("ggradar", quietly = TRUE)) {
+  install_github("ricardo-bion/ggradar", dependencies = TRUE)
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("scales", quietly = TRUE)) {
+  install.packages("scales")
+}
+if (!requireNamespace("tibble", quietly = TRUE)) {
+  install.packages("tibble")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+
+# 加载包
+library(data.table)
+library(jsonlite)
+library(ggradar)
+library(dplyr)
+library(scales)
+library(tibble)
+library(ggplot2)
+```
+
+## 数据准备
+
+数据载入为数据集 (4 种疾病中 5 个基因的表达水平)。
+
+```{r load data, message=FALSE, warning=FALSE}
+# 加载数据
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/radar/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# 整理数据格式
+data <- as.data.frame(t(data))
+colnames(data) <- data[1, ]
+data <- data[-1, ]
+for (i in seq_len(ncol(data))) {
+  data[, i] <- as.numeric(data[, i])
+}
+data_radar <- data %>%
+  rownames_to_column(var = "sample")
+data_radar <- data_radar %>% mutate_at(vars(-sample), rescale)
+
+# 查看数据
+head(data)
+```
+
+## 可视化
+
+```{r fig-1radar}
+#| label: fig-1radar
+#| fig-cap: "雷达图"
+#| out.width: "95%"
+#| fig-height: 5
+#| fig-width: 8
+#| warning: false
+#| error: false
+#| message: false
+
+# 雷达图
+p <- ggradar(data_radar, gridline.max.linetype = 1, group.point.size = 4,
+             group.line.width = 1, font.radar = "Arial", fill.alpha = 0.5,
+             gridline.min.colour = "grey", gridline.mid.colour = "#007A87",
+             gridline.max.colour = "grey") +
+  ggtitle("Radar Plot") +
+  scale_color_manual(values = c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF")) +
+  theme(text = element_text(family = "Arial"),
+        plot.title = element_text(size = 12,hjust = 0.5),
+        axis.title = element_blank(),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_blank(),
+        axis.title.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))
+ 
+p
+```
+
+雷达图每种颜色表示一种疾病，每个点所在的位置表示不同基因表达情况，基因表达值越高，则越远离圆心，反之则越靠近圆心。
+
+
