@@ -1,0 +1,105 @@
+---
+title: "小提琴图"
+author:
+  - "**[编辑]** [郑虎](https://github.com/ZhengTiger);"
+  - "**[审核]** ."
+---
+
+::: callout-note
+**Hiplot 网站**
+
+本页面为 Hiplot `Violin` 插件的源码版本教程，您也可以使用 Hiplot 网站实现无代码绘图，更多信息请查看以下链接:
+
+<https://hiplot.cn/basic/violin?lang=zh_cn>
+:::
+
+小提琴图，因形似小提琴而得名，是结合了箱形图和核密度图，用于显示数据分布及概率密度的统计图表。
+
+## 环境配置
+
+-   系统: Cross-platform (Linux/MacOS/Windows)
+
+-   编程语言: R
+
+-   依赖包: `data.table`; `jsonlite`; `ggpubr`; `ggthemes`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
+if (!requireNamespace("ggthemes", quietly = TRUE)) {
+  install.packages("ggthemes")
+}
+
+# 加载包
+library(data.table)
+library(jsonlite)
+library(ggpubr)
+library(ggthemes)
+```
+
+## 数据准备
+
+载入数据为数据集 (不同肿瘤中基因名称及表达水平)。
+
+```{r load data, message=FALSE, warning=FALSE}
+# 加载数据
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/violin/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# 整理数据格式
+groups <- unique(data[, 2])
+ngroups <- length(groups)
+comb <- combn(1:ngroups, 2)
+my_comparisons <- list()
+for (i in seq_len(ncol(comb))) {
+  my_comparisons[[i]] <- groups[comb[, i]]
+}
+
+# 查看数据
+head(data)
+```
+
+## 可视化
+
+```{r fig-1violin}
+#| label: fig-1violin
+#| fig-cap: "小提琴图"
+#| out.width: "95%"
+#| fig-height: 4
+#| fig-width: 7
+#| warning: false
+#| error: false
+#| message: false
+
+# 小提琴图
+p <- ggviolin(data, x = "Tumor", y = "Expresssion", fill = "Tumor", add = "boxplot",
+              xlab = "Tumor", ylab = "Expresssion", 
+              add.params = list(fill = "white"),
+              palette = c("#e04d39","#5bbad6","#1e9f86"),
+              title = "Violin Plot", alpha = 1) + 
+  stat_compare_means(comparisons = my_comparisons, label = "p.signif") +
+  theme_stata() +
+  theme(text = element_text(family = "Arial"),
+        plot.title = element_text(size = 12,hjust = 0.5),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 0, hjust = 0.5,vjust = 1),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))
+
+p
+```
+
+小提琴图可以反映数据分布，同箱形图类似，方框中黑色横线显示各肿瘤中基因表达水平的中位数， 白色方框中上下框边代表数据集中的上，下四分位点；小提琴图还可以反映数据密度，数据集数据越集中则图形越胖。图示中BLGG 组中的基因表达分布更集中，BIC 组次之，AML组则分布最分散。
+
+
