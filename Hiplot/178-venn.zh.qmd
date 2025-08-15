@@ -1,0 +1,119 @@
+---
+title: "韦恩图"
+author:
+  - "**[编辑]** [郑虎](https://github.com/ZhengTiger);"
+  - "**[审核]** ."
+---
+
+::: callout-note
+**Hiplot 网站**
+
+本页面为 Hiplot `Venn` 插件的源码版本教程，您也可以使用 Hiplot 网站实现无代码绘图，更多信息请查看以下链接:
+
+<https://hiplot.cn/basic/venn?lang=zh_cn>
+:::
+
+维恩图是一种表示不同有限集合之间所有可能的逻辑关系的图。这些图将集合内元素描述为平面上的点，将集合描述为封闭曲线内的区域。维恩图由多个重叠的闭合曲线 (通常是圆) 组成，每个曲线代表一个集合。标记为S曲线内的点表示集合 S 中的元素，而边界外的点表示集合 S 中不存在的元素。例如，两个集合中的所有元素的交集，S∩T，在视觉上用集合 S 和 T 的重叠区域来表示。在维恩图中，曲线以各种可能的方式重叠，显示了集合之间所有可能的关系。
+
+## 环境配置
+
+-   系统: Cross-platform (Linux/MacOS/Windows)
+
+-   编程语言: R
+
+-   依赖包: `data.table`; `jsonlite`; `VennDiagram`; `grDevices`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("VennDiagram", quietly = TRUE)) {
+  install.packages("VennDiagram")
+}
+if (!requireNamespace("grDevices", quietly = TRUE)) {
+  install.packages("grDevices")
+}
+
+# 加载包
+library(data.table)
+library(jsonlite)
+library(VennDiagram)
+library(grDevices)
+```
+
+## 数据准备
+
+载入数据为 5 个含有基因名称的集合。
+
+```{r load data, message=FALSE, warning=FALSE}
+# 加载数据
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/venn/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# 整理数据格式
+for (i in seq_len(ncol(data))) {
+  data[is.na(data[, i]), i] <- ""
+}
+raw <- data
+data <- as.data.frame(raw[raw[, 1] != "", 1])
+colnames(data) <- colnames(raw)[1]
+list.num <- 1
+for (i in 2:ncol(raw)) {
+  if (any(!is.na(raw[, i]) & raw[, i] != "")) {
+    tmp <- raw[i]
+    tmp <- tmp[tmp[, 1] != "", ]
+    tmp <- as.data.frame(tmp)
+    colnames(tmp) <- colnames(raw)[i]
+    assign(paste0("data", i), tmp)
+    list.num <- list.num + 1
+  }
+}
+colnames(data) <- paste("V", seq_len(ncol(data)), sep = "")
+colnames(data2) <- paste("V", seq_len(ncol(data2)), sep = "")
+colnames(data3) <- paste("V", seq_len(ncol(data3)), sep = "")
+colnames(data4) <- paste("V", seq_len(ncol(data4)), sep = "")
+colnames(data5) <- paste("V", seq_len(ncol(data5)), sep = "")
+data_list <- list(
+  n1 = data$V1, n2 = data2$V1, n3 = data3$V1,
+  n4 = data4$V1, n5 = data5$V1
+)
+names(data_list) <- colnames(raw)[1:5]
+
+# 查看数据
+head(data)
+```
+
+## 可视化
+
+```{r fig-1venn}
+#| label: fig-1venn
+#| fig-cap: "韦恩图"
+#| out.width: "95%"
+#| fig-height: 5
+#| fig-width: 5
+#| warning: false
+#| error: false
+#| message: false
+
+# 韦恩图
+col <- c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF","#F39B7FFF")
+p <- venn.diagram(
+  data_list, scaled = F, euler.d = F, filename = NULL, col = "black",
+  fill = col,
+  cex = c(
+    1.5, 1.5, 1.5, 1.5, 1.5, 1, 0.8, 1, 0.8, 1, 0.8, 1, 0.8,
+    1, 0.8, 1, 0.55, 1, 0.55, 1, 0.55, 1, 0.55, 1, 0.55, 1, 1, 1, 1, 1, 1.5
+  ),
+  cat.col = col, cat.cex = 1,
+  main.fontfamily = "Arial", fontfamily = "Arial", cat.fontface = "bold",
+  cat.fontfamily = "Arial", margin = 0.1, main = "Vene Plot", alpha = 0.8
+);grid::grid.draw(p)
+```
+
+5 种颜色的闭合曲线代表 5 个集合，数字表示多个集合重叠或者未重叠的基因数，例如：示例图中 8 代表 5 个示例集合中均含有 8 个相同的基因名称。
+
+
