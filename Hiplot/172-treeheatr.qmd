@@ -1,0 +1,118 @@
+---
+title: "Treeheatr"
+author:
+  - "**[Editor]** [Hu Zheng](https://github.com/ZhengTiger);"
+  - "**[Contributors]** "
+---
+
+::: callout-note
+**Hiplot website**
+
+This page is the tutorial for source code version of the Hiplot `Treeheatr` plugin. You can also use the Hiplot website to achieve no code ploting. For more information please see the following link:
+
+<https://hiplot.cn/basic/treeheatr?lang=en>
+:::
+
+The heatmap decision tree is a visualization graph that combines two types of graphs: heatmap and decision tree visualization.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `data.table`; `jsonlite`; `treeheatr`; `ggplotify`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("treeheatr", quietly = TRUE)) {
+  install.packages("treeheatr")
+}
+if (!requireNamespace("ggplotify", quietly = TRUE)) {
+  install.packages("ggplotify")
+}
+
+# Load packages
+library(data.table)
+library(jsonlite)
+library(treeheatr)
+library(ggplotify)
+```
+
+## Data Preparation
+
+The first column is the name of the species, the second column is the island, and the rest are the species characteristics.
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/treeheatr/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# convert data structure
+x <- data
+wrong_cols <- suppressWarnings(sapply(x, function(x) {
+  if (!is.numeric(x)) {
+    sum(!is.na(as.numeric(x))) > 0.7 * length(x)
+  } else {
+    FALSE
+  }
+}))
+if (any(wrong_cols)) {
+  ix <- which(wrong_cols)
+  for (i in ix) {
+    data[[i]] <- suppressWarnings(as.numeric(data[[i]]))
+  }
+  rm(ix)
+}
+rm(x, wrong_cols)
+
+# View data
+head(data)
+```
+
+## Visualization
+
+```{r fig-1treeheatr}
+#| label: fig-1treeheatr
+#| fig-cap: "Treeheatr"
+#| out.width: "95%"
+#| fig-height: 3
+#| fig-width: 6
+#| warning: false
+#| error: false
+#| message: false
+
+# Treeheatr
+p <- as.ggplot(function() {
+  print(heat_tree(data,
+    target_lab = "species",
+    task = 'classification',
+    show = "heat-tree",
+    heat_rel_height = 0.2,
+    panel_space = 0.001,
+    clust_samps = T,
+    clust_target = T,
+    lev_fac = 1.3,
+    cont_legend = F,
+    cate_legend = F
+  ))
+})
+
+p
+```
+
+The upper half of the figure is a decision diagram, and the lower half is a heat map.
+
+Decision tree: The topmost island has the greatest influence on the classification of species, and can be classified into different species according to different conditions.
+
+Heatmap: you can observe the changes in the amount of each species under each condition.
+
+Legend: For each categorical variable, different colors indicate different types; for continuous variables, the higher the value, the lighter the color, otherwise, the darker.
+
+
