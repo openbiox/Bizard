@@ -1,0 +1,157 @@
+---
+title: "主成分分析"
+author:
+  - "**[编辑]** [易旭洋](https://github.com/yxywalab);"
+  - "**[贡献者]** [郑虎](https://github.com/ZhengTiger);"
+---
+
+::: callout-note
+**Hiplot 网站**
+
+本页面为 Hiplot `PCA` 插件的源码版本教程，您也可以使用 Hiplot 网站实现无代码绘图，更多信息请查看以下链接:
+
+<https://hiplot.cn/basic/pca?lang=zh_cn>
+:::
+
+主成分分析是以“降维"*" 为核心，用较少的几个综合指标（主成分）代替多指标的数据，还原数据最本质特征的数据处理方式。
+
+## 环境配置
+
+-   系统: 跨平台 (Linux/MacOS/Windows)
+
+-   编程语言: R
+
+-   依赖包: `data.table`; `jsonlite`; `gmodels`, `ggpubr`, `ggplot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("gmodels", quietly = TRUE)) {
+  install.packages("gmodels")
+}
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+
+# 加载包
+library(data.table)
+library(jsonlite)
+library(gmodels)
+library(ggpubr)
+library(ggplot2)
+```
+
+## 数据准备
+
+加载的数据包括基因表达值（基因名称及对应表达量）和样本信息（样本名称及分组）。
+
+```{r load data, message=FALSE, warning=FALSE}
+# 加载数据
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pca/data.json")$exampleData[[1]]$textarea[[1]])
+data <- as.data.frame(data)
+group <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pca/data.json")$exampleData[[1]]$textarea[[2]])
+group <- as.data.frame(group)
+
+# 整理数据格式
+rownames(data) <- data[, 1]
+data <- as.matrix(data[, -1])
+pca_info <- fast.prcomp(data)
+## 创建配置
+conf <- list(
+  dataArg = list(
+    list(list(value = "group")),  # 按group列着色
+    list(list(value = ""))         # 无形状分组
+  ),
+  general = list(
+    title = "Principal Component Analysis",
+    palette = "Set1"
+  )
+)
+## 执行PCA - 注意需要转置数据，因为PCA是对样本（列）进行分析
+pca_info <- prcomp(t(data), scale. = TRUE)
+## 准备绘图数据
+axis <- sapply(conf$dataArg[[1]], function(x) x$value)
+## 处理颜色分组
+if (is.null(axis[1]) || axis[1] == "") {
+  colorBy <- rep('ALL', ncol(data))
+} else {
+  ## 确保样本顺序匹配
+  colorBy <- group[match(colnames(data), group$sample), axis[1]]
+}
+colorBy <- factor(colorBy, levels = unique(colorBy))
+## 创建PCA数据框
+pca_data <- data.frame(
+  sample = rownames(pca_info$x),
+  PC1 = pca_info$x[, 1],
+  PC2 = pca_info$x[, 2],
+  colorBy = colorBy
+)
+## 计算解释方差
+variance_explained <- round(pca_info$sdev^2 / sum(pca_info$sdev^2) * 100, 1)
+
+# 查看数据
+str(data)
+str(group)
+head(pca_data)
+```
+
+## 可视化
+
+```{r fig1-pca}
+#| label: fig1-pca
+#| fig-cap: "主成分分析"
+#| out.width: "95%"
+#| fig-height: 6
+#| fig-width: 8
+
+# 主成分分析
+p <- ggplot(pca_data, aes(x = PC1, y = PC2, color = colorBy)) +
+  geom_point(size = 4, alpha = 0.8) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray70") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray70") +
+  stat_ellipse(level = 0.95, show.legend = FALSE) +
+  ggtitle(conf$general$title) +
+  labs(
+    x = paste0("PC1 (", variance_explained[1], "%)"),
+    y = paste0("PC2 (", variance_explained[2], "%)"),
+    color = axis[1]
+  ) +
+  
+  # 自定义颜色方案
+  scale_color_brewer(palette = conf$general$palette) +
+  
+  # 添加样本标签
+  geom_text(aes(label = sample), 
+            hjust = 0.5, vjust = -1, size = 3.5, show.legend = FALSE) +
+  
+  # 主题设置
+  theme_bw(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    axis.title = element_text(size = 14, face = "bold"),
+    axis.text = element_text(size = 12),
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 11),
+    legend.position = "right",
+    panel.grid.major = element_line(color = "grey90", linewidth = 0.3),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(fill = NA, color = "grey50", linewidth = 0.5),
+    aspect.ratio = 1
+  )
+
+# 显示图形
+p
+```
+
+不同颜色表示不同样本，可解读主成分与原变量的关系，如：M1 对 PC1 具有较大的贡献，而 M8 与 PC1 呈较大的负相关性。
+
+
+

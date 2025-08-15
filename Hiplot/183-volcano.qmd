@@ -1,0 +1,118 @@
+---
+title: "Volcano"
+author:
+  - "**[Editor]** [Hu Zheng](https://github.com/ZhengTiger);"
+  - "**[Contributors]** "
+---
+
+::: callout-note
+**Hiplot website**
+
+This page is the tutorial for source code version of the Hiplot `Volcano` plugin. You can also use the Hiplot website to achieve no code ploting. For more information please see the following link:
+
+<https://hiplot.cn/basic/volcano?lang=en>
+:::
+
+The volcanogram is a visual representation of the difference in gene expression between two samples.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `data.table`; `jsonlite`; `ggpubr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
+
+# Load packages
+library(data.table)
+library(jsonlite)
+library(ggpubr)
+```
+
+## Data Preparation
+
+The loaded data is the gene name and its corresponding logFC and p.value.
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/volcano/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# convert data structure
+## Perform log10 transformation on the difference p (adj.P.Val column)
+data[, "logP"] <- -log10(as.numeric(data[, "P.Value"]))
+data[, "logFC"] <- as.numeric(data[, "logFC"])
+## Add a new column Group
+data[, "Group"] <- "not-significant"
+## Up and down
+data$Group[which((data[, "P.Value"] < 0.05) & (data$logFC >= 2))] <- "Up-regulated"
+data$Group[which((data[, "P.Value"] < 0.05) & (data$logFC <= 2 * -1))] <- "Down-regulated"
+## Add a new column Label
+data[["Label"]] <- ""
+## Sort the p-values of differentially expressed genes from small to large
+data <- data[order(data[, "P.Value"]), ]
+## Among the highly expressed genes, select the 10 with the smallest adj.P.Val
+up_genes <- head(data[, "Symbol"][which(data$Group == "Up-regulated")], 10)
+down_genes <- head(data[, "Symbol"][which(data$Group == "Down-regulated")], 10)
+not_sig_genes <- NA
+## Merge up_genes and down_genes and add them to Label
+deg_top_genes <- c(as.character(up_genes), as.character(not_sig_genes),
+as.character(down_genes))
+deg_top_genes <- deg_top_genes[!is.na(deg_top_genes)]
+data$Label[match(deg_top_genes, data[, "Symbol"])] <- deg_top_genes
+
+# View data
+head(data)
+```
+
+## Visualization
+
+```{r fig-1volcano}
+#| label: fig-1volcano
+#| fig-cap: "Volcano"
+#| out.width: "95%"
+#| fig-height: 5
+#| fig-width: 6
+#| warning: false
+#| error: false
+#| message: false
+
+# Volcano
+options(ggrepel.max.overlaps = 100)
+p <- ggscatter(data, x = "logFC", y = "logP", color = "Group", 
+               palette = c("#2f5688", "#BBBBBB", "#CC0000"), size = 1, 
+               alpha = 0.5, font.label = 8, repel = TRUE, label=data$Label,
+               xlab = "log2(Fold Change)", ylab = "-log10(P Value)",
+               show.legend.text = FALSE) +
+  ggtitle("Volcano Plot") +
+  geom_hline(yintercept = -log(0.05, 10), linetype = "dashed") +
+  geom_vline(xintercept = c(2, -2), linetype = "dashed") +
+  theme_bw() +
+  theme(text = element_text(family = "Arial"),
+        plot.title = element_text(size = 12,hjust = 0.5),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 0, hjust = 0.5,vjust = 1),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))
+
+p
+```
+
+The horizontal axis is denoted by log2 (fold change), and the more different genes are distributed at both ends of the picture.The ordinate is denoted by -log10 (p.value) and is the negative log of the P value of T test significance.Blue dots represent down-regulated genes, red dots represent up-regulated genes, and gray dots represent genes that are not significantly different.
+
+

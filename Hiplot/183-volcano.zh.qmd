@@ -1,0 +1,118 @@
+---
+title: "火山图"
+author:
+  - "**[编辑]** [郑虎](https://github.com/ZhengTiger);"
+  - "**[审核]** ."
+---
+
+::: callout-note
+**Hiplot 网站**
+
+本页面为 Hiplot `Volcano` 插件的源码版本教程，您也可以使用 Hiplot 网站实现无代码绘图，更多信息请查看以下链接:
+
+<https://hiplot.cn/basic/volcano?lang=zh_cn>
+:::
+
+火山图是一种直观展示两个样本间基因差异表达的分布图。
+
+## 环境配置
+
+-   系统: Cross-platform (Linux/MacOS/Windows)
+
+-   编程语言: R
+
+-   依赖包: `data.table`; `jsonlite`; `ggpubr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
+
+# 加载包
+library(data.table)
+library(jsonlite)
+library(ggpubr)
+```
+
+## 数据准备
+
+载入数据为基因名称及其对应的 logFC 和 p.value。
+
+```{r load data, message=FALSE, warning=FALSE}
+# 加载数据
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/volcano/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# 整理数据格式
+## 对差异p(adj.P.Val一列)进行log10转换
+data[, "logP"] <- -log10(as.numeric(data[, "P.Value"]))
+data[, "logFC"] <- as.numeric(data[, "logFC"])
+## 新加一列Group
+data[, "Group"] <- "not-significant"
+## Up and down
+data$Group[which((data[, "P.Value"] < 0.05) & (data$logFC >= 2))] <- "Up-regulated"
+data$Group[which((data[, "P.Value"] < 0.05) & (data$logFC <= 2 * -1))] <- "Down-regulated"
+## 新加一列Label
+data[["Label"]] <- ""
+## 对差异表达基因的p值进行从小到大排序
+data <- data[order(data[, "P.Value"]), ]
+## 高表达的基因中，选择adj.P.Val最小的10个
+up_genes <- head(data[, "Symbol"][which(data$Group == "Up-regulated")], 10)
+down_genes <- head(data[, "Symbol"][which(data$Group == "Down-regulated")], 10)
+not_sig_genes <- NA
+## 将up_genes和down_genes合并，并加入到Label中
+deg_top_genes <- c(as.character(up_genes), as.character(not_sig_genes),
+as.character(down_genes))
+deg_top_genes <- deg_top_genes[!is.na(deg_top_genes)]
+data$Label[match(deg_top_genes, data[, "Symbol"])] <- deg_top_genes
+
+# 查看数据
+head(data)
+```
+
+## 可视化
+
+```{r fig-1volcano}
+#| label: fig-1volcano
+#| fig-cap: "火山图"
+#| out.width: "95%"
+#| fig-height: 5
+#| fig-width: 6
+#| warning: false
+#| error: false
+#| message: false
+
+# 火山图
+options(ggrepel.max.overlaps = 100)
+p <- ggscatter(data, x = "logFC", y = "logP", color = "Group", 
+               palette = c("#2f5688", "#BBBBBB", "#CC0000"), size = 1, 
+               alpha = 0.5, font.label = 8, repel = TRUE, label=data$Label,
+               xlab = "log2(Fold Change)", ylab = "-log10(P Value)",
+               show.legend.text = FALSE) +
+  ggtitle("Volcano Plot") +
+  geom_hline(yintercept = -log(0.05, 10), linetype = "dashed") +
+  geom_vline(xintercept = c(2, -2), linetype = "dashed") +
+  theme_bw() +
+  theme(text = element_text(family = "Arial"),
+        plot.title = element_text(size = 12,hjust = 0.5),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 0, hjust = 0.5,vjust = 1),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))
+
+p
+```
+
+横轴用 log2（fold change）表示，差异越大的基因分布在图片两端。纵坐标用 -log10（p.value）表示，取值为 T 检验显著性 P 值的负对数。蓝色的点代表下调的基因，红色的点代表上调的基因，灰色的点代表差异不显著的基因。
+
+
