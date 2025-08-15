@@ -1,0 +1,112 @@
+---
+title: "ROC 曲线"
+author:
+  - "**[编辑]** [郑虎](https://github.com/ZhengTiger);"
+  - "**[审核]** ."
+---
+
+::: callout-note
+**Hiplot 网站**
+
+本页面为 Hiplot `ROC` 插件的源码版本教程，您也可以使用 Hiplot 网站实现无代码绘图，更多信息请查看以下链接:
+
+<https://hiplot.cn/basic/roc?lang=zh_cn>
+:::
+
+接收者工作特征曲线（ROC 曲线）是用来说明二元分类器系统在其识别阈值变化时诊断能力的图形。
+
+## 环境配置
+
+-   系统: Cross-platform (Linux/MacOS/Windows)
+
+-   编程语言: R
+
+-   依赖包: `data.table`; `jsonlite`; `pROC`; `ggplotify`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("pROC", quietly = TRUE)) {
+  install.packages("pROC")
+}
+if (!requireNamespace("ggplotify", quietly = TRUE)) {
+  install.packages("ggplotify")
+}
+
+# 加载包
+library(data.table)
+library(jsonlite)
+library(pROC)
+library(ggplotify)
+```
+
+## 数据准备
+
+示例数据为一列二分类变量的结局和三列不同变量（诊断指标）及其数值。
+
+```{r load data, message=FALSE, warning=FALSE}
+# 加载数据
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/roc/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# 整理数据格式
+name_val <- colnames(data)[2:ncol(data)]
+num_value <- ncol(data) - 1
+
+# 查看数据
+head(data)
+```
+
+## 可视化
+
+```{r fig-1roc}
+#| label: fig-1roc
+#| fig-cap: "ROC 曲线"
+#| out.width: "95%"
+#| fig-height: 6
+#| fig-width: 6
+#| warning: false
+#| error: false
+#| message: false
+
+# ROC 曲线
+col <- c("#00468BFF","#ED0000FF","#42B540FF")
+p <- as.ggplot(function() {
+  for (i in 1:num_value) {
+    if (i == 1) {
+      roc_data <- roc(data[, 1], data[, i + 1],
+        percent = T, plot = T, grid = T, lty = i, quiet = T,
+        print.auc = F, col = col[i], smooth = F,
+        main = "ROC Plot"
+      )
+      text(30, 50, "AUC", font = 2, col = "darkgray")
+      text(30, 50 - 10 * i,
+        paste(name_val[i], ":", sprintf("%0.4f", as.numeric(roc_data$auc))),
+        col = col[i]
+      )
+    } else {
+      roc_data <- roc(data[, 1], data[, i + 1],
+        percent = T, plot = T, grid = T, add = T, lty = i, quiet = T,
+        print.auc = F, col = col[i]
+      )
+      text(30, 50 - 10 * i,
+        paste(name_val[i], ":", sprintf("%0.4f", as.numeric(roc_data$auc))),
+        col = col[i]
+      )
+    }
+  }
+    })
+
+p
+```
+
+横轴表示特异性，纵轴表示敏感性，二者之间没有函数关系。曲线越靠近左上角，认为该诊断指标预测能力越好。图示中每种颜色表示一个变量（诊断指标），蓝色曲线和红色曲线的预测能力明显较绿色曲线好。AUC 为 ROC 曲线下面积。AUC = 1 表示该曲线存在至少一个阈值能得出完美预测。0.5 < AUC < 1，优于随机猜测，妥善选择阈值，能有预测价值。AUC = 0.5，跟随机猜测一样，模型没有预测价值。若 AUC < 0.5，可能原因是二分类变量如（0，1）与结局设置颠倒，调换结局赋值即可。在本图示中，value-Am (86.9792) > value-GG (84.3750) > value-EL (56.7708)，可以认为 Am 变量的预测能力最好。
+
+
+
+
