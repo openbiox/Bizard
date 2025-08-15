@@ -1,0 +1,115 @@
+---
+title: "UMAP"
+author:
+  - "**[Editor]** [Hu Zheng](https://github.com/ZhengTiger);"
+  - "**[Contributors]** "
+---
+
+::: callout-note
+**Hiplot website**
+
+This page is the tutorial for source code version of the Hiplot `UMAP` plugin. You can also use the Hiplot website to achieve no code ploting. For more information please see the following link:
+
+<https://hiplot.cn/basic/umap?lang=en>
+:::
+
+UMAP is a nonlinear dimensionality reduction algorithm suitable for high-dimensional data reduction to two or three dimensions and visualization. The algorithm can make the t distribution of points with greater similarity closer in the lower dimensional space. For low similarity points, the t distribution is farther away in the low dimensional space.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `data.table`; `jsonlite`; `umap`; `ggpubr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("umap", quietly = TRUE)) {
+  install.packages("umap")
+}
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
+
+# Load packages
+library(data.table)
+library(jsonlite)
+library(umap)
+library(ggpubr)
+```
+
+## Data Preparation
+
+The loaded data are the data set (gene name and corresponding gene expression value) and sample information (sample name and grouping).
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data1 <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/umap/data.json")$exampleData$textarea[[1]])
+data1 <- as.data.frame(data1)
+data2 <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/umap/data.json")$exampleData$textarea[[2]])
+data2 <- as.data.frame(data2)
+
+# convert data structure
+sample.info <- data2
+rownames(data1) <- data1[, 1]
+data1 <- as.matrix(data1[, -1])
+## umap
+set.seed(123)
+umap_info <- umap(t(data1))
+colnames(umap_info$layout) <- c("UMAP_1", "UMAP_2")
+# handle data
+umap_data <- data.frame(
+  sample = colnames(data1),
+  umap_info$layout
+)
+colorBy <- sample.info[match(colnames(data1), sample.info[, 1]), "Species"]
+colorBy <- factor(colorBy, level = colorBy[!duplicated(colorBy)])
+umap_data$colorBy = colorBy
+shapeBy <- NULL
+
+# View data
+head(data1[,1:5])
+head(data2)
+```
+
+## Visualization
+
+```{r fig-1umap}
+#| label: fig-1umap
+#| fig-cap: "umap"
+#| out.width: "95%"
+#| fig-height: 3
+#| fig-width: 4
+#| warning: false
+#| error: false
+#| message: false
+
+# umap
+p <- ggscatter(data = umap_data, x = "UMAP_1", y = "UMAP_2", size = 2, 
+               palette = "lancet", color = "colorBy") +
+  labs(color = "group") +
+  ggtitle("UMAP Plot") +
+  theme_classic() +
+  theme(text = element_text(family = "Arial"),
+        plot.title = element_text(size = 12,hjust = 0.5),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 0, hjust = 0.5,vjust = 1),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))
+
+p
+```
+
+Different colors represent different samples, which is the same as PCA (principal component analysis) graphic interpretation. The difference lies in the visualization effect. For dissimilar points in T-SNE, a small distance will generate a large gradient to repel them.
+
+

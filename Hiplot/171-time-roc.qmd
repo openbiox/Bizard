@@ -1,0 +1,149 @@
+---
+title: "Time ROC"
+author:
+  - "**[Editor]** [Hu Zheng](https://github.com/ZhengTiger);"
+  - "**[Contributors]** "
+---
+
+::: callout-note
+**Hiplot website**
+
+This page is the tutorial for source code version of the Hiplot `Time ROC` plugin. You can also use the Hiplot website to achieve no code ploting. For more information please see the following link:
+
+<https://hiplot.cn/basic/time-roc?lang=en>
+:::
+
+Receiver Operating Characteristic (ROC) analysis with time records in survival analysis.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `data.table`; `jsonlite`; `plotROC`; `survivalROC`; `ggplot2`; `grid`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("plotROC", quietly = TRUE)) {
+  install.packages("plotROC")
+}
+if (!requireNamespace("survivalROC", quietly = TRUE)) {
+  install.packages("survivalROC")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("grid", quietly = TRUE)) {
+  install.packages("grid")
+}
+
+# Load packages
+library(data.table)
+library(jsonlite)
+library(plotROC)
+library(survivalROC)
+library(ggplot2)
+library(grid)
+```
+
+## Data Preparation
+
+- <Table1>: (Numeric) survival data (i.e survive, risk).
+- <Table2>: (Numeric) time data.
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data1 <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/time-roc/data.json")$exampleData$textarea[[1]])
+data1 <- as.data.frame(data1)
+data2 <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/time-roc/data.json")$exampleData$textarea[[2]])
+data2 <- as.data.frame(data2)
+
+# convert data structure
+surv_table <- data1
+colnames(surv_table) <- c("surv", "cens", "risk")
+mtime <- as.data.frame(data2)[, 1]
+sroc <- lapply(mtime, function(t) {
+  stroc <- survivalROC(
+    Stime = surv_table$surv,
+    status = surv_table$cens,
+    marker = surv_table$risk,
+    predict.time = t,
+    method = "KM"
+  )
+  data.frame(
+    TPF = stroc[["TP"]],
+    FPF = stroc[["FP"]],
+    cut = stroc[["cut.values"]],
+    time = rep(
+      stroc[["predict.time"]],
+      length(stroc[["TP"]])
+    ),
+    AUC = rep(
+      stroc$AUC,
+      length(stroc$FP)
+    )
+  )
+})
+mroc <- do.call(rbind, sroc)
+mroc$time <- factor(mroc$time)
+
+# View data
+head(data1)
+head(data2)
+```
+
+## Visualization
+
+```{r fig-1time-roc}
+#| label: fig-1time-roc
+#| fig-cap: "Time ROC"
+#| out.width: "95%"
+#| fig-height: 5
+#| fig-width: 7
+#| warning: false
+#| error: false
+#| message: false
+
+# Time ROC
+col <- c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF","#F39B7FFF")
+p <- ggplot(mroc, aes(x = FPF, y = TPF, label = cut, color = time)) +
+  plotROC::geom_roc(labels = FALSE, stat = "identity", n.cuts = 0) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = 2) +
+  labs(title = "ROC Dependence Time", x = "False positive rate",
+       y = "True positive rate", 
+       color = paste("Time", "(", "Year", ")")) +
+  theme_bw() +
+  theme(text = element_text(family = "Arial"),
+        plot.title = element_text(size = 12, hjust = 0.5),
+        axis.title = element_text(size = 10),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10)) +
+  scale_color_manual(values = col)
+
+auc <- levels(factor(mroc$AUC))
+for (i in 1:length(auc)) {
+  p <- p + annotate("text",
+    x = 0.75,
+    y = 0.05 + 0.05 * i, ## 注释text的位置
+    col = col[i],
+    label = paste(
+      paste(paste(mtime[i], "Year", sep = " "), " = "),
+      round(as.numeric(auc[i]), 2)
+    )
+  )
+}
+
+p
+```
+
+
+
