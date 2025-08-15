@@ -1,0 +1,127 @@
+---
+title: "RCS-COX"
+author:
+  - "**[Editor]** [Hu Zheng](https://github.com/ZhengTiger);"
+  - "**[Contributors]** "
+---
+
+::: callout-note
+**Hiplot website**
+
+This page is the tutorial for source code version of the Hiplot `RCS-COX` plugin. You can also use the Hiplot website to achieve no code ploting. For more information please see the following link:
+
+<https://hiplot.cn/basic/rcs-cox?lang=en>
+:::
+
+Nonlinear regression analysis.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `data.table`; `jsonlite`; `rms`; `survival`; `ggplot2`; `stringr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("rms", quietly = TRUE)) {
+  install.packages("rms")
+}
+if (!requireNamespace("survival", quietly = TRUE)) {
+  install.packages("survival")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("stringr", quietly = TRUE)) {
+  install.packages("stringr")
+}
+
+# Load packages
+library(data.table)
+library(jsonlite)
+library(rms)
+library(survival)
+library(ggplot2)
+library(stringr)
+```
+
+## Data Preparation
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/rcs-cox/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# Convert data structure
+data <- na.omit(data)
+ex <- set::not(colnames(data), c("main", "time", "event"))
+ex <- str_c(ex, collapse = "+")
+dd <<- datadist(data)
+options(datadist = "dd")
+for (i in 3:5) {
+  fit <- coxph(as.formula(paste0("Surv(time, event) ~ rcs(main, nk = i, inclx = T)+", ex, collapse = "+")), data = data, x = TRUE)
+  tmp <- extractAIC(fit)
+  if (i == 3) {
+    AIC <- tmp[2]
+    nk <<- 3
+  }
+  if (tmp[2] < AIC) {
+    AIC <- tmp[2]
+    nk <<- i
+  }
+}
+fit <- cph(as.formula(paste0("Surv(time, event) ~ rcs(main, nk = nk, inclx = T)+", ex, collapse = "+")), data = data, x = TRUE)
+dd$limits$main[2] <- median(data$main)
+fit <- update(fit)
+orr <- Predict(fit, main, fun = exp, ref.zero = TRUE)
+
+# View data
+head(data)
+```
+
+## Visualization
+
+```{r fig-1rcs-cox}
+#| label: fig-1rcs-cox
+#| fig-cap: "RCS-COX"
+#| out.width: "95%"
+#| fig-height: 2.5
+#| fig-width: 4
+#| warning: false
+#| error: false
+#| message: false
+
+# RCS-COX
+p <- ggplot() +
+  geom_line(data = orr, aes(main, yhat), linetype = "solid", size = 1, alpha = 1,
+            colour = "#FF0000") +
+  geom_ribbon(data = orr, aes(main, ymin = lower, ymax = upper), alpha = 0.6, 
+              fill = "#FFC0CB") +
+  geom_hline(yintercept = 1, linetype = 2, size = 0.5) +
+  geom_vline(xintercept = dd$limits$main[2], linetype = 2, size = 0.5) +
+  labs(x = " ", y = "Hazard Ratio(95%CI)") +
+  theme_bw() +
+  theme(text = element_text(family = "Arial"),
+        plot.title = element_text(size = 12,hjust = 0.5),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = 0, hjust = 0.5,vjust = 1),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))
+ 
+p
+```
+
+
+
+
