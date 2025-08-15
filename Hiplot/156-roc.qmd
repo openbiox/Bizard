@@ -1,0 +1,111 @@
+---
+title: "ROC"
+author:
+  - "**[Editor]** [Hu Zheng](https://github.com/ZhengTiger);"
+  - "**[Contributors]** "
+---
+
+::: callout-note
+**Hiplot website**
+
+This page is the tutorial for source code version of the Hiplot `ROC` plugin. You can also use the Hiplot website to achieve no code ploting. For more information please see the following link:
+
+<https://hiplot.cn/basic/roc?lang=en>
+:::
+
+Receiver operating characteristic curve (ROC curve) is used to describe the diagnostic ability of binary classifier system when its recognition threshold changes.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `data.table`; `jsonlite`; `pROC`; `ggplotify`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("data.table", quietly = TRUE)) {
+  install.packages("data.table")
+}
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  install.packages("jsonlite")
+}
+if (!requireNamespace("pROC", quietly = TRUE)) {
+  install.packages("pROC")
+}
+if (!requireNamespace("ggplotify", quietly = TRUE)) {
+  install.packages("ggplotify")
+}
+
+# Load packages
+library(data.table)
+library(jsonlite)
+library(pROC)
+library(ggplotify)
+```
+
+## Data Preparation
+
+The loaded data are the outcomes of one column of dichotomous variables and three columns of different variables (diagnostic indicators) and their values.
+
+```{r load data, message=FALSE, warning=FALSE}
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/roc/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# Convert data structure
+name_val <- colnames(data)[2:ncol(data)]
+num_value <- ncol(data) - 1
+
+# View data
+head(data)
+```
+
+## Visualization
+
+```{r fig-1roc}
+#| label: fig-1roc
+#| fig-cap: "ROC"
+#| out.width: "95%"
+#| fig-height: 6
+#| fig-width: 6
+#| warning: false
+#| error: false
+#| message: false
+
+# ROC
+col <- c("#00468BFF","#ED0000FF","#42B540FF")
+p <- as.ggplot(function() {
+  for (i in 1:num_value) {
+    if (i == 1) {
+      roc_data <- roc(data[, 1], data[, i + 1],
+        percent = T, plot = T, grid = T, lty = i, quiet = T,
+        print.auc = F, col = col[i], smooth = F,
+        main = "ROC Plot"
+      )
+      text(30, 50, "AUC", font = 2, col = "darkgray")
+      text(30, 50 - 10 * i,
+        paste(name_val[i], ":", sprintf("%0.4f", as.numeric(roc_data$auc))),
+        col = col[i]
+      )
+    } else {
+      roc_data <- roc(data[, 1], data[, i + 1],
+        percent = T, plot = T, grid = T, add = T, lty = i, quiet = T,
+        print.auc = F, col = col[i]
+      )
+      text(30, 50 - 10 * i,
+        paste(name_val[i], ":", sprintf("%0.4f", as.numeric(roc_data$auc))),
+        col = col[i]
+      )
+    }
+  }
+    })
+
+p
+```
+
+There is no functional relationship between specificity on the horizontal axis and sensitivity on the vertical axis.The closer the curve is to the upper left corner, the better the predictive ability of the diagnostic index is.Each color represented a variable (diagnostic indicator), and the blue and red curves were significantly better predictors than the green curves.AUC is the area under ROC curve.AUC=1 indicates that there is at least one threshold on the curve that leads to a perfect prediction.0.5<AUC<1, better than random guess, appropriate selection of threshold value, can have predictive value. AUC=0.5, like random guesses, the model has no predictive value. If AUC<0.5, the possible reason is that the dichotomy variable such as (0,1) is reversed with the ending setting, and the result assignment can be reversed.In this diagram, it can be considered that Am variable has the best predictive ability as shown in value-Am(86.9792)>value-GG(84.3750)>value-EL(56.7708).
+
+
+
