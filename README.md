@@ -1,5 +1,9 @@
 # Bizard: A Biomedical Visualization Atlas
 
+[![Open Source Love](https://badges.frapsoft.com/os/v1/open-source.svg?v=103)](https://github.com/ellerbrock/open-source-badges/) 
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://GitHub.com/openbiox/Bizard/graphs/commit-activity)
+[![Render and deploy site to Github Page](https://github.com/openbiox/Bizard/actions/workflows/quarto-publish.yml/badge.svg?branch=main)](https://github.com/openbiox/Bizard/actions/workflows/quarto-publish.yml)
+
 ## Welcome 🎉
 
 Data visualization is a critical tool in biomedical research, enabling intuitive interpretation of complex datasets to advance scientific discovery and inform clinical decisions. The R programming language, with its powerful statistical capabilities and extensive package ecosystem, has become a cornerstone for creating high-quality visualizations. However, the vast and ever-evolving landscape of R plotting packages often poses challenges for researchers, who must select appropriate methods and customize visualizations to meet specific research needs. This process demands advanced coding expertise, interdisciplinary collaboration, and significant time investment, which can hinder progress and impact the accuracy of experimental outcomes.
