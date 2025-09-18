@@ -1,0 +1,209 @@
+---
+title: "共线性块图"
+author:
+  - "**[编辑]** 赵浛博"
+  - "**[贡献]** 郑虎"
+---
+
+
+## 示例
+
+![](../images/Omics/SyntenyBlocksPlot_demo.png){fig-alt="SyntenyBlocksPlot DEMO1" fig-align="center" width="60%"}
+
+共线性被广泛应用于复杂基因组的研究。本教程将基于R包syntR，对识别两个遗传图谱之间共享的共线性区块、染色体重排和绘图进行总结。
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`syntR`;
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("UpSetR", quietly = TRUE)) {
+  devtools::install_github("ksamuk/syntR")
+}
+
+# 加载包
+library(syntR)
+```
+
+## 数据准备
+
+syntR 需要两个遗传图谱中的标记位置（每个标记的染色体和图谱位置）。在使用 syntR 之前，需要分别推断两个图谱中的标记顺序。在使用 syntR 绘图，先使用R/qtl、ASMap 和 Lep-MAP获得两个不同图谱中单个标记（如 SNP、微卫星等）的位置数据。也可用minimap2的比对结果转换为为类似的输入文件用于分析和绘图。
+
+```{r load data1, message=FALSE}
+# 加载示例标记数据
+data(ann_pet_map)
+head(ann_pet_map)
+```
+
+数据分位六列：
+
+- `map1_name`：标记的唯一标识符。在本例中，标记的命名是基于其在参考基因组中的位置（通过比对 GBS 读数确定）。
+- `map1_chr`：第一个图谱中标记所在的染色体编号。
+- `map1_pos`：第一个图谱中标记的位置（例如以 cM 为单位）。
+- `map2_name`：同上，但用于图谱 2。这些名称可能与 map1_names 相同，也可能不相同。
+- `map2_chr`：第二个图谱中标记所在的染色体编号。
+- `map2_pos`：第二个图谱中的标记的位置。
+
+示例数据是通过比较两种蝴蝶 *Helianthus petiolaris ssp. petiolaris* 和 *H. petiolaris ssp. fallax* 的GBS数据产生的。首先加载标记数据(ann_pet_map)和map1的染色体长度列表(ann_chr_lengths)，并通过`make_one_map` 函数将其转化为一个包含三个元素的列表(标记数据，map1和map2之间染色体中断的位置):
+
+```{r load data2, message=FALSE}
+# 读取 map1 的染色体长度列表
+# 这是一个可选文件，用于定义最大长度
+# 如果已知，则为每条染色体的长度（以 cM 为单位）
+# 注意：当被比较的标记未覆盖整个图谱时，这很有用
+data(ann_chr_lengths)
+ann_chr_lengths
+```
+
+```{r load data3, message=FALSE}
+# make_one_map 将所有标记放在一个尺度上
+# 并在染色体之间添加填充
+# 以辅助算法并实现可视化
+map_list <- make_one_map(ann_pet_map, map1_max_chr_lengths = ann_chr_lengths)
+```
+
+## 可视化
+
+### 1. 调整图谱顺序
+
+使用 `plot_maps()` 创建标记数据的基本点阵图：
+
+```{r fig1.1AdjustOrder1}
+#| label: fig-1.1AdjustOrder1
+#| fig-cap: "调整图谱顺序"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+# 调整图谱顺序
+plot_maps(map_df = map_list[[1]], map1_chrom_breaks = map_list[[2]], map2_chrom_breaks = map_list[[3]])
+```
+
+染色体上标注了物种特有的名称，染色体断裂处用横竖线表示。
+
+因为染色体是任意排序的(染色体没有固有顺序)，这些图看起来相当分散。为了提高可读性，可以重新排列物种 2 的染色体顺序，使其与物种 1 的顺序一致（沿 x 轴绘制）。还可以旋转任何 "完全颠倒 "的染色体，使它们（按染色体比例）沿 1:1 线排列。
+
+```{r fig1.2AdjustOrder2}
+#| label: fig-1.2AdjustOrder2
+#| fig-cap: "调整图谱顺序"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+# 调整图谱顺序
+map2_chr_order <- c("Pet8", "Pet9", "Pet12_16", "Pet15", "Pet16_17", "Pet17")
+flip_chrs <- c("Pet9")
+map_list <- make_one_map(ann_pet_map, map1_max_chr_lengths = ann_chr_lengths, map2_chr_order = map2_chr_order, flip_chrs = flip_chrs)
+plot_maps(map_df = map_list[[1]], map1_chrom_breaks = map_list[[2]], map2_chrom_breaks = map_list[[3]])
+```
+
+### 2. 确定最佳翻转参数
+
+syntR 算法的关键调整参数是 `max_cluster_range（CR max）`，其次是 `max_nn_dist（NN dist）`。`max_cluster_range` 决定了标记群的最大大小，这些标记群将被折叠成一个单点以便进一步分析。它定义了聚类标记所能跨越的最大距离。`max_cluster_range` 的值越大，将有越多的标记集结成一个点。
+
+`max_nn_dist` 决定哪些标记被视为异常值，并从进一步分析中剔除。在 `max_nn_dist` 范围内没有相邻标记的标记被视为异常值。`max_nn_dist` 值越大，被移除的标记越少。
+找到这两个参数最佳组合的简单方法是拟合这两个参数的取值范围，并选择能使两个图谱的覆盖率（分配给同源区块的图谱百分比）最大化和离群值数量最小化的取值（下图中的 "综合 "是这些指标的比例总和）。
+
+选择最佳的CR max 和 NN dist 的方法：(1) 使用一系列参数组合运行 syntR；(2) 保存关于在同源区块中代表的每个图谱的遗传距离和每次运行保留的标记数的汇总统计；(3) 找到能最大化平均加权这三个测量值的复合统计的参数组合。在存在多个局部最大值的情况下，选择 CR max 值最小的局部最大值，以减少潜在假阳性的数量。
+
+可以使用 `max_cluster_range = 2` 和 `max_nn_dist = 10` 的默认值跳过这一步。这一参数可能非常适合大多数遗传图谱。
+
+```{r fig2.1BestParameter}
+#| label: fig-2.1BestParameter
+#| fig-cap: "确定最佳翻转参数"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+# 寻找最佳参数组合
+# 使用每个参数组合运行 find_synteny_blocks 并收集汇总统计数据
+
+parameter_data <- test_parameters(map_list, max_cluster_range_list = seq(1, 5, by = 0.5), max_nn_dist_list = seq(10, 50, by = 10))
+plot_summary_stats(parameter_data[[1]], "composite")
+```
+
+在本例中，选择 max_cluster_range 为 2， max_nn_dsit 为 10。
+
+### 3. 识别同源区块
+
+确定两个调整参数后，我们就可以运行 syntR 的主要功能：`find_synteny_blocks`。
+该函数将一组标记数据（包含在我们之前创建的 `map_list` 对象中）通过 Ostevik 等人描述的算法进行错误检测和同源区块识别。
+运行方法如下：
+
+```{r fig3.1SyntenyBlocks1}
+#| label: fig-3.1SyntenyBlocks1
+#| fig-cap: "识别同源区块"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+# 识别同源区块
+synt_blocks <- find_synteny_blocks(map_list, max_cluster_range = 2, max_nn_dist = 10, plots = TRUE)
+```
+
+当 `plots=TRUE` 时，函数会生成三幅图，显示算法的进展情况。在第一幅图中，映射误差通过预聚类步骤进行平滑处理。接下来，异常值会被标记和移除。最后，通过 syntR 之友聚类算法确定同源区块。
+
+`find_synteny_blocks` 输出一个包含五个数据框的列表对象：
+
+```{r}
+# 打印 synt_blocks 的内容
+
+lapply(synt_blocks, head)
+```
+
+这些要素是：
+
+1. `$marker_df` 数据框，包括标记原始列表及其同源区块分配。
+
+2. `$synteny_blocks_df` 一个数据框，概括了每张地图中每个同源区块的跨度（以地图单元为单位），以及具有充分方向性证据的同源区块的推断方向（并列、倒置等）。
+
+3. `$map1_breaks` 一个数据框，列出了 map1 中合成组块之间的断点。
+
+4. `$map2_breaks` 一个数据框，列出了 map2 中合成组块之间的断点。
+
+5. `$summary_stats` 总结算法结果（覆盖率等）的数据框
+
+可以如下图所示绘制出图块的方向：
+
+```{r fig3.2SyntenyBlocks2}
+#| label: fig-3.2SyntenyBlocks2
+#| fig-cap: "绘制出图块的方向"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+# 绘制出图块的方向
+synt_blocks[[1]] %>%
+    plot_maps(map_list[[2]], map_list[[3]], col = c("blue", "grey", "red", "black")[as.numeric(as.factor(.$orientation))], 
+              main = "Synteny block orientation",  cex_val = 0.75)
+```
+
+在这种情况下，蓝色 = 倒置，红色 = 同线，灰色/黑色 = 未分类。
+
+## 应用场景
+
+::: {#fig-UpsetApplications}
+![](../images/Omics/SyntenyBlocksPlot_app.jpg){fig-alt="SyntenyBlocksPlotApp1" fig-align="center" width="60%"}
+
+共线性块图应用
+:::
+
+## 参考文献
+
+\[1\] Ostevik, Kate L., Kieran Samuk, and Loren H. Rieseberg. "Ancestral reconstruction of karyotypes reveals an exceptional rate of nonrandom chromosomal evolution in sunflower." Genetics 214, no. 4 (2020): 1031-1045.
+

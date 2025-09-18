@@ -1,0 +1,299 @@
+---
+title: "回归分析表格"
+author:
+  - "**[编辑]** 王春阳"
+  - "**[贡献]** 易旭洋, 郑虎"
+---
+
+回归分析表格是用于展示回归模型结果的表格，它提供了模型中变量的统计信息，帮助解释变量之间的关系。
+
+## 示例
+
+![](../images/Clinics/RegressionTable_demo.png){fig-alt="RegressionTable DEMO1" fig-align="center" width="60%"}
+
+如图是基于`survival`包的内置pbc数据集绘制的回归分析表格。图中分别使用了Cox风险比例模型和广义线性回归模型探索血清蛋白、性别、年龄对生存状况的影响。
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`survival`, `gtsummary`, `dplyr`, `datawizard`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("survival", quietly = TRUE)) {
+  install.packages("survival")
+}
+if (!requireNamespace("gtsummary", quietly = TRUE)) {
+  install.packages("gtsummary")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("datawizard", quietly = TRUE)) {
+  install.packages("datawizard")
+}
+if (!requireNamespace("broom.helpers", quietly = TRUE)) {
+  install.packages("broom.helpers")
+}
+
+# 加载包
+library(survival)
+library(gtsummary)
+library(dplyr)
+library(datawizard)
+library(broom.helpers)
+```
+
+## 数据准备
+
+使用R包survival内置的pbc数据集，包含了418名原发性胆汁性肝硬化（PBC）患者的信息，这些患者在研究开始时或之前已经接受了熊去氧胆酸（UDCA）治疗。pbc数据集记录了pbc患者的生存时间、生存状态、治疗方式、年龄、性别、白蛋白水平、肝肿大情况等临床信息。
+
+```{r load data, message=FALSE}
+df <- pbc %>%
+  filter(status != 1) %>%
+  mutate(status = ifelse(status == 2, 1, 0)) %>%
+  select(2:13) %>%
+  na.omit() %>% 
+  # 将`albumin`分为3组
+  mutate(albumin3cat = categorize(albumin, split = "quantile", n_groups = 3))
+
+head(df[,1:6])
+```
+
+## 可视化
+
+### 1. 基础回归分析表格
+
+```{r fig1.1BasicRegressionTable}
+#| label: fig-1.1BasicRegressionTable
+#| fig-cap: "基础回归分析表格"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6
+
+# 基本绘图
+t1 <- coxph(Surv(time, status) ~ albumin + sex + age,
+  data = df
+) %>%
+  tbl_regression()
+
+t1
+```
+
+该表是基础回归分析表格，通过`coxph()`调用Cox比例风险模型和使用`tbl_regression()`将回归分析的结果表格化。
+
+### 2. tbl_regression()参数设置
+
+```{r fig2.1tbl_regression}
+#| label: fig-2.1tbl_regression
+#| fig-cap: "tbl_regression()参数设置"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6
+
+# tbl_regression()参数设置
+t1 <- coxph(Surv(time, status) ~ albumin + sex + age,
+  data = df
+) %>%
+  # 参数设置
+  tbl_regression(
+    conf.level = 0.90,
+    exponentiate = TRUE,
+    include = c("sex", "albumin"),
+    show_single_row = sex,
+    label = list(sex ~ "sex as categorical")
+  )
+
+t1
+```
+
+表中`tbl_regression()`有很多参数设置，可以更改表格的置信区间，行名等信息。
+
+::: callout-tip
+**重要参数：tbl_regression**
+
+- `conf.level`: 确定回归分析的置信水平，默认的0.95表示95%置信区间。
+
+- `exponentiate`: 是否对HR值取指数，默认列是log(HR)值。
+
+- `include`: 统计表格中包含哪些自变量因素（行）
+
+- `show_single_row`: 适用于二分类变量，不显示对照组。
+
+- `label`: 更改自变量因素的名称（行名）。
+:::
+
+### 3. 添加global-p
+
+```{r fig3.1global-p}
+#| label: fig-3.1global-p
+#| fig-cap: "添加global-p"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6
+
+# 添加global-p
+df$albumin3cat=as.factor(df$albumin3cat)
+
+t1 <- coxph(Surv(time, status) ~ albumin3cat + sex + age,
+            data = df) %>%
+  tbl_regression()  %>%
+  add_global_p()
+
+t1
+```
+
+该表通过`add_global_p()`添加全局P值。
+
+### 4. 添加q-value
+
+```{r fig4.1q-value}
+#| label: fig-4.1q-value
+#| fig-cap: "添加q-value"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6
+
+# 添加q-value
+t1 <- coxph(Surv(time, status) ~ albumin + sex + age,
+  data = df
+) %>%
+  tbl_regression() %>%
+  # 添加q-value列
+  add_q()
+
+t1
+```
+
+该表通过`add_q()`添加q-value列。
+
+### 5. 合并列
+
+```{r fig5.1Merge}
+#| label: fig-5.1Merge
+#| fig-cap: "合并列"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6
+
+# 合并列
+t1 <- coxph(Surv(time, status) ~ albumin3cat + sex + age,
+            data = df) %>%
+  tbl_regression()  %>%
+  # 修改表头名称
+  modify_header(p.value = "**P**",estimate="**log(HR) (CI)**") %>%
+  # 将评分列和CI列合并并应用于评分不为NA的行
+  modify_column_merge(
+    pattern = "{estimate} ({conf.low}, {conf.high})",
+    rows = !is.na(estimate)
+  )
+
+t1
+```
+
+该表将评分列和CI列合并，是一种常见的形式，合并后恰当修改了表头。
+
+::: callout-tip
+**重要函数** `modify_header` / `modify_column_merge`:
+
+`modify_header:modify_header()`可用于修改标题名称。其中`label`表示变量列，`p.value`表示P值列，`ci`表示置信区间列，`estimate`表示评分列，`conf.low`表示置信区间下区间，`conf.high`表示置信区间上区间。
+
+`modify_column_merge`:参数`pattern`是要合并列的模式，参数`rows`是要应用到的行。
+:::
+
+### 6. 模型整合
+
+**模型横向整合**
+
+```{r fig6.1Merge}
+#| label: fig-6.1Merge
+#| fig-cap: "模型横向整合"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6
+
+# 模型横向整合
+t1 <- coxph(Surv(time, status) ~ albumin + sex + age,
+  data = df
+) %>%
+  tbl_regression()
+t2 <- glm(time ~ albumin + sex + age,
+  data = df
+) %>%
+  tbl_regression()
+# t1, t2模型整合
+t3 <- tbl_merge(
+  tbls = list(t1, t2),
+  tab_spanner = c("**Cox Model**", "**GLM Model**")
+)
+
+t3
+```
+
+该表使用`tbl_merge`横向整合了pdb患者的Cox比例风险模型和广义线性回归模型的结果。
+
+**模型纵向整合**
+
+```{r fig6.2Merge}
+#| label: fig-6.2Merge
+#| fig-cap: "模型纵向整合"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6
+
+# 模型纵向整合
+t1 <- coxph(Surv(time, status) ~ albumin + sex + age,
+  data = df[df$hepato==0,]
+) %>%
+  tbl_regression()
+
+t2 <- coxph(Surv(time, status) ~ albumin + sex + age,
+  data = df[df$hepato==1,]
+) %>%
+  tbl_regression()
+
+tbl_stack(list(t1, t2), group_header = c("Patients without hepato", "Patients with hepato"))
+```
+
+该表使用`tbl_stack`纵向整合了有无hepato的两组pdb患者的Cox比例风险模型的结果。
+
+## 应用场景
+
+::: {#fig-RegressionTableApplications1}
+![](../images/Clinics/RegressionTable_app1.png){fig-alt="RegressionTableApp1" fig-align="center" width="60%"}
+
+回归分析表格
+:::
+
+单变量和多变量Cox回归分析表格用于中危NMIBC患者3年肿瘤复发情况。\[1\]
+
+::: {#fig-RegressionTableApplications2}
+![](../images/Clinics/RegressionTable_app2.png){fig-alt="RegressionTableApp2" fig-align="center" width="60%"}
+
+回归分析表格
+:::
+
+该回归分析表格显示了多变量Cox回归分析中晚期总死亡率的独立预测因素。\[2\]
+
+## 参考文献
+
+\[1\] CHEN J X, HUANG W T, ZHANG Q Y, et al. The optimal intravesical maintenance chemotherapy scheme for the intermediate-risk group non-muscle-invasive bladder cancer[J]. BMC Cancer, 2023,23(1): 1018.
+
+\[2\] BENKE K, ÁGG B, SZABÓ L, et al. Bentall procedure: quarter century of clinical experiences of a single surgeon[J]. J Cardiothorac Surg, 2016,11: 19.
