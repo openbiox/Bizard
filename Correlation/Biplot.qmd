@@ -1,0 +1,171 @@
+---
+title: "Biplot"
+author:
+  - "**[Editor]** Xinhe Lu;"
+  - "**[Contributors]** Hu Zheng."
+---
+
+
+## Example
+
+![](../images/Correlation/Biplot_demo.png){fig-alt="Biplot DEMO1" fig-align="center" width="60%"}
+
+A biplot is a visualization tool used to present the results of principal component analysis (PCA). It simultaneously displays the positions of both samples and variables in a dataset within the principal component space. In a two-dimensional biplot, samples are typically represented as points, while variables are represented as arrows. The direction and length of the arrows represent the contribution and correlation of the variables to the principal components, respectively.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `dplyr`, `ggbiplot`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Installing packages
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("ggbiplot", quietly = TRUE)) {
+  install.packages("ggbiplot")
+}
+
+# Load packages
+library(ggbiplot)
+library(dplyr)
+```
+
+## Data Preparation
+
+The data comes from the `iris` dataset that comes with R.
+
+```{r load data1, message=FALSE}
+data("iris")
+head(iris) 
+```
+
+## Visualization
+
+Principal component analysis is performed using the `prcomp` function.
+
+```{r PCA Analysis}
+iris.pca <- prcomp (~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width,
+                    data=iris,
+                    scale. = TRUE)
+summary(iris.pca)
+```
+
+### 1. Basic Plot
+
+Use ggbipolot to draw the loading plot of PCA results.
+
+```{r fig1.1BasicPlot}
+#| label: fig-1.1BasicPlot
+#| fig-cap: "Basic Plot"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+iris.gg <-
+  ggbiplot(iris.pca, obs.scale = 1, var.scale = 1,
+           groups = iris$Species, point.size=2,
+           varname.size = 3, 
+           varname.color = "black",
+           varname.adjust = 1.2,
+           ellipse = TRUE, 
+           circle = TRUE) +
+  labs(fill = "Species", color = "Species") +
+  theme_minimal(base_size = 14) +
+  theme(legend.direction = 'horizontal', legend.position = 'top')
+
+iris.gg
+```
+
+Note: The figure title is the gene name, the horizontal axis is PC1, and the vertical axis is PC2. The arrows in the figure indicate the length of the vectors, which represents the contribution to the variance. The direction indicates the correlation with the principal component. The colors represent the different iris species.
+
+We can see that PC1 and PC2 clearly separate the three groups of samples. The vectors Petal.Length and Petal.width are nearly parallel to the x-axis, indicating that the variance in PC1 is primarily contributed by these variables, while the variance in PC2 is primarily contributed by Sepal.Width. An angle between the vectors greater than 90° indicates a negative correlation, while an angle less than 90° indicates a positive correlation.
+
+### 2. Add cluster labels
+
+We can calculate the cluster centers and add labels to more intuitively display the names of different categories.
+
+```{r calculate center}
+group.labs <-
+  iris.gg$data %>%
+  dplyr::summarise(xvar = mean(xvar),
+            yvar = mean(yvar), .by = groups)
+group.labs
+```
+
+```{r fig2.1AddLabel}
+#| label: fig-2.1AddLabel
+#| fig-cap: "Add cluster labels"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+iris.gg + geom_label(data = group.labs,
+                     aes(x = xvar, y=yvar, label=groups),
+                     size = 5) +
+  theme(legend.position = "none")
+```
+
+### 3. Use sample names instead of points
+
+In order to show the position of different samples in PCA analysis, we can display them by setting labels.
+
+```{r fig3.1SampleName}
+#| label: fig-3.1SampleName
+#| fig-cap: "Use sample names instead of points"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+ggbiplot(iris.pca, obs.scale = 1, 
+         var.scale = 1,
+         groups = iris$Species, 
+         labels = rownames(iris),
+         point.size=2,
+         varname.size = 3, 
+         varname.color = "black",
+         varname.adjust = 1.2,
+         ellipse = TRUE, 
+         circle = TRUE) +
+  labs(fill = "Species", color = "Species") +
+  theme_minimal(base_size = 14) +
+  theme(legend.direction = 'horizontal', legend.position = 'top')
+
+```
+
+## Application
+
+### 1. Metagenomic principal component analysis loading plot
+
+::: {#fig-UpsetApplications}
+![](../images/Correlation/Biplot_app1.png){fig-alt="BiplotApp1" fig-align="center" width="60%"}
+
+Metagenomic principal component analysis loading plot
+:::
+
+Arrows represent bacterial species, and letters represent samples. The closer the distance between the bacterial species and the sample, the higher the correlation. In the figure, the bacterial species closest to H1, H2, H3, H4, and H7 is Bifidobacteria, indicating that this species is the dominant species in the control group. \[1\]
+
+### 2. Transcriptome principal component analysis loading plot
+
+::: {#fig-UpsetApplications}
+![](../images/Correlation/Biplot_app2.jpg){fig-alt="BiplotApp2" fig-align="center" width="60%"}
+
+Transcriptome principal component analysis loading plot
+:::
+
+There were significant differences among the four groups, with the contribution values of PC1 and PC2 being 40.92% and 24.26%, respectively. In PC2, the control group (PBS) and the asthma + mutton group (OVA + Lamb) were positively distributed, the asthma + fish group (OVA + fish) and the asthma group (OVA) were mainly negatively distributed. There were significant differences between the control group and the other three groups, and the asthma + mutton group (OVA + Lamb) and the asthma + fish group (OVA + Fish) were significantly separated.\[2\]
+
+## Reference
+
+\[1\] Balasubramaniam C, Mallappa RH, Singh DK, et al. Gut bacterial profile in Indian children of varying nutritional status: a comparative pilot study. Eur J Nutr. 2021;60(7):3971-3985. doi:10.1007/s00394-021-02571-7.
+
+\[2\] Zheng HC, Wang YA, Liu ZR, et al. Consumption of Lamb Meat or Basa Fish Shapes the Gut Microbiota and Aggravates Pulmonary Inflammation in Asthmatic Mice. J Asthma Allergy. 2020;13:509-520. Published 2020 Oct 19. doi:10.2147/JAA.S266584.

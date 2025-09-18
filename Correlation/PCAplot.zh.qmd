@@ -1,0 +1,226 @@
+---
+title: "PCA图"
+author:
+  - "**[编辑]** 寇荣骜"
+  - "**[贡献]** 郑虎"
+---
+
+
+## 示例
+
+![](../images/Correlation/PCAplot_demo.png){fig-alt="PCAplot DEMO1" fig-align="center" width="60%"}
+
+在高维数据的分析中，主成分分析(PCA)是一种常用的降维技术，其主要原理是通过找出方差最大的两个主成分方向来变换数据，通过线性变换将高维数据投影到低维空间，同时保留数据的主要特征。本文将展示如何在R中进行PCA分析，并使用鸢尾花数据集进行可视化。
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`, `dplyr`, `ggfortify`, `FactoMineR`, `factoextra`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("ggfortify", quietly = TRUE)) {
+  install.packages("ggfortify")
+}
+if (!requireNamespace("FactoMineR", quietly = TRUE)) {
+  install.packages("FactoMineR")
+}
+if (!requireNamespace("factoextra", quietly = TRUE)) {
+  install.packages("factoextra")
+}
+
+# 加载包
+library(ggplot2)
+library(ggfortify)
+library(FactoMineR)
+library(factoextra)
+library(dplyr)
+```
+
+## 数据准备
+
+使用R自带数据集`iris`中的鸢尾花数据集进行演示
+
+```{r load data1, message=FALSE}
+data("iris")
+head(iris) 
+```
+
+## 可视化
+
+**PCA分析**
+
+我们首先对数据进行执行PCA分析。需要注意的是，数据需要在标准化后进行分析，函数prcomp()中的参数scale为我们提供了自动标准化的选项：
+
+```{r pcaanalysis, message=FALSE}
+iris.pca <- prcomp(iris[, -5], scale = TRUE)
+summary(iris.pca)
+```
+
+### 1. 方差解释与变量贡献可视化
+
+在`summary(iris.pca)`中可以看到，我们已经从数据集中提取出了多个主成分`PC`从新的"视角"描述数据。我们可以使用`fviz_eig()`绘制下面的柱状图来显示每个主成分所解释的数据方差比例。同时`fviz_pca_var()`绘制的变量贡献图显示了原始变量（即花瓣长度、宽度等原始特征）与前两名的主成分的关系，箭头长度表示变量贡献度（参数指定`col.var = "contrib"`）：
+
+```{r fig1.1fviz_eig}
+#| label: fig-1.1fviz_eig
+#| fig-cap: "fviz_eig"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+fviz_eig(iris.pca, 
+         addlabels = TRUE, 
+         ylim = c(0, 85),
+         main = "PCA方差解释比例",
+         xlab = "PC",
+         ylab = "解释方差百分比")
+```
+
+```{r fig1.2fviz_pca_var}
+#| label: fig-1.2fviz_pca_var
+#| fig-cap: "fviz_pca_var"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+fviz_pca_var(iris.pca,
+             col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE,
+             title = "变量贡献图")
+```
+
+### 2. 样本在主成分空间上的分布
+
+上面我们已经完成了对数据的变换，现在可以展示样本在这个新的主成分空间上的分布。如果主成分对方差的解释度高，那么我们将看到不同种类的鸢尾花在主成分空间上相互远离，而同种类的鸢尾花则相互靠近。`fviz_pca_ind()`可以绘制PC1和PC2方向上的数据散点图，按鸢尾花种类着色并添加置信椭圆。
+
+```{r fig2.1fviz_pca_ind}
+#| label: fig-2.1fviz_pca_ind
+#| fig-cap: "fviz_pca_ind"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+fviz_pca_ind(iris.pca,
+             col.ind = iris$Species,
+             geom.ind = "point",
+             palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+             addEllipses = TRUE,
+             ellipse.type = "confidence",
+             legend.title = "Species",
+             # repel = TRUE,
+             title = "样本PCA得分图")
+```
+
+::: callout-tip
+**参数说明：**
+
+- `col.ind`: 输入数据的分类变量
+- `geom.ind`: 选择绘制的散点形状类型，默认为带有label的散点，这里输入"point"会让散点不显示label
+- `palette`: 应用于分类变量的颜色向量
+- `addEllipses`: 是否添加椭圆圈
+- `ellipse.type`: 椭圆圈的计算方式，允许值有"convex"、"confidence"、"t"、"norm"、"euclid"等
+- `legend.title`: 图例标题
+- `repel`: 是否使用延长线标记数据点
+- `title`: 图片标题
+:::
+
+与`fviz_pca_ind()`类似，`fviz_pca_biplot()`可以在样本散点的基础上添加原始的变量信息。
+
+```{r fig2.2fviz_pca_biplot}
+#| label: fig-2.2fviz_pca_biplot
+#| fig-cap: "fviz_pca_biplot"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+fviz_pca_biplot(iris.pca,
+                col.ind = iris$Species,
+                palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+                addEllipses = TRUE,
+                geom.ind = "point",
+                ellipse.type = "confidence",
+                legend.title = "Species",
+                # repel = TRUE,
+                title = "PCA双标图")
+```
+
+此外，我们还可以使用`ggplot2`自定义绘制PCA样本图：
+
+```{r fig2.3ggplot2}
+#| label: fig-2.2ggplot2
+#| fig-cap: "ggplot2自定义绘制PCA样本图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+pca_scores <- as.data.frame(iris.pca$x)
+pca_scores$Species <- iris$Species
+
+ggplot(pca_scores, aes(x = PC1, y = PC2, color = Species)) +
+  geom_point(size = 3, alpha = 0.8) +
+  stat_ellipse(level = 0.95, linewidth = 1) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800", "#FC4E07")) +
+  labs(title = "鸢尾花数据集PCA分析",
+       x = paste0("PC1 (", round(summary(iris.pca)$importance[2,1]*100, 1), "%)"),
+       y = paste0("PC2 (", round(summary(iris.pca)$importance[2,2]*100, 1), "%)"),
+       caption = "置信水平: 95%") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+### 3. 使用FactoMineR进行PCA分析
+
+`FactoMineR`是一个专门为多维数据分析和探索设计的R包，其中也提供了便捷的PCA分析函数`PCA()`。下面简单演示其使用与可视化：
+
+```{r fig3.1FactoMineR}
+#| label: fig-3.1FactoMineR
+#| fig-cap: "FactoMineR绘制PCA图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+res.pca <- PCA(iris[, -5], scale.unit = TRUE, graph = FALSE)
+fviz_pca_ind(res.pca, 
+             label = "none", 
+             habillage = iris$Species,
+             addEllipses = TRUE, 
+             ellipse.level = 0.95,
+             title = "FactoMineR PCA结果")
+```
+
+## 应用场景
+
+::: {#fig-UpsetApplications}
+![](../images/Correlation/PCAplot_app.png){fig-alt="PCAplotApp1" fig-align="center" width="60%"}
+
+PCA图应用
+:::
+
+该图展示了梨状皮层输出神经元到 AON、CoA、lENT 和 OT 的平均投射强度的前两个主成分，每个点表示一个切片。\[1\]
+
+## 参考文献
+
+\[1\] Chen Y, Chen X, Baserdem B. et al. High-throughput sequencing of single neuron projections reveals spatial organization in the olfactory cortex. Cell. 2022 Oct 27;185(22):4117-4134.e28.
+
