@@ -1,0 +1,615 @@
+---
+title: "KEGG通路图"
+author:
+  - "**[编辑]** 朱开宇;"
+  - "**[贡献]** 金子伦, 郑虎."
+---
+
+
+## 示例
+
+![](../images/Omics/KeggPathwayPlot_deom.jpg){fig-alt="KeggPathwayPlot DEMO1" fig-align="center" width="60%"}
+
+(a)展示了包含基因数据的经典信号通路（hsa04110 Cell cycle）的Graphviz视图；(b)展示了包含离散基因数据和连续代谢物数据的代谢通路（hsa00640 Propanoate metabolism）的KEGG视图。
+
+图片、R包等均来源于Luo等人的文章。\[1\]
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`pathview`, `dbplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("pathview", quietly = TRUE)) {
+  install_github("datapplab/pathview")
+}
+if (!requireNamespace("dbplyr", quietly = TRUE)) {
+  install.packages("dbplyr")
+}
+
+# 加载包
+library(pathview)
+library(dbplyr)
+```
+
+## 数据准备
+
+示例数据为基因表达矩阵: 行为基因的ENTREZ ID，列为样本名，表达数据经过归一化处理。其实这里可以为任何数值型数据，例如fold change, p-value等等，根据自己的需求来定。
+
+```{r load data1, message=FALSE}
+data("gse16873.d")
+head(gse16873.d)
+gene_data <- as.data.frame(gse16873.d)
+head(gene_data)
+```
+
+## 可视化
+
+### 1. 基础绘图
+
+观察单个样本（DCIS_1）的细胞周期信号通路图（KEGG ID: 04110）。
+
+#### 1.1 KEGG视图
+
+当设置`kegg.native = TRUE`时，输出的通路图是基于原始KEGG视图绘制的。输出图像自动保存在了当前目录下。
+
+```{r fig1.1KEGGView}
+#| label: fig-1.1KEGGView
+#| fig-cap: "KEGG视图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p1 <- pathview(gene.data = gse16873.d[, 1], # 输入基因矩阵
+               pathway.id = "04110", # 通路ID
+               species = "hsa", # 物种：人类
+               out.suffix = "gse16873_KEGG", # 输出文件的后缀
+               kegg.native = T, # 以原始KEGG视图输出
+               same.layer = T # 绘制单个图层
+               )
+p1
+```
+
+::: {#fig-1-1}
+![](../images/Omics/KeggPathwayPlot_fig1-1.png){fig-alt="KeggPathwayPlot_fig1-1" fig-align="center" width="60%"}
+
+KEGG视图
+:::
+
+为了更好的理解kegg.native = TRUE，我们对比一下KEGG官网的Cell cycle的通路图（<https://www.kegg.jp/pathway/map04110>）
+
+::: {#fig-1-2}
+![](../images/Omics/KeggPathwayPlot_fig1-2.png){fig-alt="KeggPathwayPlot_fig1-2" fig-align="center" width="60%"}
+
+KEGG官网的Cell cycle的通路图
+:::
+
+不难发现，我们输出的结果图其实就是在官网提供的通路图的基础上，对研究样本的通路基因的表达差异进行了可视化。而为当`kegg.native = FALSE`时，则改为使用Graphviz引擎制图，输出是PDF格式的向量图，这个后续会介绍。
+
+然后我们再查看一下pathview函数输出结果p1的结构，其为一个长度为2的list。包含了我们绘图所需要的数据。
+
+::: callout-tip
+- `plot.data.gene (data.frame)`：储存画图用到的基因数据
+- `plot.data.cpd (data.frame)`：储存画图用到的化合物数据
+
+- `kegg.names`: 映射节点的基因/化合物的KEGG格式ID（即 Entrez Gene ID 或 KEGG Compound Accessions）
+- `labels`: 映射节点的基因/化合物的名称
+- `all.mapped`: 映射到该节点的所有基因/化合物的ID。
+- `type`: 节点类型。（“基因”、“酶”、“化合物”、“同源物”）
+- `x`: 原始KEGG通路图中的x坐标。
+- `y`: 原始KEGG通路图中的y坐标。
+- `width`: 原始KEGG通路图中的节点宽度。
+- `height`: 原始KEGG通路图中的节点高度。
+- `mol.data`: 映射节点的基因/化合物的数据（对应输入数据gene.data）
+- `mol.data`: 映射节点的基因/化合物的颜色代码
+:::
+
+#### 1.2 Graphviz视图
+
+介绍了以KEGG原始形式输出图像（`kegg.native = TRUE`）后，我们来看下使用Graphviz输出的图（`kegg.native = FALSE`）的图像格式。
+
+```{r fig1.2GraphvizView}
+#| label: fig-1.2GraphvizView
+#| fig-cap: "Graphviz视图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p2 <- pathview(gene.data = gse16873.d[, 1], 
+               pathway.id = "04110", 
+               species = "hsa", 
+               out.suffix = "gse16873_Graph", 
+               kegg.native = F ,# 以Graphviz输出形式输出
+               same.layer = T # 绘制单个图层
+               )
+p2
+```
+
+::: {#fig-1-3}
+![](../images/Omics/KeggPathwayPlot_fig1-3.png){fig-alt="KeggPathwayPlot_fig1-3" fig-align="center" width="60%"}
+
+Graphviz视图
+:::
+
+KEGG原始格式图保留了所有通路的元数据，即空间和时间信息、组织/细胞类型、输入、输出和连接，这对通路生物学的可读性和解释很重要。而Graphviz视图为PDF格式矢量图，可以更好地控制节点和边缘属性，更好地查看路径拓扑，如能够用Adobe illustration进行进一步美化。
+
+在Graphviz形式输出的通路图中，`same.layer`参数的意义与KEGG原始图有所不同，转为描述图例与通路图的图层关系。当`same.layer = TRUE`时，图例和通路图处于同一个图层之中，并且图例只描述了边缘类型（Egde types），缺少了节点类型（Node types）。
+
+当`same.layer = FALSE`时，图例和通路图分别处于两个图层，图例同时描述了边缘类型（Egde types）和节点类型（Node types）。
+
+```{r fig1.3same-layer}
+#| label: fig-1.3same-layer
+#| fig-cap: "same-layer设置"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p3 <- pathview(gene.data = gse16873.d[, 1], 
+               pathway.id = "04110", 
+               species = "hsa", 
+               out.suffix = "gse16873_Graph", 
+               kegg.native = F ,# 以Graphviz输出形式输出
+               same.layer = T # 绘制单个图层
+               )
+p3
+```
+
+::: {#fig-1-4}
+![](../images/Omics/KeggPathwayPlot_fig1-4.png){fig-alt="KeggPathwayPlot_fig1-4" fig-align="center" width="60%"}
+
+same-layer设置
+:::
+
+### 2. 图形调整
+
+考虑到许多改变图形样式的参数仅在`kegg.native = FALSE`时生效，接下来我们多数情况也基于此来进行绘图
+
+#### 2.1 节点样式调整
+
+```{r fig2.1NodeStyle}
+#| label: fig-2.1NodeStyle
+#| fig-cap: "节点样式调整"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p4 <- pathview(gene.data = gse16873.d[, 1],
+               pathway.id = "04110", 
+               species = "hsa", 
+               out.suffix = "gse16873_node", 
+               kegg.native = F ,
+               same.layer = F ,
+               low = '#4575B4', #
+               mid = '#F7F7BD', #
+               high = '#D73027', #
+               cex = 0.5 ,# 字体大小
+               afactor = 1.6 ,# 节点大小
+               limit = list( gene = 2 ) # 图例上下限
+               )
+p4
+```
+
+::: {#fig-1-5}
+![](../images/Omics/KeggPathwayPlot_fig1-5.png){fig-alt="KeggPathwayPlot_fig1-5" fig-align="center" width="60%"}
+
+节点样式调整
+:::
+
+#### 2.2 节点的拆分与扩展
+
+通过设置参数split.group来实现控制节点组拆分为独立的节点，设置`expand.node`可以将多基因节点扩展为单个基因。
+
+节点组的拆分 (`split.group = TRUE`) :
+
+```{r fig2.2.1NodeSplit}
+#| label: fig-2.2.1NodeSplit
+#| fig-cap: "节点的拆分与扩展"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p5 <- pathview(gene.data = gse16873.d[, 1],
+               pathway.id = "04110", 
+               species = "hsa", 
+               out.suffix = "gse16873_split", 
+               kegg.native = F ,
+               same.layer = F ,
+               split.group = T # TRUE
+               ) 
+
+p5
+```
+
+::: {#fig-1-6}
+![](../images/Omics/KeggPathwayPlot_fig1-6.png){fig-alt="KeggPathwayPlot_fig1-6" fig-align="center" width="60%"}
+
+节点的拆分与扩展
+:::
+
+多基因节点扩展为单个基因：(`split.group = TRUE` & `expand.node = TRUE`):
+
+```{r fig2.2.2NodeSplit}
+#| label: fig-2.2.2NodeSplit
+#| fig-cap: "多基因节点扩展为单个基因"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p6 <- pathview(gene.data = gse16873.d[, 1],
+               pathway.id = "04110", 
+               species = "hsa", 
+               out.suffix = "gse16873_expand", 
+               kegg.native = F ,
+               same.layer = F ,
+               split.group = T,
+               expand.node = T # TRUE
+               ) 
+
+unique(p6$plot.data.gene$kegg.names) %>% length()
+# [1] 88
+unique(p7$plot.data.gene$kegg.names) %>% length()
+# [1] 158
+
+# 多出的节点即为原多基因节点的扩展
+setdiff(unique(B),intersect(A,B))
+```
+
+然后发现线条变得错综复杂，以至于我们重点关注的节点和节点之间的关系被淹没了。
+
+::: {#fig-1-7}
+![](../images/Omics/KeggPathwayPlot_fig1-7.png){fig-alt="KeggPathwayPlot_fig1-7" fig-align="center" width="60%"}
+
+多基因节点扩展为单个基因
+:::
+
+#### 2.3 多组样本
+
+以上例子仅绘制了单个样本的通路图，如果是为了比较两个或多个样本的通路变化情况，则需要设置`multi.state = TRUE`。可以将多个样本的数据整合到同一张通路图中。此时每个节点会被分割成多个片段，每个片段对应一个样本。
+
+```{r fig2.3MultiSample}
+#| label: fig-2.3MultiSample
+#| fig-cap: "多组样本"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p8 <- pathview(gene.data = gse16873.d[, 1:3], # 多样本
+               pathway.id = "04110", 
+               species = "hsa", 
+               out.suffix = "gse16873_samples", 
+               kegg.native = F ,
+               same.layer = F ,
+               multi.state = T # 
+               )
+```
+
+呈现的效果是：节点被分割成多个对应样本数量的片段，一个样本对应一个色块
+
+::: {#fig-1-8}
+![](../images/Omics/KeggPathwayPlot_fig1-8.png){fig-alt="KeggPathwayPlot_fig1-8" fig-align="center" width="60%"}
+
+多组样本
+:::
+
+#### 2.4 化合物的通路图
+
+**化合物数据**
+
+之前我们只介绍了基因数据的通路可视化，如果单纯做化合物数据的话，其实是跟基因一样的，只需要修改`gene.data`为`cpd.data`。
+
+```{r}
+#| eval: false
+
+# 模拟6个样本的化合物数据
+data("cpd.simtypes")
+cpd_data <- sim.mol.data(mol.type="cpd", nmol=3000)
+cpd_data2 <- matrix(sample(cpd_data,18000,replace = T), ncol = 6)
+rownames(cpd_data2) = names(cpd_data)
+colnames(cpd_data2) = colnames(gene_data)
+head(cpd_data2)
+```
+
+KEGG视图
+
+```{r fig2.4.1cpd_data}
+#| label: fig-2.4.1cpd_data
+#| fig-cap: "KEGG视图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p9 <- pathview(cpd.data = cpd_data2, # 化合物数据
+               pathway.id = "00640", # 
+               species = "hsa", 
+               out.suffix = "gse16873_KEGG_cpd", 
+               kegg.native = T , # KEGG视图
+               same.layer = F  
+               ) 
+```
+
+::: {#fig-1-9}
+![](../images/Omics/KeggPathwayPlot_fig1-9.png){fig-alt="KeggPathwayPlot_fig1-9" fig-align="center" width="60%"}
+
+KEGG视图
+:::
+
+Graphviz视图
+
+```{r fig2.4.2cpd_data}
+#| label: fig-2.4.2cpd_data
+#| fig-cap: "Graphviz视图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p10 <- pathview(cpd.data = cpd_data, # 化合物数据
+               pathway.id = "00640", 
+               species = "hsa", 
+               out.suffix = "gse16873_Graphviz_cpd", 
+               kegg.native = F , # Graphviz视图
+               same.layer = F  ,
+               cpd.lab.offset = -1.0 #化合物标签位置
+               ) 
+```
+
+::: {#fig-1-10}
+![](../images/Omics/KeggPathwayPlot_fig1-10.png){fig-alt="KeggPathwayPlot_fig1-10" fig-align="center" width="60%"}
+
+Graphviz视图
+:::
+
+**化合物和基因数据**
+
+接下来我们举例说明同时绘制基因和化合物数据的情况：
+
+KEGG视图
+
+```{r fig2.4.3gene_data}
+#| label: fig-2.4.3gene_data
+#| fig-cap: "KEGG视图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p11 <- pathview(gene.data = gene_data[,1:4], # 基因数据
+               cpd.data = cpd_data2[,1:2], # 化合物数据
+               pathway.id = "00640", 
+               species = "hsa", 
+               out.suffix = "gse16873_KEGG_gene_cpd", 
+               kegg.native = T , # KEGG视图
+               same.layer = F  ,
+               cpd.lab.offset = -1.0 ,
+               key.pos = 'bottomright',
+               match.data = F, # 不匹配样本数
+               multi.state = T ,
+               bins = list(gene = 8, cpd = 8), # 改变图例色块的数量
+               low = list(gene = "#6495ED", cpd = "#006400"),
+               mid = list(gene = "#F7F7BD", cpd = "#F7F7BD"), 
+               high = list(gene = "#D73027", cpd ="#FFD700")
+               ) 
+```
+
+::: {#fig-1-11}
+![](../images/Omics/KeggPathwayPlot_fig1-11.png){fig-alt="KeggPathwayPlot_fig1-11" fig-align="center" width="60%"}
+
+KEGG视图
+:::
+
+Graphviz视图
+
+```{r fig2.4.4gene_data}
+#| label: fig-2.4.4gene_data
+#| fig-cap: "Graphviz视图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p12 <- pathview(gene.data = gene_data[,1:4], # 基因数据
+               cpd.data = cpd_data2[,1:2], # 化合物数据
+               pathway.id = "00640", 
+               species = "hsa", 
+               out.suffix = "gse16873_Graphviz_gene_cpd", 
+               kegg.native = F , # Graphviz视图
+               same.layer = F  ,
+               cpd.lab.offset = -1.0 ,
+               key.pos = 'topright',
+               match.data = F, # 不匹配样本数
+               multi.state = T ,
+               bins = list(gene = 10, cpd = 10), # 改变图例色块的数量
+               low = list(gene = "#6495ED", cpd = "#006400"),
+               mid = list(gene = "#F7F7BD", cpd = "#F7F7BD"), 
+               high = list(gene = "#D73027", cpd ="#FFD700")
+               ) 
+```
+
+::: {#fig-1-12}
+![](../images/Omics/KeggPathwayPlot_fig1-12.png){fig-alt="KeggPathwayPlot_fig1-12" fig-align="center" width="60%"}
+
+Graphviz视图
+:::
+
+当gene和cpd数据的样本数不一致时，此时参数应设置为`match.data=FALSE`，若设置为`match.data = TRUE`，则样本数少的数据会生成相差的NA列以配对样本数量。默认NA数据为透明无色，可通过`na.col`设置颜色。
+
+```{r fig2.4.5gene_datacolor}
+#| label: fig-2.4.5gene_datacolor
+#| fig-cap: "设置颜色"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p13 <- pathview(gene.data = gene_data[,1:4],
+               cpd.data = cpd_data2[,1:2], 
+               pathway.id = "00640", 
+               species = "hsa", 
+               out.suffix = "gse16873_Graphviz_gene_cpd_match", 
+               kegg.native = F , # Graphviz视图
+               same.layer = F  ,
+               cpd.lab.offset = -1.0 ,
+               key.pos = 'topright',
+               match.data = T, # 匹配样本数：为cpd添加2列NA
+               multi.state = T , 
+               bins = list(gene = 10, cpd = 10),
+               na.col = 'transparent' , # NA数据颜色设置
+               low = list(gene = "#6495ED", cpd = "#006400"),
+               mid = list(gene = "#F7F7BD", cpd = "#F7F7BD"), 
+               high = list(gene = "#D73027", cpd ="#FFD700")
+               ) 
+```
+
+可以发现化合物节点只有一半是有颜色的，因为另一半是NA，默认为透明无色。
+
+::: {#fig-1-13}
+![](../images/Omics/KeggPathwayPlot_fig1-13.png){fig-alt="KeggPathwayPlot_fig1-13" fig-align="center" width="60%"}
+
+设置颜色
+:::
+
+#### 2.5 离散数据
+
+如果我们的输入数据不是像上述例子的连续变量，而是如high/low的分类变量(可用1/0替换)或显著差异的基因名称，则需要设置`discrete`参数以绘制离散变量的通路视图。
+
+这里我们取基因数据为离散变量1/0，而化合物为连续变量。
+
+```{r}
+#| eval: false
+
+# 获取基因数据 （离散变量）
+data("gse16873.d")
+gene_data <- gse16873.d
+colnames(gene_data)
+gene_data2 <- apply(gene_data, 2, function(x){
+  ifelse(x > mean(x), 1 , 0 )
+}) %>% as.data.frame()
+str(gene_data2)
+```
+
+```{r fig2.5.1DiscreteData}
+#| label: fig-2.5.1DiscreteData
+#| fig-cap: "离散数据1"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p14 <- pathview(gene.data = gene_data2[,1:4], # 离散变量
+               cpd.data = cpd_data2[,1:2], # 连续变量
+               pathway.id = "00640", 
+               species = "hsa", 
+               out.suffix = "gse16873_KEGG_gene_cpd_discrete", 
+               kegg.native = T , # KEGG视图
+               same.layer = F  ,
+               cpd.lab.offset = -1.0 ,
+               key.pos = 'topright',
+               match.data = F, 
+               multi.state = T ,
+               bins = list(gene = 1, cpd = 6), 
+               low = list(gene = "#F7F7BD", cpd = "#006400"),
+               mid = list(gene = "#F7F7BD", cpd = "#F7F7BD"), 
+               high = list(gene = "#D73027", cpd ="#FFD700"),
+               discrete = list(gene = T, cpd = F) ,# 离散数据为T
+               limit = list(gene = 1, cpd = c(-1,1)) ,
+               both.dirs = list(gene = F, cpd = T) # gene为单向数据
+               ) 
+```
+
+::: {#fig-1-14}
+![](../images/Omics/KeggPathwayPlot_fig1-14.png){fig-alt="KeggPathwayPlot_fig1-14" fig-align="center" width="60%"}
+
+离散数据1
+:::
+
+```{r fig2.5.2DiscreteData}
+#| label: fig-2.5.2DiscreteData
+#| fig-cap: "离散数据2"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+#| eval: false
+
+p15 <- pathview(gene.data = gene_data[,1:4], # 离散变量
+               cpd.data = cpd_data2[,1:2], # 连续变量
+               pathway.id = "00640", 
+               species = "hsa", 
+               out.suffix = "gse16873_Graphviz_gene_cpd_discrete",
+               kegg.native = F , # Graphviz视图
+               same.layer = F  ,
+               cpd.lab.offset = -1.0 ,
+               key.pos = 'topright',
+               match.data = F, 
+               multi.state = T , 
+               bins = list(gene = 1, cpd = 6), 
+               low = list(gene = "#F7F7BD", cpd = "#006400"),
+               mid = list(gene = "#F7F7BD", cpd = "#F7F7BD"), 
+               high = list(gene = "#D73027", cpd ="#FFD700"),
+               discrete = list(gene = T, cpd = F) ,# 离散数据为T
+               limit = list(gene = 1, cpd = c(-1,1)),
+               both.dirs = list(gene = F, cpd = T) # gene.data为单向数据
+               ) 
+```
+
+::: {#fig-1-15}
+![](../images/Omics/KeggPathwayPlot_fig1-15.png){fig-alt="KeggPathwayPlot_fig1-15" fig-align="center" width="60%"}
+
+离散数据2
+:::
+
+## 应用场景
+
+::: {#fig-KeggPathwayPlotApplications}
+![](../images/Omics/KeggPathwayPlot_app.png){fig-alt="KeggPathwayPlotApp1" fig-align="center" width="60%"}
+
+KEGG通路图应用
+:::
+
+该图展示了关键的KEGG途径：MAPK信号通路和细胞衰老信号通路。红色节点代表cingulin b-mo突变体中上调的DEG，绿色标记的节点代表cingulin b-mo突变体中下调的DEG，而蓝色标记的节点代表对照MO和c链蛋白B-MO胚胎之间的重叠靶标。该分析是从不同组的三个独立实验进行的，每个组都有30个胚胎。\[2\]
+
+## 参考文献
+
+\[1\] Luo, W., & Brouwer, C. (2013). Pathview: an R/Bioconductor package for pathway-based data integration and visualization. Bioinformatics (Oxford, England), 29(14), 1830–1831. https://doi.org/10.1093/bioinformatics/btt285IF: 4.4 B3.
+
+\[2\] Lu Y, Tang D, Zheng Z, et al. Cingulin b Is Required for Zebrafish Lateral Line Development Through Regulation of Mitogen-Activated Protein Kinase and Cellular Senescence Signaling Pathways. Front Mol Neurosci. 2022;15:844668. Published 2022 May 5. doi:10.3389/fnmol.2022.844668.
+
