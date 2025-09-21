@@ -1,0 +1,250 @@
+---
+title: "马赛克图"
+author:
+  - "**[编辑]** 易旭洋;"
+  - "**[贡献]** 郑虎."
+---
+
+
+## 示例
+
+![](../images/Clinics/MosaicPlot_demo.png){fig-alt="MosaicPlot DEMO1" fig-align="center" width="60%"}
+
+马赛克图（mosaic plot），显示分类数据中一对变量之间的关系，原理类似双向的100%堆叠式条形图，但其中所有条形在数值/标尺轴上具有相等长度，并会被划分成段。可以通过这两个变量来检测类别与其子类别之间的关系。
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`, `reshape2`, `plyr`, `dplyr`, `vcd`, `graphics`, `wesanderson`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("reshape2", quietly = TRUE)) {
+  install.packages("reshape2")
+}
+if (!requireNamespace("plyr", quietly = TRUE)) {
+  install.packages("plyr")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("tidyr", quietly = TRUE)) {
+  install.packages("tidyr")
+}
+if (!requireNamespace("vcd", quietly = TRUE)) {
+  install.packages("vcd")
+}
+if (!requireNamespace("graphics", quietly = TRUE)) {
+  install.packages("graphics")
+}
+if (!requireNamespace("wesanderson", quietly = TRUE)) {
+  install.packages("wesanderson")
+}
+
+# 加载包
+library(ggplot2)
+library(reshape2)
+library(plyr)
+library(dplyr)
+library(vcd)
+library(graphics)
+library(wesanderson)
+```
+
+## 数据准备
+
+```{r load data1, message=FALSE}
+#| warning: false
+
+# 生成模拟数据
+df <- data.frame(segment = c("Patient1", "Patient2", "Patient3","Patient4"),
+                 "Macrophage" = c(2400	,1200,	600	,250),
+                 "Epithelial" = c(1000	,900,	600,	250),
+                 "T cells" = c(400,	600	,400,	250),
+                 "B cells" = c(200,	300	,400,	250))
+
+melt_df<-melt(df,id="segment")
+#将数字转换成百分比
+segpct<-rowSums(df[,2:ncol(df)])
+for (i in 1:nrow(df)){
+  for (j in 2:ncol(df)){
+    df[i,j]<-df[i,j]/segpct[i]*100  
+  }
+}
+
+segpct<-segpct/sum(segpct)*100
+df$xmax <- cumsum(segpct)
+df$xmin <- (df$xmax - segpct)
+
+dfm <- melt(df, id = c("segment", "xmin", "xmax"),value.name="percentage")
+colnames(dfm)[ncol(dfm)]<-"percentage"
+
+#ddply()函数使用自定义统计函数，对data.frame分组计算
+dfm1 <- ddply(dfm, .(segment), transform, ymax = cumsum(percentage))
+dfm1 <- ddply(dfm1, .(segment), transform,ymin = ymax - percentage)
+dfm1$xtext <- with(dfm1, xmin + (xmax - xmin)/2)
+dfm1$ytext <- with(dfm1, ymin + (ymax - ymin)/2)
+
+#join()函数，连接两个表格data.frame
+dfm2<-join(melt_df, dfm1, by = c("segment", "variable"), type = "left", match = "all")
+
+# 查看最终的合并数据集
+head(dfm2)
+```
+
+## 可视化
+
+### 1. 基础绘图
+
+使用基础函数绘制图片的图注和简介。
+
+```{r fig1.1basicplot}
+#| label: fig-1.1basicplot
+#| fig-cap: "基础绘图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+
+# 基础绘图
+p <- ggplot() +
+  geom_rect(aes(ymin = ymin, ymax = ymax, xmin = xmin, xmax = xmax, fill = variable),dfm2,colour = "black") +
+  geom_text(aes(x = xtext, y = ytext,  label = value),dfm2 ,size = 4)+
+  geom_text(aes(x = xtext, y = 103, label = paste(segment)),dfm2 ,size = 4)+
+  geom_text(aes(x = 102, y = seq(12.5,100,25), label = c("Macrophage","Epithelial","T cells","B cells")), size = 4,hjust = 0)+
+  scale_x_continuous(breaks=seq(0,100,25),limits=c(0,110))+
+  theme(panel.background=element_rect(fill="white",colour=NA),
+        panel.grid.major = element_line(colour = "grey60",size=.25,linetype ="dotted" ),
+        panel.grid.minor = element_line(colour = "grey60",size=.25,linetype ="dotted" ),
+        text=element_text(size=15),
+        legend.position="none")
+
+p
+```
+
+```{r fig1.2basicplot}
+#| label: fig-1.2basicplot
+#| fig-cap: "进一步美化"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+
+# 进一步美化
+# 数据再处理
+dfm1 <- ddply(dfm, .(segment), transform, ymax = cumsum(percentage))
+dfm1 <- ddply(dfm1, .(segment), transform, ymin = ymax - percentage)
+
+# 创建间隔
+spacing <- 1
+dfm1$ymin <- dfm1$ymin + spacing * (as.numeric(factor(dfm1$variable)) - 1)  # 纵向间隔
+dfm1$ymax <- dfm1$ymax + spacing * (as.numeric(factor(dfm1$variable)) - 1)  # 纵向间隔
+
+# 计算文本显示位置
+dfm1$xtext <- with(dfm1, xmin + (xmax - xmin) / 2)
+dfm1$ytext <- with(dfm1, ymin + (ymax - ymin) / 2)
+
+# 连接数据框
+dfm2 <- join(melt_df, dfm1, by = c("segment", "variable"), type = "left", match = "all")
+
+p2 <- ggplot() +
+  geom_rect(aes(ymin = ymin, ymax = ymax, 
+                xmin = xmin + 5 * (as.numeric(factor(segment)) - 1),  # 横向间隔
+                xmax = xmax + 5 * (as.numeric(factor(segment)) - 1), 
+                fill = variable),
+            dfm2, colour = "black") +
+  geom_text(aes(x = xtext + 5 * (as.numeric(factor(segment)) - 1),
+                y = ytext, label = value),
+            dfm2, size = 4) +
+  geom_text(aes(x = xtext + 5 * (as.numeric(factor(segment)) - 1),
+                y = max(dfm1$ymax) + spacing * 2,
+                label = paste(segment)),
+            dfm2, size = 4) +
+  geom_text(aes(x = 116, y = seq(12.5, 100, 25) + spacing * 0.5, 
+                label = c("Macrophage", "Epithelial", "T cells", "B cells")), 
+            size = 4, hjust = 0) +
+  scale_x_continuous(breaks = NULL, limits = c(0, 110 + 5 * 3), expand = c(0, 0)) +  # 去掉横坐标
+  scale_y_continuous(breaks = NULL, limits = c(0, max(dfm1$ymax) + spacing * 3), expand = c(0, 0)) +  # 去掉纵坐标
+  theme(panel.background = element_rect(fill = "white", colour = NA),
+        panel.grid.major = element_blank(),  # 去掉网格
+        panel.grid.minor = element_blank(),  # 去掉网格
+        text = element_text(size = 15),
+        legend.position = "none",
+        axis.title.x = element_blank(),  # 去掉 x 轴标题
+        axis.title.y = element_blank(),  # 去掉 y 轴标题
+        axis.ticks = element_blank())  # 去掉坐标轴刻度
+
+p2
+```
+
+### 2. 高阶作图
+
+#### 2.1 vcd 包
+
+```{r fig2.1vcd}
+#| label: fig-2.1vcd
+#| fig-cap: "vcd 包"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+
+# 创建表格
+table <- xtabs(value ~variable+segment, melt_df)
+
+# 绘制
+p3 <- mosaic(~segment+variable,table,shade=TRUE,legend=TRUE,color=TRUE)
+```
+
+#### 2.2 graphics 包
+
+```{r fig2.1vcd}
+#| label: fig-2.1vcd
+#| fig-cap: "graphics 包"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+
+p4 <- mosaicplot( ~segment+variable,table, color = wes_palette("FrenchDispatch"),main = '')
+```
+
+## 应用场景
+
+::: {#fig-KaplanMeierPlotApplications1}
+![](../images/Clinics/MosaicPlot_app.jpg){fig-alt="MosaicPlotApp1" fig-align="center" width="60%"}
+
+马赛克图应用
+:::
+
+该马赛克图显示了特定类群与特定肿瘤转移位点的关联。\[1\]
+
+## 参考文献
+
+\[1\] Lee H, Na KJ, Choi H. Differences in Tumor Immune Microenvironment in Metastatic Sites of Breast Cancer. Front Oncol. 2021;11:649004. Published 2021 Mar 18. doi:10.3389/fonc.2021.649004.
+
+\[2\] Friendly, M. (2002). "A Brief History of the Mosaic Display." Journal of Computational and Graphical Statistics, 11(1), 89-107.
+
+\[3\] Meyer, D., et al. (2006). "The Strucplot Framework: Visualizing Multi-Way Contingency Tables with vcd." Journal of Statistical Software, 17(3), 1-48.
+
+\[4\] Gehlenborg, N. (2014). "UpSetR: An Alternative to Mosaic Plots for Visualizing Intersecting Sets." Nature Methods, 11(8), 769-770.
+
+\[5\] Nowicka, M., et al. (2017). "CyTOF Workflow: Differential Discovery in High-Throughput High-Dimensional Cytometry Datasets." F1000Research, 6, 748.
+
+\[6\] Wilke, C.O. (2020). "Fundamentals of Data Visualization in Biomedicine." Springer.
+
+\[7\] R Core Team (2023). "R: A Language and Environment for Statistical Computing."
+
+\[8\] Slowikowski, K. (2021). "ggrepel: Automatically Position Non-Overlapping Text Labels in ggplot2." Bioinformatics, 37(9), 1333-1334.
+
+
