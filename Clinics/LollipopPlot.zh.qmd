@@ -1,0 +1,288 @@
+---
+title: "棒棒糖图"
+author:
+  - "**[编辑]** 卢心河;"
+  - "**[贡献]** 新叶, 郑虎."
+---
+
+
+## 示例
+
+![](../images/Clinics/LollipopPlot_demo.jpg){fig-alt="LollipopPlot DEMO1" fig-align="center" width="60%"}
+
+（图片来源于Unsplash的Amy Shamblen）
+
+是否对千篇一律的柱状图感到厌倦呢？如果没有蛀牙的话，不如让我们一边吃一根棒棒糖，一边将柱状图变为棒棒图吧
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`, `ggpubr`, `patchwork`, `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
+if (!requireNamespace("patchwork", quietly = TRUE)) {
+  install.packages("patchwork")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+
+# 加载包
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+library(dplyr)
+```
+
+## 数据准备
+
+数据来源于Yang等人的文章。\[1-2\]
+
+```{r load data1, message=FALSE}
+# 读取数据
+data <- read.csv('https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/lollipop_1.csv', row.names = 1) #相关性分析数据读取
+# 查看数据集
+head(data)
+```
+
+```{r load data2, message=FALSE}
+# 读取数据
+data_2 <- read.csv('https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/lollipop_2.csv') # 基因富集分析数据读取
+# 查看数据集
+head(data_2)
+```
+
+## 可视化
+
+### 1. 基础绘图
+
+基础棒棒图显示了COL17A1基因与免疫浸润相关性的结果。\[1\]
+
+```{r fig1.1BasicPlot}
+#| label: fig-1.1BasicPlot
+#| fig-cap: "基础棒棒图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4
+
+# 基础棒棒图
+# 对相关系数和p值转换为分类变量
+data$pvalue_group <- cut(data$pvalue,
+                         breaks = c(0, 0.2, 0.4, 0.6,0.8, 1),
+                         labels = c("< 0.2","< 0.4","< 0.6","< 0.8","<1"),
+                         right=FALSE)# right=FALSE表示表示区间为左闭右开
+data$cor_group_size <- cut(abs(data$cor),# 绝对值
+                      breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5),
+                      labels = c("0.1","0.2","0.3","0.4","0.5"),
+                      right=FALSE) 
+# 排序
+data = data[order(data$cor),]
+data$cell = factor(data$cell, levels = data$cell)
+
+p = ggplot(data, 
+           aes(x = cor, y = cell, color = pvalue_group)) +
+  scale_color_manual(name="pvalue",
+                     values = c("#146432", 
+                                "#4DB748", 
+                                #"#FAA519", #由于没有这个区间的数据，故注释掉
+                                "#FABECD" #,
+                                #"#FAD700"#由于没有这个区间的数据，故注释掉
+                                ))+ #棒棒糖中糖果的颜色选择
+  geom_segment(aes(x = 0, y = cell, xend = cor, yend = cell),
+               color = 'black', #棒棒糖中棒子的绘制
+               linewidth = 0.5) +
+  geom_point(aes(size = cor_group_size))+ #棒棒糖中糖果的绘制
+  labs(title = "COL17A1",#图片标题
+       size = "abs(cor)") + #图例的名称
+  guides(color = "none")+ #隐藏多余的图例   
+  theme_bw()+ #清空格式
+  theme(plot.title=element_text(size=8,  #标题大小
+                                hjust=0.5 ), #标题位置
+        legend.position = "bottom", #图例的位置
+        text = element_text(family = "serif"),#设置字体为Times New Roman
+        panel.grid = element_line(linetype = "dotted",color='grey')) 
+p
+```
+
+**注**：图题为基因名，纵轴为系报名，横轴为该基因的表达量，cor为基因表达量与细胞丰度的相关性，其中横轴为相关性，大小为相关性的绝对值，颜色为P值。
+
+为了使棒棒糖图展示的信息更丰富，我们可以在图右侧添加信息，我们在上一步已经依据p值进行了排序，在这一步可以增加p值的文本，使得图片可读性更强。
+
+```{r fig1.2BasicPlot}
+#| label: fig-1.2BasicPlot
+#| fig-cap: "添加文本信息"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4
+
+data$pvalue_col <- cut(data$pvalue,
+                       breaks = c(0, 0.05,1),
+                       labels = c("< 0.05","> 0.05"),
+                       right=FALSE) #在data中添加颜色分类信息
+data$pvalue_text <- ifelse(data$pvalue>0.05,sprintf("%.3f", data$pvalue),'<0.001')#在data中添加需要绘制的文本
+p1 = ggplot()+
+  geom_text(data,mapping = aes(x = 0, y = cell, color = pvalue_col, 
+                               label = pvalue_text))+
+  scale_color_manual(name="",values = c("red", "black"))+
+  theme_void()+
+  theme(text = element_text(family = "serif"))+
+  guides(color=F) #去掉图例
+
+p|p1
+```
+
+**注**：图题为基因名，纵轴为系报名，横轴为该基因的表达量，cor为基因表达量与细胞丰度的相关性，其中横轴为相关性，大小为相关性的绝对值，颜色为P值，右侧数字为P值。
+
+### 2. 添加图例
+
+```{r fig2.1AddLegend}
+#| label: fig-2.1AddLegend
+#| fig-cap: "添加图例"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4
+
+stack_data = data.frame( x = c("legend","legend","legend","legend","legend"),
+                         class = c("0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8",  "0.8-1"),
+                         color_range = c(0.2,0.2,0.2,0.2,0.2))
+
+p2 <- ggplot(stack_data, aes(x = x, y = color_range, fill = class)) +
+  geom_bar(stat = 'identity', position = "stack", width = 0.3) +
+  scale_fill_manual(name = "P-value",values = c("#146432", "#4DB748", "#FAA519", "#FABECD", "#FAD700")) +  # 设置颜色
+  scale_y_continuous(breaks = seq(0, 1, by = 0.2), 
+                     labels = c("0","0.2","0.4","0.5","0.8","1.0" ), 
+                     sec.axis = sec_axis(~., breaks = seq(0, 1, by = 0.2), 
+                                         labels = c("0", "0.2", "0.4", "0.6", "0.8", "1.0"))) +  # 设置y轴刻度并将y轴移动到右侧
+  labs(title = "pvalue")+#图片标题
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),  # 去掉x轴标签
+        axis.title.x = element_blank(),  # 去掉x轴标题
+        axis.text.y = element_blank(),  # 去掉y轴左侧标题
+        axis.title.y = element_blank(),  # 去掉y轴左侧标题
+        panel.grid = element_blank(),    # 去掉背景网格线
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),  # 去掉图形的四周空白
+        axis.text.y.right = element_text(size = 12),  # 设置y轴右侧标签的字体大小
+        legend.position = "none", # 去掉图例
+        plot.title=element_text(size=10,  #标题大小
+                                hjust=0.5 ), #标题位置
+        text = element_text(family = "serif")) #设置字体为Times New Roman  
+
+p|p1|p2
+```
+
+**注**：图题为基因名，纵轴为系报名，横轴为该基因的表达量，cor为基因表达量与细胞丰度的相关性，其中横轴为相关性，大小为相关性的绝对值，颜色为P值，右侧数字为P值。
+
+### 3. 美化拼图
+
+```{r fig3.1BeautifyPlot}
+#| label: fig-3.1BeautifyPlot
+#| fig-cap: "美化拼图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4
+
+layout <- c(
+  area(t = 1, l = 1, b = 1, r = 2),
+  area(t = 1, l = 3, b = 1, r = 3),
+  area(t = 1, l = 4, b = 1, r = 4)
+)
+
+p + p1 + p2 +
+  plot_layout(design = layout)
+```
+
+如果有需要的话可以进一步使用Power point或者Adobe illustration进行美化。
+
+### 4. 富集分析绘图
+
+```{r fig4.1EnrichPlot}
+#| label: fig-4.1EnrichPlot
+#| fig-cap: "富集分析棒棒糖图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 12
+#| fig-height: 8
+
+# 富集分析棒棒糖图
+data_2 <- data_2[,c(1,2,4,7)] #只留下绘图需要的信息
+colnames(data_2) <- c("GO_aspect","GO_term","P","count") #重命名列名
+data_2 <- data_2[data_2$GO_aspect!='KEGG',] #去除掉KEGG富集分析的数据
+
+data_2$Padj <- p.adjust(data_2$P, method = "BH")# 使用Benjamin-Hochberg方法计算Padj
+data_2$log10Padj = -log10(data_2$Padj)#计算-log10Padj
+
+data_2$GO_aspect[data_2$GO_aspect=="GO:BP"] ="BP"
+data_2$GO_aspect[data_2$GO_aspect=="GO:CC"] ="CC"
+data_2$GO_aspect[data_2$GO_aspect=="GO:MF"] ="MF"
+
+# 按GO_aspect分组，然后每组按log10Padj排序，并取前15条数据
+data_2 <- data_2 %>%  group_by(GO_aspect) %>%
+  arrange(GO_aspect, desc(log10Padj)) %>%  # 按log10Padj降序排序
+  slice_head(n = 15)  # 取前15条
+
+
+#绘图
+ggdotchart(data_2, x = "GO_term", y = "log10Padj",
+           color = "GO_aspect",                          # 按组显示颜色
+           palette = c("#090886", "#F90708", "#25821F"), # 自定义调色板
+           sorting = "descending",                       # 按降序对值排序
+           add = "segments",                             # 添加从y=0到点的线段
+           group = "GO_aspect",                          # 按组排序
+           dot.size = 8,                                 # 点大小
+           label = round(data_2$count),                  # 将mpg值添加为点标签
+           font.label = list(color = "white", size = 9, 
+                             vjust = 0.5),               # 调整标签参数
+           ggtheme = theme_pubr()                        # ggplot2主题
+)+labs(x=NULL,y=expression(-log[10](Padj)),
+        title=NULL)
+```
+
+**注**：纵轴为-log10Padj，横轴为GO条目，颜色为GO类别，圆圈中数字为富集到各GO条目的基因个数。
+
+## 应用场景
+
+### 1. 相关性分析
+
+::: {#fig-LollipopPlotPlotApplications1}
+![](../images/Clinics/LollipopPlot_app1.jpg){fig-alt="LollipopPlotApp1" fig-align="center" width="60%"}
+
+相关性分析
+:::
+
+棒棒糖图（原文图9A）的应用展示了COL17A1基因与免疫浸润相关性的结果。\[1\]
+
+### 2. 基因通路富集分析
+
+::: {#fig-LollipopPlotApplications2}
+![](../images/Clinics/LollipopPlot_app2.jpg){fig-alt="LollipopPlotApp2" fig-align="center" width="60%"}
+
+基因通路富集分析
+:::
+
+棒棒糖图（原文图3）的应用展示了差异表达基因的GO富集分析结果。\[2\]
+
+## 参考文献
+
+\[1\] Yang, M. Y., Ji, M. H., Shen, T., & Lei, L. (2022). Integrated Analysis Identifies Four Genes as Novel Diagnostic Biomarkers Which Correlate with Immune Infiltration in Preeclampsia. Journal of immunology research, 2022, 2373694. https://doi.org/10.1155/2022/2373694
+
+\[2\] Paukszto, L., Mikolajczyk, A., Jastrzebski, J. P., Majewska, M., Dobrzyn, K., Kiezun, M., Smolinska, N., & Kaminski, T. (2020). Transcriptome, Spliceosome and Editome Expression Patterns of the Porcine Endometrium in Response to a Single Subclinical Dose of Salmonella Enteritidis Lipopolysaccharide. International journal of molecular sciences, 21(12), 4217. https://doi.org/10.3390/ijms21124217
+

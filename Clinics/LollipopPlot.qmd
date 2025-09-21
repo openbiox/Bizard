@@ -1,0 +1,288 @@
+---
+title: "Lollipop Plot"
+author:
+  - "**[Editor]** Xinhe Lu;"
+  - "**[Contributors]** Xin Ye, Hu Zheng."
+---
+
+
+## Example
+
+![](../images/Clinics/LollipopPlot_demo.jpg){fig-alt="LollipopPlot DEMO1" fig-align="center" width="60%"}
+
+(Image by Amy Shamblen on Unsplash)
+
+Tired of the same old bar charts? If you don't have cavities, why not turn your bar chart into a stick chart while eating a lollipop?
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`, `ggpubr`, `patchwork`, `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Installing packages
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
+if (!requireNamespace("patchwork", quietly = TRUE)) {
+  install.packages("patchwork")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+
+# Load packages
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+library(dplyr)
+```
+
+## Data Preparation
+
+The data are from the article by Yang et al. \[1-2\]
+
+```{r load data1, message=FALSE}
+# Loading data
+data <- read.csv('https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/lollipop_1.csv', row.names = 1) # Correlation analysis data reading
+# View the dataset
+head(data)
+```
+
+```{r load data2, message=FALSE}
+# Loading data
+data_2 <- read.csv('https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/lollipop_2.csv') # Gene enrichment analysis data readout
+# View the dataset
+head(data_2)
+```
+
+## Visualization
+
+### 1. Basic Plot
+
+Basic stick figure showing the results of the correlation between COL17A1 gene and immune infiltration. \[1\]
+
+```{r fig1.1BasicPlot}
+#| label: fig-1.1BasicPlot
+#| fig-cap: "Basic Lollipop Plot"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4
+
+# Basic Lollipop Plot
+# Convert correlation coefficients and p-values to categorical variables
+data$pvalue_group <- cut(data$pvalue,
+                         breaks = c(0, 0.2, 0.4, 0.6,0.8, 1),
+                         labels = c("< 0.2","< 0.4","< 0.6","< 0.8","<1"),
+                         right=FALSE)# right=FALSE表示表示区间为左闭右开
+data$cor_group_size <- cut(abs(data$cor),# 绝对值
+                      breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5),
+                      labels = c("0.1","0.2","0.3","0.4","0.5"),
+                      right=FALSE) 
+# Order
+data = data[order(data$cor),]
+data$cell = factor(data$cell, levels = data$cell)
+
+p = ggplot(data, 
+           aes(x = cor, y = cell, color = pvalue_group)) +
+  scale_color_manual(name="pvalue",
+                     values = c("#146432", 
+                                "#4DB748", 
+                                #"#FAA519", # Since there is no data in this interval, comment it out.
+                                "#FABECD" #,
+                                #"#FAD700" #Since there is no data in this interval, comment it out.
+                                ))+ # Color selection of candies in lollipops
+  geom_segment(aes(x = 0, y = cell, xend = cor, yend = cell),
+               color = 'black', # Drawing of the stick in a lollipop
+               linewidth = 0.5) +
+  geom_point(aes(size = cor_group_size))+ # Drawing of candy in lollipop
+  labs(title = "COL17A1", # Image title
+       size = "abs(cor)") + # legend name
+  guides(color = "none")+ # Hide redundant legends
+  theme_bw()+ 
+  theme(plot.title=element_text(size=8,  # title size
+                                hjust=0.5 ), # title position
+        legend.position = "bottom", # legend position
+        text = element_text(family = "serif"), # Set the font to Times New Roman
+        panel.grid = element_line(linetype = "dotted",color='grey')) 
+p
+```
+
+**Note**: The figure title is the gene name, the vertical axis is the lineage number, the horizontal axis is the gene expression level, and cor is the correlation between gene expression and cell abundance. The horizontal axis represents the correlation, the magnitude represents the absolute value of the correlation, and the color represents the P value.
+
+To make the lollipop chart more informative, we can add information to the right side of the chart. We already sorted the chart by p-value in the previous step. In this step, we can add text about the p-value to make the chart more readable.
+
+```{r fig1.2BasicPlot}
+#| label: fig-1.2BasicPlot
+#| fig-cap: "Add text message"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4
+
+data$pvalue_col <- cut(data$pvalue,
+                       breaks = c(0, 0.05,1),
+                       labels = c("< 0.05","> 0.05"),
+                       right=FALSE) # Add color classification information to data
+data$pvalue_text <- ifelse(data$pvalue>0.05,sprintf("%.3f", data$pvalue),'<0.001') # Add the text you want to draw in data
+p1 = ggplot()+
+  geom_text(data,mapping = aes(x = 0, y = cell, color = pvalue_col, 
+                               label = pvalue_text))+
+  scale_color_manual(name="",values = c("red", "black"))+
+  theme_void()+
+  theme(text = element_text(family = "serif"))+
+  guides(color=F) # remove legend
+
+p|p1
+```
+
+**Note**: The title of the figure is the gene name, the vertical axis is the lineage number, the horizontal axis is the expression level of the gene, cor is the correlation between gene expression and cell abundance, where the horizontal axis is the correlation, the size is the absolute value of the correlation, the color is the P value, and the number on the right is the P value.
+
+### 2. Add legend
+
+```{r fig2.1AddLegend}
+#| label: fig-2.1AddLegend
+#| fig-cap: "Add legend"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4
+
+stack_data = data.frame( x = c("legend","legend","legend","legend","legend"),
+                         class = c("0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8",  "0.8-1"),
+                         color_range = c(0.2,0.2,0.2,0.2,0.2))
+
+p2 <- ggplot(stack_data, aes(x = x, y = color_range, fill = class)) +
+  geom_bar(stat = 'identity', position = "stack", width = 0.3) +
+  scale_fill_manual(name = "P-value",values = c("#146432", "#4DB748", "#FAA519", "#FABECD", "#FAD700")) +  # Set Color
+  scale_y_continuous(breaks = seq(0, 1, by = 0.2), 
+                     labels = c("0","0.2","0.4","0.5","0.8","1.0" ), 
+                     sec.axis = sec_axis(~., breaks = seq(0, 1, by = 0.2), 
+                                         labels = c("0", "0.2", "0.4", "0.6", "0.8", "1.0"))) +  # Set the y-axis scale and move the y-axis to the right
+  labs(title = "pvalue")+ # Image title
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),  
+        axis.title.x = element_blank(),  
+        axis.text.y = element_blank(), 
+        axis.title.y = element_blank(),  
+        panel.grid = element_blank(),    
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),  
+        axis.text.y.right = element_text(size = 12),  
+        legend.position = "none", 
+        plot.title=element_text(size=10, 
+                                hjust=0.5 ), 
+        text = element_text(family = "serif"))
+
+p|p1|p2
+```
+
+**Note**: The title of the figure is the gene name, the vertical axis is the lineage number, the horizontal axis is the expression level of the gene, cor is the correlation between gene expression and cell abundance, where the horizontal axis is the correlation, the size is the absolute value of the correlation, the color is the P value, and the number on the right is the P value.
+
+### 3. Beautify Plot
+
+```{r fig3.1BeautifyPlot}
+#| label: fig-3.1BeautifyPlot
+#| fig-cap: "Beautify Plot"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4
+
+layout <- c(
+  area(t = 1, l = 1, b = 1, r = 2),
+  area(t = 1, l = 3, b = 1, r = 3),
+  area(t = 1, l = 4, b = 1, r = 4)
+)
+
+p + p1 + p2 +
+  plot_layout(design = layout)
+```
+
+If necessary, you can further beautify it using Power point or Adobe illustration.
+
+### 4. Enrichment analysis plots
+
+```{r fig4.1EnrichPlot}
+#| label: fig-4.1EnrichPlot
+#| fig-cap: "Enrichment analysis lollipop plot"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 12
+#| fig-height: 8
+
+# Enrichment analysis lollipop plot
+data_2 <- data_2[,c(1,2,4,7)] # Only leave the information needed for drawing
+colnames(data_2) <- c("GO_aspect","GO_term","P","count") # Rename column names
+data_2 <- data_2[data_2$GO_aspect!='KEGG',] # Remove the data of KEGG enrichment analysis
+
+data_2$Padj <- p.adjust(data_2$P, method = "BH") # Calculate Padj using the Benjamin-Hochberg method
+data_2$log10Padj = -log10(data_2$Padj) # Calculate -log10Padj
+
+data_2$GO_aspect[data_2$GO_aspect=="GO:BP"] ="BP"
+data_2$GO_aspect[data_2$GO_aspect=="GO:CC"] ="CC"
+data_2$GO_aspect[data_2$GO_aspect=="GO:MF"] ="MF"
+
+# Group by GO_aspect, then sort each group by log10Padj and take the first 15 data
+data_2 <- data_2 %>%  group_by(GO_aspect) %>%
+  arrange(GO_aspect, desc(log10Padj)) %>%  # Sort by log10Padj in descending order
+  slice_head(n = 15)  # Take the first 15
+
+
+# Plot
+ggdotchart(data_2, x = "GO_term", y = "log10Padj",
+           color = "GO_aspect",                          # Display colors by group
+           palette = c("#090886", "#F90708", "#25821F"), # Custom color palette
+           sorting = "descending",                       # Sort values in descending order
+           add = "segments",                             # Add a line segment from y=0 to the point
+           group = "GO_aspect",                          # Sort by group
+           dot.size = 8,                                 # Dot size
+           label = round(data_2$count),                  # Add mpg values as point labels
+           font.label = list(color = "white", size = 9, 
+                             vjust = 0.5),               # Adjust label parameters
+           ggtheme = theme_pubr()                        # ggplot2 theme
+)+labs(x=NULL,y=expression(-log[10](Padj)),
+        title=NULL)
+```
+
+**Note**: The vertical axis is -log10Padj, the horizontal axis is GO terms, the color is GO category, and the numbers in the circles are the number of genes enriched in each GO term.
+
+## Application
+
+### 1. Correlation analysis
+
+::: {#fig-LollipopPlotPlotApplications1}
+![](../images/Clinics/LollipopPlot_app1.jpg){fig-alt="LollipopPlotApp1" fig-align="center" width="60%"}
+
+Correlation analysis
+:::
+
+The application of the lollipop plot (Figure 9A in the original text) shows the results of the correlation between the COL17A1 gene and immune infiltration.\[1\]
+
+### 2. Gene pathway enrichment analysis
+
+::: {#fig-LollipopPlotApplications2}
+![](../images/Clinics/LollipopPlot_app2.jpg){fig-alt="LollipopPlotApp2" fig-align="center" width="60%"}
+
+Gene pathway enrichment analysis
+:::
+
+The application of the lollipop plot (Figure 3 in the original text) shows the results of GO enrichment analysis of differentially expressed genes. \[2\]
+
+## Reference
+
+\[1\] Yang, M. Y., Ji, M. H., Shen, T., & Lei, L. (2022). Integrated Analysis Identifies Four Genes as Novel Diagnostic Biomarkers Which Correlate with Immune Infiltration in Preeclampsia. Journal of immunology research, 2022, 2373694. https://doi.org/10.1155/2022/2373694
+
+\[2\] Paukszto, L., Mikolajczyk, A., Jastrzebski, J. P., Majewska, M., Dobrzyn, K., Kiezun, M., Smolinska, N., & Kaminski, T. (2020). Transcriptome, Spliceosome and Editome Expression Patterns of the Porcine Endometrium in Response to a Single Subclinical Dose of Salmonella Enteritidis Lipopolysaccharide. International journal of molecular sciences, 21(12), 4217. https://doi.org/10.3390/ijms21124217
+
