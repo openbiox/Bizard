@@ -111,7 +111,7 @@ bizard_setup <- function(..., title = NULL, system = NULL) {
         "",
         sprintf("- Dependent packages: %s", bizard_oxford_and(pkgs)),
         "",
-        "```{r}", codes, "```",
+        '```{r, results="hold", class.source = "fold-hide"}', codes, "```",
         ""
     )
     # ---- Render docs via knitr ----
