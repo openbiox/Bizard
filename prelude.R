@@ -73,15 +73,16 @@ bizard_setup <- function(..., title = NULL, system = NULL) {
             description <- utils::packageDescription(pkg)
             c(
                 sprintf('if (!requireNamespace("%s", quietly = TRUE)) {', pkg),
-                if (pkg != "BiocManager" && !is.null(description$biocViews)) {
-                    sprintf('  BiocManager::install("%s")', pkg)
-                } else if (pkg != "remotes" &&
+                if (pkg != "remotes" &&
                     !is.null(username <- description$GithubUsername) &&
                     !is.null(repo <- description$GithubRepo)) {
                     sprintf(
                         '  remotes::install_github("%s/%s")',
                         username, repo
                     )
+                } else if (pkg != "BiocManager" &&
+                    !is.null(description$biocViews)) {
+                    sprintf('  BiocManager::install("%s")', pkg)
                 } else {
                     sprintf('  install.packages("%s")', pkg)
                 },
