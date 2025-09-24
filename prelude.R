@@ -109,7 +109,10 @@ bizard_setup <- function(..., title = NULL, system = NULL) {
             )
         ),
         "",
-        sprintf("- Dependent packages: %s", bizard_oxford_and(pkgs)),
+        sprintf(
+            "- Dependent packages: %s",
+            bizard_oxford_and(pkgs, quote = FALSE)
+        ),
         "",
         '```{r, collapse = TRUE, class.source = "fold-hide"}',
         codes,
