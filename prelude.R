@@ -37,7 +37,9 @@ bizard_oxford_comma <- function(x, sep = ", ", final = "and") {
     }
 }
 
-bizard_setup <- function(..., title = NULL, system = NULL) {
+bizard_setup <- function(..., lang = NULL, title = NULL, system = NULL) {
+    lang <- match.arg(lang, c("en", "zh"))
+
     # Collect unique package names passed in through "..."
     pkgs <- unique(c(...))
 
@@ -45,26 +47,34 @@ bizard_setup <- function(..., title = NULL, system = NULL) {
     desc <- lapply(pkgs, function(pkg) utils::packageDescription(pkg))
 
     # ---- Detect if any package is from Bioconductor ----
-    from_bioc <- any(vapply(
-        desc,
-        function(d) !is.null(d$biocViews), logical(1L)
-    ))
-    if (from_bioc) {
+    from_bioc <- vapply(desc, function(d) !is.null(d$biocViews), logical(1L))
+    if (any(from_bioc)) {
         # Ensure BiocManager itself is included
         pkgs <- unique(c("BiocManager", pkgs))
     }
-    from_github <- any(vapply(
-        desc,
-        function(d) !is.null(d$GithubRepo), logical(1L)
-    ))
-    if (from_github) {
+    from_github <- vapply(desc, function(d) !is.null(d$GithubRepo), logical(1L))
+    if (any(from_github)) {
         pkgs <- unique(c("remotes", pkgs))
     }
 
     # ---- Setup metadata for documentation ----
-    title <- title %||% "## Setup"
+    title <- title %||%
+        sprintf(
+            "## %s",
+            switch(lang,
+                en = "Setup",
+                zh = "环境配置"
+            )
+        )
+
     language <- "R"
-    system <- system %||% "Cross-platform (Linux/MacOS/Windows)"
+    system <- system %||% sprintf(
+        "## %s",
+        switch(lang,
+            en = "Cross-platform (Linux/MacOS/Windows)",
+            zh = "跨平台（Linux/MacOS/Windows）"
+        )
+    )
 
     # ---- Generate code snippets for installation & loading ----
     codes <- c(
@@ -100,10 +110,21 @@ bizard_setup <- function(..., title = NULL, system = NULL) {
     docs <- c(
         title,
         "",
-        sprintf("- System Requirements: %s", system),
+        sprintf(
+            "- %s: %s",
+            switch(lang,
+                en = "System Requirements",
+                zh = "系统要求"
+            ),
+            system
+        ),
         "",
         sprintf(
-            "- Programming language: %s",
+            "- %s: %s",
+            switch(lang,
+                en = "Programming language",
+                zh = "编程语言"
+            ),
             bizard_oxford_or(
                 paste0("**", language, "**"),
                 code = FALSE, quote = FALSE
@@ -111,7 +132,11 @@ bizard_setup <- function(..., title = NULL, system = NULL) {
         ),
         "",
         sprintf(
-            "- Dependent packages: %s",
+            "- %s: %s",
+            switch(lang,
+                en = "Dependent packages",
+                zh = "依赖包"
+            ),
             bizard_oxford_and(pkgs, quote = FALSE)
         ),
         "",
