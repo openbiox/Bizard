@@ -1,0 +1,603 @@
+---
+title: "散点图"
+author:
+  - "**[编辑]** [王春阳](https://github.com/Wangcy-rachel);"
+  - "**[贡献]** [王诗翔](https://github.com/ShixiangWang), 
+  [罗鹏](https://github.com/DrRobinLuo), 
+  [杨泓](https://github.com/MartinaHYang), 
+  [李柯馨](https://github.com/Likexin0127), 
+  [石盈](https://github.com/), 
+  [郑虎](https://github.com/ZhengTiger)."
+---
+
+散点图是一种基础的可视化图表，用于表示因变量随自变量而变化的大致趋势。
+
+## 示例
+
+![](../images/Scatter_demo.png){fig-alt="Scatter Plot DEMO" fig-align="center" width="60%"}
+
+以上基础散点图可以直观地表示因变量y随着自变量x变化的一个大致趋势，可以看出，y大致随着x的增加而增大。
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`, `ggpmisc`, `ggpubr`, `ggExtra`, `geomtextpath`, `plotly`, `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("ggpmisc", quietly = TRUE)) {
+  install.packages("ggpmisc")
+}
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
+if (!requireNamespace("ggExtra", quietly = TRUE)) {
+  install.packages("ggExtra")
+}
+if (!requireNamespace("geomtextpath", quietly = TRUE)) {
+  install.packages("geomtextpath")
+}
+if (!requireNamespace("plotly", quietly = TRUE)) {
+  install.packages("plotly")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+
+# 加载包
+library(ggpmisc)
+library(ggplot2)
+library(ggpubr)
+library(ggExtra)
+library(geomtextpath)
+library(plotly)
+library(dplyr)
+```
+
+## 数据准备
+
+使用 R 内置数据集 `iris` 和 NCBI [GSE243555 数据集](https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE243555&format=file&file=GSE243555%5Fall%5Fgenes%5Fwith%5Fcounts%2Etxt%2Egz)
+
+```{r load data}
+# 1.加载 iris 数据集
+data <- iris
+
+# 2.加载基因表达数据（前两行）
+data_counts <- read.csv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/GSE243555_all_genes_with_counts.txt", sep = "\t", header = TRUE, nrows = 10) 
+
+axis_names <- data_counts[c(1, 2), 1]        # 保存名称
+data_counts <- data_counts %>%      
+  select(-1) %>%               # 去除第一列
+  slice(1:2) %>%               # 保留前两行
+  t()  %>%                     # 倒置
+  as.data.frame() %>%
+  setNames(c("V1", "V2"))      # 设置列名
+
+head(data_counts)
+```
+
+
+## 可视化
+
+### 1. 基本绘图
+@fig-BasicPlot 这个图是基本散点图，调用`geom_point()`就可绘制出来。
+
+```{r fig1BasicPlot}
+#| label: fig-BasicPlot
+#| fig-cap: "基本绘图"
+#| out.width: "95%"
+#| warning: false
+
+# 基本散点图
+p <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point()
+
+p
+```
+
+
+### 2. 设置点样式
+@fig-PointStyle 这个图在基本散点图的基础上更改了点的形状、大小和颜色样式。
+
+```{r fig2PointStyle}
+#| label: fig-PointStyle
+#| fig-cap: "设置点样式"
+#| out.width: "95%"
+#| warning: false
+
+# 在`geom_point`中设置形状、大小和颜色参数
+p <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(shape = 17, size = 1.5, color = "blue")
+
+p
+```
+
+
+::: callout-tip
+**关键参数: `shape`**
+
+`shape` 为点的形状，可选值为0-25，具体形状见下图:
+
+![](../images/Scatter_dottype.png){fig-alt="Scatter Dot Shape Type" fig-align="center" width="60%"}
+:::
+
+### 3.多类数据绘图，更改图例位置
+
+#### **多类数据绘图**
+@fig-Multi-classDataPlot 这个图使用`color=Species`将物种变量映射到颜色特征中，使不同物种有着不同的颜色。
+
+```{r fig3Multi-classDataPlot}
+#| label: fig-Multi-classDataPlot
+#| fig-cap: "多类数据绘图"
+#| out.width: "95%"
+#| warning: false
+
+# 多类数据绘图
+p_multi <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length, color = Species)) +
+  geom_point(shape = 16, size = 1.5)
+
+p_multi
+```
+
+
+::: callout-tip
+**关键参数: `color=Species`**
+
+这里将`Species`变量映射到了`color`特征中，不同的`Species`组会有不同的`color`；也可以将变量映射到多个特征比如`alpha=Species`（将物种变量映射到透明度特征中，即三类数据点会有不同的透明度）,`shape=Species`（将物种变量映射到形状变量中）等。
+:::
+
+#### **将分类变量映射到其他特征**
+@fig-MapFeatures 这个图将物种变量映射到颜色和形状上，不同物种有不同的颜色和形状。
+
+```{r fig4MapFeatures}
+#| label: fig-MapFeatures
+#| fig-cap: "将变量映射到其他任何特征中"
+#| out.width: "95%"
+#| warning: false
+
+## 将变量映射到其他任何特征中
+p_multi <- ggplot(data, aes(
+  x = Sepal.Width, y = Sepal.Length,
+  color = Species, shape = Species
+)) +
+  geom_point()
+
+p_multi
+```
+
+
+#### **更改图例位置**
+@fig-ChangeLegendPosition 这个图将图例放在了图中的空白位置，显得更加美观。
+
+```{r fig5ChangeLegendPosition}
+#| label: fig-ChangeLegendPosition
+#| fig-cap: "更改图例位置"
+#| out.width: "95%"
+#| warning: false
+
+## 将变量映射到其他任何特征中
+p_multi <- ggplot(data, aes(
+  x = Sepal.Width, y = Sepal.Length,
+  color = Species, shape = Species
+)) +
+  geom_point() +
+  # 可以调用`theme()`更改图例位置
+  theme(legend.position = "inside", legend.position.inside = c(0.87, 0.8))
+
+p_multi
+```
+
+
+::: callout-tip
+**关键参数: `theme`**
+
+`legend.position`：
+
+设置图例的位置，可选择的有"none", "left", "right", "bottom", "top", "inside",几种形式。
+
+`legend.position.inside`：
+
+当且仅当`legend.position="inside"`生效，一般形式为`legend.position.inside=c(x,y)`，其中x,y为数值，均在0-1之间。x越大，图例越靠右；y越大图例越靠上。可以根据实际空白处进行调整。
+:::
+
+### 4. 增加点标签
+
+#### **`geom_text()`点标签**
+@fig-Point_Labels1 这个图使用`geom_text()`绘制点标签。
+
+```{r fig6Point_Labels1}
+#| label: fig-Point_Labels1
+#| fig-cap: "`geom_text()`点标签"
+#| out.width: "95%"
+#| warning: false
+
+# 基本绘图+点标签
+# 为了保证点不重叠，只选了物种为"setosa"数据进行绘图
+p <- ggplot(data = data[data$Species == "setosa", ], aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(shape = 16, size = 1.5, color = "blue") +
+  geom_text(
+    label = rownames(data[data$Species == "setosa", ]),
+    nudge_x = 0.03, nudge_y = -0.04,
+    check_overlap = T
+  )
+
+p
+```
+
+
+::: callout-tip
+**关键参数: `geom_text`**
+
+`label`:
+        
+显示在图上的标签内容，可以是列名也可以是其他特征。
+
+`nudge_x`,`nudge_y`:
+
+以每个点为中心，`nudge_x`,`nudge_y`表示与这个中心点的偏离值，通过调整使标签在最佳的位置。
+
+`check_overlap`：
+
+布尔值，当为true时，会避免重叠，但会使有些点标签不会显示；当为false时，不会检查点是否重叠。
+:::
+
+#### **`geom_label()`点标签**
+@fig-Point_Labels2 这个图使用`geom_label()`也可以绘制点标签。
+
+```{r fig7Point_Labels2}
+#| label: fig-Point_Labels2
+#| fig-cap: "`geom_label()`点标签"
+#| out.width: "95%"
+#| warning: false
+
+# `geom_label`也可以用于绘制点标签，参数可以不变化
+p <- ggplot(data = data[data$Species == "setosa", ], aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(shape = 16, size = 1.5, color = "blue") +
+  geom_label(
+    label = rownames(data[data$Species == "setosa", ]),
+    nudge_x = 0.025, nudge_y = -0.04, size = 2.5
+  )
+
+p
+```
+
+
+### 5. 回归曲线和回归方程/相关系数
+
+#### **绘制回归曲线**
+@fig-RegressionCurve 这个图使用`geom_smooth()`引入了回归曲线，是文章中常见的形式。
+
+```{r fig8RegressionCurve}
+#| label: fig-RegressionCurve
+#| fig-cap: "绘制回归曲线"
+#| out.width: "95%"
+#| warning: false
+
+# 绘制回归曲线
+p <- ggplot(data_counts, aes(x = V1, y = V2)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red")
+
+p
+```
+
+::: callout-tip
+**关键参数: `geom_smooth`**
+
+`method`:
+
+选择绘制回归曲线的方法，默认`method=NULL`，可选择"lm", "glm", "gam", "loess" 或者自定义函数。
+
+`formula`:
+
+用于绘制回归曲线的公式，默认`formula=NULL`,可选择 y ~ x, y ~ poly(x, 2), y ~ log(x)等。
+
+`se`:
+
+布尔取值，true表示显示置信区间，默认`se = TRUE`。
+:::
+
+#### **添加回归方程**
+@fig-RegressionEquation 这个图在左上角标注了回归方程、R方、P值等信息。
+
+```{r fig9RegressionEquation}
+#| label: fig-RegressionEquation
+#| fig-cap: "添加回归方程"
+#| out.width: "95%"
+#| warning: false
+
+# 绘制回归曲线
+p <- ggplot(data_counts, aes(x = V1, y = V2)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") +
+  # 引入回归方程，eq：方程，R2：R方，P：p值
+  stat_poly_eq(use_label("eq", "R2.CI", "P"), formula = y ~ x, size = 4, method = "lm")
+
+p
+```
+
+
+::: callout-tip
+**关键参数: `use_label`**
+
+所要添加的标签类型，"eq","R2","P"分别为回归方程的方程，R方值和p值，还有其他可选值如"R2.CI"(显示95%置信区间)、"method"(显示方法)。
+:::
+
+#### **调整回归方程的标签位置**
+@fig-RegressionEquation_Label 这个图使用了`label.y`、`label.x`参数按照需要调整了标签位置。
+
+```{r fig10RegressionEquation_Label}
+#| label: fig-RegressionEquation_Label
+#| fig-cap: "调整回归方程的标签位置"
+#| out.width: "95%"
+#| warning: false
+
+## 调整标签到合适的地方
+p <- ggplot(data_counts, aes(x = V1, y = V2)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") +
+  stat_poly_eq(use_label("eq"),
+    formula = y ~ x, size = 4, method = "lm",
+    label.y = 0.45, label.x = 0.5, angle = -5
+  )
+
+p
+```
+
+
+#### **引入回归方程的多类数据绘图**
+@fig-RegressionEquations 这个图使用多类数据绘图，并添加了回归曲线及其标签。
+
+```{r fig11RegressionEquations}
+#| label: fig-RegressionEquations
+#| fig-cap: "引入回归方程的多类数据绘图"
+#| out.width: "95%"
+#| warning: false
+
+# 多类数据绘图并调整标签
+p_multi <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length, color = Species, shape = Species)) +
+  geom_point(size = 1.5) +
+  scale_colour_manual(values = c("setosa" = "purple", "versicolor" = "blue", "virginica" = "pink")) +
+  theme(legend.position = "inside", legend.position.inside = c(0.87, 0.8)) +      # 设置图例位置
+  geom_smooth(method = "lm", formula = y ~ x, se = T) +
+  stat_poly_eq(use_label("eq"),
+    formula = y ~ x, size = 3.5, method = "lm",
+    label.x = c(0.6, 0.6, 0.6), label.y = c(0.2, 0.6, 0.75), angle = 10, color = "black"
+  )
+
+p_multi
+```
+
+
+#### **显示相关系数**
+@fig-CorrelationCoefficient 这个图使用`stat_cor()`函数显示相关系数标签。
+
+```{r fig12CorrelationCoefficient}
+#| label: fig-CorrelationCoefficient
+#| fig-cap: "显示相关系数"
+#| out.width: "95%"
+#| warning: false
+
+# 显示相关系数
+p <- ggplot(data_counts, aes(x = V1, y = V2)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") +
+  stat_cor(
+    method = "pearson", label.sep = ",",
+    p.accuracy = 0.00001, r.digits = 5, size = 4
+  )
+
+p
+```
+
+
+::: callout-tip
+**关键参数: `stat_cor`**
+
+`method`:
+
+计算相关系数的方法，可选项有"pearson" (默认)，"kendall"，"spearman"。
+
+`label.sep`:
+
+标签的间隔符，默认为","。
+
+`r.accuracy`,`p.accuracy`:
+
+R值或P值的精确度。
+
+`r.digits`,`p.digits`：
+
+R值或P值的有效数字。
+:::
+
+### 6. 添加回归曲线上的标签
+
+#### **添加标签的单类数据绘图**
+@fig-RegressionCurve_Label 这个图使用`geom_labelsmooth()`为回归曲线添加标签。
+
+```{r fig13RegressionCurve_Label}
+#| label: fig-RegressionCurve_Label
+#| fig-cap: "添加标签的单类数据绘图"
+#| out.width: "95%"
+#| warning: false
+
+## 绘制回归线并添加标签
+p <- ggplot(data[data$Species == "setosa", ], aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(shape = 16, size = 2, color = "blue") +
+  geom_labelsmooth(aes(label = Species[1]),
+    fill = "white",
+    method = "lm", formula = y ~ x,
+    size = 6, linewidth = 1,
+    boxlinewidth = 0.6, linecolour = "red"
+  )
+
+p
+```
+
+
+::: callout-tip
+**关键参数: `geom_labelsmooth`**
+
+`label`：
+
+标签名称。
+
+`fill`：
+
+方框填充颜色。
+
+`linewidth`:
+
+线的粗细。
+
+`boxlinewidth`:
+
+方框边框的粗细。
+:::
+
+#### **添加标签的多类数据绘图**
+@fig-RegressionCurve_Labels 这个图为多类数据添加相应标签。
+
+```{r fig14RegressionCurve_Labels}
+#| label: fig-RegressionCurve_Labels
+#| fig-cap: "添加标签的多类数据绘图"
+#| out.width: "95%"
+#| warning: false
+
+# 添加标签的多类数据绘图
+p <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length, color = Species, shape = Species)) +
+  geom_point(size = 2) +
+  theme(legend.position = "none") +
+  geom_labelsmooth(aes(label = Species),
+    fill = "white",
+    method = "lm", formula = y ~ x,
+    size = 3, linewidth = 0.6, boxlinewidth = 0.3
+  )
+
+p     
+```
+
+
+### 7. 引入边缘轴须图
+@fig-MarginalRug_Plot 这个图使用`geom_rug()`添加了边缘轴须。
+
+```{r fig15MarginalRug_Plot}
+#| label: fig-MarginalRug_Plot
+#| fig-cap: "引入边缘轴须图"
+#| out.width: "95%"
+#| warning: false
+
+p <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(shape = 16, size = 1.5, color = "blue") +
+  geom_rug(color = "steelblue", alpha = 0.1, linewidth = 1.5)
+
+p
+```
+
+
+### 8. 引入边际分布
+@fig-MarginalDistributions 这个图引入了直方图的边际分布，多个参数可用于调节边际图样式。
+
+```{r fig16MarginalDistributions}
+#| label: fig-MarginalDistributions
+#| fig-cap: "引入边际分布"
+#| out.width: "95%"
+#| warning: false
+
+# 引入边际分布
+p <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(shape = 16, size = 1.5, color = "blue")
+
+p
+
+p1 <- ggMarginal(p,
+  type = "histogram", color = "red", fill = "green",
+  margins = "both", xparams = list(bins = 12, fill = "purple")
+)
+
+p1
+```
+
+
+::: callout-tip
+**关键参数: `ggMarginal`**
+
+`type`:
+
+边际分布图的类型，可选项有"density", "histogram", "boxplot", "violin", "densigram"。
+
+`margins`:
+
+设置哪个边缘绘制边际分布图，margins=c(x,y)表示x,y边都绘制边际图。
+
+`xparams`,`yparams`：
+
+设置边的图只对x或y维度有效，参数包括常见参数`color`、`fill`、`size`，也包含这个边际图的特有参数,比如直方图的`bins`。
+
+`bins`:
+
+同直方图的参数`bins`，将直方图划分成几个条块。
+:::
+
+### 9. 绘制3D交互式散点图
+@fig-3D_Scatter 这个图使用了3列数据，并支持交互浏览。
+
+```{r fig17-3D_Scatter}
+#| label: fig-3D_Scatter
+#| fig-cap: "绘制3D交互式散点图"
+#| out.width: "95%"
+#| warning: false
+
+## 3D交互式散点图
+p <- plot_ly(data,
+  x = ~ data$Sepal.Length, y = ~ data$Sepal.Width,
+  z = ~ data$Petal.Length, color = ~ data$Species,
+  colors = c("#FF6DAE", "#D4CA3A", "#00BDFF"),
+  marker = list(size = 5)
+) %>%
+  add_markers()        # 将上述图添加到`plotly`可视化中
+
+p
+```
+
+
+## 应用场景
+
+::: {#fig-ScatterApplications}
+![](../images/Scatter_app1.png){fig-alt="ScatterApp1" fig-align="center" width="60%"}
+
+散点图应用场景
+:::
+
+图中显示KRT6B表达与免疫相关基因（包括CXCL9和CXCL10）呈正相关。 \[1\]
+
+::: {#fig-ScatterApplications2}
+![](../images/Scatter_app2.png){fig-alt="ScatterApp2" fig-align="center" width="60%"}
+
+散点图应用场景
+:::
+
+图中显示，在棕色和深蓝色模块中，模块成员与基因重要性之间存在很强的正相关关系（cor=0.78&p\<0.001, cor=0.59&p\<0.001）。\[2\]
+
+::: {#fig-ScatterApplications3}
+![](../images/Scatter_app3.jpg){fig-alt="ScatterApp3s" fig-align="center" width="60%"}
+
+散点图应用场景
+:::
+
+图中探索了CXCR4和多种免疫细胞的关联。 \[3\]
+
+## 参考文献
+
+\[1\] Song Q, Yu H, Cheng Y, et al. Bladder cancer-derived exosomal KRT6B promotes invasion and metastasis by inducing EMT and regulating the immune microenvironment\[J\]. J Transl Med, 2022,20(1):308.
+
+\[2\] Xie J, Chen L, Wu D, et al. Significance of liquid-liquid phase separation (LLPS)-related genes in breast cancer: a multi-omics analysis\[J\]. Aging (Albany NY), 2023,15(12):5592-5610.
+
+\[3\]Zhang S, Hou L, Sun Q. Correlation analysis of intestinal flora and immune function in patients with primary hepatocellular carcinoma\[J\]. J Gastrointest Oncol, 2022,13(3):1308-1316.

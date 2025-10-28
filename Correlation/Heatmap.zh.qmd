@@ -1,0 +1,932 @@
+---
+title: "热图"
+author:
+  - "**[编辑]** [彭钰洁](https://github.com/YujiePeng913);"
+  - "**[贡献]** [王诗翔](https://github.com/ShixiangWang), 
+  [罗鹏](https://github.com/DrRobinLuo), 
+  [杨泓](https://github.com/MartinaHYang), 
+  [李柯馨](https://github.com/Likexin0127), 
+  [石盈](https://github.com/), 
+  [郑虎](https://github.com/ZhengTiger)."
+---
+
+热图是一种用颜色表示矩阵中包含的各个值的可视化方式。常用来表示不同样品组代表性基因的表达差异、不同样品组代表性化合物的含量差异、不同样品之间的两两相似性。实际上，任何一个表格数据都可以转换为热图展示。
+
+## 示例
+
+![](../images/Heatmap_demo.png){fig-alt="Heatmap Example" fig-align="center" width="60%"}
+
+在此热图中，每一行代表一辆汽车（如 `Mazda RX4`、`Merc 450SLC` 等），每一列表示汽车的某个属性（如 `mpg`：每加仑行驶的英里数，`hp`：马力，`wt`：重量等）。每个方块表示某辆车在某个属性上的数值大小，越接近黄色数值越高。
+
+顶部和左侧显示的线条表示层次聚类的结果（也称为树状图，dendrogram）。这些线条表示的是如何将行和列聚类的层次关系，即数据中不同行或列之间的相似性。
+
+::: callout-note
+**注意**: 由图可见，这个热图的信息量有限：很多变化被与其他变量相比具有非常高的值的hp和 disp变量吸收。（当所有变量被映射到同一颜色尺度时，`hp`和`disp`的较大值会主导颜色分布，导致图片不能很好的展示变量之间的差异。）我们需要对数据进行标准化，如下一节所述。
+:::
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`readr`, `ggplot2`, `hrbrthemes`, `dplyr`, `tidyr`, `viridis`, `tibble`, `htmlwidgets`, `RColorBrewer`, `plotly`, `remotes`, `d3heatmap`, `heatmaply`, `lattice`, `ComplexHeatmap`, `pheatmap`, `circlize`, `gridExtra`, `cowplot`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("readr", quietly = TRUE)) {
+  install.packages("readr")
+}
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+  install.packages("tidyverse")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("hrbrthemes", quietly = TRUE)) {
+  remotes::install_github("hrbrmstr/hrbrthemes")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("tidyr", quietly = TRUE)) {
+  install.packages("tidyr")
+}
+if (!requireNamespace("viridis", quietly = TRUE)) {
+  install.packages("viridis")
+}
+if (!requireNamespace("tibble", quietly = TRUE)) {
+  install.packages("tibble")
+}
+if (!requireNamespace("htmlwidgets", quietly = TRUE)) {
+  install.packages("htmlwidgets")
+}
+if (!requireNamespace("RColorBrewer", quietly = TRUE)) {
+  install.packages("RColorBrewer")
+}
+if (!requireNamespace("plotly", quietly = TRUE)) {
+  install.packages("plotly")
+}
+if (!requireNamespace("d3heatmap", quietly = TRUE)) {
+  remotes::install_github("talgalili/d3heatmap")
+}
+if (!requireNamespace("heatmaply", quietly = TRUE)) {
+  install.packages("heatmaply")
+}
+if (!requireNamespace("lattice", quietly = TRUE)) {
+  install.packages("lattice")
+}
+if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
+  BiocManager::install("ComplexHeatmap")
+}
+if (!requireNamespace("pheatmap", quietly = TRUE)) {
+  install.packages("pheatmap")
+}
+if (!requireNamespace("circlize", quietly = TRUE)) {
+  install.packages("circlize")
+}
+if (!requireNamespace("gridExtra", quietly = TRUE)) {
+  install.packages("gridExtra")
+}
+if (!requireNamespace("cowplot", quietly = TRUE)) {
+  install.packages("cowplot")
+}
+
+# 加载包
+library(readr)
+library(hrbrthemes)     # ggplot2 的附加主题
+library(dplyr)          # 数据操作函数
+library(tidyr)          # 数据整理函数
+library(viridis)        # 调色板可实现更好的可视化
+library(tibble)         # 整洁的数据框
+library(htmlwidgets)    # 交互式网页可视化
+library(RColorBrewer)   # 可视化的调色板
+library(plotly)         # 交互式绘图
+library(d3heatmap)      # D3.js-based 交互式热图
+library(heatmaply)      # 使用 ggplot2 制作交互式热图
+library(lattice)        # 多元数据的网格图形
+library(ComplexHeatmap) # 高级热图功能
+library(pheatmap)       # 漂亮的热图，支持聚类
+library(circlize)       # 圆形可视化
+library(gridExtra)      # 网格布局可视化
+library(cowplot)
+library(tidyverse)
+library(ggplot2)        # 数据可视化包
+```
+
+## 数据准备
+
+本节提供使用 R 内置数据集（`mtcars`、`volcano`）以及来自 [UCSC Xena DATASETS](https://xenabrowser.net/datapages/?hub=https://gdcv18.xenahubs.net:443) 的 `TCGA-CHOL.methylation450.tsv` 数据集的简短教程。这些数据集将用于演示 R 中的热图可视化。本示例演示了如何在 R 中加载和使用这些数据集。
+
+```{r load data, message=FALSE}
+# 加载内置 R 数据集“mtcars”
+data("mtcars", package = "datasets")
+mtcars_matrix <- as.matrix(mtcars)
+
+# 加载和处理甲基化数据
+raw_methylation_data <- readr::read_tsv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/TCGA-CHOL.methylation450.tsv")
+
+# 转换为矩阵并清理行/列名称
+methylation_matrix <- raw_methylation_data[, -1] %>%
+  as.data.frame() %>%
+  `rownames<-`(raw_methylation_data$Composite)
+
+# 整理为长格式
+methylation_long <- methylation_matrix %>%
+  rownames_to_column("Composite") %>%
+  pivot_longer(cols = -Composite, names_to = "Sample", values_to = "Methylation_Level") %>%
+  mutate(
+    Methylation_Level = as.numeric(Methylation_Level),
+    Composite = gsub("^cg0+", "cg", Composite),
+    Sample = substr(Sample, 9, 12)
+  )
+
+# 标准化甲基化值
+methylation_long_standardized <- methylation_long %>%
+  group_by(Composite) %>%
+  mutate(Standardized_Level = scale(Methylation_Level)[,1]) %>%
+  ungroup()
+
+# 转换回宽格式矩阵
+standardized_methylation_matrix <- methylation_long_standardized %>%
+  select(Composite, Sample, Standardized_Level) %>%
+  pivot_wider(names_from = Sample, values_from = Standardized_Level) %>%
+  column_to_rownames("Composite") %>%
+  as.matrix()
+
+
+# 清理原始甲基化矩阵（原始热图的数值版本）
+methylation_matrix_num <- methylation_matrix %>%
+  mutate(across(everything(), ~ as.numeric(as.character(.)))) %>%
+  `rownames<-`(gsub("^cg0+", "cg", rownames(.))) %>%
+  { `colnames<-`(., substr(colnames(.), 9, 12)) } %>%
+  as.matrix()
+```
+
+## 可视化
+
+### 1. 基础 R 热图
+
+#### 1.1 基础热图
+
+使用`heatmap()`函数构建热图。下图是可以在基本 R 中构建的最基本的热图，没有使用参数。`heatmap()`以矩阵作为输入类型。如果数据是数据框类型，可以使用`as.matrix()`将其转换为矩阵。矩阵可以通过`t()`函数进行转置（transpose）。矩阵的转置操作会将原矩阵的行和列进行交换，交换 X 轴和 Y 轴。
+
+```{r fig1BasicHeat Basic R}
+#| label: fig-BasicHeatBasicR
+#| fig-cap: "基础 R 热图"
+#| out.width: "95%"
+#| warning: false
+
+heatmap(mtcars_matrix)
+```
+
+此热图通过颜色的变化展示了 `mtcars` 数据集中不同汽车的性能变量之间的数值差异。
+
+::: callout-tip
+如图所示，这个热图并没有提供太多见解：所有的变异都被 `hp` 和 `disp` 两个变量吸收了，因为它们的数值远高于其他变量。（当所有变量被映射到同一颜色尺度时，hp和disp的较大值会主导颜色分布，使得其他变量（如`mpg`、`wt`等）的细微变化难以在图中体现。）我们需要对数据进行标准化，如下一节所述。
+:::
+
+#### 1.2 标准化
+
+使用`heatmap()`函数的`scale`参数对矩阵进行标准化。它可以应用于行或列。这里选择列选项，因为我们需要吸收列之间的变化。
+
+```{r fig2Standardization Basic R}
+#| label: fig-StandardizationBasicR
+#| fig-cap: "标准化"
+#| out.width: "95%"
+#| warning: false
+
+heatmap(mtcars_matrix, scale="column")
+```
+
+此热图显示了`mtcars`数据中各性能变量的标准化值，使得不同性能变量在同一尺度上进行比较，从而提高图片的效果和准确性。
+
+#### 1.3 聚类图和重新排序
+
+在绘制的热图中，行和列的顺序与原始`mtcar`矩阵不同。这是因为`heatmap()`使用聚类算法对变量和观测值进行重新排序：它计算每对行和列之间的距离，并尝试按相似性对它们进行排序。
+
+此外，热图旁边还提供了聚类图。可以使用`Rowv`和`Colv`参数取消聚类图，如下所示。
+
+```{r fig3Clustering and Reordering Basic R}
+#| label: fig-ClusteringandReorderingBasicR
+#| fig-cap: "聚类图和重新排序"
+#| out.width: "95%"
+#| warning: false
+
+heatmap(mtcars_matrix, Colv = NA, Rowv = NA, scale="column")
+```
+
+此热图显示了`mtcars`数据中各性能变量的标准化值，取消树状图后行和列按照原顺序排列。
+
+#### 1.4 调色板
+
+热图可以使用不同调色板：
+
+-   使用 R 的原生调色板：`terrain.color()`，`rainbow()`，`heat.colors()`，`topo.colors()`，`cm.colors()`
+-   使用`RColorBrewer`建议的调色板
+-   自定义调色板
+
+```{r fig4Color Palettes Basic R}
+#| label: fig-ColorPalettesBasicR
+#| fig-cap: "调色板"
+#| out.width: "95%"
+#| warning: false
+
+# 原生调色板
+heatmap(mtcars_matrix, scale="column", col = cm.colors(256))
+heatmap(mtcars_matrix, scale="column", col = terrain.colors(256))
+
+# 使用Rcolorbrewer
+coul <- colorRampPalette(brewer.pal(8, "PiYG"))(25)
+heatmap(mtcars_matrix, scale="column", col = coul)
+
+# 自定义调色板
+my_palette <- colorRampPalette(c("blue", "white", "red"))(256)
+heatmap(mtcars_matrix, scale = "column", col = my_palette)
+```
+
+这四个热图通过不同的调色板展示了相同数据：`mtcars`数据集中不同汽车的性能变量之间的数值差异，强调了调色板选择对视觉效果和数据解释的重要性。
+
+##### **RColorBrewer**
+
+使用`display.brewer.all()`函数展示`RColorBrewer`包中所有的颜色系列。
+
+```{r fig5Using RColorBrewer Basic R}
+#| label: fig-RColorBrewerBasicR
+#| fig-cap: "RColorBrewer Basic R"
+#| out.width: "95%"
+#| warning: false
+
+par(plt=c(0.1,1,0,1))
+display.brewer.all()
+```
+
+上图中，左侧是颜色系列的名称，右侧是对应的颜色。从图中可以看出，这些颜色系列共分为三类:
+- 第一类颜色是单种颜色由浅到深的梯度变化，记作seq(sequential)；该系列的颜色主要适用于连续型变量或有序分类变量；
+- 第二类颜色的彼此差异性较大，且不具备明显的等级关系，记作qual(qualitative)；该系列的颜色主要适用于无序的分类变量；
+- 第三类颜色是两种颜色分别朝两个方向由浅到深的梯度变化，记作div(diverging)；该系列的颜色主要适用于中间值具有特殊意义的连续变量或有序分类变量，如摄氏温度、Logistic模型的OR值等。
+
+#### 1.5 自定义布局
+
+热图可以使用常用的`main`和`xlab`/`ylab`参数自定义标题和轴标题（左图），也可以使用`labRow`/`colRow`更改标签并使用`cexRow`/`cexCol`更改其大小（右图）。
+
+```{r fig6Customizing Layout Basic R}
+#| label: fig-CustomizingLayoutBasicR
+#| fig-cap: "自定义布局"
+#| out.width: "95%"
+#| warning: false
+
+# 自定义标题和轴标题
+p5 <- heatmap(mtcars_matrix, Colv = NA, Rowv = NA, scale="column", col = coul, xlab="variable", main="heatmap")
+
+# 自定义标签
+p6 <- par(mar = c(5, 0, 4, 2))  # 调整边距
+heatmap(mtcars_matrix, scale="column", cexRow=.8, labRow=paste("new_", rownames(mtcars_matrix),sep=""), col= colorRampPalette(brewer.pal(8, "Blues"))(25))
+```
+
+这两个热图通过自定义标题、轴标题和行标签，展示了 `mtcars` 数据集中不同汽车性能变量之间的标准化数值差异，强调了数据特征的可视化效果和信息传达的清晰度。
+
+#### 1.6 带有颜色标记的热图
+
+通常，热图旨在将观察到的结构与预期的结构进行比较。可以使用`RowSideColors`参数在热图旁边添加一个颜色向量，以表示预期的结构。
+
+```{r fig7 w/Color Annotations Basic R}
+#| label: fig-ColorAnnotationsBasicR
+#| fig-cap: "带有颜色标记的热图"
+#| out.width: "95%"
+#| warning: false
+
+my_group <- as.numeric(as.factor(substr(rownames(mtcars_matrix), 1 , 1))) # 将行标签按首字母分组并转换为数字
+colSide <- brewer.pal(9, "Set1")[my_group] # 使用RColorBrewer包中的Set1方案生成9种颜色，为每个分组分配颜色标识
+colMain <- colorRampPalette(brewer.pal(8, "Blues"))(25)
+heatmap(mtcars_matrix, Colv = NA, Rowv = NA, scale="column" , RowSideColors=colSide, col=colMain)
+```
+
+此热图按首字母分组并为每个组分配不同颜色，帮助观察者快速识别不同组别或类别之间的差异，进而更直观地理解数据的模式和趋势。
+
+### 2. ggplot2 热图
+
+`ggplot2`使用`geom_tile()`函数来构建热图。但是只有`heatmap()`函数能提供标准化、聚类和树状图的选项。
+
+#### 2.1 基础热图
+
+使用`ggplot2`和`geom_tile()`函数构建的最基本的热图。因为`geom_tile()`函数不能直接进行标准化，需要提前进行标准化。
+
+输入数据必须是长格式数据框，其中每行提供一个观察值。每个观察值至少需要 3 个变量：
+
+-   `x`: X 轴上的位置
+-   `y`: Y 轴上的位置
+-   `fill`: 将以颜色转换的数值
+
+```{r fig8BasicHeatggplot2}
+#| label: fig-BasicHeatggplot2
+#| fig-cap: "基础热图"
+#| out.width: "95%"
+#| warning: false
+
+p <- ggplot(methylation_long_standardized, aes(x = Sample, y = Composite, fill= Standardized_Level)) + 
+  geom_tile()
+
+p 
+```
+
+此热图使用 ggplot2 展示了在 TCGA-CHOL 数据集中不同样本（Sample）和复合体（Composite）之间标准化甲基化水平（Standardized_Level）的分布，反映了不同样本在甲基化状态上的差异。
+
+#### 2.2 调色板
+
+热图可以像任何`ggplot2`图表一样更改调色板。以下是使用不同方法的 3 个示例：
+
+-   `scale_fill_gradient()`: 提供调色板的极端颜色。
+-   `scale_fill_distiller())`: 提供`ColorBrewer`调色板。
+-   `scale_fill_viridis()` 使用 `Viridis`。不要忘记 `discrete=FALSE` 连续变量。（颜色的渐变具有连续性）。
+
+```{r fig9ColorPalettesggplot2}
+#| label: fig-ColorPalettesggplot2
+#| fig-cap: "调色板"
+#| out.width: "95%"
+#| warning: false
+#| fig-width: 25
+#| fig-height: 6
+
+# Extreme colors
+p7 <- ggplot(methylation_long_standardized, aes(x = Sample, y = Composite, fill= Standardized_Level)) + 
+  geom_tile()+
+  scale_fill_gradient(low="white", high="blue") +
+  theme_ipsum() +
+  theme(axis.text.x = element_text(size = 10))
+
+# ColorBrewer color palette
+p8 <- ggplot(methylation_long_standardized, aes(x = Sample, y = Composite, fill= Standardized_Level)) + 
+  geom_tile() +
+  scale_fill_distiller(palette = "RdPu") +
+  theme_ipsum() +
+  theme(axis.text.x = element_text(size = 10)) 
+
+# Using Viridis
+p9 <- ggplot(methylation_long_standardized, aes(x = Sample, y = Composite, fill= Standardized_Level)) + 
+  geom_tile()+
+  scale_fill_viridis(discrete=FALSE) +
+  theme_ipsum() + 
+  theme(axis.text.x = element_text(size = 10))
+
+plot_grid(p7, p8, p9, ncol = 3)
+```
+
+这三个热图通过不同的调色板展示了相同数据：TCGA-CHOL 数据集中不同样本（Sample）和复合体（Composite）之间标准化甲基化水平（Standardized_Level）的分布，强调了调色板选择对视觉效果和数据解释的重要性。
+
+#### 2.3 宽格式输入
+
+输入为一个宽矩阵是一个常见的问题，使用`volcano`数据集时就是这样。在这种情况下，可以使用`tidyr包`的`gather()`函数对其进行整理变成长格式，然后用`ggplot`进行可视化 。
+
+```{r fig10Wide-Formatggplot2}  
+#| label: fig-Wide-Formatggplot2
+#| fig-cap: "宽格式输入"
+#| out.width: "95%"
+#| warning: false
+
+volcano %>%
+  as_tibble() %>%
+  rowid_to_column(var="X") %>%
+  gather(key="Y", value="Z", -1) %>%
+  
+  mutate(Y=as.numeric(gsub("V","",Y))) %>%
+
+  ggplot(aes(X, Y, fill= Z)) + 
+    geom_tile() +
+    theme_ipsum() +
+    theme(legend.position="none")
+```
+
+此热图展示了火山数据集中不同点的高程值（Z），其中横轴代表行索引（X），纵轴代表列索引（Y），通过颜色填充表示高程的变化。
+
+#### 2.4 交互式热图
+
+`ggplot2`创造热图的一大优点是借助`plotly`包，图表可以在几秒钟内变为交互式。只需要将图表包装在一个对象中，然后在`ggplotly()`函数中调用它即可。
+
+你也可以自定义工具提示中的文本，提供更丰富的信息。尝试将鼠标悬停在单元格上以查看工具提示，选择要放大的区域。
+
+```{r fig11InterHeatggplot2}  
+#| label: fig-InterHeatggplot2
+#| fig-cap: "交互式热图"
+#| out.width: "95%"
+#| warning: false
+
+# 创建工具提示文本
+methylation_long_annotated <- methylation_long_standardized %>%
+  mutate(text = paste0("Composite: ",Composite, "\n", "Sample: ", Sample, "\n", "Standardized_Level: ", Standardized_Level))
+
+p <- ggplot(methylation_long_annotated, aes(Composite, Sample, fill = Standardized_Level, text = text)) + 
+  geom_tile() +
+  theme_ipsum()
+
+pp <- ggplotly(p, tooltip="text", width = 1200, height = 700)
+
+pp
+```
+
+ 此交互式热图是使用`plotly`包构建，允许用户动态探索和深入分析数据，提供更直观的理解和信息获取。
+
+也可以使用`d3heatmap`包和`heatmaply`包创造交互性热图
+
+##### **使用 `d3heatmap` 包**
+
+```{r fig12d3heatmap ggplot2}
+#| label: fig-d3heatmapggplot2
+#| fig-cap: "使用 `d3heatmap` 包"
+#| out.width: "95%"
+#| warning: false
+
+d3heatmap(standardized_methylation_matrix, scale = "row", dendrogram = "none")
+```
+
+使用 `d3heatmap` 包构建交互式热图，允许用户动态探索和深入分析数据，提供更直观的理解和信息获取。
+
+##### **使用 `heatmaply` 包**
+
+```{r fig13heatmaply ggplot2}
+#| label: fig-heatmaplyggplot2
+#| fig-cap: "使用 `heatmaply` 包"
+#| out.width: "95%"
+#| warning: false
+
+p <- heatmaply(standardized_methylation_matrix,
+               dendrogram = "none",
+               xlab = "", ylab = "",
+               main = "",
+               scale = "row",
+               margins = c(50,0,30,30),
+               grid_color = "white",
+               grid_width = 0.00001,
+               titleX = FALSE,
+               hide_colorbar = TRUE,
+               branches_lwd = 0.1,
+               fontsize_row = 5, fontsize_col = 5,
+               labCol = colnames(standardized_methylation_matrix),
+               labRow = rownames(standardized_methylation_matrix),
+               heatmap_layers = theme(axis.line = element_blank())
+)
+
+p
+```
+
+使用`heatmaply`包构建交互式热图，允许用户动态探索和深入分析数据，提供更直观的理解和信息获取。
+
+### 3. lattice 热图
+
+用 `lattice` 包的 `levelplot()` 函数构建热图
+
+#### 3.1 `levelplot()` 的基本用法
+
+```{r fig14Basic Heatmap lattice}
+#| label: fig-BasicHeatlattice
+#| fig-cap: "lattice 基础热图"
+#| out.width: "95%"
+#| warning: false
+
+# 将 Sample 和 Composite 列由字符转换为因子
+methylation_long_standardized$Sample <- as.factor(methylation_long_standardized$Sample)
+methylation_long_standardized$Composite <- as.factor(methylation_long_standardized$Composite) 
+
+levelplot(Standardized_Level ~ Sample * Composite, data = methylation_long_standardized,
+          xlab = "Sample", ylab = "Composite",
+          main = "Heatmap of Standardized TCGA-CHOL Methylation Levels")
+```
+
+此热图使用lattice展示了在 TCGA-CHOL 数据集中不同样本（Sample）和复合体（Composite）之间标准化甲基化水平（Standardized_Level）的分布，反映了不同样本在甲基化状态上的差异。
+
+#### 3.2 来自宽输入矩阵
+
+本文档的上一个示例基于长格式的数据框。这里改用方阵。这是该`levelplot()`函数理解的第二种格式。
+
+::: callout-tip
+此处热图中行和列会调转。
+:::
+
+```{r fig15Wide-Format Matrix Input lattice}
+#| label: fig-Wide-FormatMatrixInputlattice
+#| fig-cap: "来自宽输入矩阵"
+#| out.width: "95%"
+#| warning: false
+
+levelplot(standardized_methylation_matrix)
+```
+
+此热图使用`levelplot()`函数宽格式输入，展示了在 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异。
+
+#### 3.3 翻转轴
+
+R 的函数`t()`允许转置输入矩阵，从而翻转 X 和 Y 坐标。这样，来自宽输入矩阵levelplot()热图的组织方式与输入矩阵完全相同。
+
+levelplot()输入为宽矩阵时默认小格的纵横比是1:1，可以用`aspect = "fill"`根据矩阵的实际比例自动调整纵横比。
+
+```{r fig16Flipping Axes lattice}
+#| label: fig-FlippingAxeslattice
+#| fig-cap: "翻转轴"
+#| out.width: "95%"
+#| warning: false
+
+# 翻转 X 和 Y 坐标
+levelplot( t(standardized_methylation_matrix),
+           col.regions=heat.colors(220),
+           aspect = "fill") # 自动调整纵横比
+```
+
+此热图展示了在 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异。翻转 X 和 Y 坐标使得热图的组织方式与输入矩阵完全相同。
+
+#### 3.4 调色板
+
+调色板的方法有多种： 
+- R的原生调色板：`terrain.color()`，`rainbow()`，`heat.colors()`，`topo.colors()`，`cm.colors()` 
+- `RColorBrewer` 调色板 
+- `Viridis`调色板：viridis, magma, inferno, plasma
+
+```{r fig17Color Palettes lattice}
+#| label: fig-ColorPaletteslattice
+#| fig-cap: "调色板"
+#| out.width: "95%"
+#| warning: false
+
+# 使用R原生调色板
+p10 <- levelplot(volcano, col.regions = terrain.colors(100)) # try cm.colors() or terrain.colors()
+p10
+
+# 使用 Rcolorbrewer
+coul <- colorRampPalette(brewer.pal(8, "PiYG"))(25)
+p11 <- levelplot(volcano, col.regions = coul)
+p11
+
+# 使用 Viridis
+coul <- viridis(100)
+p12 <- levelplot(volcano, col.regions = coul) 
+p12
+```
+
+这三个热图通过不同的调色板展示了相同数据：`volcano`数据集中不同点的高程值，强调了调色板选择对视觉效果和数据解释的重要性。
+
+### 4. pheatmap 热图
+
+用 `pheatmap` 包构建热图，`pheatmap` 包同样可以用参数进行标准化
+
+#### 4.1 基础热图
+
+```{r fig18BasicHeatPheatmap}
+#| label: fig-BasicHeatPheatmap
+#| fig-cap: "基础热图"
+#| out.width: "95%"
+#| warning: false
+
+pheatmap(methylation_matrix_num, scale = "row")
+```
+
+此热图使用 `pheatmap` 包展示了在 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异。
+
+#### 4.2 调整聚类图
+
+-   `clustering_distance_rows` 和 `clustering_distance_cols` 表示行、列聚类使用的度量方法，默认为“euclidean”，也可为 "correlation"，即按照 Pearson correlation方法进行聚类。
+-   `clustering_method` 可以修改聚类方法，包括：‘ward’, ‘ward.D’, ‘ward.D2’, ‘single’, ‘complete’, ‘average’, ‘mcquitty’, ‘median’, ‘centroid’。
+
+```{r fig19AdjustingDendrograms}   
+#| label: fig-AdjustingDendrograms
+#| fig-cap: "调整聚类图"
+#| out.width: "95%"
+#| warning: false
+
+pheatmap(methylation_matrix_num, scale = "row", 
+         clustering_distance_rows = "euclidean", clustering_distance_cols = "euclidean", # 聚类使用的度量方法
+         clustering_method = "complete", # 聚类方法
+         cluster_rows = T, cluster_cols = F, # 是否显示聚类树
+         treeheight_row = 30, treeheight_col = 30) # 聚类树高度调整
+```
+
+此热图使用 `pheatmap` 包展示了在 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异，取消了不同样本之间的聚类，样本按照原顺序排列。
+
+#### 4.3 标签角度及未聚类条件下的隔断位置
+
+```{r fig20AngleAdjustment}
+#| label: fig-AngleAdjustment
+#| fig-cap: "标签角度及未聚类条件下的隔断位置"
+#| out.width: "95%"
+#| warning: false
+
+pheatmap(methylation_matrix_num, scale = "row", 
+         clustering_distance_rows = "euclidean", clustering_distance_cols = "euclidean", # 聚类使用的度量方法
+         clustering_method = "complete", # 聚类方法
+         cluster_rows = T, cluster_cols = F, # 是否显示聚类树
+         treeheight_row = 30, treeheight_col = 30, # 聚类树高度调整
+         angle_col = "45", # 改变列标签的角度
+         gaps_col = c(3,6))  # 仅在未进行列聚类时使用，假设样本在3，6的位置隔断，分为三组
+```
+
+此热图调整标签角度，可以避免标签重叠，提升可读性；在未聚类条件下调整隔断位置则能突出特定样本之间的差异，便于直观分析。
+
+#### 4.4 添加数值或标记
+
+```{r fig21AddingValuesorMarkers}
+#| label: fig-AddingValuesorMarkers
+#| fig-cap: "添加数值或标记"
+#| out.width: "95%"
+#| warning: false
+
+pheatmap(methylation_matrix_num, scale = "row",
+         border_color = "white", # 修改单元格边框颜色
+         display_numbers = TRUE, # 热图格子中显示相应的数值
+         fontsize_number = 9, 
+         number_color = "grey30",
+         number_format = "%.1f") # 保留一位小数
+```
+
+在热图上添加数值或标记可以提供更多上下文信息，帮助观察者快速识别每个样本或位点的具体甲基化水平，从而增强数据解读的直观性和准确性。
+
+##### **使用原数据判断标注**
+
+```{r fig22RawDataforAnnotation}
+#| label: fig-RawDataforAnnotation
+#| fig-cap: "使用原数据判断标注"
+#| out.width: "95%"
+#| warning: false
+
+pheatmap(methylation_matrix_num, scale = "row",
+         border_color = "white",
+         display_numbers = matrix(ifelse(methylation_matrix_num > .8 | methylation_matrix_num < -.8, "*", ""), nrow = nrow(methylation_matrix_num)),
+         fontsize_number = 9, 
+         number_color = "grey30")
+```
+
+此热图使用未标准化的数据进行标注，结果不具有可比性，可能会导致观察者对不同样本之间的差异产生误解。未标准化的值可能因样本间的绝对数值差异而掩盖了真实的相对变化，从而降低了数据解读的准确性。
+
+##### **使用经过标准化的数据**
+
+```{r fig23UsingNormalizedData}
+#| label: fig-UsingNormalizedData
+#| fig-cap: "使用经过标准化的数据"
+#| out.width: "95%"
+#| warning: false
+
+pheatmap(standardized_methylation_matrix, scale = "none", # 不需要再标准化
+         border_color = "white",
+         display_numbers = matrix(ifelse(standardized_methylation_matrix > 1 | standardized_methylation_matrix < -1, "*", ""), nrow = nrow(standardized_methylation_matrix)),
+         fontsize_number = 9, 
+         number_color = "grey30") 
+```
+
+在热图上标记可以直观地突出显示重要的数值或特征，使观察者更容易识别出显著的甲基化状态变化或异常值，从而为后续分析提供指导。这种方式增强了数据的可读性和解读性，帮助用户快速获取关键信息。
+
+#### 4.5 调色板
+
+`pheatmap` 包生成的热图同样可以用多种方式更改调色板：
+- R的原生调色板:`terrain.color()`，`rainbow()`，`heat.colors()`，`topo.colors()`，`cm.colors()` 
+- 自定义调色板 
+- `RColorBrewer` 调色板
+
+```{r fig24ColorPalettesPheatmap}
+#| label: fig-ColorPalettesPheatmap
+#| fig-cap: "调色板"
+#| out.width: "95%"
+#| warning: false
+
+# R 原生调色板
+p13 <- pheatmap(standardized_methylation_matrix, scale = "none",
+         border_color = "white",
+         color = colorRampPalette(c("navy","white","firebrick3"))(100))
+
+# 自定义调色板
+p14 <- pheatmap(standardized_methylation_matrix, scale = "none",
+         border_color = "white",
+         color = cm.colors(100))
+
+# 使用 Rcolorbrewer
+coul <- colorRampPalette(brewer.pal(8, "PiYG"))(25)
+p15 <- pheatmap(standardized_methylation_matrix, scale = "none",
+         border_color = "white",
+         color = coul)
+```
+
+这三个热图通过不同的调色板展示了 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异，强调了调色板选择对视觉效果和数据解释的重要性。
+
+### 5. complexheatmap 热图
+
+`ComplexHeatmap`包是基于`grid`包的，使用面向对象的方式实现热图及其组件，主要包含以下几个类：
+
+-   `Heatmap`：绘制单个热图（注意是大写）
+-   `HeatmapList`：绘制热图列表
+-   `HeatmapAnnotation`: 定义热图的行、列注释列表，可以是热图的一部分，也可以独立于热图
+
+以及一些内部类：
+
+-   `SingleAnnotation`：定义单个行、列注释，组成 `HeatmapAnnotation` 的列表元素
+-   `ColorMapping`: 定义值到颜色的映射
+-   `AnnotationFunction`: 用于自定义注释图形
+
+#### 5.1 基础热图
+
+```{r fig25Basic Heatmap complexheatmap}
+#| label: fig-BasicHeatcomplexheatmap
+#| fig-cap: "Complexheatmap 基础热图"
+#| out.width: "95%"
+#| warning: false
+
+Heatmap(standardized_methylation_matrix)
+```
+
+此热图使用 `ComplexHeatmap` 包展示了在 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异。
+
+#### 5.2 调色板
+
+通常，我们绘制的矩阵都是连续型数据，因此颜色映射函数需要接受一个向量输入，并返回一个向量输出。
+
+该包的作者推荐使用他写的另一个包 `circlize` 的函数 `colorRamp2()` 来设置颜色映射，`colorRamp2()`函数接受两个参数，第一个参数用来设置值映射范围断点，第二个参数用于设置对应的颜色值
+
+在以下示例中，线性插值-2和2之间的值以获得相应的颜色，大于2的值都映射为红色，小于-2的值都映射为绿色。
+
+```{r fig26Color Palettes complexheatmap}
+#| label: fig-ColorPalettescomplexheatmap
+#| fig-cap: "complexheatmap 调色板"
+#| out.width: "95%"
+#| warning: false
+
+col_fun <- colorRamp2(c(-2, 0, 2), c("green", "white", "red"))
+Heatmap(standardized_methylation_matrix, name = "Standardized_Level", col = col_fun)
+```
+
+此热图使用 `colorRamp2()` 设置颜色映射，展示在 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异。
+
+另外，使用 `colorRamp2()` 可以使得多个热图之间的颜色具有可比性，如下所示，在2个热图中，相同的颜色总是对应相同的数值：
+
+```{r fig27colorRamp2 complexheatmap}
+#| label: fig-colorRamp2complexheatmap
+#| fig-cap: "complexheatmap 使用 colorRamp2"
+#| out.width: "95%"
+#| warning: false
+
+p1 <- Heatmap(standardized_methylation_matrix, name = "Standardized_Level1", col = col_fun)
+p2 <- Heatmap(standardized_methylation_matrix/2, name = "Standardized_Level2", col = col_fun)
+p1 + p2 
+```
+
+此热图使用 `colorRamp2()` 在相同尺度进行颜色比较，展示在 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异。
+
+如果矩阵是连续的，也可以简单地提供颜色的向量，并且颜色将被线性插值。 但是此方法对异常值不友好，因为颜色映射是根据整个矩阵中的最小值和最大值来确定的，如果矩阵中有极端的异常值，会导致其他正常范围内的值的颜色变化不明显。
+
+```{r fig28Using Color Vector complexheatmap}
+#| label: fig-ColorVectorcomplexheatmap
+#| fig-cap: "complexheatmap 使用颜色向量"
+#| out.width: "95%"
+#| warning: false
+
+Heatmap(standardized_methylation_matrix, name = "Standardized_Level", col = rev(cm.colors(10)), column_title = "color vector for continuous matrix")
+```
+
+此热图展示了线性插值设置颜色映射，展示在 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异。
+
+还可以可视化NA，使用`na_col`参数指定NA的颜色：
+
+```{r fig29na_col Parameter complexheatmap}
+#| label: fig-nacolcomplexheatmap
+#| fig-cap: "complexheatmap 使用 `na_col` 参数"
+#| out.width: "95%"
+#| warning: false
+
+standardized_methylation_matrix_na <- standardized_methylation_matrix
+na_index <- sample(c(TRUE, FALSE), nrow(standardized_methylation_matrix)*ncol(standardized_methylation_matrix), replace = TRUE, prob = c(1, 9))
+standardized_methylation_matrix_na[na_index] <- NA
+Heatmap(standardized_methylation_matrix_na, name = "matrix with na", na_col = "grey", column_title = "matrix with na")
+```
+
+此热图使用 `na_col` 参数指定NA的颜色为灰色，展示在 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异。
+
+默认情况下，颜色的线性内插的方式是遵循 LAB 颜色空间的变化，还有其他的颜色空间可供选择，如：RGB，XYZ，sRGB
+
+```{r fig30Different Linear Interpolation complexheatmap}
+#| label: fig-DifferentLinearInterpolationcomplexheatmap
+#| fig-cap: "complexheatmap 不同的线性插值"
+#| out.width: "95%"
+#| warning: false
+
+f1 <- colorRamp2(seq(min(standardized_methylation_matrix), max(standardized_methylation_matrix), length = 3), c("blue", "#EEEEEE", "red"))
+f2 <- colorRamp2(seq(min(standardized_methylation_matrix), max(standardized_methylation_matrix), length = 3), c("blue", "#EEEEEE", "red"), space = "RGB")
+
+p1 <- Heatmap(standardized_methylation_matrix, name = "Standardized_Level1", col = f1, column_title = "color space in LAB")
+p2 <- Heatmap(standardized_methylation_matrix, name = "Standardized_Level2", col = f2, column_title = "color space in RGB")
+p1 + p2
+```
+
+此热图展示不同颜色空间中 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异。
+
+#### 5.3 边框和网格线
+
+热图的最外层边框使用 border 参数设置，网格线使用 `rect_gp` 参数来设置
+
+`border` 参数可以是逻辑值或颜色值，而 `rect_gp` 参数需要接受一个 `grid::gpar` 对象
+
+```{r fig31Borders and Gridlines complexheatmap}
+#| label: fig-BordersandGridlinescomplexheatmap
+#| fig-cap: "边框和网格线"
+#| out.width: "95%"
+#| warning: false
+
+Heatmap(standardized_methylation_matrix, name = "Standardized_Level", border = "black", col = col_fun, rect_gp = gpar(col = "white", lwd = 2) )
+```
+
+此热图修改了边框和网格线，展示在 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异。
+
+#### 5.4 聚类
+
+更改 `cluster_rows` 和 `cluster_columns` 参数修改聚类图
+
+```{r fig32Clustering complexheatmap}
+#| label: fig-Clusteringcomplexheatmap
+#| fig-cap: "complexheatmap 聚类"
+#| out.width: "95%"
+#| warning: false
+
+p1 <- Heatmap(standardized_methylation_matrix, cluster_rows = F, cluster_columns = F)
+p1
+```
+
+此热图取消了聚类，展示在 TCGA-CHOL 数据集中不同样本在甲基化状态上的差异。
+
+#### 5.5 注释条和多个热图
+
+注释条是热图的重要组成部分，`ComplexHeatmap`包提供灵活的注释条设置。注释条可以放在热图的上下左右四个位置，通过`top_annotation`、`bottom_annotation`、`left_annotation`、`right_annotation`设置，所有的注释条都是通过`HeatmapAnnotation()`函数完成的（还有一个`rowAnnotation()`，但是可以通过设置`HeatmapAnnotation(..., which = "row")`实现，可以看做是变体）。
+
+```{r fig33Multiple Heatmaps complexheatmap}
+#| label: fig-MultipleHeatmapscomplexheatmap
+#| fig-cap: "complexheatmap 多个热图"
+#| out.width: "95%"
+#| warning: false
+
+p1 <- rowAnnotation(
+  "Average Methylation" = anno_barplot(
+    rowMeans(standardized_methylation_matrix), 
+    gp = gpar(fill = "blue"), 
+    width = unit(4, "cm"),
+    axis_param = list(at = pretty(rowMeans(standardized_methylation_matrix)), 
+                      labels = format(pretty(rowMeans(standardized_methylation_matrix)), nsmall = 1, digits = 1))
+  )
+)
+
+p2 <- Heatmap(standardized_methylation_matrix, 
+               name = "Standardized Methylation Levels", 
+               col = f2, 
+               row_km = 2,
+               column_names_gp = gpar(fontsize = 8))  # Based on row clustering
+
+p1 + p2
+```
+
+此条形图为热图的注释条，显示每个位点的平均甲基化值。
+
+`ComplexHeatmap`包的一大特色就是可以同时绘制多个热图，下图为水平排列的热图，垂直排列的热图原理与此类似。水平排列的热图要求具有相同的行。
+
+热图和条形图组合，显示了TCGA-CHOL 数据集中不同样本在甲基化状态上的差异和每个位点的平均甲基化值。
+
+## 应用场景
+
+### 1. 基础热图
+
+::: {#fig-HeatApplications1}
+![Yang, M., Liu, B. et al.(2013)](../images/Heatmap_app1.jpg){fig-alt="HeatApp1" fig-align="center" width="70%"}
+
+基础热图应用
+:::
+
+52 名健康人的 TEC 匹配热图。（a）原始热图 （b）二进制热图。 \[1\]
+
+### 2. 带有颜色标记的热图
+
+::: {#fig-HeatApplications2}
+![Key, M. (2012)](../images/Heatmap_app2.jpg){fig-alt="HeatApp2" fig-align="center" width="40%"}
+
+带有颜色标记的热图应用
+:::
+
+对标签进行分组。可以使用所有热图函数标记行和列，但实现方式各不相同。heatmap （a） 和 heatmap.2 （b） 函数仅限于显示单个颜色条。heatmap.plus （c） 函数可以显示彩条矩阵。heatmap_plus （d） 函数可以显示二进制变量的数据帧。虽然 heatmap.2 和 heatmap.plus 可以生成矩形图像，但 heatmap 和 heatmap_plus 都会生成方形图像作为输出。 \[2\]
+
+### 3. 比较热图
+
+::: {#fig-HeatApplications3}
+![Hoggard, T. et al.(2016)](../images/Heatmap_app3.jpg){fig-alt="HeatApp3" fig-align="center" width="40%"}
+
+比较热图应用
+:::
+
+比较 miniARS 实验以消除与 miniARS 染色体片段相关的分区和复制功能的歧义。（A） 将在 Cen-（含着丝粒）miniARS 或 Acen-（无着丝粒）miniARS 实验中耗尽的 MiniARS317 片段与在这些实验中富集的片段进行比较。（B） 共享 miniARS 数据集中位于给定竞争适应性十分位数的片段（即 Acen-miniARS 库和 Cen-miniARS 库中同时存在的片段）在此热图中表示。该热图图分为 100 个部分，每个部分代表 Acen-miniARS 和 Cen-miniARS 实验中竞争性适应度十分位数的不同组合，如图所示。左下角包含在 Acen- 和 Cen-miniARS 比赛中竞争适应性较低的片段，因此被确定为相对于种群中的其他片段具有较弱的复制和分区能力（分区“-”;复制 “−”）。在热图图的这一部分，有 288 个片段代表 62 个原点。右下角包含在 Acen-miniARS 库中具有高竞争适应性但在 Cen-miniARS 库中具有低竞争适应性的片段，因此被确定具有相对较强的分区能力但较弱的复制能力（分区“+”;复制 “−”）。在热图图的这一部分，有 103 个片段代表 32 个来源。左上角包含的片段在 Acen-miniARS 库中表现为低竞争适应性，但在 Cen-miniARS 库中表现为高竞争适应性，因此被确定具有相对较弱的分区能力但具有较强的复制能力（分区“−”;复制 “+”） 。在热图图的这一部分，有 105 个片段代表 33 个起点。（C） 对 B 中片段的组合分析，旨在定义对最大化分区能力至关重要的区域 [第一对（从上到上）和第四对热图] 与对最大化复制能力更关键的区域（第二对和第三对热图）。（D） 与 B 中的热图图相同，但它们仅包含来自指示 ARS 的 miniARS 片段。有关更多详细信息，请参阅正文。ARS，自主复制序列;FKH，叉头;ORC， 原点识别复合物;RAP1，Rap1 蛋白结合位点。 \[3\]
+
+## 参考文献
+
+1.  Yang, M., Liu, B., Zhao, M., Li, F., Wang, G., & Zhou, F. (2013). Normalizing electrocardiograms of both healthy persons and cardiovascular disease patients for biometric authentication. *PLoS One, 8*(8), e71523. <https://doi.org/10.1371/journal.pone.0071523>\
+2.  Key, M. (2012). A tutorial in displaying mass spectrometry-based proteomic data using heat maps. *BMC Bioinformatics, 13*(Suppl 16), S10. <https://doi.org/10.1186/1471-2105-13-S16-S10>\
+3.  Hoggard, T., Liachko, I., Burt, C., Meikle, T., Jiang, K., Craciun, G., Dunham, M. J., & Fox, C. A. (2016). High throughput analyses of budding yeast ARSs reveal new DNA elements capable of conferring centromere-independent plasmid propagation. *G3 (Bethesda), 6*(4), 993--1012. <https://doi.org/10.1534/g3.116.027904>\
+4.  Wickham, H. (2016). *ggplot2: Elegant graphics for data analysis*. Springer. <https://r-graph-gallery.com/ggplot2-package.html>\
+5.  Rudis, B. (2020). *hrbrthemes: Additional themes and theme components for 'ggplot2'*. <https://cran.r-project.org/package=hrbrthemes>\
+6.  Wickham, H., François, R., Henry, L., & Müller, K. (2021). *dplyr: A grammar of data manipulation*. <https://cran.r-project.org/package=dplyr>\
+7.  Wickham, H., & Henry, L. (2021). *tidyr: Tidy messy data*. <https://cran.r-project.org/package=tidyr>\
+8.  Garnier, S. (2018). *viridis: Default color maps from 'matplotlib'*. <https://cran.r-project.org/package=viridis>\
+9.  Henry, L. (2022). *tibble: Simple data frames*. <https://cran.r-project.org/package=tibble>\
+10. Urbanek, S. (2021). *htmlwidgets: HTML widgets for R*. <https://cran.r-project.org/package=htmlwidgets>\
+11. Neuwirth, E. (2014). *RColorBrewer: ColorBrewer palettes*. <https://cran.r-project.org/package=RColorBrewer>\
+12. Winston, L., & Hsu, T. (2021). *plotly: Create interactive web graphics via 'plotly.js'*. <https://cran.r-project.org/package=plotly>\
+13. *D3heatmap: Interactive heatmaps using 'd3.js'*. <https://cran.r-project.org/package=d3heatmap>\
+14. Gang, C. (2020). *heatmaply: Interactive heat maps for R*. <https://cran.r-project.org/package=heatmaply>\
+15. Becker, R. A., Wilks, A. R., & Brownrigg, R. (2021). *lattice: The lattice package for R*. <https://cran.r-project.org/package=lattice>\
+16. Auguie, B. (2017). gridExtra: Miscellaneous Functions for "Grid" Graphics. <https://cran.r-project.org/package=gridExtra>
