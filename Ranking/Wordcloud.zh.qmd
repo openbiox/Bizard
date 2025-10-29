@@ -1,0 +1,338 @@
+---
+title: "词云图"
+author:
+  - "**[编辑]** [王春阳](https://github.com/Wangcy-rachel);"
+  - "**[贡献]** [王诗翔](https://github.com/ShixiangWang), 
+  [罗鹏](https://github.com/DrRobinLuo), 
+  [杨泓](https://github.com/MartinaHYang), 
+  [李柯馨](https://github.com/Likexin0127), 
+  [石盈](https://github.com/), 
+  [郑虎](https://github.com/ZhengTiger)."
+---
+
+词云是文本词语的可视化表示，可以清楚得看到大量文本数据中的关键词（高频词）。
+
+## 示例
+
+![](../images/Wordcloud_demo.png){fig-alt="Wordcloud DEMO" fig-align="center" width="60%"}
+
+图中是一个关于英语文本的词云，其中的单词词频越高，单词就越大。我们能从词云中很清楚得辨别出词频较高的单词，它同时也是这段文本的关键词。将大段文本以词云的形式显示，我们可以用较少的时间了解这段文本的主要内容。
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`wordcloud2`, `jiebaRD`, `jiebaR`, `dplyr`, `tidyverse`, `htmlwidgets`, `webshot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("wordcloud2", quietly = TRUE)) {
+  install.packages("wordcloud2")
+}
+if (!requireNamespace("jiebaRD", quietly = TRUE)) {
+  install.packages("https://cran.r-project.org/src/contrib/Archive/jiebaRD/jiebaRD_0.1.tar.gz")
+}
+if (!requireNamespace("jiebaR", quietly = TRUE)) {
+  install.packages("https://cran.r-project.org/src/contrib/Archive/jiebaR/jiebaR_0.11.1.tar.gz")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+  install.packages("dtidyverse")
+}
+if (!requireNamespace("htmlwidgets", quietly = TRUE)) {
+  install.packages("htmlwidgets")
+}
+if (!requireNamespace("webshot2", quietly = TRUE)) {
+  install.packages("webshot2")
+}
+
+# 载入包
+library(wordcloud2)
+library(jiebaR)    # 将中文文本分解成词语
+library(dplyr)
+library(tidyverse)
+library(htmlwidgets)
+library(webshot2)
+```
+
+## 数据准备
+
+中文文本使用CNKI上检索的有关肺癌的免疫治疗的25个中文摘要文本；英文文本使用R自带的`demoFreq`数据集以及`PubMed`上检索的有关肺癌的免疫治疗的24个英文摘要文本。
+
+```{r load data}
+# 1.中文摘要文本
+words <- read.csv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/words.txt",header = FALSE,sep="\n")
+words <- as.character(words)
+
+head_words <- substr(words, start = 1, stop = 20)
+
+head_words
+
+# 2.demoFreq数据集
+data <- demoFreq
+
+head(data)
+
+# 3.英文摘要文本
+words_english <- read.csv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/words_english.txt",header = FALSE,sep="\n")
+
+words_english <- as.character(words_english)
+
+head_words_english <- substr(words_english, start = 1, stop = 20)
+
+head_words_english
+```
+
+**文本转换成短语/单词**
+
+::: callout-tip
+**注: ** 可以直接用示例数据demoFreq，这样不用了解文本的预处理过程。下面主要使用中文文本绘图。
+:::
+
+中文文本
+
+```{r}
+# 使用jiebaR包将文本拆成短语
+words_seg <- words %>%
+  segment(worker()) %>%                    # 将文本拆分成词语
+  tibble(word = .) %>%  
+  filter(nchar(word) > 1) %>%              # 去除单字的词语
+  count(word, sort = TRUE) %>%             # 统计词频
+  filter(!str_detect(word, "[0-9]+")) %>%  # 去除数字
+  slice_max(n, n = 50)                     # 选择频率高的词语
+
+head(words_seg)
+```
+
+英文文本
+
+```{r}
+# 直接拆分，拆分成单个单词
+words_english %>%
+ str_replace_all(",", " ") %>%         # 将标点符号替换成空格
+ str_replace_all("\\.", " ") %>%
+ str_replace_all("\\(", " ") %>%
+ str_replace_all("\\)", " ") %>%
+ str_split(" ", simplify = TRUE) %>%  # 将文本拆分为单词
+ .[nchar(.) > 1] %>%                  # 去除长度为1或0的单词
+ tibble(word = .) %>%
+ filter(!grepl("[0-9]+", word)) %>%   # 去除数字
+ table() %>%
+ as.data.frame() %>%
+ arrange(desc(Freq)) %>%
+ slice(1:60) -> words_english_sep     # 选取词频前60的单词
+
+# 根据词列表，去除无意义的词
+words_english_sep1 <- words_english_sep[c(-1, -2, -3, -4, -5, -6, -7, -14, -20, -22, -23, -24, -26, -27, -29, -30, -31, -33, -34, -35, -36, -44, -46, -53, -55),]
+
+head(words_english_sep1)
+```
+
+图中是拆分成单词后，统计的词频较高的单词及词频。
+
+## 可视化
+
+### 1. 基本绘图
+
+```{r fig1BasicPlot}
+#| label: fig-BasicPlot
+#| fig-cap: "基本绘图"
+#| out.width: "95%"
+#| warning: false
+
+# 基本绘图
+BasicPlot <- wordcloud2(data = words_seg, size = 1)
+BasicPlot
+```
+
+这个图是一个基础的词云图，`wordcloud2`函数加上词频数据就可以绘制。
+
+### 2. 设置颜色
+
+**color 参数**
+
+```{r fig2Color}
+#| label: fig-Color
+#| fig-cap: "color 参数"
+#| out.width: "95%"
+#| warning: false
+
+# （1）设置文字颜色
+Setcolors <- wordcloud2(data = words_seg, size = 1, color = "random-dark")
+Setcolors
+```
+
+这个图通过对`color`参数的设置，其中的词语颜色是随机的暗色调。
+
+::: callout-tip
+**关键参数: `color`**
+
+文本的颜色，可选项有"random-dark","random-light",也可以使用向量自定义颜色。
+:::
+
+**自定义颜色**
+
+```{r fig3CustomizeColors}
+#| label: fig-CustomizeColors
+#| fig-cap: "自定义颜色"
+#| out.width: "95%"
+#| warning: false
+
+# （2）vector自定义颜色
+CustomizeColors <- wordcloud2(
+  data = words_seg, size = 1, 
+  color = rep_len(c("green", "blue"),nrow(words_seg)))
+CustomizeColors
+```
+
+这个图中使用了`rep_len()`函数重复两种颜色形成向量，用于词语颜色的定义。
+
+**背景颜色**
+
+```{r fig4BackgroundColor}
+#| label: fig-BackgroundColor
+#| fig-cap: "背景颜色"
+#| out.width: "95%"
+#| warning: false
+
+# （3）设置背景颜色
+BackgroundColor <- wordcloud2(data = words_seg, size = 1, color = "random-light",
+                              backgroundColor = "black")
+BackgroundColor
+```
+
+这个图通过代码中的`backgroundColor="black"`将词云的颜色设置成背景色。
+
+### 3. 设置形状
+
+```{r fig5SetShape}
+#| label: fig-SetShape
+#| fig-cap: "设置形状"
+#| out.width: "95%"
+#| warning: false
+
+# 设置为星形
+SetShape <- wordcloud2(data = words_seg, size = 0.5, shape = "star")
+SetShape
+```
+
+这个图通过代码中的`shape = 'star'`将词云的形状设置成星形，除星形外还有很多形状可以使用，使词云的绘制更加个性化。
+
+::: callout-tip
+**关键参数: `shape`**
+
+词云的形状，可选项有 'circle' (默认选项，原形), 'cardioid' (心形), 'diamond' (菱形), 'triangle-forward'(三角形-向前), 'triangle'(三角形), 'pentagon'(五边形), 'star'(星形)。
+:::
+
+### 4. 词云旋转
+
+**固定旋转**
+
+```{r fig6SpecificRotation}
+#| label: fig-SpecificRotation
+#| fig-cap: "固定旋转"
+#| out.width: "95%"
+#| warning: false
+
+# （1）设置一定的旋转角度(最大最小转角设置一致，旋转比例为1)
+SpecificRotation <- wordcloud2(data = words_seg, size = 1, minRotation = -pi / 6,
+                               maxRotation = -pi / 6, rotateRatio = 1)
+SpecificRotation
+```
+
+这个图所用词语的方向顺时针旋转了30度，需要将最大最小转角设置一致，旋转比例设为1。
+
+::: callout-tip
+**关键参数: `minRotation`/`maxRotation`/`rotateRatio`**
+
+- `minRotation`: 最小的旋转角度。
+- `maxRotation`: 最大的旋转角度。
+- `rotateRatio`: 词语旋转的比例，`rotateRatio = 1`时全部旋转。
+:::
+
+**随机旋转**
+
+```{r fig7RandomRotation}
+#| label: fig-RandomRotation
+#| fig-cap: "随机旋转"
+#| out.width: "95%"
+#| warning: false
+
+# （2）随机旋转
+RandomRotation <- wordcloud2(data = words_seg, size = 1, minRotation = -pi / 6,
+                             maxRotation = pi / 6, rotateRatio = 0.8)
+RandomRotation
+```
+
+这个图词云的旋转角度在(-30°，30°)之间，选择角度随机，旋转比例为0.8。
+
+### 5. 英语词云
+
+**使用demoFreq数据**
+
+```{r fig8EnglishWordcloud1}
+#| label: fig-EnglishWordcloud1
+#| fig-cap: "使用demoFreq数据"
+#| out.width: "95%"
+#| warning: false
+
+# 使用demoFreq数据
+EnglishWordcloud1 <- wordcloud2(data = demoFreq[1:75, ], size = 1)
+EnglishWordcloud1
+```
+
+这个图的词云使用`demoFreq`数据集的前75项进行绘图，英文词云和中文词云的绘图代码没有差别
+
+**使用PubMed摘要文本**
+
+```{r fig9EnglishWordcloud2}
+#| label: fig-EnglishWordcloud2
+#| fig-cap: "使用PubMed摘要文本"
+#| out.width: "95%"
+#| warning: false
+
+# 使用PubMed摘要文本
+EnglishWordcloud2 <- wordcloud2(data = words_english_sep1, size = 0.6)
+EnglishWordcloud2
+```
+
+图中的词云使用PubMed摘要文本进行绘制，显示了肺癌的免疫治疗主题的关键词。
+
+## 应用场景
+
+::: {#fig-ScatterApplications}
+![](../images/Wordcloud_app1.png){fig-alt="WordcloudApp1" fig-align="center" width="60%"}
+
+词云图应用1
+:::
+
+图中描述的可视化表明，世界云可视化字体中的粗体大字体旨在识别单词数量的映射形式，这些单词成为海事安全研究中每篇文章摘要的主题。一些国家的名字，例如中国、印度、印度尼西亚、澳大利亚、美国，都包含在世界云中，因为大多数文章都讨论了某些国家或地区。 \[1\]
+
+::: {#fig-ScatterApplications}
+![](../images/Wordcloud_app2.png){fig-alt="WordcloudApp2" fig-align="center" width="60%"}
+
+词云图应用2
+:::
+
+图中DATA_SET 1的三个词云分别显示了积极、消极和中性情绪中使用最多的单词，验证了作者的社交媒体无法提供网民应对新冠肺炎等流行病的适当课程的看法。 \[2\]
+
+::: {#fig-ScatterApplications}
+![](../images/Wordcloud_app3.png){fig-alt="WordcloudApp3" fig-align="center" width="60%"}
+
+词云图应用3
+:::
+
+图中的词云是基于幸存者军团民意调查的162条评论创建的，该调查询问了受访者关于振动或嗡嗡声的感觉以及神经性疼痛。这个词云显示，疼痛、灼热、新冠肺炎、腿、手和脚是评论中提到的最常见的术语。这个词云包括与灼热等感觉和带状疱疹和鹅口疮等症状相关的术语。 \[3\]
+
+## 参考文献
+
+\[1\] KISMARTINI K, YUSUF I M, SABILLA K R, et al. A bibliometric analysis of maritime security policy: Research trends and future agenda[J]. Heliyon, 2024,10(8): e28988.
+
+\[2\] CHAKRABORTY K, BHATIA S, BHATTACHARYYA S, et al. Sentiment Analysis of COVID-19 tweets by Deep Learning Classifiers-A study to show how popularity is affecting accuracy in social media[J]. Appl Soft Comput, 2020,97: 106754.
+
+\[3\] MASSEY D, SAWANO M, BAKER A D, et al. Characterisation of internal tremors and vibration symptoms[J]. BMJ Open, 2023,13(12): e77389.
+
