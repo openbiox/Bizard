@@ -1,0 +1,486 @@
+---
+title: "面积图"
+author:
+  - "**[编辑]** [彭钰洁](https://github.com/YujiePeng913);"
+  - "**[贡献]** [王诗翔](https://github.com/ShixiangWang), 
+  [罗鹏](https://github.com/DrRobinLuo), 
+  [杨泓](https://github.com/MartinaHYang), 
+  [李柯馨](https://github.com/Likexin0127), 
+  [石盈](https://github.com/), 
+  [郑虎](https://github.com/ZhengTiger)."
+---
+
+面积图（Area Chart）是在折线图的基础上，对折线以下区域进行颜色填充，主要是用于在连续间隔或时间跨度上展示数值。
+
+## 示例
+
+![](../images/AreaChart_demo.png){fig-alt="AreaChart DEMO" fig-align="center" width="60%"}
+
+此面积图展示了在 `TCGA-BRCA.survival.tsv` 数据集中，每个月份内的累计死亡人数。每个月份的死亡人数通过堆叠的面积来表示，面积的大小与该月的死亡人数成正比。x轴显示的是时间，以月份为单位，从事件发生的时间开始计算。y轴显示的是在对应月份发生的死亡事件的数量。每个区域的面积表示该月的死亡人数，区域越大，表示死亡人数越多。通过面积图，能够直观地看到随着时间的推移，死亡人数的变化趋势。可以观察到某些月份死亡人数的急剧上升，或是某些时间段内死亡人数较少或平稳，这有助于分析特定时段内的死亡风险和其他相关因素。
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`tidyverse`; `viridis`; `dygraphs`; `xts`; `hrbrthemes`; `ggpattern`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+  install.packages("tidyverse")
+}
+if (!requireNamespace("viridis", quietly = TRUE)) {
+  install.packages("viridis")
+}
+if (!requireNamespace("dygraphs", quietly = TRUE)) {
+  install.packages("dygraphs")
+}
+if (!requireNamespace("xts", quietly = TRUE)) {
+  install.packages("xts")
+}
+if (!requireNamespace("hrbrthemes", quietly = TRUE)) {
+  install.packages("hrbrthemes")
+}
+if (!requireNamespace("ggpattern", quietly = TRUE)) {
+  install.packages("ggpattern")
+}
+
+# 加载包
+library(tidyverse)
+library(viridis)
+library(dygraphs)
+library(xts)
+library(hrbrthemes)
+library(ggpattern)
+```
+
+## 数据准备
+
+使用R自带数据集`AirPassengers`和UCSC Xena网站(UCSC Xena (xenabrowser.net))的`TCGA-BRCA.survival.tsv`。
+
+```{r load data}
+#| message: false
+
+# TCGA-BRCA.survival.tsv
+tcga_brca_survival <- readr::read_tsv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/TCGA-BRCA.survival.tsv")
+
+tcga_brca_filtered <- tcga_brca_survival %>%
+  filter(OS.time <= 2000) %>%
+  mutate(month = floor(OS.time / 30))
+
+monthly_death_counts <- tcga_brca_filtered %>%
+  filter(OS == 1) %>%
+  group_by(month) %>%
+  summarise(deaths = n())
+
+# AirPassengers
+data("AirPassengers")
+air_passenger_data <- as.data.frame(AirPassengers)
+
+air_passenger_data$Month <- rep(month.name, 12)
+air_passenger_data$Year <- rep(1949:1960, each=12)
+air_passenger_data$x <- as.numeric(air_passenger_data$x)
+
+air_passenger_long <- air_passenger_data %>%
+  gather(key = "Variable", value = "Value", -Year, -Month)
+
+air_passenger_percentage <- air_passenger_long %>%
+  group_by(Year) %>%
+  mutate(Percentage = Value / sum(Value) * 100) # 计算每月的百分比
+
+air_passenger_time_series <- data.frame(datetime = time(AirPassengers), count = as.vector(AirPassengers))
+
+air_passenger_time_series$datetime <- as.Date(air_passenger_time_series$datetime)
+air_passenger_xts <- xts(x = air_passenger_time_series$count, order.by = air_passenger_time_series$datetime) # 创建 xts 对象
+```
+
+## 可视化
+
+### 1. 基本绘图
+
+#### 1.1 基础面积图
+
+使用`ggplot2`包绘制面积图。
+
+```{r fig1BasicPlot}
+#| label: fig1BasicPlot
+#| fig-cap: "基础面积图"
+#| out.width: "95%"
+#| warning: false
+
+# 基础面积图
+p <- ggplot(monthly_death_counts, aes(x = month, y = deaths)) +
+  geom_area() +
+  labs(title = "Cumulative Deaths Over Time",
+       x = "Months",
+       y = "Number of Deaths")
+
+p
+```
+
+此面积图展示了在 `TCGA-BRCA.survival.tsv` 数据集中，每个月份内的累计死亡人数。
+
+#### 1.2 自定义面积图
+
+有多种选项可用于自定义面积图外观：
+
+- 使用`ggtitle()`添加标题。
+- 使用`shape`, `size`, `color`等参数更改线条样式。
+- 使用`opacity`为填充区域添加透明度。
+- 使用`hrbrthemes`包的`theme_ipsum()`函数自定义一般主题。
+- 使用`geom_line()`突出显示顶线。
+- 如果观察结果不太多，则使用`geom_point()`显示单个数据点
+
+```{r fig2Custom}
+#| label: fig2Custom
+#| fig-cap: "自定义面积图"
+#| out.width: "95%"
+#| warning: false
+
+# 自定义面积图
+p <- ggplot(monthly_death_counts, aes(x = month, y = deaths)) +
+  geom_area(fill="#69b3a2", alpha=0.4) +
+  geom_line(color="#69b3a2", size=1.2) +
+  geom_point(size=3, color="#69b3a2") +
+  theme_ipsum() +
+  labs(title = "Cumulative Deaths Over Time",
+       x = "Months",
+       y = "Number of Deaths")
+
+p
+```
+
+此面积图展示了在 `TCGA-BRCA.survival.tsv` 数据集中，每个月份内的累计死亡人数。通过自定义面积图的外观，可以使图表更加符合数据的呈现需求，同时增强可读性和视觉效果。
+
+#### 1.3 添加渐变颜色
+
+要添加颜色渐变来代替浅蓝色，我们需要使用`ggpattern`包并定义图形将使用的颜色。底部颜色为`white`，顶部颜色为 `red`。
+
+```{r fig3Color}
+#| label: fig3Color
+#| fig-cap: "添加渐变颜色"
+#| out.width: "95%"
+#| warning: false
+
+# 添加渐变颜色
+p <- ggplot(monthly_death_counts, aes(x = month, y = deaths)) +  
+  geom_area() +  
+  labs(title = "Cumulative Deaths Over Time",       
+      x = "Months",       
+      y = "Number of Deaths") +  
+  geom_area_pattern(data = monthly_death_counts, 
+                    pattern = "gradient", 
+                    pattern_fill = "white",
+                    pattern_fill2 = "red")
+
+p
+```
+
+#### 1.4 带透明度的渐变色
+
+要为图形添加透明度，只需使用自然透明的颜色即可。例如，这里我们将白色改为透明灰色。底部颜色是透明的`light grey`，顶部颜色是`blue`。
+
+```{r fig4gradient}
+#| label: fig4gradient
+#| fig-cap: "带透明度的渐变色"
+#| out.width: "95%"
+#| warning: false
+
+# 带透明度的渐变色
+p <- ggplot(monthly_death_counts, aes(x = month, y = deaths)) +
+  geom_area_pattern(data = monthly_death_counts, 
+                  pattern = "gradient",
+                  fill = "#00000010",
+                  pattern_fill  = "#00000010",
+                  pattern_fill2 = "blue")
+
+p
+```
+
+#### 1.5 完全定制的带渐变的面积图
+
+同时采用上面看到的内容并添加其他功能（如更改`theme`、删除轴线等），您将得到更加漂亮的图形。
+
+下面代码示例为面积图的上部添加一条黑线，使用`hrbrthemes`包更改主题并删除轴线。
+
+```{r fig5hrbrthemes}
+#| label: fig5hrbrthemes
+#| fig-cap: "完全定制的带渐变的面积图"
+#| out.width: "95%"
+#| warning: false
+
+# 完全定制的带渐变的面积图
+p <- ggplot(monthly_death_counts, aes(x = month, y = deaths)) +
+  geom_area_pattern(data = monthly_death_counts,
+                    pattern = "gradient", 
+                    fill = "#00000000",
+                    pattern_fill  = "#00000000",
+                    pattern_fill2 = "magenta") + 
+  geom_line(data = monthly_death_counts, colour = "black", linewidth = 0.8) +
+  geom_point(shape = 16, size = 4.5, colour = "purple") +
+  geom_point(shape = 16, size = 2.5, colour = "white") +
+  ggtitle("Cumulative Deaths Over Time") + 
+  theme_bw() +
+  theme(plot.title = element_text(size = 14),
+        panel.border       = element_blank(),
+        axis.line.x        = element_line(),
+        text               = element_text(size = 12),
+        axis.ticks         = element_blank(),
+        axis.text.y        = element_text(margin = margin(0,15,0,0, unit = "pt"))) +
+  scale_alpha_identity() + labs(x="",y="")
+
+p
+```
+
+#### 1.6 基础R绘制面积图
+
+使用基础R的`polygon()`函数，不使用其他包构建面积图。
+
+```{r fig6polygon}
+#| label: fig6polygon
+#| fig-cap: "基础R绘制面积图"
+#| out.width: "95%"
+#| warning: false
+
+plot(monthly_death_counts$month, monthly_death_counts$deaths, col=rgb(0.2,0.1,0.5,0.9), type="o", lwd=3,
+     xlab="Months", ylab="Number of Deaths", pch=20, main="Cumulative Deaths Over Time")
+
+polygon(
+  x = c(min(monthly_death_counts$month), monthly_death_counts$month,
+        max(monthly_death_counts$month)), # 闭合x边界
+  y = c(0, monthly_death_counts$deaths, 0), # 闭合y边界
+  col = rgb(0.2, 0.1, 0.5, 0.2),
+  border = FALSE) # 使用 polygon() 填充面积
+```
+
+此面积图展示了在 `TCGA-BRCA.survival.tsv` 数据集中，每个月份内的累计死亡人数。通过使用基础R的`polygon()`函数来构建面积图，不依赖任何额外的包，直观地呈现了随着时间推移的死亡人数变化。图中的面积代表了每个月份内累计的死亡人数，随着时间的推进，面积逐渐增大，反映了死亡人数的累积趋势。
+
+### 2. 堆叠面积图
+
+#### 2.1 基础堆叠面积图
+
+堆叠面积图（Stacked Area Chart）是一种特殊的面积图，可以用来比较在一个区间内的多个变量。堆叠面积图每个数据系列的起点都是基于前一个数据系列绘制的，也就是每度量一行就要填满行与行之间的区域。堆叠面积图将不同的变量按照一定的顺序堆叠在一起，使得不同变量所占的面积更加清晰，可以更直观地比较变量之间的大小关系和趋势。
+
+可以使用`ggplot2`包制作堆叠面积图。
+
+```{r fig7polygon}
+#| label: fig7polygon
+#| fig-cap: "堆叠面积图"
+#| out.width: "95%"
+#| warning: false
+
+p <- ggplot(air_passenger_long, aes(x = Year, y = Value, fill = Month)) +
+  geom_area() +
+  labs(title = "Monthly Air Passengers (Stacked Area Chart)", 
+       x = "Year", y = "Number of Passengers") +
+  theme_minimal()
+
+p
+```
+
+#### 2.2 控制 ggplot2 中的堆叠顺序
+
+- 使用 `factor()` 函数给变量设置特定的顺序。
+- 使用 `sort()` 进行字母顺序排序。
+- 根据特定的数据值进行排序。
+
+```{r fig8order}
+#| label: fig8order
+#| fig-cap: "控制 ggplot2 中的堆叠顺序"
+#| out.width: "95%"
+#| warning: false
+
+# 按月份排序
+air_passenger_data$Month <- factor(air_passenger_data$Month, levels = month.name) # 将Month列转换为有顺序的因子
+
+air_passenger_long <- air_passenger_data %>%
+  gather(key = "Variable", value = "Value", -Year, -Month)
+
+p <- ggplot(air_passenger_long, aes(x = Year, y = Value, fill = Month)) +
+  geom_area() +
+  labs(title = "Monthly Air Passengers", 
+       x = "Year", y = "Number of Passengers") +
+  theme_minimal()
+
+p
+```
+
+这个堆叠面积图展示了从1949年到1960年期间每月的航空乘客数量，每个月份的乘客数量通过不同颜色的区域进行堆叠展示。堆叠区域的顺序是按照月份的顺序排列（从一月到十二月），通过堆叠的方式，可以清晰地看到每个月的乘客数量变化以及各个年度之间的趋势对比，同时也能观察到每年乘客数量的季节性波动。面积图通过颜色的堆叠展示了不同月份对整体乘客数的贡献，便于直观地分析不同月份在不同年份的乘客量。
+
+```{r fig9Month}
+#| label: fig9Month
+#| fig-cap: "按字母顺序排序"
+#| out.width: "95%"
+#| warning: false
+
+# 按字母顺序排序
+myLevels <- levels(factor(air_passenger_long$Month)) 
+air_passenger_long$Month <- factor(air_passenger_long$Month, levels = sort(myLevels))
+
+p <- ggplot(air_passenger_long, aes(x = Year, y = Value, fill = Month)) +
+  geom_area() +
+  labs(title = "Monthly Air Passengers",
+       x = "Year", y = "Number of Passengers") +
+  theme_minimal()
+
+p
+```
+
+这个堆叠面积图展示了从1949年到1960年期间每月的航空乘客数量，每个月份的乘客数量通过不同颜色的区域进行堆叠展示。与之前的图不同的是，这里将月份的堆叠顺序按照字母顺序进行排序，而不是按照自然的月份顺序（1月到12月）。这种方式有助于查看每个年份中，按字母排序的月份对乘客总数的贡献。通过这样的排序方式，分析者可以观察到每个月份在总体乘客数中的占比，但失去了原本的时间序列的季节性趋势。
+
+```{r fig10Year}
+#| label: fig10Year
+#| fig-cap: "按特定年份的值排序（例如1949年）"
+#| out.width: "95%"
+#| warning: false
+
+# 按特定年份的值排序（例如1949年）
+myLevels_value <- air_passenger_long %>%
+  filter(Year == 1949) %>%  
+  arrange(Value) 
+
+air_passenger_long$Month <- factor(air_passenger_long$Month, levels = myLevels_value$Month)
+
+p <- ggplot(air_passenger_long, aes(x = Year, y = Value, fill = Month)) +
+  geom_area() +
+  labs(title = "Monthly Air Passengers (Sorted by 1949 Values)",
+       x = "Year", y = "Number of Passengers") +
+  theme_minimal()
+
+p
+```
+
+这个堆叠面积图展示了从1949年到1960年期间每月的航空乘客数量，每个月份的乘客数量通过不同颜色的区域进行堆叠展示。图中的月份顺序并不是按自然月份（1月到12月）排序，而是按照1949年每个月的乘客数量从低到高排序。这样可以直观地观察到1949年各个月份乘客数的相对比例，并展示这些月份在不同年份中的变化。
+
+#### 2.3 自定义样式
+
+可以用以下方式改善图表的整体外观：
+
+- 使用`viridis`颜色标度
+- `hrbrthemes`包的`theme_ipsum`
+- 使用`ggtitle`添加标题
+
+```{r fig11Custom}
+#| label: fig11Custom
+#| fig-cap: "自定义样式"
+#| out.width: "95%"
+#| warning: false
+
+p <- ggplot(air_passenger_long, aes(x = Year, y = Value, fill = Month)) +
+  geom_area(alpha=0.6 , size=.5, colour="white") +
+  scale_fill_viridis(discrete = T) +
+  theme_ipsum() + 
+  ggtitle("Monthly Air Passengers")
+
+p
+```
+
+这个堆叠面积图展示了从1949年到1960年期间每月的航空乘客数量，每个月份的乘客数量通过不同颜色的区域进行堆叠展示。通过自定义面积图的外观，可以使图表更加符合数据的呈现需求，同时增强可读性和视觉效果。
+
+### 3. 比例堆叠面积图
+
+在比例堆叠面积图中，每年的总和始终等于百，并且每个组的值通过百分比表示。绘制比例堆叠面积图，需要先计算百分比，可以使用`dplyr`包来完成。
+
+```{r fig12Ration}
+#| label: fig12Ration
+#| fig-cap: "比例堆叠面积图"
+#| out.width: "95%"
+#| warning: false
+
+p <- ggplot(air_passenger_percentage, aes(x = Year, y = Percentage, fill = Month)) +
+  geom_area(alpha = 0.6, size = 1, colour = "black") +
+  labs(title = "Monthly Air Passengers",
+       x = "Year", y = "Percentage of Passengers") +
+  theme_minimal()
+
+p
+```
+
+这个比例堆叠面积图展示了 `AirPassengers` 数据集中，每月航空乘客数量在不同年份的百分比变化趋势。图中的每一层（由不同的月份填充颜色）代表了每个月在每年内所占的乘客数量的比例，堆积在一起形成面积图。通过比例堆叠面积图，我们可以直观地看到每个月份的航空乘客数量如何随时间变化，并且可以清晰地识别出每个月份在全年总乘客数量中所占的相对比例，并能够观察到不同年份之间的趋势变化。
+
+### 4. 交互式面积图
+
+使用`dygraph`包进行时间序列可视化。它提供缩放、悬停、小地图等功能。
+
+```{r fig13dygraph}
+#| label: fig13dygraph
+#| fig-cap: "交互式面积图"
+#| out.width: "95%"
+#| warning: false
+
+p <- dygraph(air_passenger_xts) %>%
+  dyOptions(labelsUTC = TRUE, fillGraph = TRUE, fillAlpha = 0.1, drawGrid = FALSE, colors = "#D8AE5A") %>%
+  dyRangeSelector() %>%
+  dyCrosshair(direction = "vertical") %>%
+  dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE) %>%
+  dyRoller(rollPeriod = 1)
+
+p
+```
+
+这个图使用 `dygraph` 创建了一个动态的时间序列图，展示了 `AirPassengers` 数据集中每个月的航空乘客数量随时间的变化趋势。图中的每个点代表一个月的乘客数量，使用了不同的交互功能（动态交互，高亮功能，垂直交叉线，填充图形）来增强图表的可读性和可操作性。
+
+## 应用场景
+
+### 1. 基础面积图
+
+::: {#fig-AreaChartApplications}
+![](../images/AreaChart_app1.png){fig-alt="AreaChartApp1" fig-align="center" width="60%"}
+
+基础面积图应用
+:::
+
+在 JIS 和 AIS—GO 分子功能中区分肌肉转录组的上调基因的过代表测试。重叠的差异面积图显示了 JIS 和 AIS 组中区分凹凸椎旁肌肉转录组的上调基因的 GO 分子功能的过代表测试的结果。∗高于过度代表检验峰值标记的统计学显著性结果，使用 Bonferroni 多重校正计算的 P < 0.05。 \[1\]
+
+### 2. 堆叠面积图
+
+::: {#fig-AreaChartApplications}
+![](../images/AreaChart_app2.png){fig-alt="AreaChartApp2" fig-align="center" width="60%"}
+
+堆叠面积图应用
+:::
+
+显示序列数据的 PICRUSt 分析的面积图。 \[2\]
+
+::: {#fig-AreaChartApplications}
+![](../images/AreaChart_app3.png){fig-alt="AreaChartApp3" fig-align="center" width="60%"}
+
+堆叠面积图应用
+:::
+
+第 14 天和第 28 天的分类学和基因组丰度趋势比较。分类群的相对丰度和功能基因群的预测丰度证明了基因群丰度相对于分类群变化的稳定性。组装分类群和基因组的相对丰度表，并用于在第 14 天和第 28 天生成所有样品的面积图。显示了每个样品的每个已鉴定的分类或功能基因组的相对丰度;（A） 第 14 天预测的基因组，（B） 第 14 天的分类组，（C） 第 28 天的预测基因组，（D） 第 28 天的分类组。在第 14 天，处理之间存在明显的分类学差异 （A），并且少数基因组的丰度变化较小 （B）。在第 28 天，分类学变化 （D） 伴随着基因组丰度 （C） 的少量可见变化。 \[3\]
+
+## 参考文献
+
+\[1\] Nowak R, Kwiecien M, Tkacz M, Mazurek U. Transforming growth factor-beta (TGF- β) signaling in paravertebral muscles in juvenile and adolescent idiopathic scoliosis. Biomed Res Int. 2014;2014:594287. doi: 10.1155/2014/594287. Epub 2014 Sep 15. PMID: 25313366; PMCID: PMC4181945.
+
+\[2\] Stewart CJ, Skeath T, Nelson A, Fernstad SJ, Marrs EC, Perry JD, Cummings SP, Berrington JE, Embleton ND. Preterm gut microbiota and metabolome following discharge from intensive care. Sci Rep. 2015 Nov 24;5:17141. doi: 10.1038/srep17141. PMID: 26598071; PMCID: PMC4657104.
+
+\[3\] Ballou AL, Ali RA, Mendoza MA, Ellis JC, Hassan HM, Croom WJ, Koci MD. Development of the Chick Microbiome: How Early Exposure Influences Future Microbial Diversity. Front Vet Sci. 2016 Jan 20;3:2. doi: 10.3389/fvets.2016.00002. PMID: 26835461; PMCID: PMC4718982.
+
+\[4\] Csardi, G., & Nepusz, T. (2006). igraph: Network analysis and visualization. https://cran.r-project.org/package=igraph
+
+\[5\] Wickham, H. (2016). ggraph: An implementation of grammar of graphics for graphs and networks. https://cran.r-project.org/package=ggraph
+
+\[6\] Wickham, H., & François, R. (2021). tidyverse: The grammar of data manipulation. https://cran.r-project.org/package=tidyverse
+
+\[7\] Geyer, F., & Kolesnyk, I. (2020). CollapsibleTree: Interactive tree diagrams. https://cran.r-project.org/package=CollapsibleTree
+
+\[8\] Galili, T. (2015). dendextend: An R package for visualizing, adjusting, and comparing trees. https://cran.r-project.org/package=dendextend
+
+\[9\] Garnier, S. (2018). viridis: Default Color Maps from 'matplotlib'. https://cran.r-project.org/package=viridis
+
+\[10\] Aubry, R., & Bouchard, C. (2020). dygraphs: Interactive time series plotting. https://cran.r-project.org/package=dygraphs
+
+\[11\] Hornik, K. (2021). xts: Extensible time series. https://cran.r-project.org/package=xts
+
+\[12\] Grolemund, G., & Wickham, H. (2011). lubridate: Make dates and times easier to work with. https://cran.r-project.org/package=lubridate
+
+\[13\] Wickham, H. (2016). ggplot2: Elegant graphics for data analysis. Springer. https://ggplot2.tidyverse.org
+
+\[14\] Wickham, H., & François, R. (2021). dplyr: A Grammar of Data Manipulation. https://cran.r-project.org/package=dplyr
+
+\[15\] Wickham, H., & Henry, L. (2021). tidyr: Tidy Messy Data. https://cran.r-project.org/package=tidyr
+
