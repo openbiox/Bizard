@@ -1,0 +1,251 @@
+---
+title: "华夫饼图"
+author:
+  - "**[编辑]** [黄可昕](https://github.com/Kathywongkx);"
+  - "**[贡献]** [王诗翔](https://github.com/ShixiangWang), 
+  [罗鹏](https://github.com/DrRobinLuo), 
+  [杨泓](https://github.com/MartinaHYang), 
+  [李柯馨](https://github.com/Likexin0127), 
+  [石盈](https://github.com/), 
+  [郑虎](https://github.com/ZhengTiger)."
+---
+
+华夫饼图通过一个由小方块组成的网格来直观表示分类数据，这些方块看起来像华夫饼。每个类别被分配一个独特的颜色，分配给每个类别的方块数量对应其在总数据计数中的比例份额。
+
+## 示例
+
+![](../images/Waffle_demo.png){fig-alt="Waffle DEMO" fig-align="center" width="60%"}
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`, `waffle`, `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("waffle", quietly = TRUE)) {
+  install.packages("waffle")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+
+# 加载包
+library(ggplot2)
+library(waffle)
+library(dplyr)
+```
+
+## 数据准备
+
+主要运用TCGA数据库和R内置数据集`mtcars`。
+
+```{r load data}
+#| message: false
+
+# 1.TCGA数据库（2020年肺癌的临床数据）
+TCGA_cli_df <- readr::read_tsv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/raponi2006_public_raponi2006_public_clinicalMatrix.gz")
+#数据准备
+counts <- table(TCGA_cli_df$T)
+counts <- as.data.frame(counts)
+names(counts)[names(counts) == "Var1"] <- "T"
+
+# 2.R内置的data——mtcars
+counts1 <- table(mtcars$cyl)
+counts1 <- as.data.frame(counts1)
+names(counts1)[names(counts1) == "Var1"] <- "cyl"
+
+# 3.自创数据集
+data <- data.frame(
+  group = c("First group", "First group", "First group", "First group",
+            "First group", "First group", "Second group", "Second group",
+            "Second group", "Second group", "Third group", "Third group"),
+  subgroup = c("A", "B", "C", "D", "E", "F", "A", "B", "C", "D", "A", "B"),
+  value = c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120)
+)
+```
+
+## 可视化
+
+### 1. 基本绘图（waffle包）
+
+#### 1.1 基本代码
+
+以`TCGA`数据为例
+
+```{r fig1BasicPlot}
+#| label: fig1BasicPlot
+#| fig-cap: "基本绘图"
+#| out.width: "95%"
+#| warning: false
+
+waffle(counts)
+```
+
+这个华夫饼图描述了不同肿瘤分期在总样本中所占的比例。
+
+#### 1.2 美化图形
+
+- `rows`：块的行数，默认为10。
+- `xlab`：图表下方的文本，建议用来描述每个方块代表的含义，例如“1 sq == 1000”。
+- `title`：图表标题。
+- `colors`：与parts中的值数量相等的颜色数组。如果省略，使用Color Brewer "Set2"颜色。
+- `size`：块之间分隔符的宽度，默认为2。
+- `flip`：翻转x和y轴。
+- `pad`：要用多少个块来填充网格。
+- `glyph_size`：字形的大小。
+- `legend_pos`：图例位置。
+
+```{r fig2Beautify}
+#| label: fig2Beautify
+#| fig-cap: "美化图形"
+#| out.width: "95%"
+#| warning: false
+
+waffle(counts,rows = 5,
+       colors = c("#fb5607", "#8338ec","yellow", "blue"),
+       size = 4,flip = F,glyph_size=3,legend_pos="bottom")
+```
+
+这个图描述了不同肿瘤分期在总样本中所占的比例。
+
+#### 1.3 以mtcars数据库为例
+
+```{r fig3mtcars}
+#| label: fig3mtcars
+#| fig-cap: "以mtcars数据库为例"
+#| out.width: "95%"
+#| warning: false
+
+waffle(counts1)
+```
+
+这个图描述了mtcars数据集中不同气缸数在总样本中所占的比例。
+
+### 2. 基本绘图（ggplot2包）
+
+#### 2.1 基本代码
+
+以`TCGA`数据为例
+
+```{r fig4TCGA}
+#| label: fig4TCGA
+#| fig-cap: "以`TCGA`数据为例"
+#| out.width: "95%"
+#| warning: false
+
+ggplot(counts, aes(fill=T, values=Freq)) +
+  geom_waffle() +
+  theme_void()
+```
+
+这个华夫饼图描述了不同肿瘤分期在总样本中所占的比例。
+
+#### 2.2 美化图形
+
+- `n_rows`：这个参数用于设置华夫饼图中方块的行数，默认为10。
+- `xlab`：图表下方的文本，建议用来描述每个方块代表的含义，例如“1 sq == 1000”。
+- `title`：图表标题。
+- `scale_fill_manual()`：改变颜色。
+- `labels`：改变标签。
+- `size`：这个参数用于设置方块之间分隔符的宽度，默认为2。
+- `radius`：这个参数用于设置方块的圆角半径，可以通过指定`grid::unit()`值来控制。例如，`radius = unit(4, "pt")`可以为方块添加圆角，从而改变方块的形状。
+- `flip`：如果设置为TRUE，则翻转x和y坐标，`n_rows`则变为`n_cols`，这有助于实现华夫柱状图效果。默认为FALSE。
+
+```{r fig5Beautify}
+#| label: fig5Beautify
+#| fig-cap: "美化图形"
+#| out.width: "95%"
+#| warning: false
+
+ggplot(counts, aes(fill=T, values=Freq)) +
+  geom_waffle(color = "white",radius = unit(4, "pt")) +
+  scale_fill_manual(values = c("#999999", "#E69F00", "#56B4E9","red")) +
+  theme_void()
+```
+
+这个图描述了不同肿瘤分期在总样本中所占的比例。
+
+#### 2.3 以mtcars数据库为例
+
+```{r fig6mtcars}
+#| label: fig6mtcars
+#| fig-cap: "以mtcars数据库为例"
+#| out.width: "95%"
+#| warning: false
+
+ggplot(counts1, aes(fill=cyl, values=Freq)) +
+  geom_waffle(color = "white",row=8) +
+  scale_fill_manual(values = c("#999999", "#E69F00", "#56B4E9")) +
+  theme_void()+
+  geom_waffle(size = 0.1)
+```
+
+这个图描述了mtcars数据中不同气缸数在总样本中所占的比例。
+
+#### 2.4 分组
+
+`geom_waffle()`可用于构建带有组和子组的华夫饼图。
+
+`fill`参数用于按组给图表上色。
+
+```{r fig7group}
+#| label: fig7group
+#| fig-cap: "分组"
+#| out.width: "95%"
+#| warning: false
+
+ggplot(data = data, aes(fill=subgroup, values=value)) +
+  geom_waffle(color = "white", size = 1.125, n_rows = 6) +
+  facet_wrap(~group, ncol=1) +
+theme_void()
+```
+
+这个华夫饼图展示了data数据集中三个不同小组内各元素的分布情况
+
+美化图形
+
+通过使用`scale_fill_manual()`函数，可以自定义华夫饼图的颜色。
+
+```{r fig8Beautify}
+#| label: fig8Beautify
+#| fig-cap: "美化图形"
+#| out.width: "95%"
+#| warning: false
+
+ggplot(data = data, aes(fill=subgroup, values=value)) +
+  geom_waffle(color = "white", size = 1.125, n_rows = 6) +
+  facet_wrap(~group, ncol=1) +
+theme_void() +
+  scale_fill_manual(values = c("#69b3a2", "#404080", "#FFA07A", "#FFD700", "#FF6347", "#4682B4"))
+```
+
+这个华夫饼图展示了data数据集中三个不同小组内各元素的分布情况。
+
+## 应用场景
+
+::: {#fig-ScatterApplications}
+![](../images/Waffle_app.png){fig-alt="WaffleApp1" fig-align="center" width="60%"}
+
+华夫饼图应用
+:::
+
+华夫饼图被用来展示不同因素对患者舒适度的影响程度。 \[1\]
+
+## 参考文献
+
+\[1\] Niehoff JH, Heuser A, Michael AE, Lennartz S, Borggrefe J, Kroeger JR. Patient Comfort in Modern Computed Tomography: What Really Counts. Tomography. 2022 May 23;8(3):1401-1412. doi: 10.3390/tomography8030113. PMID: 35645399; PMCID: PMC9149918.
+
+\[2\] Wickham, H. (2016). ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. https://ggplot2.tidyverse.org
+
+\[3\] Rudis B, Gandy D (2023). waffle: Create Waffle Chart Visualizations. R package version 1.0.2,https://CRAN.R-project.org/package=waffle.
+
+\[4\] Wickham H, François R, Henry L, Müller K, Vaughan D (2023).dplyr: A Grammar of Data Manipulation. R package version 1.1.4, https://CRAN.R-project.org/package=dplyr.
+
+
