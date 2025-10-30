@@ -1,5 +1,250 @@
 ---
-title: Waffle Chart
+title: "Waffle Chart"
+author:
+  - "**[Editor]** [KeXin Huang](https://github.com/Kathywongkx);"
+  - "**[Contributors]** [ShiXiang Wang](https://github.com/ShixiangWang), 
+  [Peng Luo](https://github.com/DrRobinLuo), 
+  [Hong Yang](https://github.com/MartinaHYang), 
+  [KeXin Li](https://github.com/Likexin0127), 
+  [Ying Shi](https://github.com/), 
+  [Hu Zheng](https://github.com/ZhengTiger)."
 ---
 
-## UNDER CONSTRUCTION
+A waffle chart visually represents categorical data using a grid of small squares that resemble waffles. Each category is assigned a unique color, and the number of squares assigned to each category corresponds to its proportion in the total data count.
+
+## Example
+
+![](../images/Waffle_demo.png){fig-alt="Waffle DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming Language: R
+
+-   Dependencies: `ggplot2`, `waffle`, `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("waffle", quietly = TRUE)) {
+  install.packages("waffle")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+
+# Load packages
+library(ggplot2)
+library(waffle)
+library(dplyr)
+```
+
+## Data Preparation
+
+It primarily utilizes the TCGA database and the built-in R dataset `mtcars`.
+
+```{r load data}
+#| message: false
+
+# 1.TCGA database (clinical data on lung cancer in 2020)
+TCGA_cli_df <- readr::read_tsv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/raponi2006_public_raponi2006_public_clinicalMatrix.gz")
+# Data Preparation
+counts <- table(TCGA_cli_df$T)
+counts <- as.data.frame(counts)
+names(counts)[names(counts) == "Var1"] <- "T"
+
+# 2.R built-in data - mtcars
+counts1 <- table(mtcars$cyl)
+counts1 <- as.data.frame(counts1)
+names(counts1)[names(counts1) == "Var1"] <- "cyl"
+
+# 3.Self-created dataset
+data <- data.frame(
+  group = c("First group", "First group", "First group", "First group",
+            "First group", "First group", "Second group", "Second group",
+            "Second group", "Second group", "Third group", "Third group"),
+  subgroup = c("A", "B", "C", "D", "E", "F", "A", "B", "C", "D", "A", "B"),
+  value = c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120)
+)
+```
+
+## Visualization
+
+### 1. Basic plot (Waffle package)
+
+#### 1.1 Basic Code
+
+Taking `TCGA` data as an example
+
+```{r fig1BasicPlot}
+#| label: fig1BasicPlot
+#| fig-cap: "Basic plot"
+#| out.width: "95%"
+#| warning: false
+
+waffle(counts)
+```
+
+This waffle chart illustrates the proportion of different tumor stages in the total sample.
+
+#### 1.2 Beautify plot
+
+- `rows`: The number of rows in the block, defaults to 10.
+- `xlab`: Text below the chart, recommended for describing the meaning of each square, e.g., "1 sq == 1000".
+- `title`: Chart title.
+- `colors`: An array of colors equal to the number of values in `parts`. If omitted, the Color Brewer "Set2" colors are used.
+- `size`: Width of the separator between blocks, defaults to 2.
+- `flip`: Flips the x and y axes.
+- `pad`: How many blocks to use to fill the grid.
+- `glyph_size`: Glyph size.
+- `legend_pos`: Legend position.
+
+```{r fig2Beautify}
+#| label: fig2Beautify
+#| fig-cap: "Beautify plot"
+#| out.width: "95%"
+#| warning: false
+
+waffle(counts,rows = 5,
+       colors = c("#fb5607", "#8338ec","yellow", "blue"),
+       size = 4,flip = F,glyph_size=3,legend_pos="bottom")
+```
+
+This figure illustrates the proportion of different tumor stages in the total sample.
+
+#### 1.3 Taking the mtcars database as an example
+
+```{r fig3mtcars}
+#| label: fig3mtcars
+#| fig-cap: "Taking the mtcars database as an example"
+#| out.width: "95%"
+#| warning: false
+
+waffle(counts1)
+```
+
+This graph illustrates the proportion of different cylinder counts in the total sample of the mtcars dataset.
+
+### 2. Basic plot (ggplot2 package)
+
+#### 2.1 Basic Code
+
+Taking `TCGA` data as an example
+
+```{r fig4TCGA}
+#| label: fig4TCGA
+#| fig-cap: "Taking `TCGA` data as an example"
+#| out.width: "95%"
+#| warning: false
+
+ggplot(counts, aes(fill=T, values=Freq)) +
+  geom_waffle() +
+  theme_void()
+```
+
+This waffle chart illustrates the proportion of different tumor stages in the total sample.
+
+#### 2.2 Beautify plot
+
+- `n_rows`: This parameter sets the number of rows in the waffle chart. The default is 10.
+- `xlab`: The text below the chart, recommended to describe the meaning of each square, such as "1 sq == 1000".
+- `title`: The chart title.
+- `scale_fill_manual()`: Changes the color.
+- `labels`: Changes the labels.
+- `size`: This parameter sets the width of the separator between squares. The default is 2.
+- `radius`: This parameter sets the corner radius of the squares. It can be controlled by specifying the `grid::unit()` value. For example, `radius = unit(4, "pt")` adds rounded corners to the squares, changing their shape.
+- `flip`: If set to TRUE, flips the x and y coordinates, and `n_rows` becomes `n_cols`, which helps achieve a waffle bar chart effect. The default is FALSE.
+
+```{r fig5Beautify}
+#| label: fig5Beautify
+#| fig-cap: "Beautify plot"
+#| out.width: "95%"
+#| warning: false
+
+ggplot(counts, aes(fill=T, values=Freq)) +
+  geom_waffle(color = "white",radius = unit(4, "pt")) +
+  scale_fill_manual(values = c("#999999", "#E69F00", "#56B4E9","red")) +
+  theme_void()
+```
+
+This figure illustrates the proportion of different tumor stages in the total sample.
+
+#### 2.3 Taking the mtcars database as an example
+
+```{r fig6mtcars}
+#| label: fig6mtcars
+#| fig-cap: "Taking the mtcars database as an example"
+#| out.width: "95%"
+#| warning: false
+
+ggplot(counts1, aes(fill=cyl, values=Freq)) +
+  geom_waffle(color = "white",row=8) +
+  scale_fill_manual(values = c("#999999", "#E69F00", "#56B4E9")) +
+  theme_void()+
+  geom_waffle(size = 0.1)
+```
+
+This graph illustrates the proportion of different cylinder counts in the total sample of the mtcars data.
+
+#### 2.4 Grouping
+
+`geom_waffle()` can be used to build waffle charts with groups and subgroups.
+
+The `fill` parameter is used to color the chart by group.
+
+```{r fig7group}
+#| label: fig7group
+#| fig-cap: "Grouping"
+#| out.width: "95%"
+#| warning: false
+
+ggplot(data = data, aes(fill=subgroup, values=value)) +
+  geom_waffle(color = "white", size = 1.125, n_rows = 6) +
+  facet_wrap(~group, ncol=1) +
+theme_void()
+```
+
+This waffle chart shows the distribution of elements within three different groups in the dataset.
+
+Enhancing the Graphics
+
+The colors of the waffle chart can be customized using the `scale_fill_manual()` function.
+
+```{r fig8Beautify}
+#| label: fig8Beautify
+#| fig-cap: "Beautify plot"
+#| out.width: "95%"
+#| warning: false
+
+ggplot(data = data, aes(fill=subgroup, values=value)) +
+  geom_waffle(color = "white", size = 1.125, n_rows = 6) +
+  facet_wrap(~group, ncol=1) +
+theme_void() +
+  scale_fill_manual(values = c("#69b3a2", "#404080", "#FFA07A", "#FFD700", "#FF6347", "#4682B4"))
+```
+
+This waffle chart illustrates the distribution of elements within three different groups in the dataset.
+
+## Applications
+
+::: {#fig-ScatterApplications}
+![](../images/Waffle_app.png){fig-alt="WaffleApp1" fig-align="center" width="60%"}
+
+Applications of waffle chart
+:::
+
+Waffle diagrams are used to illustrate the impact of different factors on patient comfort. \[1\]
+
+## Reference
+
+\[1\] Niehoff JH, Heuser A, Michael AE, Lennartz S, Borggrefe J, Kroeger JR. Patient Comfort in Modern Computed Tomography: What Really Counts. Tomography. 2022 May 23;8(3):1401-1412. doi: 10.3390/tomography8030113. PMID: 35645399; PMCID: PMC9149918.
+
+\[2\] Wickham, H. (2016). ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. https://ggplot2.tidyverse.org
+
+\[3\] Rudis B, Gandy D (2023). waffle: Create Waffle Chart Visualizations. R package version 1.0.2,https://CRAN.R-project.org/package=waffle.
+
+\[4\] Wickham H, François R, Henry L, Müller K, Vaughan D (2023).dplyr: A Grammar of Data Manipulation. R package version 1.1.4, https://CRAN.R-project.org/package=dplyr.
+
