@@ -1,5 +1,595 @@
 ---
-title: Line Chart
+title: "Line Chart"
+author:
+  - "**[Editor]** [ChunYang Wang](https://github.com/Wangcy-rachel);"
+  - "**[Contributors]** [ShiXiang Wang](https://github.com/ShixiangWang), 
+  [Peng Luo](https://github.com/DrRobinLuo), 
+  [Hong Yang](https://github.com/MartinaHYang), 
+  [KeXin Li](https://github.com/Likexin0127), 
+  [Ying Shi](https://github.com/), 
+  [Hu Zheng](https://github.com/ZhengTiger)."
 ---
 
-## UNDER CONSTRUCTION
+Drawing line segments in various charts is common, and this module will draw all kinds of line segments that may be used.
+
+## Example
+
+![](../images/LineChart_demo.png){fig-alt="LineChart DEMO" fig-align="center" width="60%"}
+
+The figure shows a basic linear graph that can intuitively represent the trend of the dependent variable as the independent variable moves.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming Language: R
+
+-   Dependencies: `ggplot2`, `viridis`, `patchwork`, `gghighlight`, `ggpmisc`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Install packages
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("viridis", quietly = TRUE)) {
+  install.packages("viridis")
+}
+if (!requireNamespace("patchwork", quietly = TRUE)) {
+  install.packages("patchwork")
+}
+if (!requireNamespace("gghighlight", quietly = TRUE)) {
+  install.packages("gghighlight")
+}
+if (!requireNamespace("ggpmisc", quietly = TRUE)) {
+  install.packages("ggpmisc")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+
+# Load packages
+library(ggplot2)
+library(viridis)     
+library(patchwork)   
+library(gghighlight) 
+library(ggpmisc)     
+library(dplyr)
+```
+
+## Data Preparation
+
+This uses the built-in `iris` and `economics` datasets in R, along with a custom dataset and **real-time glucose measurement data** from the `PhysioNet` database. \[1\]。
+
+```{r load data}
+#| message: false
+
+# 1.iris data
+data <- iris
+
+head(data)
+
+# 2.economics data
+# (1) Using economics data directly to draw graphs
+# (2) Processing economics data to draw time series graphs
+data_economics <- economics[,c(1, 4, 5)] %>%
+  filter(grepl("-12-01", date)) %>%           # Select only December data for plotting
+  mutate(date = gsub("-.*", "", date)) %>%    # Only keep the year
+  slice(1:25) %>%                             # Choose the first 25 years
+  arrange(date)                               # Sort
+
+head(data_economics)
+
+# 3.Automatically generate data (for log transformation of the y-axis).
+data_create <- data.frame(
+  x = seq(11, 100),
+  y = seq(11, 100) / 2 + rnorm(90)
+)
+
+head(data_create)
+
+# 4.Glucose level (used to emphasize specific line segments)
+data_glucose <- read.csv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/Dexcom_001.csv", header = T)
+
+# Glucose value data processing
+data_glucose <- data_glucose[,c(2, 8)] %>%
+  slice(1:102) %>%
+  setNames(c("V1", "V2")) %>%
+  filter(!is.na(V2) & V1 != "") %>%     # Remove na
+  mutate(V3 = rep(1:30, times = 3),     # Divided into 3 stages
+         group = rep(c("stage one", "stage two", "stage three"), each = 30))
+
+head(data_glucose)
+```
+
+## Visualization
+
+### 1. Basic Plotting
+
+```{r fig1BasicPlot}
+#| label: fig-BasicPlot
+#| fig-cap: "Basic Plotting"
+#| out.width: "95%"
+#| warning: false
+
+# Basic Plotting
+p <- ggplot(data, aes(x = Sepal.Length, y = Sepal.Width)) +
+  geom_line()
+
+p
+```
+
+This plot is a basic form of a line plot, which can be drawn by calling `geom_line()` in `ggplot`.
+
+### 2. Change line style
+
+```{r fig2Linestyle}
+#| label: fig2Linestyle
+#| fig-cap: "Change line style"
+#| out.width: "95%"
+#| warning: false
+
+# Change line style
+p <- ggplot(data, aes(x = Sepal.Length, y = Sepal.Width)) +
+  geom_line(orientation = "x", linewidth = 1, color = "blue", linetype = 2)
+
+p
+```
+
+The line style of this graph can be changed by setting `linewidth`, `color`, and `linetype`.
+
+::: callout-tip
+**Key parameter: `geom_line`**
+
+- `linetype`: Indicates the line type, with options ranging from 0 to 6 (where 0 = blank, 1 = solid, 2 = dashed, 3 = dotted, 4 = dotdash, 5 = longdash, 6 = twodash). See the image below for specific shapes:
+
+![](../images/LineChart_key1.png){fig-alt="LineChart linetype" fig-align="center" width="60%"}
+
+- `orientation`: The orientation of the line segment, with options "x" and "y". `orientation="x"` draws the line with x as the independent variable and y as the dependent variable.
+
+- `linewidth`: The thickness of the line segment.
+
+:::
+
+### 3. y-axis scale logarithmic
+
+```{r fig3Linestyle}
+#| label: fig3Linestyle
+#| fig-cap: "y-axis scale logarithmic"
+#| out.width: "95%"
+#| warning: false
+
+# y-axis scale logarithmic
+p <- ggplot(data_create, aes(x = x, y = y)) +
+  geom_line() +
+  scale_y_log10(breaks = c(1, 5, 10, 15, 20, 50, 100), limits = c(1, 100))
+
+p
+```
+
+This graph shows that the y-axis scale is not evenly spaced, but rather logarithmized, which magnifies the lower part of the curve.
+
+::: callout-tip
+**Key parameter: `scale_y_log10`**
+
+- `breaks`: A set of numerical vectors can be used to represent the position of the y-axis ticks.
+
+- `limits`: A set of numerical vectors of length 2 can be used to represent the range of the y-axis ticks.
+
+:::
+
+```{r fig4contral}
+#| label: fig4contral
+#| fig-cap: "Before y-axis logarithmic conversion (for comparison)"
+#| out.width: "95%"
+#| warning: false
+
+# Before y-axis logarithmic conversion (for comparison)
+p <- ggplot(data_create, aes(x = x, y = y)) +
+  geom_line()
+
+p
+```
+
+This graph is without y-axis logarithmic transformation (for comparison), and you can see that the scale is evenly distributed.
+
+### 4. Multi-class data plotting
+
+```{r fig5multi}
+#| label: fig5multi
+#| fig-cap: "Multi-class data plotting"
+#| out.width: "95%"
+#| warning: false
+
+# Multi-class data plotting
+p <- ggplot(data[data$Species != "versicolor", ], aes(x = Sepal.Length, y = Sepal.Width)) +
+  geom_line(aes(color = Species)) # Mapping species variables to color features
+
+p
+```
+
+This graph was created using two species from the `iris` dataset.
+
+### 5. Color Selection
+
+#### 5.1 Use the viridis package
+
+```{r fig6viridis}
+#| label: fig6viridis
+#| fig-cap: "Use the viridis package"
+#| out.width: "95%"
+#| warning: false
+
+# Multi-class data plotting
+# Plotting multiple types of data using the `viridis` package
+p <- ggplot(data[data$Species != "versicolor", ], aes(x = Sepal.Length, y = Sepal.Width)) +
+  geom_line(aes(color = Species)) +
+  scale_color_viridis(discrete = TRUE)
+
+p
+```
+
+This graph uses the `scale_color_viridis` function from the `viridis` package to select appropriate colors.
+
+#### 5.2 Custom colors
+
+```{r fig7scale_color}
+#| label: fig7scale_color
+#| fig-cap: "Custom colors"
+#| out.width: "95%"
+#| warning: false
+
+# Customize colors using `scale_color_manual()`.
+p <- ggplot(data[data$Species != "versicolor", ], aes(x = Sepal.Length, y = Sepal.Width)) +
+  geom_line(aes(color = Species)) +
+  scale_color_manual(values = c("red","blue"))
+
+p
+```
+
+This graph uses `scale_color_manual()` to customize the polyline to red and blue.
+
+### 6. 连接散点图中的线段
+
+Connect the line segments in the scatter plot
+
+#### 6.1 Basic plot + line styles
+
+```{r fig8BaseLine}
+#| label: fig8BaseLine
+#| fig-cap: "Basic plot + line styles"
+#| out.width: "95%"
+#| warning: false
+
+# Basic plot + line styles
+p <- ggplot(data[data$Species == "setosa", ], aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(shape = 17, size = 1.5, color = "blue") +
+  geom_line(size = 1, color = "black", linetype = 2)
+
+p
+```
+
+This is a basic connected scatter plot, using `geom_point()` to draw points and `geom_line()` to draw line segments.
+
+#### 6.2 Connect according to time sequence
+
+```{r fig9TimeLine}
+#| label: fig9TimeLine
+#| fig-cap: "Connect according to time sequence"
+#| out.width: "95%"
+#| warning: false
+
+# Connect according to time sequence
+p <- ggplot(data_economics, aes(x = psavert, y = uempmed)) +
+  geom_point(shape = 17, size = 1.5, color = "blue") +
+  geom_text(
+    label = data_economics$date, nudge_x = 0,
+    nudge_y = -0.1, size = 5
+  ) +
+# Use `geom_segment()` to draw a line segment.
+  geom_segment(
+    aes(
+      xend = c(tail(psavert, n = 24), NA),
+      yend = c(tail(uempmed, n = 24), NA)
+    ),
+    linewidth = 1
+  )
+
+p
+```
+
+This graph uses `geom_segment()` to connect points according to time sequence, which is quite different from the graph drawn by `geom_line()`.
+
+::: callout-tip
+**Key parameters: `geom_segment`**
+
+`xend`/`yend`: Corresponding to x and y, that is, `(x,y)` points to `(xend,yend)` to draw a line segment. In the code, `c(tail(psavert, n=24),NA)` takes the last 24 values of the `psavert` column and adds NA. This makes the preceding point point to the next point to draw a line segment, and the last point points to NA, so no line segment is drawn.
+:::
+
+#### 6.3 Timing connection + arrow
+
+```{r fig10Arror}
+#| label: fig10Arror
+#| fig-cap: "Timing connection + arrow"
+#| out.width: "95%"
+#| warning: false
+
+# Timing connection + arrow
+p <- ggplot(data_economics, aes(x = psavert, y = uempmed)) +
+  geom_point(shape = 17, size = 1.5, color = "blue") +
+  geom_text(
+    label = data_economics$date, nudge_x = 0,
+    nudge_y = -0.1, size = 5
+  ) +
+# Use `geom_segment()` to draw a line segment.
+  geom_segment(
+    aes(
+      xend = c(tail(psavert, n = 24), NA),
+      yend = c(tail(uempmed, n = 24), NA)
+    ),
+    linewidth = 1, arrow = arrow(length = unit(0.5, "cm"))
+  )
+
+p
+```
+
+This graph adds arrows to each connection line, making the temporal characteristics of the connected scatter plot more apparent.
+
+### 7. Plotting the regression curve
+
+#### 7.1 Regression curve
+
+```{r fig11regress}
+#| label: fig11regress
+#| fig-cap: "Regression curve"
+#| out.width: "95%"
+#| warning: false
+
+## Regression curve
+p <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(shape = 16, size = 1.5, color = "blue") +
+  labs(x = "Width", y = "Length") +
+  geom_smooth(method = "lm", formula = y ~ x, se = F, color = "red") # Plotting the linear regression curve
+
+p
+```
+
+This graph is a regression curve plotted based on a scatter plot.
+
+#### 7.2 Regression curve + confidence interval
+
+```{r fig12regresscof}
+#| label: fig12regresscof
+#| fig-cap: "Regression curve + confidence interval"
+#| out.width: "95%"
+#| warning: false
+
+# Regression curve + confidence interval
+p <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(shape = 16, size = 1.5, color = "blue") +
+  labs(x = "Width", y = "Length") +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") # Plotting the linear regression curve
+
+p
+```
+
+This plot adds a confidence interval (i.e., parameter `se=TRUE`) to the regression curve.
+
+#### 7.3 Add regression curve labels
+
+```{r fig13regresslabel}
+#| label: fig13regresslabel
+#| fig-cap: "Add regression curve labels"
+#| out.width: "95%"
+#| warning: false
+
+# Add regression curve labels using `stat_poly_eq()`
+p <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length)) +
+  geom_point(shape = 16, size = 1.5, color = "blue") +
+  labs(x = "Width", y = "Length") +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") + # Plotting the linear regression curve
+  stat_poly_eq(use_label("eq","R2","P"),formula = y~x,size = 4,method = "lm")
+
+p
+```
+
+This plot uses the `stat_poly_eq()` function from the `ggpmisc` package to add the regression curve equation, R-squared, and p-value.
+
+### 8. Notes and separators
+
+```{r fig14annot}
+#| label: fig14annot
+#| fig-cap: "Notes and separators"
+#| out.width: "95%"
+#| warning: false
+
+# Notes and separators
+p <- ggplot(data = economics[1:60, c(1, 4)], aes(x = date, y = psavert)) +
+  geom_line() +
+  xlab("") +
+  scale_x_date(date_breaks = "3 months", date_labels = "%Y-%m") +
+# Text Annotation
+  annotate(
+    geom = "text", x = as.Date("1969-01-01"), y = 14.5,
+    label = "the enconomics of USA"
+  ) +
+# Adjust the text angle on the x-axis
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+# Note
+  annotate(geom = "point", x = as.Date("1971-06-01"), y = 14.7, size = 5, shape = 21, fill = "transparent") +
+# Draw horizontal dividing lines
+  geom_hline(yintercept = 14, color = "orange")
+
+p
+```
+
+This graph uses `annotate` to add annotations for points and text, and `geom_hline` to draw horizontal dividing lines.
+
+### 9. Multi-subgraph arrangement
+
+For arranging multiple subgraphs, the `patchwork` package is required.
+
+```{r fig15Subplot}
+#| label: fig15Subplot
+#| fig-cap: "Multi-subgraph arrangement"
+#| out.width: "95%"
+#| warning: false
+
+# Multiple subgraph arrangements (requires the `patchwork` package)
+data_double <- economics[1:60, c(1, 4, 5)]
+
+p <- ggplot(data_double, aes(x = date, y = psavert)) +
+  geom_line() +
+  xlab("")
+
+p1 <- ggplot(data_double, aes(x = date, y = uempmed)) +
+  geom_line() +
+  xlab("")
+
+p + p1
+```
+
+This diagram displays two sub-diagrams in one image, and the arrangement of the images uses the `patchwork` package.
+
+### 10. Dual y-axis
+
+```{r fig16doubleY}
+#| label: fig16doubleY
+#| fig-cap: "Dual y-axis"
+#| out.width: "95%"
+#| warning: false
+
+# Dual y-axis
+data_double <- economics[1:60, c(1, 4, 5)]
+
+p <- ggplot(data_double, aes(x = date)) +
+  geom_line(aes(y = psavert), color = "red") +
+  geom_line(aes(y = uempmed * 3), color = "blue") + # To accommodate the range of the left y-axis, the values on the right y-axis need to be increased by a corresponding factor.
+  xlab("") +
+  scale_y_continuous(
+    name = "psavert",
+    sec.axis = sec_axis(transform = ~ . / 3, name = "uempmed") # The scale of the coordinate axes should be reduced by the corresponding factor.
+  ) +
+  theme(
+    axis.title.y = element_text(color = "red", size = 13),
+    axis.title.y.right = element_text(color = "blue", size = 13),
+    legend.position = "none"
+  )
+
+p
+```
+
+This graph has two different y-axis, and the scales on them can be different.
+
+### 11. Line chart + histogram
+
+```{r fig17barline}
+#| label: fig17barline
+#| fig-cap: "Line chart + histogram"
+#| out.width: "95%"
+#| warning: false
+
+# Line chart + histogram
+data_double <- economics[1:60, c(1, 4, 5)]
+
+p <- ggplot(data_double, aes(x = date)) +
+  geom_bar(aes(y = psavert), stat = "identity", fill = "#69b3a2") + # Drawing a bar chart
+  geom_line(aes(y = uempmed * 3), color = "blue") + # Draw a line graph
+  xlab("") +
+  scale_y_continuous(
+    name = "psavert",
+    sec.axis = sec_axis(transform = ~ . / 3, name = "uempmed")
+  ) +
+  theme(
+    axis.title.y = element_text(color = "#69b3a2", size = 13),
+    axis.title.y.right = element_text(color = "blue", size = 13),
+    legend.position = "none"
+  )
+
+p
+```
+
+The left y-axis of this graph is the histogram coordinate axis, and the right y-axis is the line graph coordinate axis.
+
+### 12. Emphasis on specific line segments
+
+A portion of the glucose observation data was selected and plotted in three stages, serving as the raw data to emphasize the line segment.
+
+```{r fig18barline}
+#| label: fig18barline
+#| fig-cap: "Emphasis on specific line segments"
+#| out.width: "95%"
+#| warning: false
+
+# Emphasize specific line segments (requires the gghighlight package)
+p <- ggplot(data_glucose) +
+  geom_line(aes(V3, V2, color = group)) +
+  gghighlight(max(V2) > 125, label_key = group) +
+  xlab("Observation time") +
+  ylab("Value of glucose")
+
+p
+```
+
+This chart highlights the broken line in the first stage using filtering criteria.
+
+De-emphasize specific line segments.
+
+```{r fig19alpha}
+#| label: fig19alpha
+#| fig-cap: "De-emphasize specific line segments"
+#| out.width: "95%"
+#| warning: false
+
+# Fading out specific line segments using the unhighlighted_params parameter
+p <- ggplot(data_glucose) +
+  geom_line(aes(V3, V2, color = group), linewidth = 1) +
+  gghighlight(max(V2) > 125, label_key = group, 
+    unhighlighted_params = list(
+      linewidth = 0.3,
+      colour = alpha("blue", 0.7),
+      linetype = "dashed"
+    )
+  ) +
+  xlab("Observation time") +
+  ylab("Value of glucose")
+
+p
+```
+
+This graph uses the `unhighlighted_params` parameter to modify the faded line format.
+
+## Applications
+
+::: {#fig-LineChartApplications}
+![](../images/LineChart_app1.png){fig-alt="LineChartApp1" fig-align="center" width="60%"}
+
+Applications of line chart 1
+:::
+
+The figure shows the coverage of different doses of mumps-containing vaccine in the birth cohorts from 2005 to 2022. \[1\]
+
+::: {#fig-LineChartApplications}
+![](../images/LineChart_app2.png){fig-alt="LineChartApp2" fig-align="center" width="60%"}
+
+Applications of line chart 2
+:::
+
+The figure shows the relative error curves for the model methods based on the unused, original, and improved methods, where the average relative error of the component content model based on the improved method is better than that of the models based on the unused and original methods. \[2\]
+
+::: {#fig-LineChartApplications}
+![](../images/LineChart_app3.png){fig-alt="LineChartApp3" fig-align="center" width="60%"}
+
+Applications of line chart 3
+:::
+
+The figure shows: (A) Distribution of the number of comorbidities in HCC patients; (B) Average number of comorbidities in HCC patients of different ages and sexes; (C) Distribution of the number of comorbidities in male HCC patients of different age groups; (D) Distribution of the number of comorbidities in female HCC patients of different age groups. \[3\]
+
+## Reference
+
+\[1\] FU C, XU W, ZHENG W, et al. Epidemiological characteristics and interrupted time series analysis of mumps in Quzhou City, 2005-2023[J]. Hum Vaccin Immunother, 2024,20(1): 2411828.
+
+\[2\] LU R, LIU H, YANG H, et al. Multi-Delay Identification of Rare Earth Extraction Process Based on Improved Time-Correlation Analysis[J]. Sensors (Basel), 2023,23(3).
+
+\[3\] MU X M, WANG W, JIANG Y Y, et al. Patterns of Comorbidity in Hepatocellular Carcinoma: A Network Perspective[J]. Int J Environ Res Public Health, 2020,17(9).
+
+
