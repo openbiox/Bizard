@@ -1,0 +1,344 @@
+---
+title: "弧形图"
+author:
+  - "**[编辑]** [王春阳](https://github.com/Wangcy-rachel);"
+  - "**[贡献]** [王诗翔](https://github.com/ShixiangWang), 
+  [罗鹏](https://github.com/DrRobinLuo), 
+  [杨泓](https://github.com/MartinaHYang), 
+  [李柯馨](https://github.com/Likexin0127), 
+  [石盈](https://github.com/), 
+  [郑虎](https://github.com/ZhengTiger)."
+---
+
+弧形图是按弧形连接的图，显示了节点之间的相互关系。
+
+## 示例
+
+![](../images/ArcDiagram_demo.png){fig-alt="ArcDiagram DEMO" fig-align="center" width="60%"}
+
+如图就是一个简单的弧形图，节点在图下方整齐排布，节点间通过弧形连接，构成了弧形图的主体。
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggraph`, `tidyverse`, `viridis`, `patchwork`, `igraph`, `colormap`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+  install.packages("tidyverse")
+}
+if (!requireNamespace("viridis", quietly = TRUE)) {
+  install.packages("viridis")
+}
+if (!requireNamespace("patchwork", quietly = TRUE)) {
+  install.packages("patchwork")
+}
+if (!requireNamespace("igraph", quietly = TRUE)) {
+  install.packages("igraph")
+}
+if (!requireNamespace("ggraph", quietly = TRUE)) {
+  install.packages("ggraph")
+}
+if (!requireNamespace("colormap", quietly = TRUE)) {
+  install.packages("colormap")
+}
+
+# 加载包
+library(tidyverse) 
+library(viridis)   
+library(patchwork) 
+library(igraph)    
+library(ggraph)    
+library(colormap)  
+```
+
+## 数据准备
+
+数据包括自定义的数据、研究人员的合著网络、Cytoscape软件导出的PPI网络数据。
+
+```{r load data}
+#| message: false
+
+# 1.自定义数据
+# links存储边信息，nodes存储点和点的分组信息
+links <- data.frame(
+source = c("A", "A", "A", "A", "B", "G", "G", "G", "G"),
+  target = c("B", "C", "D", "F", "E", "H", "I", "J", "F")
+)
+nodes <- data.frame(
+  point = c("A", "B", "C", "D", "E", "F", "G", "H", "I", "J"),
+  groups = c(
+    "group-one", "group-one", "group-one", "group-one", "group-one",
+    "group-one", "group-two", "group-two", "group-two", "group-two"
+  )
+)
+
+head(links)
+head(nodes)
+
+# 2.研究人员合著网络
+# 将链接信息复制到txt文件，读取进行绘图
+data_dif <- read.csv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/Arc.txt", header = T, sep = " ")
+
+head(data_dif[,1:5])
+
+# 3.PPI网络的节点和边数据
+# 读取从github下载的PPI网络信息
+data_ppi <- read.csv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/string_interactions_short.tsv_1%20default%20edge.csv", header = TRUE)
+
+head(data_ppi[,c(9,3)])
+```
+
+## 可视化
+
+### 1. 基本弧形图
+
+```{r fig1BasicPlot}
+#| label: fig1BasicPlot
+#| fig-cap: "基本弧形图"
+#| out.width: "95%"
+#| warning: false
+
+# 基本弧形图
+mygraph <- graph_from_data_frame(links, vertices = nodes) # 生成图结构
+
+p <- ggraph(mygraph, layout = "linear") +
+  geom_edge_arc(edge_colour = "black", edge_alpha = 0.3, edge_width = 0.4) +
+  geom_node_point(color = "grey", size = 5) +
+  geom_node_text(aes(label = name), repel = FALSE, size = 6, nudge_y = -0.15) +
+  theme_void() +
+  theme(
+    legend.position = "none",
+    plot.margin = unit(rep(2, 4), "cm")
+  )
+
+p
+```
+
+如图是基本弧形图的绘制，节点和边少，所以弧形图结构简单。
+
+### 2. 将分组信息映射到节点颜色上
+
+```{r fig2nodecolor}
+#| label: fig2nodecolor
+#| fig-cap: "将分组信息映射到节点颜色上"
+#| out.width: "95%"
+#| warning: false
+
+# 分组映射到节点颜色上
+mygraph <- graph_from_data_frame(links, vertices = nodes) # 生成图
+p <- ggraph(mygraph, layout = "linear") +
+  geom_edge_arc(edge_colour = "black", edge_alpha = 0.3, edge_width = 0.4) +
+  geom_node_point(aes(color = groups), size = 5) +
+  geom_node_text(aes(label = name), repel = FALSE, size = 6, nudge_y = -0.15) +
+  theme_void() +
+  theme(
+    legend.position = "none",
+    plot.margin = unit(rep(2, 4), "cm")
+  )
+p
+```
+
+如图中`color = groups`将分组信息映射到节点的颜色上，可以在弧形图中直观得看出节点的分组情况。
+
+### 3. 复杂图结构绘图
+
+一般的原始数据的节点和边很多，图结构复杂，在绘图时要对节点进行分类和排序，对节点和边的大小进行度量，以显示排列美观的弧形图。这里使用研究人员的合著网络数据。
+
+```{r fig3Complex}
+#| label: fig3Complex
+#| fig-cap: "复杂图结构绘图"
+#| out.width: "95%"
+#| warning: false
+#| fig-width: 12
+#| fig-height: 6
+
+# 合著网络数据处理和绘图
+# 1.数据排布转换
+connect <- data_dif %>% # connect保存节点的边信息
+  gather(key = "to", value = "value", -1) %>% # 使用将除第一列的数据转化成两列（1列列名变量，1列值）
+  mutate(to = gsub("\\.", " ", to)) %>% # 更改列"to"名称形式与"from"保持一致
+  na.omit() # 去除NA值
+
+# 2.节点统计
+coauth <- # coauth保存节点名和出入度信息，后面会加上分组信息
+  c(as.character(connect$from), as.character(connect$to)) %>%
+  as.tibble() %>% # 类似数据框类型，列名默认为"value"————
+  group_by(value) %>% # 按"value"分组
+  summarize(n = n()) # 统计节点名的出入度
+colnames(coauth) <- c("name", "n") # 更改列名
+
+# 3.进行节点分组
+mygraph <- graph_from_data_frame(connect, vertices = coauth, directed = FALSE) # 生成一个图
+com <- walktrap.community(mygraph) # 根据节点的路径大小进行分组————
+# coauth添加分组信息
+coauth <- coauth %>%
+  mutate(grp = com$membership) %>% # 添加分组
+  arrange(grp) %>% # 按照分组进行排序
+  mutate(name = factor(name, name))
+
+# 4.筛选前15个组
+coauth <- coauth[coauth$grp < 16, ]
+# 过滤只在前15组点出现的连接
+connect <- connect %>%
+  filter(from %in% coauth$name) %>%
+  filter(to %in% coauth$name)
+
+# 5.生成一个图
+mygraph <- graph_from_data_frame(connect, vertices = coauth, directed = FALSE)
+# 按分组生成颜色
+mycolor <- colormap(colormap = colormaps$viridis, nshades = max(coauth$grp))
+mycolor <- sample(mycolor, length(mycolor))
+# ggraph画图
+ggraph(mygraph, layout = "linear") +
+  geom_edge_arc(edge_colour = "black", edge_alpha = 0.2, edge_width = 0.3, fold = TRUE) +
+  geom_node_point(aes(size = n, color = as.factor(grp), fill = grp), alpha = 0.5) + # 将n和分组变量映射到大小、颜色上
+  scale_size_continuous(range = c(0.5, 8)) + # 设置size范围
+  scale_color_manual(values = mycolor) + # 设置分组的颜色
+  geom_node_text(aes(label = name), angle = 65, hjust = 1, nudge_y = -1.1, size = 2.3) + # 设置节点标签，并倾斜避免重叠
+  theme_void() + # 去除背景表格，坐标轴主题
+  theme(
+    legend.position = "none", # 去除图例
+    plot.margin = unit(c(0, 0, 0.4, 0), "null"),
+    panel.spacing = unit(c(0, 0, 3.4, 0), "null")
+  ) +
+  expand_limits(x = c(-1.2, 1.2), y = c(-5.6, 1.2))
+```
+
+如图是根据复杂图结构绘制的弧形图。绘制弧形图（或者图）需要将数据预处理成两个分别包含节点信息和边信息的数据框。在这次数据处理中，有一下步骤：
+
+1. 改变数据排布生成边信息（`connect`存储）；
+2. 依据边信息提取所有节点信息（`coauth`存储）；
+3. 根据`walktrap.community()`进行分组，分组特征可以映射到节点颜色上，从而显示不同分组，同时，为了美观，对分组节点进行排序；
+4. 只选择前面的分组，同时要筛选`connect`前面分组的点；
+5. 生成图，选择颜色进行`ggraph()`进行绘图。
+
+**复杂数据绘图不进行分组和排序时（做对比）**
+
+```{r fig4Compare}
+#| label: fig4Compare
+#| fig-cap: "复杂数据绘图不进行分组和排序时（做对比）"
+#| out.width: "95%"
+#| warning: false
+#| fig-width: 12
+#| fig-height: 6
+
+# 不进行分组和排序（对比）
+# 1.数据排布转换
+connect <- data_dif %>% # connect保存节点的边信息
+  gather(key = "to", value = "value", -1) %>% # 使用将除第一列的数据转化成两列（1列列名变量，1列值）
+  mutate(to = gsub("\\.", " ", to)) %>% # 更改列"to"名称形式与"from"保持一致
+  na.omit() # 去除NA值
+
+# 2.节点统计
+coauth <- # coauth保存节点名和出入度信息，后面会加上分组信息
+  c(as.character(connect$from), as.character(connect$to)) %>%
+  as.tibble() %>% # 类似数据框类型，列名默认为"value"————
+  group_by(value) %>% # 按"value"分组
+  summarize(n = n()) # 统计节点名的出入度
+colnames(coauth) <- c("name", "n") # 更改列名
+
+# 5.生成一个图
+mygraph <- graph_from_data_frame(connect, vertices = coauth, directed = FALSE)
+# ggraph画图
+ggraph(mygraph, layout = "linear") +
+  geom_edge_arc(edge_colour = "black", edge_alpha = 0.2, edge_width = 0.3, fold = TRUE) +
+  geom_node_point(aes(size = n), alpha = 0.5) + # 将n和分组变量映射到大小、颜色上
+  scale_size_continuous(range = c(0.5, 8)) + # 设置size范围
+  geom_node_text(aes(label = name), angle = 65, hjust = 1, nudge_y = -1.1, size = 2.3) + # 设置节点标签，并倾斜避免重叠
+  theme_void() + # 去除背景表格，坐标轴主题
+  theme(
+    legend.position = "none", # 去除图例
+    plot.margin = unit(c(0, 0, 0.4, 0), "null"),
+    panel.spacing = unit(c(0, 0, 3.4, 0), "null")
+  ) +
+  expand_limits(x = c(-1.2, 1.2), y = c(-5.6, 1.2))
+```
+
+如图是对复杂图数据未经过分组和排序时绘制的弧形图，可以看到图中的节点以及弧非常混乱，而且无法对弧形图的内容进行解读。因此，在复杂图数据绘制弧形图时，一定要对节点进行分组以及排序，使用颜色映射将不同的点进行分类。
+
+### 4. 按照边权重定义弧形粗细
+
+图的边有时候设置有权重，可以映射到弧形粗细来表示。
+
+```{r fig5weight}
+#| label: fig5weight
+#| fig-cap: "按照边权重定义弧形粗细"
+#| out.width: "95%"
+#| warning: false
+#| fig-width: 12
+#| fig-height: 6
+
+# 1.从PPI数据表中提取边信息，使用结合分数的值作为权重
+data_ppi <- data_ppi[, c(9, 3)] # 提取第3、9列
+data_ppi$from <- gsub(" \\(.*", "", data_ppi[, 1]) # 截取name的左边节点名
+data_ppi$to <- gsub(".*\\) ", "", data_ppi[, 1]) # 截取name的右边节点名
+connect <- data_ppi[, -1] # 去除第一列
+connect <- connect[, c(2, 3, 1)] # 将两列边信息放在前面（from和to列）
+
+# 2.节点统计
+coauth <- # coauth保存节点名和出入度信息，后面会加上分组信息
+  c(as.character(connect$from), as.character(connect$to)) %>%
+  as.tibble() %>% # 类似数据框类型，列名默认为"value"————
+  group_by(value) %>% # 按"value"分组
+  summarize(n = n()) # 统计节点名的出入度
+colnames(coauth) <- c("name", "n") # 更改列名
+
+# 3.进行节点分组
+mygraph <- graph_from_data_frame(connect, vertices = coauth, directed = FALSE) # 生成一个图
+com <- walktrap.community(mygraph) # 根据节点的路径大小进行分组————
+## coauth添加分组信息
+coauth <- coauth %>%
+  mutate(grp = com$membership) %>% # 添加分组
+  arrange(grp) %>% # 按照分组进行排序
+  mutate(name = factor(name, name))
+
+# 4.筛选前15个组
+coauth <- coauth[coauth$grp < 16, ]
+# 过滤只在前15组点出现的连接
+connect <- connect %>%
+  filter(from %in% coauth$name) %>%
+  filter(to %in% coauth$name)
+
+# 5.生成一个图
+mygraph <- graph_from_data_frame(connect, vertices = coauth, directed = FALSE)
+# 按分组生成颜色
+mycolor <- colormap(colormap = colormaps$viridis, nshades = max(coauth$grp))
+mycolor <- sample(mycolor, length(mycolor))
+# ggraph画图
+ggraph(mygraph, layout = "linear") +
+  geom_edge_arc(aes(edge_width = connect$combined_score), edge_colour = "black", edge_alpha = 0.2, fold = TRUE) +
+  geom_node_point(aes(size = n, color = as.factor(grp), fill = grp), alpha = 0.5) + # 将n和分组变量映射到大小、颜色上
+  scale_size_continuous(range = c(0.5, 8)) + # 设置size范围
+  scale_color_manual(values = mycolor) + # 设置分组的颜色
+  geom_node_text(aes(label = name), angle = 65, hjust = 1, nudge_y = -1.1, size = 2.3) + # 设置节点标签，并倾斜避免重叠
+  theme_void() + # 去除背景表格，坐标轴主题
+  theme(
+    legend.position = "none", # 去除图例
+    plot.margin = unit(c(0, 0, 0.4, 0), "null"),
+    panel.spacing = unit(c(0, 0, 3.4, 0), "null")
+  ) +
+  expand_limits(x = c(-1.2, 1.2), y = c(-5.6, 1.2))
+```
+
+如图使用了PPI的边数据绘制的弧形图，节点表示基因，弧线表示基因间关系，弧形粗细表示基因间关系的权重（强弱）。与上一张图不同的是，提取边信息部分，和绘图中使用`edge_width = connect\$combined_score`，将权重映射到了弧线的粗细上。
+
+## 应用场景
+
+::: {#fig-ArcDiagramApplications}
+![](../images/ArcDiagram_app.png){fig-alt="ArcDiagramApp1" fig-align="center" width="60%"}
+
+弧形图应用
+:::
+
+Hi-C 在分辨率为 500Kb 和 1 Mb的整个 Dixon 染色体上的 相互作用弧图，由 GOTHiC 建模。a 弧形图，用于显示至少 50 次读数（500Kb 分辨率）和 100 次读数（1 Mb 分辨率）的交互。b 显著交互作用的弧图。 \[1\]
+
+## 参考文献
+
+\[1\] KHAKMARDAN S, REZVANI M, POUYAN A A, et al. MHiC, an integrated user-friendly tool for the identification and visualization of significant interactions in Hi-C data[J]. BMC Genomics, 2020,21(1): 225.
+
+
