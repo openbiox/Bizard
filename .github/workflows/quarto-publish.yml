@@ -26,6 +26,7 @@ jobs:
       group: quarto-publish-${{ github.event_name != 'pull_request' || github.run_id }}
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      TMP_DIR: /mnt/TMP
     permissions:
       contents: write
     steps:
@@ -67,9 +68,9 @@ jobs:
 
       - name: Create temporary directory at /mnt/TMP
         run: |
-          sudo mkdir -p /mnt/TMP
-          sudo chown -R $USER:$USER /mnt/TMP
-          echo "Created /mnt/TMP directory"
+          sudo mkdir -p ${{ env.TMP_DIR }}
+          sudo chown -R $USER:$USER ${{ env.TMP_DIR }}
+          echo "Created ${{ env.TMP_DIR }} directory"
 
       - name: Check disk usage before rendering
         run: |
@@ -81,9 +82,9 @@ jobs:
 
       - name: Render website with Babelquarto
         env:
-          TMPDIR: /mnt/TMP
-          TMP: /mnt/TMP
-          TEMP: /mnt/TMP
+          TMPDIR: ${{ env.TMP_DIR }}
+          TMP: ${{ env.TMP_DIR }}
+          TEMP: ${{ env.TMP_DIR }}
           R_COMPILE_PKGS: 0
         run: Rscript -e 'babelquarto::render_website()'
 
@@ -124,9 +125,10 @@ jobs:
       - name: Cleanup temporary directory
         if: always()
         run: |
-          if [ -d "/mnt/TMP" ] && [ "$(realpath /mnt/TMP)" = "/mnt/TMP" ]; then
-            sudo rm -rf /mnt/TMP
-            echo "Removed /mnt/TMP directory"
+          TMP_PATH="${{ env.TMP_DIR }}"
+          if [ -d "$TMP_PATH" ] && [ "$(readlink -f "$TMP_PATH" 2>/dev/null || echo "$TMP_PATH")" = "$TMP_PATH" ]; then
+            sudo rm -rf "$TMP_PATH"
+            echo "Removed $TMP_PATH directory"
           else
-            echo "Skipping cleanup - /mnt/TMP directory validation failed"
+            echo "Skipping cleanup - $TMP_PATH directory validation failed or does not exist"
           fi
