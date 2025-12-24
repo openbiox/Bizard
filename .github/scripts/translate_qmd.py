@@ -19,16 +19,22 @@ except ImportError:
     sys.exit(1)
 
 
+# Constants
+LANGUAGE_DETECTION_THRESHOLD = 0.3  # Chinese chars must be > 30% of English to be classified as Chinese
+MAX_SPELL_CHECK_CHARS = 8000  # Maximum characters to send for spell checking
+DEFAULT_MODEL = "gpt-4o-mini"  # Default model for cost efficiency
+
+
 class QMDTranslator:
     """Handles translation of QMD files between English and Chinese"""
     
-    def __init__(self, api_key: str, model: str = "gpt-4"):
+    def __init__(self, api_key: str, model: str = DEFAULT_MODEL):
         """
         Initialize translator with OpenAI API credentials
         
         Args:
             api_key: OpenAI API key
-            model: Model to use for translation (default: gpt-4)
+            model: Model to use for translation (default: gpt-4o-mini)
         """
         self.client = openai.OpenAI(api_key=api_key)
         self.model = model
@@ -49,7 +55,7 @@ class QMDTranslator:
         english_chars = len(re.findall(r'[a-zA-Z]', content))
         
         # Determine language based on character count
-        if chinese_chars > english_chars * 0.3:  # If Chinese chars > 30% of English
+        if chinese_chars > english_chars * LANGUAGE_DETECTION_THRESHOLD:
             return 'zh'
         return 'en'
     
@@ -277,11 +283,19 @@ Return a JSON array of issues found, with each issue having:
 
 If no issues found, return an empty array []."""
 
+            # Truncate content at word boundary to avoid cutting mid-word
+            truncated_content = content[:MAX_SPELL_CHECK_CHARS]
+            if len(content) > MAX_SPELL_CHECK_CHARS:
+                # Find last space to avoid cutting words
+                last_space = truncated_content.rfind(' ')
+                if last_space > MAX_SPELL_CHECK_CHARS * 0.8:  # Only if we're not losing too much
+                    truncated_content = truncated_content[:last_space]
+
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": content[:8000]}  # Limit for API
+                    {"role": "user", "content": truncated_content}
                 ],
                 temperature=0.1,
                 max_tokens=1000
@@ -331,7 +345,7 @@ def main():
     parser = argparse.ArgumentParser(description='Translate QMD files between English and Chinese')
     parser.add_argument('input_files', nargs='+', help='Input QMD file(s) to translate')
     parser.add_argument('--api-key', help='OpenAI API key (or set OPENAI_API_KEY env var)')
-    parser.add_argument('--model', default='gpt-4', help='Model to use (default: gpt-4)')
+    parser.add_argument('--model', default=DEFAULT_MODEL, help=f'Model to use (default: {DEFAULT_MODEL})')
     parser.add_argument('--target-lang', choices=['en', 'zh'], help='Target language (auto-detect if not specified)')
     parser.add_argument('--check-spelling', action='store_true', help='Check for spelling errors')
     parser.add_argument('--output-dir', help='Output directory (default: same as input)')
