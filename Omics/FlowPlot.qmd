@@ -1,0 +1,425 @@
+---
+title: "Flow Plot"
+author:
+  - "**[Editor]** [Copilot](https://github.com/features/copilot);"
+  - "**[Contributors]** [zeruoy](https://github.com/zeruoy)."
+---
+
+Flow plots are powerful visualizations for displaying metabolite-mediated cell-cell communication networks in single-cell omics data. This type of plot is particularly useful in metabolomics and cell communication analysis, showing how metabolites flow from sender cells through metabolite intermediates to sensor molecules in receiver cells.
+
+## Example
+
+![](../images/Omics/FlowPlot_demo.png){fig-alt="Flow Plot DEMO" fig-align="center" width="80%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: Python
+
+-   Dependent packages: `pandas`; `numpy`; `matplotlib`; `networkx`; `plotly`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Installing necessary Python packages
+if (!reticulate::py_module_available("pandas")) {
+  reticulate::py_install("pandas")
+}
+if (!reticulate::py_module_available("numpy")) {
+  reticulate::py_install("numpy")
+}
+if (!reticulate::py_module_available("matplotlib")) {
+  reticulate::py_install("matplotlib")
+}
+if (!reticulate::py_module_available("networkx")) {
+  reticulate::py_install("networkx")
+}
+if (!reticulate::py_module_available("plotly")) {
+  reticulate::py_install("plotly")
+}
+
+# Load reticulate for Python integration
+library(reticulate)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+Flow plots typically visualize four main components in metabolite-mediated communication:
+1. **Sender cells** - Cell types that produce metabolites
+2. **Metabolites** - Small molecules mediating communication
+3. **Sensor proteins** - Receptors or transporters detecting metabolites
+4. **Receiver cells** - Cell types receiving the metabolite signals
+
+### 1. Load and prepare data
+
+For this example, we'll use the MEBOCOST (Metabolite-mediated Cell Communication Modeling) framework data structure. The data contains information about sender cells, metabolites, sensors, and receiver cells with associated communication scores.
+
+```{python load data, message=FALSE, warning=FALSE}
+import pandas as pd
+import numpy as np
+
+# Create example data representing cell-cell communication
+# In practice, this data would come from MEBOCOST analysis
+communication_data = pd.DataFrame({
+    'sender': ['Plasma Myofibroblasts', 'Plasma Myofibroblasts', 'Myocyte', 'Myocyte', 
+               'Mono/Macro', 'Mono/Macro', 'Mast', 'Malignant', 'Fibroblasts', 'Fibroblasts',
+               'Endothelial', 'CD8Tex', 'CD8T', 'CD4Tconv'],
+    'metabolite': ['gamma-Aminobutyric acid', 'Uridine diphosphate glucose', 'Linoleic acid', 
+                   'L-Serine', 'Glutamine', 'L-Asparagine', 'L-Arginine', 'Glycine',
+                   'Glycerol', 'Eicosapentaenoic acid', 'Docosahexaenoic acid', 'D-Mannose',
+                   'D-Fructose', 'Cytidine'],
+    'sensor': ['SLC6A8', 'SLC44A2', 'SLC2A1', 'SLC3A2', 'SLC38A5', 'SLC38A2', 'SLC38A1',
+               'SLC2A5', 'SLC2A3', 'SLC2A8', 'SLC43A1', 'SLC22A1', 'SLC29A1', 'SLC1A4'],
+    'receiver': ['Plasma Myofibroblasts', 'Myocyte', 'Mono/Macro', 'Mast', 'Malignant',
+                 'Fibroblasts', 'Endothelial', 'CD8Tex', 'CD8T', 'CD4Tconv', 'Plasma Myofibroblasts',
+                 'Myocyte', 'Mono/Macro', 'Mast'],
+    'communication_score': [47.33, 35.20, 28.50, 25.10, 20.45, 18.30, 15.80, 12.40, 10.25, 
+                           8.75, 6.50, 4.20, 2.30, 1.70],
+    'pvalue': [0.001, 0.002, 0.005, 0.008, 0.010, 0.012, 0.015, 0.020, 0.025, 0.030,
+               0.040, 0.050, 0.060, 0.080],
+    'num_connections': [43, 38, 32, 28, 25, 20, 18, 15, 12, 10, 8, 5, 3, 1]
+})
+
+print("Communication data structure:")
+print(communication_data.head())
+```
+
+### 2. Data processing
+
+```{python process data, message=FALSE, warning=FALSE}
+# Filter significant communications (p-value < 0.05)
+significant_comm = communication_data[communication_data['pvalue'] < 0.05].copy()
+
+# Calculate -log10(p-value) for color mapping
+significant_comm['neg_log_pvalue'] = -np.log10(significant_comm['pvalue'])
+
+print(f"\nNumber of significant communications: {len(significant_comm)}")
+print("\nProcessed data summary:")
+print(significant_comm.describe())
+```
+
+## Visualization
+
+### 1. Basic Flow Plot using matplotlib
+
+A basic flow plot showing the four-layer structure of metabolite-mediated communication:
+
+```{python fig1_basic_flow, message=FALSE, warning=FALSE, fig.width=14, fig.height=8}
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch
+import matplotlib.lines as mlines
+
+# Set up the figure
+fig, ax = plt.subplots(figsize=(14, 8))
+
+# Define positions for each layer
+layers = ['Sender', 'Metabolite', 'Sensor', 'Receiver']
+layer_x = [0.1, 0.35, 0.65, 0.9]
+
+# Get unique elements for each layer
+senders = significant_comm['sender'].unique()
+metabolites = significant_comm['metabolite'].unique()
+sensors = significant_comm['sensor'].unique()
+receivers = significant_comm['receiver'].unique()
+
+# Create position mappings
+def create_positions(items, x_pos, y_spacing=0.8):
+    n = len(items)
+    y_positions = np.linspace(0.1, 0.9, n)
+    return {item: (x_pos, y_pos) for item, y_pos in zip(items, y_positions)}
+
+sender_pos = create_positions(senders, layer_x[0])
+metabolite_pos = create_positions(metabolites, layer_x[1])
+sensor_pos = create_positions(sensors, layer_x[2])
+receiver_pos = create_positions(receivers, layer_x[3])
+
+# Plot connections
+for idx, row in significant_comm.iterrows():
+    # Get positions
+    s_pos = sender_pos[row['sender']]
+    m_pos = metabolite_pos[row['metabolite']]
+    sen_pos = sensor_pos[row['sensor']]
+    r_pos = receiver_pos[row['receiver']]
+    
+    # Color based on -log10(p-value)
+    color_val = plt.cm.RdYlBu_r(row['neg_log_pvalue'] / significant_comm['neg_log_pvalue'].max())
+    
+    # Line width based on communication score
+    linewidth = 0.5 + (row['communication_score'] / significant_comm['communication_score'].max()) * 3
+    
+    # Draw lines
+    ax.plot([s_pos[0], m_pos[0]], [s_pos[1], m_pos[1]], 
+            color=color_val, alpha=0.6, linewidth=linewidth, zorder=1)
+    ax.plot([m_pos[0], sen_pos[0]], [m_pos[1], sen_pos[1]], 
+            color=color_val, alpha=0.6, linewidth=linewidth, zorder=1)
+    ax.plot([sen_pos[0], r_pos[0]], [sen_pos[1], r_pos[1]], 
+            color=color_val, alpha=0.6, linewidth=linewidth, zorder=1)
+
+# Plot nodes for each layer
+for layer_name, positions, color in zip(
+    ['Sender', 'Metabolite', 'Sensor', 'Receiver'],
+    [sender_pos, metabolite_pos, sensor_pos, receiver_pos],
+    ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+):
+    for item, (x, y) in positions.items():
+        ax.scatter(x, y, s=100, color=color, zorder=2, edgecolors='black', linewidths=1)
+        # Add labels
+        if layer_name in ['Sender', 'Receiver']:
+            ha = 'right' if layer_name == 'Sender' else 'left'
+            offset = -0.02 if layer_name == 'Sender' else 0.02
+            ax.text(x + offset, y, item, fontsize=8, ha=ha, va='center')
+        else:
+            ax.text(x, y + 0.02, item, fontsize=6, ha='center', va='bottom', rotation=0)
+
+# Add layer labels
+for layer_name, x_pos in zip(layers, layer_x):
+    ax.text(x_pos, 0.05, layer_name, fontsize=14, ha='center', fontweight='bold')
+
+# Styling
+ax.set_xlim(-0.05, 1.05)
+ax.set_ylim(0, 1)
+ax.axis('off')
+ax.set_title('Flow Plot: Metabolite-Mediated Cell-Cell Communication', 
+             fontsize=16, fontweight='bold', pad=20)
+
+# Add colorbar for p-value
+sm = plt.cm.ScalarMappable(cmap='RdYlBu_r', 
+                           norm=plt.Normalize(vmin=0, vmax=significant_comm['neg_log_pvalue'].max()))
+sm.set_array([])
+cbar = plt.colorbar(sm, ax=ax, orientation='horizontal', pad=0.02, aspect=40)
+cbar.set_label('-log10(p-value)', fontsize=10)
+
+plt.tight_layout()
+plt.show()
+```
+
+### 2. Interactive Flow Plot using plotly
+
+For a more interactive visualization with hover information:
+
+```{python fig2_interactive, message=FALSE, warning=FALSE}
+import plotly.graph_objects as go
+
+# Create figure
+fig = go.Figure()
+
+# Define layer positions
+layer_x = {'Sender': 0.1, 'Metabolite': 0.35, 'Sensor': 0.65, 'Receiver': 0.9}
+
+# Create position mappings
+def create_positions_dict(items, x_key):
+    n = len(items)
+    y_positions = np.linspace(0.1, 0.9, n)
+    return {item: {'x': layer_x[x_key], 'y': y_pos} 
+            for item, y_pos in zip(items, y_positions)}
+
+pos_dict = {}
+pos_dict.update(create_positions_dict(senders, 'Sender'))
+pos_dict.update(create_positions_dict(metabolites, 'Metabolite'))
+pos_dict.update(create_positions_dict(sensors, 'Sensor'))
+pos_dict.update(create_positions_dict(receivers, 'Receiver'))
+
+# Add edges (connections)
+for idx, row in significant_comm.iterrows():
+    # Get positions
+    sender_x, sender_y = pos_dict[row['sender']]['x'], pos_dict[row['sender']]['y']
+    metab_x, metab_y = pos_dict[row['metabolite']]['x'], pos_dict[row['metabolite']]['y']
+    sensor_x, sensor_y = pos_dict[row['sensor']]['x'], pos_dict[row['sensor']]['y']
+    receiver_x, receiver_y = pos_dict[row['receiver']]['x'], pos_dict[row['receiver']]['y']
+    
+    # Color based on communication score
+    color_intensity = row['communication_score'] / significant_comm['communication_score'].max()
+    line_color = f'rgba(147, 51, 234, {0.3 + color_intensity * 0.5})'
+    
+    # Draw path from sender to receiver through metabolite and sensor
+    fig.add_trace(go.Scatter(
+        x=[sender_x, metab_x, sensor_x, receiver_x],
+        y=[sender_y, metab_y, sensor_y, receiver_y],
+        mode='lines',
+        line=dict(color=line_color, width=1 + row['communication_score']/10),
+        hoverinfo='text',
+        hovertext=f"Score: {row['communication_score']:.2f}<br>p-value: {row['pvalue']:.4f}<br>Connections: {row['num_connections']}",
+        showlegend=False
+    ))
+
+# Add nodes for each layer
+colors = {'Sender': '#1f77b4', 'Metabolite': '#ff7f0e', 'Sensor': '#2ca02c', 'Receiver': '#d62728'}
+
+for layer, items in [('Sender', senders), ('Metabolite', metabolites), 
+                     ('Sensor', sensors), ('Receiver', receivers)]:
+    x_coords = [pos_dict[item]['x'] for item in items]
+    y_coords = [pos_dict[item]['y'] for item in items]
+    
+    fig.add_trace(go.Scatter(
+        x=x_coords,
+        y=y_coords,
+        mode='markers+text',
+        marker=dict(size=12, color=colors[layer], line=dict(width=1, color='black')),
+        text=list(items),
+        textposition='middle left' if layer == 'Receiver' else 'middle right' if layer == 'Sender' else 'top center',
+        textfont=dict(size=8),
+        name=layer,
+        hoverinfo='text',
+        hovertext=list(items)
+    ))
+
+# Update layout
+fig.update_layout(
+    title='Interactive Flow Plot: Metabolite-Mediated Cell-Cell Communication',
+    showlegend=True,
+    hovermode='closest',
+    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+    width=1200,
+    height=700,
+    plot_bgcolor='white'
+)
+
+# Add layer labels
+for layer, x_pos in layer_x.items():
+    fig.add_annotation(
+        x=x_pos, y=0.05,
+        text=f"<b>{layer}</b>",
+        showarrow=False,
+        font=dict(size=14)
+    )
+
+fig.show()
+```
+
+### 3. Customized Flow Plot with Statistical Information
+
+A more sophisticated version including statistical summaries:
+
+```{python fig3_advanced, message=FALSE, warning=FALSE, fig.width=14, fig.height=10}
+# Create a multi-panel plot
+fig = plt.figure(figsize=(14, 10))
+gs = fig.add_gridspec(2, 2, height_ratios=[3, 1], width_ratios=[3, 1], hspace=0.3, wspace=0.3)
+
+# Main flow plot (top-left)
+ax_main = fig.add_subplot(gs[0, 0])
+
+# Recreate the basic flow plot
+for idx, row in significant_comm.iterrows():
+    s_pos = sender_pos[row['sender']]
+    m_pos = metabolite_pos[row['metabolite']]
+    sen_pos = sensor_pos[row['sensor']]
+    r_pos = receiver_pos[row['receiver']]
+    
+    color_val = plt.cm.RdYlBu_r(row['neg_log_pvalue'] / significant_comm['neg_log_pvalue'].max())
+    linewidth = 0.5 + (row['communication_score'] / significant_comm['communication_score'].max()) * 3
+    
+    ax_main.plot([s_pos[0], m_pos[0]], [s_pos[1], m_pos[1]], 
+                 color=color_val, alpha=0.6, linewidth=linewidth, zorder=1)
+    ax_main.plot([m_pos[0], sen_pos[0]], [m_pos[1], sen_pos[1]], 
+                 color=color_val, alpha=0.6, linewidth=linewidth, zorder=1)
+    ax_main.plot([sen_pos[0], r_pos[0]], [sen_pos[1], r_pos[1]], 
+                 color=color_val, alpha=0.6, linewidth=linewidth, zorder=1)
+
+for layer_name, positions, color in zip(
+    ['Sender', 'Metabolite', 'Sensor', 'Receiver'],
+    [sender_pos, metabolite_pos, sensor_pos, receiver_pos],
+    ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+):
+    for item, (x, y) in positions.items():
+        ax_main.scatter(x, y, s=100, color=color, zorder=2, edgecolors='black', linewidths=1)
+
+for layer_name, x_pos in zip(layers, layer_x):
+    ax_main.text(x_pos, 0.05, layer_name, fontsize=12, ha='center', fontweight='bold')
+
+ax_main.set_xlim(-0.05, 1.05)
+ax_main.set_ylim(0, 1)
+ax_main.axis('off')
+ax_main.set_title('Metabolite-Mediated Cell-Cell Communication Network', 
+                  fontsize=14, fontweight='bold', pad=10)
+
+# Communication score distribution (bottom-left)
+ax_score = fig.add_subplot(gs[1, 0])
+ax_score.bar(range(len(significant_comm)), significant_comm['communication_score'], 
+             color='steelblue', alpha=0.7)
+ax_score.set_xlabel('Communication Pairs', fontsize=10)
+ax_score.set_ylabel('Communication Score', fontsize=10)
+ax_score.set_title('Communication Strength Distribution', fontsize=11, fontweight='bold')
+ax_score.grid(axis='y', alpha=0.3)
+
+# Legend (top-right)
+ax_legend = fig.add_subplot(gs[0, 1])
+ax_legend.axis('off')
+
+# Add legend elements
+legend_y = 0.9
+legend_elements = [
+    ('# of Connection', 'Size'),
+    ('Communication Score', 'Line width'),
+    ('-log10(p-value)', 'Color')
+]
+
+ax_legend.text(0.5, 0.95, 'Legend', fontsize=12, fontweight='bold', ha='center')
+for label, description in legend_elements:
+    ax_legend.text(0.1, legend_y, f'{label}:', fontsize=10, fontweight='bold')
+    ax_legend.text(0.1, legend_y - 0.05, f'  {description}', fontsize=9)
+    legend_y -= 0.15
+
+# Add color gradient example
+from matplotlib.patches import Rectangle
+gradient_y = 0.3
+ax_legend.text(0.5, gradient_y + 0.1, 'p-value gradient:', fontsize=9, ha='center')
+gradient = np.linspace(0, 1, 256).reshape(1, 256)
+ax_legend.imshow(gradient, aspect='auto', extent=[0.1, 0.9, gradient_y - 0.05, gradient_y], 
+                cmap='RdYlBu_r')
+ax_legend.text(0.1, gradient_y - 0.1, 'High', fontsize=8, ha='center')
+ax_legend.text(0.9, gradient_y - 0.1, 'Low', fontsize=8, ha='center')
+
+# Summary statistics (bottom-right)
+ax_stats = fig.add_subplot(gs[1, 1])
+ax_stats.axis('off')
+
+stats_text = f"""Summary Statistics:
+
+Total Communications: {len(significant_comm)}
+Unique Senders: {len(senders)}
+Unique Metabolites: {len(metabolites)}
+Unique Sensors: {len(sensors)}
+Unique Receivers: {len(receivers)}
+
+Avg Score: {significant_comm['communication_score'].mean():.2f}
+Max Score: {significant_comm['communication_score'].max():.2f}
+Min p-value: {significant_comm['pvalue'].min():.4f}
+"""
+
+ax_stats.text(0.1, 0.9, stats_text, fontsize=9, verticalalignment='top', 
+             fontfamily='monospace')
+
+plt.suptitle('Flow Plot Analysis: Comprehensive View', fontsize=16, fontweight='bold', y=0.98)
+plt.tight_layout()
+plt.show()
+```
+
+## Key Features
+
+Flow plots are particularly effective for:
+
+1. **Multi-layer visualization**: Clearly showing the four components of metabolite-mediated communication
+2. **Quantitative mapping**: Line width and color can encode statistical significance and communication strength
+3. **Pattern discovery**: Easy identification of hub metabolites, sensors, or cell types with many connections
+4. **Comparative analysis**: Side-by-side comparison of different conditions or time points
+
+## Tips for Interpretation
+
+- **Line thickness**: Indicates the strength of communication (communication score)
+- **Line color**: Represents statistical significance (p-value)
+- **Node clustering**: Multiple lines converging on a node suggest hub molecules or cells
+- **Pathway complexity**: Dense networks indicate complex metabolite-mediated signaling
+
+## Reference
+
+\[1\] Zheng, S., Zou, Y., Xie, X. et al. MEBOCOST: Metabolite-mediated Cell Communication Modeling by Single Cell Transcriptome. *Nature Communications* 15, 151 (2024). <https://doi.org/10.1038/s41467-023-44342-0>
+
+\[2\] MEBOCOST Documentation. <https://wwylab.github.io/mebocost/>
+
+\[3\] MEBOCOST GitHub Repository. <https://github.com/kaifuchenlab/MEBOCOST>
+

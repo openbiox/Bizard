@@ -1,0 +1,426 @@
+---
+title: "流图（Flow Plot）"
+author:
+  - "**[编辑]** [Copilot](https://github.com/features/copilot);"
+  - "**[贡献]** [zeruoy](https://github.com/zeruoy)."
+---
+
+流图是一种强大的可视化方法,用于展示单细胞组学数据中代谢物介导的细胞间通讯网络。这种图表在代谢组学和细胞通讯分析中特别有用,展示了代谢物如何从发送细胞通过代谢物中间体流向接收细胞中的传感器分子。
+
+## 示例
+
+![](../images/Omics/FlowPlot_demo.png){fig-alt="Flow Plot DEMO" fig-align="center" width="80%"}
+
+## 环境配置
+
+-   系统要求: 跨平台（Linux/MacOS/Windows）
+
+-   编程语言: Python
+
+-   依赖包: `pandas`; `numpy`; `matplotlib`; `networkx`; `plotly`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装必要的Python包
+if (!reticulate::py_module_available("pandas")) {
+  reticulate::py_install("pandas")
+}
+if (!reticulate::py_module_available("numpy")) {
+  reticulate::py_install("numpy")
+}
+if (!reticulate::py_module_available("matplotlib")) {
+  reticulate::py_install("matplotlib")
+}
+if (!reticulate::py_module_available("networkx")) {
+  reticulate::py_install("networkx")
+}
+if (!reticulate::py_module_available("plotly")) {
+  reticulate::py_install("plotly")
+}
+
+# 加载reticulate用于Python集成
+library(reticulate)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+流图通常可视化代谢物介导通讯中的四个主要组成部分:
+1. **发送细胞** - 产生代谢物的细胞类型
+2. **代谢物** - 介导通讯的小分子
+3. **传感蛋白** - 检测代谢物的受体或转运体
+4. **接收细胞** - 接收代谢物信号的细胞类型
+
+### 1. 加载和准备数据
+
+本例中,我们使用MEBOCOST（代谢物介导的细胞通讯建模）框架的数据结构。数据包含关于发送细胞、代谢物、传感器和接收细胞的信息,以及相关的通讯评分。
+
+```{python load data, message=FALSE, warning=FALSE}
+import pandas as pd
+import numpy as np
+
+# 创建示例数据,代表细胞间通讯
+# 在实践中,这些数据将来自MEBOCOST分析
+communication_data = pd.DataFrame({
+    'sender': ['Plasma Myofibroblasts', 'Plasma Myofibroblasts', 'Myocyte', 'Myocyte', 
+               'Mono/Macro', 'Mono/Macro', 'Mast', 'Malignant', 'Fibroblasts', 'Fibroblasts',
+               'Endothelial', 'CD8Tex', 'CD8T', 'CD4Tconv'],
+    'metabolite': ['gamma-Aminobutyric acid', 'Uridine diphosphate glucose', 'Linoleic acid', 
+                   'L-Serine', 'Glutamine', 'L-Asparagine', 'L-Arginine', 'Glycine',
+                   'Glycerol', 'Eicosapentaenoic acid', 'Docosahexaenoic acid', 'D-Mannose',
+                   'D-Fructose', 'Cytidine'],
+    'sensor': ['SLC6A8', 'SLC44A2', 'SLC2A1', 'SLC3A2', 'SLC38A5', 'SLC38A2', 'SLC38A1',
+               'SLC2A5', 'SLC2A3', 'SLC2A8', 'SLC43A1', 'SLC22A1', 'SLC29A1', 'SLC1A4'],
+    'receiver': ['Plasma Myofibroblasts', 'Myocyte', 'Mono/Macro', 'Mast', 'Malignant',
+                 'Fibroblasts', 'Endothelial', 'CD8Tex', 'CD8T', 'CD4Tconv', 'Plasma Myofibroblasts',
+                 'Myocyte', 'Mono/Macro', 'Mast'],
+    'communication_score': [47.33, 35.20, 28.50, 25.10, 20.45, 18.30, 15.80, 12.40, 10.25, 
+                           8.75, 6.50, 4.20, 2.30, 1.70],
+    'pvalue': [0.001, 0.002, 0.005, 0.008, 0.010, 0.012, 0.015, 0.020, 0.025, 0.030,
+               0.040, 0.050, 0.060, 0.080],
+    'num_connections': [43, 38, 32, 28, 25, 20, 18, 15, 12, 10, 8, 5, 3, 1]
+})
+
+print("通讯数据结构:")
+print(communication_data.head())
+```
+
+### 2. 数据处理
+
+```{python process data, message=FALSE, warning=FALSE}
+# 筛选显著的通讯 (p值 < 0.05)
+significant_comm = communication_data[communication_data['pvalue'] < 0.05].copy()
+
+# 计算 -log10(p值) 用于颜色映射
+significant_comm['neg_log_pvalue'] = -np.log10(significant_comm['pvalue'])
+
+print(f"\n显著通讯数量: {len(significant_comm)}")
+print("\n处理后的数据摘要:")
+print(significant_comm.describe())
+```
+
+## 可视化
+
+### 1. 使用matplotlib创建基础流图
+
+展示代谢物介导通讯的四层结构的基础流图:
+
+```{python fig1_basic_flow, message=FALSE, warning=FALSE, fig.width=14, fig.height=8}
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch
+import matplotlib.lines as mlines
+
+# 设置图形
+fig, ax = plt.subplots(figsize=(14, 8))
+
+# 定义每层的位置
+layers = ['发送方', '代谢物', '传感器', '接收方']
+layer_x = [0.1, 0.35, 0.65, 0.9]
+
+# 获取每层的唯一元素
+senders = significant_comm['sender'].unique()
+metabolites = significant_comm['metabolite'].unique()
+sensors = significant_comm['sensor'].unique()
+receivers = significant_comm['receiver'].unique()
+
+# 创建位置映射
+def create_positions(items, x_pos, y_spacing=0.8):
+    n = len(items)
+    y_positions = np.linspace(0.1, 0.9, n)
+    return {item: (x_pos, y_pos) for item, y_pos in zip(items, y_positions)}
+
+sender_pos = create_positions(senders, layer_x[0])
+metabolite_pos = create_positions(metabolites, layer_x[1])
+sensor_pos = create_positions(sensors, layer_x[2])
+receiver_pos = create_positions(receivers, layer_x[3])
+
+# 绘制连接线
+for idx, row in significant_comm.iterrows():
+    # 获取位置
+    s_pos = sender_pos[row['sender']]
+    m_pos = metabolite_pos[row['metabolite']]
+    sen_pos = sensor_pos[row['sensor']]
+    r_pos = receiver_pos[row['receiver']]
+    
+    # 基于 -log10(p值) 的颜色
+    color_val = plt.cm.RdYlBu_r(row['neg_log_pvalue'] / significant_comm['neg_log_pvalue'].max())
+    
+    # 基于通讯评分的线宽
+    linewidth = 0.5 + (row['communication_score'] / significant_comm['communication_score'].max()) * 3
+    
+    # 绘制线条
+    ax.plot([s_pos[0], m_pos[0]], [s_pos[1], m_pos[1]], 
+            color=color_val, alpha=0.6, linewidth=linewidth, zorder=1)
+    ax.plot([m_pos[0], sen_pos[0]], [m_pos[1], sen_pos[1]], 
+            color=color_val, alpha=0.6, linewidth=linewidth, zorder=1)
+    ax.plot([sen_pos[0], r_pos[0]], [sen_pos[1], r_pos[1]], 
+            color=color_val, alpha=0.6, linewidth=linewidth, zorder=1)
+
+# 绘制每层的节点
+for layer_name, positions, color in zip(
+    ['Sender', 'Metabolite', 'Sensor', 'Receiver'],
+    [sender_pos, metabolite_pos, sensor_pos, receiver_pos],
+    ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+):
+    for item, (x, y) in positions.items():
+        ax.scatter(x, y, s=100, color=color, zorder=2, edgecolors='black', linewidths=1)
+        # 添加标签
+        if layer_name in ['Sender', 'Receiver']:
+            ha = 'right' if layer_name == 'Sender' else 'left'
+            offset = -0.02 if layer_name == 'Sender' else 0.02
+            ax.text(x + offset, y, item, fontsize=8, ha=ha, va='center')
+        else:
+            ax.text(x, y + 0.02, item, fontsize=6, ha='center', va='bottom', rotation=0)
+
+# 添加层标签
+for layer_name, x_pos in zip(layers, layer_x):
+    ax.text(x_pos, 0.05, layer_name, fontsize=14, ha='center', fontweight='bold')
+
+# 样式设置
+ax.set_xlim(-0.05, 1.05)
+ax.set_ylim(0, 1)
+ax.axis('off')
+ax.set_title('流图: 代谢物介导的细胞间通讯', 
+             fontsize=16, fontweight='bold', pad=20)
+
+# 添加p值的颜色条
+sm = plt.cm.ScalarMappable(cmap='RdYlBu_r', 
+                           norm=plt.Normalize(vmin=0, vmax=significant_comm['neg_log_pvalue'].max()))
+sm.set_array([])
+cbar = plt.colorbar(sm, ax=ax, orientation='horizontal', pad=0.02, aspect=40)
+cbar.set_label('-log10(p值)', fontsize=10)
+
+plt.tight_layout()
+plt.show()
+```
+
+### 2. 使用plotly创建交互式流图
+
+创建一个更具交互性的可视化,包含悬停信息:
+
+```{python fig2_interactive, message=FALSE, warning=FALSE}
+import plotly.graph_objects as go
+
+# 创建图形
+fig = go.Figure()
+
+# 定义层位置
+layer_x = {'Sender': 0.1, 'Metabolite': 0.35, 'Sensor': 0.65, 'Receiver': 0.9}
+
+# 创建位置映射字典
+def create_positions_dict(items, x_key):
+    n = len(items)
+    y_positions = np.linspace(0.1, 0.9, n)
+    return {item: {'x': layer_x[x_key], 'y': y_pos} 
+            for item, y_pos in zip(items, y_positions)}
+
+pos_dict = {}
+pos_dict.update(create_positions_dict(senders, 'Sender'))
+pos_dict.update(create_positions_dict(metabolites, 'Metabolite'))
+pos_dict.update(create_positions_dict(sensors, 'Sensor'))
+pos_dict.update(create_positions_dict(receivers, 'Receiver'))
+
+# 添加边（连接）
+for idx, row in significant_comm.iterrows():
+    # 获取位置
+    sender_x, sender_y = pos_dict[row['sender']]['x'], pos_dict[row['sender']]['y']
+    metab_x, metab_y = pos_dict[row['metabolite']]['x'], pos_dict[row['metabolite']]['y']
+    sensor_x, sensor_y = pos_dict[row['sensor']]['x'], pos_dict[row['sensor']]['y']
+    receiver_x, receiver_y = pos_dict[row['receiver']]['x'], pos_dict[row['receiver']]['y']
+    
+    # 基于通讯评分的颜色
+    color_intensity = row['communication_score'] / significant_comm['communication_score'].max()
+    line_color = f'rgba(147, 51, 234, {0.3 + color_intensity * 0.5})'
+    
+    # 绘制从发送方到接收方经过代谢物和传感器的路径
+    fig.add_trace(go.Scatter(
+        x=[sender_x, metab_x, sensor_x, receiver_x],
+        y=[sender_y, metab_y, sensor_y, receiver_y],
+        mode='lines',
+        line=dict(color=line_color, width=1 + row['communication_score']/10),
+        hoverinfo='text',
+        hovertext=f"评分: {row['communication_score']:.2f}<br>p值: {row['pvalue']:.4f}<br>连接数: {row['num_connections']}",
+        showlegend=False
+    ))
+
+# 为每层添加节点
+colors = {'Sender': '#1f77b4', 'Metabolite': '#ff7f0e', 'Sensor': '#2ca02c', 'Receiver': '#d62728'}
+
+for layer, items in [('Sender', senders), ('Metabolite', metabolites), 
+                     ('Sensor', sensors), ('Receiver', receivers)]:
+    x_coords = [pos_dict[item]['x'] for item in items]
+    y_coords = [pos_dict[item]['y'] for item in items]
+    
+    fig.add_trace(go.Scatter(
+        x=x_coords,
+        y=y_coords,
+        mode='markers+text',
+        marker=dict(size=12, color=colors[layer], line=dict(width=1, color='black')),
+        text=list(items),
+        textposition='middle left' if layer == 'Receiver' else 'middle right' if layer == 'Sender' else 'top center',
+        textfont=dict(size=8),
+        name=layer,
+        hoverinfo='text',
+        hovertext=list(items)
+    ))
+
+# 更新布局
+fig.update_layout(
+    title='交互式流图: 代谢物介导的细胞间通讯',
+    showlegend=True,
+    hovermode='closest',
+    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+    width=1200,
+    height=700,
+    plot_bgcolor='white'
+)
+
+# 添加层标签
+layer_labels_zh = {'Sender': '发送方', 'Metabolite': '代谢物', 'Sensor': '传感器', 'Receiver': '接收方'}
+for layer, x_pos in layer_x.items():
+    fig.add_annotation(
+        x=x_pos, y=0.05,
+        text=f"<b>{layer_labels_zh[layer]}</b>",
+        showarrow=False,
+        font=dict(size=14)
+    )
+
+fig.show()
+```
+
+### 3. 带统计信息的定制流图
+
+包含统计摘要的更复杂版本:
+
+```{python fig3_advanced, message=FALSE, warning=FALSE, fig.width=14, fig.height=10}
+# 创建多面板图
+fig = plt.figure(figsize=(14, 10))
+gs = fig.add_gridspec(2, 2, height_ratios=[3, 1], width_ratios=[3, 1], hspace=0.3, wspace=0.3)
+
+# 主流图（左上）
+ax_main = fig.add_subplot(gs[0, 0])
+
+# 重新创建基础流图
+for idx, row in significant_comm.iterrows():
+    s_pos = sender_pos[row['sender']]
+    m_pos = metabolite_pos[row['metabolite']]
+    sen_pos = sensor_pos[row['sensor']]
+    r_pos = receiver_pos[row['receiver']]
+    
+    color_val = plt.cm.RdYlBu_r(row['neg_log_pvalue'] / significant_comm['neg_log_pvalue'].max())
+    linewidth = 0.5 + (row['communication_score'] / significant_comm['communication_score'].max()) * 3
+    
+    ax_main.plot([s_pos[0], m_pos[0]], [s_pos[1], m_pos[1]], 
+                 color=color_val, alpha=0.6, linewidth=linewidth, zorder=1)
+    ax_main.plot([m_pos[0], sen_pos[0]], [m_pos[1], sen_pos[1]], 
+                 color=color_val, alpha=0.6, linewidth=linewidth, zorder=1)
+    ax_main.plot([sen_pos[0], r_pos[0]], [sen_pos[1], r_pos[1]], 
+                 color=color_val, alpha=0.6, linewidth=linewidth, zorder=1)
+
+for layer_name, positions, color in zip(
+    ['Sender', 'Metabolite', 'Sensor', 'Receiver'],
+    [sender_pos, metabolite_pos, sensor_pos, receiver_pos],
+    ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+):
+    for item, (x, y) in positions.items():
+        ax_main.scatter(x, y, s=100, color=color, zorder=2, edgecolors='black', linewidths=1)
+
+for layer_name, x_pos in zip(layers, layer_x):
+    ax_main.text(x_pos, 0.05, layer_name, fontsize=12, ha='center', fontweight='bold')
+
+ax_main.set_xlim(-0.05, 1.05)
+ax_main.set_ylim(0, 1)
+ax_main.axis('off')
+ax_main.set_title('代谢物介导的细胞间通讯网络', 
+                  fontsize=14, fontweight='bold', pad=10)
+
+# 通讯评分分布（左下）
+ax_score = fig.add_subplot(gs[1, 0])
+ax_score.bar(range(len(significant_comm)), significant_comm['communication_score'], 
+             color='steelblue', alpha=0.7)
+ax_score.set_xlabel('通讯对', fontsize=10)
+ax_score.set_ylabel('通讯评分', fontsize=10)
+ax_score.set_title('通讯强度分布', fontsize=11, fontweight='bold')
+ax_score.grid(axis='y', alpha=0.3)
+
+# 图例（右上）
+ax_legend = fig.add_subplot(gs[0, 1])
+ax_legend.axis('off')
+
+# 添加图例元素
+legend_y = 0.9
+legend_elements = [
+    ('连接数', '大小'),
+    ('通讯评分', '线宽'),
+    ('-log10(p值)', '颜色')
+]
+
+ax_legend.text(0.5, 0.95, '图例', fontsize=12, fontweight='bold', ha='center')
+for label, description in legend_elements:
+    ax_legend.text(0.1, legend_y, f'{label}:', fontsize=10, fontweight='bold')
+    ax_legend.text(0.1, legend_y - 0.05, f'  {description}', fontsize=9)
+    legend_y -= 0.15
+
+# 添加颜色渐变示例
+from matplotlib.patches import Rectangle
+gradient_y = 0.3
+ax_legend.text(0.5, gradient_y + 0.1, 'p值渐变:', fontsize=9, ha='center')
+gradient = np.linspace(0, 1, 256).reshape(1, 256)
+ax_legend.imshow(gradient, aspect='auto', extent=[0.1, 0.9, gradient_y - 0.05, gradient_y], 
+                cmap='RdYlBu_r')
+ax_legend.text(0.1, gradient_y - 0.1, '高', fontsize=8, ha='center')
+ax_legend.text(0.9, gradient_y - 0.1, '低', fontsize=8, ha='center')
+
+# 统计摘要（右下）
+ax_stats = fig.add_subplot(gs[1, 1])
+ax_stats.axis('off')
+
+stats_text = f"""统计摘要:
+
+总通讯数: {len(significant_comm)}
+唯一发送方: {len(senders)}
+唯一代谢物: {len(metabolites)}
+唯一传感器: {len(sensors)}
+唯一接收方: {len(receivers)}
+
+平均评分: {significant_comm['communication_score'].mean():.2f}
+最高评分: {significant_comm['communication_score'].max():.2f}
+最小p值: {significant_comm['pvalue'].min():.4f}
+"""
+
+ax_stats.text(0.1, 0.9, stats_text, fontsize=9, verticalalignment='top', 
+             fontfamily='monospace')
+
+plt.suptitle('流图分析: 综合视图', fontsize=16, fontweight='bold', y=0.98)
+plt.tight_layout()
+plt.show()
+```
+
+## 主要特点
+
+流图特别适用于:
+
+1. **多层可视化**: 清晰展示代谢物介导通讯的四个组成部分
+2. **定量映射**: 线宽和颜色可以编码统计显著性和通讯强度
+3. **模式发现**: 轻松识别具有多个连接的枢纽代谢物、传感器或细胞类型
+4. **比较分析**: 不同条件或时间点的并排比较
+
+## 解读要点
+
+- **线条粗细**: 表示通讯强度（通讯评分）
+- **线条颜色**: 代表统计显著性（p值）
+- **节点聚集**: 多条线汇聚在一个节点上表明枢纽分子或细胞
+- **通路复杂度**: 密集的网络表示复杂的代谢物介导信号传导
+
+## 参考文献
+
+\[1\] Zheng, S., Zou, Y., Xie, X. et al. MEBOCOST: Metabolite-mediated Cell Communication Modeling by Single Cell Transcriptome. *Nature Communications* 15, 151 (2024). <https://doi.org/10.1038/s41467-023-44342-0>
+
+\[2\] MEBOCOST 文档. <https://wwylab.github.io/mebocost/>
+
+\[3\] MEBOCOST GitHub 仓库. <https://github.com/kaifuchenlab/MEBOCOST>
+
