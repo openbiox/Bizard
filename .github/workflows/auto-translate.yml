@@ -316,7 +316,29 @@ jobs:
       - name: Check for changes
         id: git-check
         run: |
-          git diff --exit-code || echo "changes=true" >> $GITHUB_OUTPUT
+          # Check for both modified and untracked files
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "✓ Changes detected:"
+            git status --short
+            
+            # Show newly created translation files
+            echo ""
+            echo "📄 New translation files:"
+            git status --porcelain | grep '^??' | awk '{print $2}' | grep '\.zh\.qmd$\|\.qmd$' || echo "  (none)"
+            
+            # Show first 20 lines of each new translation
+            for file in $(git status --porcelain | grep '^??' | awk '{print $2}' | grep '\.zh\.qmd$\|\.qmd$'); do
+              if [ -f "$file" ]; then
+                echo ""
+                echo "📝 Preview of $file (first 20 lines):"
+                head -20 "$file"
+                echo "..."
+              fi
+            done
+          else
+            echo "No changes detected"
+          fi
       
       - name: Commit translations
         if: steps.git-check.outputs.changes == 'true'
@@ -334,6 +356,55 @@ jobs:
         if: steps.git-check.outputs.changes == 'true'
         run: |
           git push origin ${{ steps.pr-info.outputs.pr_ref }}
+      
+      - name: Post translation preview to PR
+        if: steps.git-check.outputs.changes == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { execSync } = require('child_process');
+            
+            // Get list of translated files from the last commit
+            const translatedFiles = execSync('git diff-tree --no-commit-id --name-only -r HEAD')
+              .toString()
+              .split('\n')
+              .filter(f => f.endsWith('.qmd') || f.endsWith('.zh.qmd'));
+            
+            if (translatedFiles.length === 0) {
+              console.log('No translated files found');
+              return;
+            }
+            
+            let comment = '## 🤖 Translation Preview\n\n';
+            comment += `Successfully translated ${translatedFiles.length} file(s):\n\n`;
+            
+            for (const file of translatedFiles) {
+              if (!file) continue;
+              
+              try {
+                const content = fs.readFileSync(file, 'utf-8');
+                const lines = content.split('\n');
+                const preview = lines.slice(0, 20).join('\n');
+                
+                comment += `### 📄 \`${file}\`\n\n`;
+                comment += '<details>\n';
+                comment += '<summary>Preview (first 20 lines)</summary>\n\n';
+                comment += '```\n';
+                comment += preview;
+                comment += '\n```\n';
+                comment += '</details>\n\n';
+              } catch (err) {
+                console.log(`Could not read ${file}: ${err.message}`);
+              }
+            }
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: comment
+            });
       
       - name: Create Pull Request for push events
         if: github.event_name == 'push' && steps.git-check.outputs.changes == 'true'
