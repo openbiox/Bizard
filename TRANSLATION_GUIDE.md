@@ -74,18 +74,28 @@ To edit a translation:
 
 ### Requirements for Maintainers
 
-The workflow requires an OpenAI API key:
+The workflow supports multiple AI providers:
 
+**Option 1: OpenAI (Default)**
 1. Obtain an API key from [OpenAI Platform](https://platform.openai.com/)
 2. Go to repository Settings → Secrets and variables → Actions
 3. Create a secret named `OPENAI_API_KEY`
 4. Paste your API key
 
+**Option 2: Alternative Providers (e.g., Xiaomi MiMo)**
+1. Create three secrets in repository settings:
+   - `AI_Model_API_KEY`: Your API key
+   - `AI_Model_BASE_URL`: API endpoint (e.g., `https://api.xiaomimomo.com/v1`)
+   - `AI_Model_Name`: Model name (e.g., `mimo-v2-flash`)
+
+**Note:** GitHub Copilot models are not directly accessible in GitHub Actions. Use OpenAI or alternative providers.
+
 ### Cost Estimation
 
-- Model used: `gpt-4o-mini` (optimized for cost)
-- Average cost per translation: ~$0.01-0.05 USD
+- Default model: `gpt-4o-mini` (optimized for cost)
+- Average cost per translation: ~$0.01-0.05 USD (OpenAI pricing)
 - Monthly cost (estimated): $5-20 USD depending on PR volume
+- Alternative providers may have different pricing
 
 ---
 
@@ -159,18 +169,28 @@ AI 翻译质量不错，但并非完美。请审查：
 
 ### 维护者要求
 
-工作流需要 OpenAI API 密钥：
+工作流支持多种 AI 提供商：
 
+**选项 1：OpenAI（默认）**
 1. 从 [OpenAI Platform](https://platform.openai.com/) 获取 API 密钥
 2. 转到仓库设置 → Secrets and variables → Actions
 3. 创建名为 `OPENAI_API_KEY` 的密钥
 4. 粘贴您的 API 密钥
 
+**选项 2：替代提供商（如小米 MiMo）**
+1. 在仓库设置中创建三个密钥：
+   - `AI_Model_API_KEY`：您的 API 密钥
+   - `AI_Model_BASE_URL`：API 端点（如 `https://api.xiaomimomo.com/v1`）
+   - `AI_Model_Name`：模型名称（如 `mimo-v2-flash`）
+
+**注意：** GitHub Copilot 模型无法直接在 GitHub Actions 中访问。请使用 OpenAI 或其他替代提供商。
+
 ### 成本估算
 
-- 使用模型：`gpt-4o-mini`（成本优化）
-- 每次翻译平均成本：约 0.01-0.05 美元
+- 默认模型：`gpt-4o-mini`（成本优化）
+- 每次翻译平均成本：约 0.01-0.05 美元（OpenAI 定价）
 - 月度成本（估算）：5-20 美元，取决于 PR 数量
+- 替代提供商可能有不同的定价
 
 ---
 

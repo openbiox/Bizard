@@ -44,11 +44,30 @@ The translation system automatically:
 
 ### Setting Up API Key
 
-The workflow requires an OpenAI API key stored as a GitHub secret:
+The workflow supports multiple AI providers through configurable environment variables.
+
+#### Option 1: OpenAI (Default)
 
 1. Go to repository Settings → Secrets and variables → Actions
 2. Create a new secret named `OPENAI_API_KEY`
-3. Paste your OpenAI API key
+3. Paste your OpenAI API key from [OpenAI Platform](https://platform.openai.com/)
+
+#### Option 2: Alternative AI Providers (e.g., Xiaomi MiMo, GitHub Copilot Models)
+
+For alternative providers, configure three secrets:
+
+1. `AI_Model_API_KEY`: Your API key for the provider
+2. `AI_Model_BASE_URL`: The base URL for the API endpoint (e.g., `https://api.xiaomimomo.com/v1`)
+3. `AI_Model_Name`: The model name to use (e.g., `mimo-v2-flash`)
+
+**Example for Xiaomi MiMo:**
+- `AI_Model_API_KEY`: Your MiMo API key
+- `AI_Model_BASE_URL`: `https://api.xiaomimomo.com/v1`
+- `AI_Model_Name`: `mimo-v2-flash`
+
+**Note:** GitHub Copilot models in Actions are not directly accessible via API. Use OpenAI or alternative providers instead.
+
+**Priority:** If both are set, `AI_Model_*` variables take precedence over `OPENAI_API_KEY`.
 
 ### Blacklist Configuration
 
@@ -75,11 +94,21 @@ You can also use the translation script manually:
 # Install dependencies
 pip install openai
 
-# Set API key
+# Option 1: Using OpenAI
 export OPENAI_API_KEY="your-key-here"
-
-# Translate a single file
 python .github/scripts/translate_qmd.py input.qmd
+
+# Option 2: Using alternative providers (e.g., Xiaomi MiMo)
+export AI_Model_API_KEY="your-mimo-key"
+export AI_Model_BASE_URL="https://api.xiaomimomo.com/v1"
+export AI_Model_Name="mimo-v2-flash"
+python .github/scripts/translate_qmd.py input.qmd
+
+# Option 3: Using command line arguments
+python .github/scripts/translate_qmd.py input.qmd \
+  --api-key "your-key" \
+  --base-url "https://api.xiaomimomo.com/v1" \
+  --model "mimo-v2-flash"
 
 # Translate multiple files
 python .github/scripts/translate_qmd.py file1.qmd file2.qmd

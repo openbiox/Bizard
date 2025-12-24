@@ -29,15 +29,20 @@ DEFAULT_MODEL = "gpt-4o-mini"  # Default model for cost efficiency
 class QMDTranslator:
     """Handles translation of QMD files between English and Chinese"""
     
-    def __init__(self, api_key: str, model: str = DEFAULT_MODEL):
+    def __init__(self, api_key: str, model: str = DEFAULT_MODEL, base_url: Optional[str] = None):
         """
-        Initialize translator with OpenAI API credentials
+        Initialize translator with API credentials
         
         Args:
-            api_key: OpenAI API key
+            api_key: API key for the translation service
             model: Model to use for translation (default: gpt-4o-mini)
+            base_url: Base URL for API endpoint (optional, for alternative providers like Xiaomi MiMo)
         """
-        self.client = openai.OpenAI(api_key=api_key)
+        # Initialize OpenAI client with optional base_url for alternative providers
+        if base_url:
+            self.client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        else:
+            self.client = openai.OpenAI(api_key=api_key)
         self.model = model
     
     def detect_language(self, content: str) -> str:
@@ -345,22 +350,29 @@ def get_translation_pair(file_path: str) -> str:
 def main():
     parser = argparse.ArgumentParser(description='Translate QMD files between English and Chinese')
     parser.add_argument('input_files', nargs='+', help='Input QMD file(s) to translate')
-    parser.add_argument('--api-key', help='OpenAI API key (or set OPENAI_API_KEY env var)')
-    parser.add_argument('--model', default=DEFAULT_MODEL, help=f'Model to use (default: {DEFAULT_MODEL})')
+    parser.add_argument('--api-key', help='API key (or set AI_Model_API_KEY/OPENAI_API_KEY env var)')
+    parser.add_argument('--base-url', help='API base URL for alternative providers (or set AI_Model_BASE_URL env var)')
+    parser.add_argument('--model', help=f'Model to use (or set AI_Model_Name env var, default: {DEFAULT_MODEL})')
     parser.add_argument('--target-lang', choices=['en', 'zh'], help='Target language (auto-detect if not specified)')
     parser.add_argument('--check-spelling', action='store_true', help='Check for spelling errors')
     parser.add_argument('--output-dir', help='Output directory (default: same as input)')
     
     args = parser.parse_args()
     
-    # Get API key
-    api_key = args.api_key or os.environ.get('OPENAI_API_KEY')
+    # Get API key - prioritize new env var, fallback to OPENAI_API_KEY
+    api_key = args.api_key or os.environ.get('AI_Model_API_KEY') or os.environ.get('OPENAI_API_KEY')
     if not api_key:
-        print("Error: OpenAI API key required. Set OPENAI_API_KEY env var or use --api-key")
+        print("Error: API key required. Set AI_Model_API_KEY or OPENAI_API_KEY env var, or use --api-key")
         sys.exit(1)
     
+    # Get base URL for alternative providers (optional)
+    base_url = args.base_url or os.environ.get('AI_Model_BASE_URL')
+    
+    # Get model name - prioritize new env var, fallback to default
+    model = args.model or os.environ.get('AI_Model_Name') or DEFAULT_MODEL
+    
     # Initialize translator
-    translator = QMDTranslator(api_key=api_key, model=args.model)
+    translator = QMDTranslator(api_key=api_key, model=model, base_url=base_url)
     
     # Process each file
     success_count = 0
