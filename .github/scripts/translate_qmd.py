@@ -86,8 +86,9 @@ class QMDTranslator:
         code_blocks = []
         placeholder_template = "<<<CODE_BLOCK_{}>>>"
         
-        # Match both ``` and ````
-        code_pattern = r'```+(?:[a-zA-Z0-9_-]+)?\s*\n.*?\n```+'
+        # Match code blocks with language specifier (e.g., ```{r}, ```python)
+        # Handles curly braces and various language identifiers
+        code_pattern = r'```+[^\n]*\n.*?\n```+'
         
         def replace_code(match):
             code_blocks.append(match.group(0))
