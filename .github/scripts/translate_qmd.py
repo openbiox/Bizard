@@ -22,6 +22,7 @@ except ImportError:
 # Constants
 LANGUAGE_DETECTION_THRESHOLD = 0.3  # Chinese chars must be > 30% of English to be classified as Chinese
 MAX_SPELL_CHECK_CHARS = 8000  # Maximum characters to send for spell checking
+TRUNCATION_THRESHOLD = 0.8  # Minimum proportion of content to keep when truncating at word boundary
 DEFAULT_MODEL = "gpt-4o-mini"  # Default model for cost efficiency
 
 
@@ -288,7 +289,7 @@ If no issues found, return an empty array []."""
             if len(content) > MAX_SPELL_CHECK_CHARS:
                 # Find last space to avoid cutting words
                 last_space = truncated_content.rfind(' ')
-                if last_space > MAX_SPELL_CHECK_CHARS * 0.8:  # Only if we're not losing too much
+                if last_space > MAX_SPELL_CHECK_CHARS * TRUNCATION_THRESHOLD:
                     truncated_content = truncated_content[:last_space]
 
             response = self.client.chat.completions.create(
