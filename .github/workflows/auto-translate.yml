@@ -28,7 +28,7 @@ jobs:
   auto-translate:
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'issue_comment' ||
       github.event_name == 'push'
@@ -118,28 +118,6 @@ jobs:
             console.log(`PR Repo: ${prRepo}`);
             console.log(`Is Push: ${isPush}`);
       
-      - name: Check if PR is from a fork
-        id: fork-check
-        if: github.event_name != 'push'
-        run: |
-          pr_repo="${{ steps.pr-info.outputs.pr_repo }}"
-          current_repo="${{ github.repository }}"
-          
-          if [ -n "$pr_repo" ] && [ "$pr_repo" != "$current_repo" ]; then
-            echo "is_fork=true" >> $GITHUB_OUTPUT
-            echo "⚠️ PR is from a fork ($pr_repo). Skipping for security reasons."
-          else
-            echo "is_fork=false" >> $GITHUB_OUTPUT
-            echo "✓ PR is from the same repository"
-          fi
-      
-      - name: Exit if PR is from a fork
-        if: github.event_name != 'push' && steps.fork-check.outputs.is_fork == 'true'
-        run: |
-          echo "Translation workflow does not run on PRs from forks for security reasons."
-          echo "The workflow requires write access to the repository."
-          exit 0
-      
       - name: Checkout PR branch
         if: github.event_name != 'push'
         uses: actions/checkout@v4
@@ -171,13 +149,6 @@ jobs:
         run: |
           pip install openai
       
-      - name: Set up GitHub Copilot CLI (if available)
-        if: ${{ secrets.COPILOT_TOKEN != '' }}
-        uses: austenstone/copilot-cli@v2
-        continue-on-error: true
-        with:
-          copilot-token: ${{ secrets.COPILOT_TOKEN }}
-      
       - name: Get changed QMD files
         id: changed-files
         uses: tj-actions/changed-files@v46.0.5
@@ -199,9 +170,7 @@ jobs:
       - name: Process translations
         if: steps.changed-files.outputs.any_changed == 'true'
         env:
-          # GitHub Copilot token (primary method)
-          COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
-          # Support multiple AI providers via configurable environment variables (fallback)
+          # Support multiple AI providers via configurable environment variables
           # Priority: AI_Model_* variables, fallback to OPENAI_API_KEY for backward compatibility
           AI_Model_API_KEY: ${{ secrets.AI_Model_API_KEY || secrets.OPENAI_API_KEY }}
           AI_Model_BASE_URL: ${{ secrets.AI_Model_BASE_URL }}
@@ -277,55 +246,23 @@ jobs:
             echo "========================================="
             
             # Check translation provider availability
-            HAS_COPILOT=false
-            HAS_EXTERNAL_AI=false
-            
-            if [ -n "$COPILOT_TOKEN" ]; then
-              echo "✓ GitHub Copilot token detected"
-              HAS_COPILOT=true
-            fi
-            
-            if [ -n "$AI_Model_API_KEY" ]; then
-              echo "✓ External AI provider configured"
-              HAS_EXTERNAL_AI=true
-            fi
-            
-            if [ "$HAS_COPILOT" = false ] && [ "$HAS_EXTERNAL_AI" = false ]; then
+            if [ -z "$AI_Model_API_KEY" ]; then
               echo "✗ No translation provider configured"
-              echo "   Need either COPILOT_TOKEN or AI_Model_API_KEY/OPENAI_API_KEY"
+              echo "   Need AI_Model_API_KEY or OPENAI_API_KEY"
               exit 1
             fi
             
-            # Store files that need translation in a file for potential Copilot batch processing
-            printf "%s\n" "${files_to_translate[@]}" > /tmp/files_to_translate.txt
+            echo "✓ External AI provider configured"
             
             for file in "${files_to_translate[@]}"; do
               echo ""
               echo "Translating: $file"
               
-              TRANSLATION_SUCCESS=false
-              
-              # Use external AI models (more reliable for automated translation)
-              # GitHub Copilot CLI is better for interactive use
-              if [ "$HAS_EXTERNAL_AI" = true ]; then
-                echo "  Using external AI provider for translation..."
-                if python .github/scripts/translate_qmd.py "$file"; then
-                  echo "  ✓ Translation successful"
-                  TRANSLATION_SUCCESS=true
-                fi
-              fi
-              
-              # If external AI failed or not available, could try other methods here
-              if [ "$TRANSLATION_SUCCESS" = false ]; then
+              echo "  Using external AI provider for translation..."
+              if python .github/scripts/translate_qmd.py "$file"; then
+                echo "  ✓ Translation successful"
+              else
                 echo "  ✗ Translation failed for $file"
-                
-                # Note: GitHub Copilot CLI (austenstone/copilot-cli) is designed for
-                # interactive Q&A and reviews, not for generating complete file translations.
-                # For automated translation, external AI APIs (OpenAI, MiMo, etc.) are more suitable.
-                if [ "$HAS_COPILOT" = true ] && [ "$HAS_EXTERNAL_AI" = false ]; then
-                  echo "  ℹ Copilot token available but better suited for review than translation"
-                  echo "    Consider configuring an external AI provider for automated translation"
-                fi
               fi
             done
           else
@@ -357,7 +294,30 @@ jobs:
       - name: Check for changes
         id: git-check
         run: |
-          git diff --exit-code || echo "changes=true" >> $GITHUB_OUTPUT
+          # Check for both modified and untracked files
+          STATUS_OUTPUT="$(git status --porcelain)"
+          if [ -n "$STATUS_OUTPUT" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "✓ Changes detected:"
+            echo "$STATUS_OUTPUT"
+            
+            # Show newly created translation files
+            echo ""
+            echo "📄 New translation files:"
+            echo "$STATUS_OUTPUT" | grep '^??' | awk '{print $2}' | grep '\.zh\.qmd$\|\.qmd$' || echo "  (none)"
+            
+            # Show first 20 lines of each new translation
+            for file in $(echo "$STATUS_OUTPUT" | grep '^??' | awk '{print $2}' | grep '\.zh\.qmd$\|\.qmd$'); do
+              if [ -f "$file" ]; then
+                echo ""
+                echo "📝 Preview of $file (first 20 lines):"
+                head -20 "$file"
+                echo "..."
+              fi
+            done
+          else
+            echo "No changes detected"
+          fi
       
       - name: Commit translations
         if: steps.git-check.outputs.changes == 'true'
@@ -373,8 +333,75 @@ jobs:
       
       - name: Push changes
         if: steps.git-check.outputs.changes == 'true'
+        continue-on-error: true
         run: |
-          git push origin ${{ steps.pr-info.outputs.pr_ref }}
+          # Pull latest changes to avoid conflicts
+          git pull --rebase origin ${{ steps.pr-info.outputs.pr_ref }} || true
+          git push origin ${{ steps.pr-info.outputs.pr_ref }} || {
+            echo "⚠️ Push failed (this is expected for PRs from forks without write permissions)"
+            echo "Translation files are still available in the workflow artifacts"
+            exit 0
+          }
+      
+      - name: Post translation preview to PR
+        if: steps.git-check.outputs.changes == 'true' && (github.event_name == 'pull_request' || github.event_name == 'issue_comment')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { execSync } = require('child_process');
+            
+            // Get PR number
+            let prNumber;
+            if (context.eventName === 'pull_request') {
+              prNumber = context.payload.pull_request.number;
+            } else if (context.eventName === 'issue_comment') {
+              prNumber = context.payload.issue.number;
+            } else {
+              console.log('Not a PR event, skipping comment');
+              return;
+            }
+            
+            // Get list of translated files from the last commit
+            const translatedFiles = execSync('git show --name-only --format= HEAD')
+              .toString()
+              .split('\n')
+              .filter(f => f.trim() && (f.endsWith('.qmd') || f.endsWith('.zh.qmd')));
+            
+            if (translatedFiles.length === 0) {
+              console.log('No translated files found in last commit');
+              return;
+            }
+            
+            let comment = '## 🤖 Translation Preview\n\n';
+            comment += `Successfully translated ${translatedFiles.length} file(s):\n\n`;
+            
+            for (const file of translatedFiles) {
+              if (!file) continue;
+              
+              try {
+                const content = fs.readFileSync(file, 'utf-8');
+                const lines = content.split('\n');
+                const preview = lines.slice(0, 20).join('\n');
+                
+                comment += `### 📄 \`${file}\`\n\n`;
+                comment += '<details>\n';
+                comment += '<summary>Preview (first 20 lines)</summary>\n\n';
+                comment += '```\n';
+                comment += preview;
+                comment += '\n```\n';
+                comment += '</details>\n\n';
+              } catch (err) {
+                console.log(`Could not read ${file}: ${err.message}`);
+              }
+            }
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: comment
+            });
       
       - name: Create Pull Request for push events
         if: github.event_name == 'push' && steps.git-check.outputs.changes == 'true'
@@ -424,22 +451,6 @@ jobs:
             
             console.log(`Created PR #${pr.number}: ${pr.html_url}`);
       
-      - name: Review translations with GitHub Copilot (if available)
-        if: ${{ steps.git-check.outputs.changes == 'true' && secrets.COPILOT_TOKEN != '' }}
-        uses: austenstone/copilot-cli@v2
-        continue-on-error: true
-        with:
-          copilot-token: ${{ secrets.COPILOT_TOKEN }}
-          prompt: |
-            Review the translated QMD files in this pull request for:
-            1. Translation accuracy and natural language flow
-            2. Consistency of biomedical and bioinformatics terminology
-            3. Preservation of technical terms and proper nouns
-            4. Markdown formatting integrity
-            5. Any potential mistranslations or awkward phrasing
-            
-            Focus on the newly added .qmd and .zh.qmd files.
-      
       - name: React to comment (if triggered by comment)
         if: github.event_name == 'issue_comment' && steps.git-check.outputs.changes == 'true'
         uses: actions/github-script@v7
@@ -484,7 +495,6 @@ jobs:
               body: '🤖 **Auto-Translation Complete**\n\n' +
                     `Triggered by: ${triggerMethod}\n\n` +
                     'I have automatically translated the QMD files in this PR using external AI models.\n\n' +
-                    (process.env.COPILOT_TOKEN ? '✨ **GitHub Copilot Review**: A Copilot review has been performed on the translations.\n\n' : '') +
                     '**Please review the translations for accuracy**, especially:\n' +
                     '- Technical terminology\n' +
                     '- Biomedical terms\n' +
@@ -508,7 +518,6 @@ jobs:
               body: '🤖 **Auto-Translation Complete**\n\n' +
                     'Triggered by: push to main/master branch\n\n' +
                     'I have automatically translated the QMD files and created this PR using external AI models.\n\n' +
-                    (process.env.COPILOT_TOKEN ? '✨ **GitHub Copilot Review**: A Copilot review has been performed on the translations.\n\n' : '') +
                     '**Please review the translations for accuracy**, especially:\n' +
                     '- Technical terminology\n' +
                     '- Biomedical terms\n' +
