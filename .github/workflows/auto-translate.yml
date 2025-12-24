@@ -1,0 +1,276 @@
+name: Auto-Translate QMD Files
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - '**.qmd'
+      - '**.Qmd'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-translate:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install openai
+      
+      - name: Set up GitHub Copilot CLI (if available)
+        if: secrets.COPILOT_TOKEN
+        uses: austenstone/copilot-cli@v2
+        continue-on-error: true
+        with:
+          copilot-token: ${{ secrets.COPILOT_TOKEN }}
+      
+      - name: Get changed QMD files
+        id: changed-files
+        uses: tj-actions/changed-files@v46.0.5
+        with:
+          files: |
+            **.qmd
+            **.Qmd
+      
+      - name: Load translation blacklist
+        id: blacklist
+        run: |
+          if [ -f .github/translation-blacklist.txt ]; then
+            echo "Blacklist file found"
+            cat .github/translation-blacklist.txt
+          else
+            echo "No blacklist file found"
+          fi
+      
+      - name: Process translations
+        if: steps.changed-files.outputs.any_changed == 'true'
+        env:
+          # GitHub Copilot token (primary method)
+          COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+          # Support multiple AI providers via configurable environment variables (fallback)
+          # Priority: AI_Model_* variables, fallback to OPENAI_API_KEY for backward compatibility
+          AI_Model_API_KEY: ${{ secrets.AI_Model_API_KEY || secrets.OPENAI_API_KEY }}
+          AI_Model_BASE_URL: ${{ secrets.AI_Model_BASE_URL }}
+          AI_Model_Name: ${{ secrets.AI_Model_Name }}
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+        run: |
+          # Function to check if file is in blacklist using glob patterns
+          is_blacklisted() {
+            local file="$1"
+            if [ -f .github/translation-blacklist.txt ]; then
+              while IFS= read -r pattern || [ -n "$pattern" ]; do
+                # Skip comments and empty lines
+                [[ "$pattern" =~ ^#.*$ ]] && continue
+                [[ -z "$pattern" ]] && continue
+                [[ "$pattern" =~ ^[[:space:]]*$ ]] && continue
+                
+                # Use case statement for glob pattern matching
+                case "$file" in
+                  $pattern)
+                    return 0
+                    ;;
+                esac
+              done < .github/translation-blacklist.txt
+            fi
+            return 1
+          }
+          
+          # Arrays to store files
+          files_to_translate=()
+          files_with_pairs=()
+          
+          # Process each changed file
+          for file in ${CHANGED_FILES}; do
+            echo "Processing: $file"
+            
+            # Check blacklist
+            if is_blacklisted "$file"; then
+              echo "  ⊗ Skipped (blacklisted): $file"
+              continue
+            fi
+            
+            # Determine the translation pair
+            if [[ "$file" == *.zh.qmd ]]; then
+              # Chinese file - English pair
+              pair="${file%.zh.qmd}.qmd"
+            else
+              # English file - Chinese pair
+              pair="${file%.qmd}.zh.qmd"
+            fi
+            
+            echo "  Translation pair: $pair"
+            
+            # Check if pair exists in the PR changes
+            if echo "$CHANGED_FILES" | grep -qw "$pair"; then
+              echo "  ✓ Both language versions present in PR"
+              files_with_pairs+=("$file|$pair")
+            else
+              # Check if pair exists in repo
+              if [ -f "$pair" ]; then
+                echo "  ⚠ Translation pair exists but not in PR, skipping auto-translation"
+              else
+                echo "  → Will auto-translate to: $pair"
+                files_to_translate+=("$file")
+              fi
+            fi
+          done
+          
+          # Perform translations
+          if [ ${#files_to_translate[@]} -gt 0 ]; then
+            echo ""
+            echo "========================================="
+            echo "Auto-translating ${#files_to_translate[@]} file(s)"
+            echo "========================================="
+            
+            # Check translation provider availability
+            HAS_COPILOT=false
+            HAS_EXTERNAL_AI=false
+            
+            if [ -n "$COPILOT_TOKEN" ]; then
+              echo "✓ GitHub Copilot token detected"
+              HAS_COPILOT=true
+            fi
+            
+            if [ -n "$AI_Model_API_KEY" ]; then
+              echo "✓ External AI provider configured"
+              HAS_EXTERNAL_AI=true
+            fi
+            
+            if [ "$HAS_COPILOT" = false ] && [ "$HAS_EXTERNAL_AI" = false ]; then
+              echo "✗ No translation provider configured"
+              echo "   Need either COPILOT_TOKEN or AI_Model_API_KEY/OPENAI_API_KEY"
+              exit 1
+            fi
+            
+            # Store files that need translation in a file for potential Copilot batch processing
+            printf "%s\n" "${files_to_translate[@]}" > /tmp/files_to_translate.txt
+            
+            for file in "${files_to_translate[@]}"; do
+              echo ""
+              echo "Translating: $file"
+              
+              TRANSLATION_SUCCESS=false
+              
+              # Use external AI models (more reliable for automated translation)
+              # GitHub Copilot CLI is better for interactive use
+              if [ "$HAS_EXTERNAL_AI" = true ]; then
+                echo "  Using external AI provider for translation..."
+                if python .github/scripts/translate_qmd.py "$file"; then
+                  echo "  ✓ Translation successful"
+                  TRANSLATION_SUCCESS=true
+                fi
+              fi
+              
+              # If external AI failed or not available, could try other methods here
+              if [ "$TRANSLATION_SUCCESS" = false ]; then
+                echo "  ✗ Translation failed for $file"
+                
+                # Note: GitHub Copilot CLI (austenstone/copilot-cli) is designed for
+                # interactive Q&A and reviews, not for generating complete file translations.
+                # For automated translation, external AI APIs (OpenAI, MiMo, etc.) are more suitable.
+                if [ "$HAS_COPILOT" = true ] && [ "$HAS_EXTERNAL_AI" = false ]; then
+                  echo "  ℹ Copilot token available but better suited for review than translation"
+                  echo "    Consider configuring an external AI provider for automated translation"
+                fi
+              fi
+            done
+          else
+            echo ""
+            echo "No files need automatic translation"
+          fi
+          
+          # Validate file pairs (both languages in PR)
+          if [ ${#files_with_pairs[@]} -gt 0 ]; then
+            echo ""
+            echo "========================================="
+            echo "Validating ${#files_with_pairs[@]} bilingual pair(s)"
+            echo "========================================="
+            
+            for pair_entry in "${files_with_pairs[@]}"; do
+              IFS='|' read -r file1 file2 <<< "$pair_entry"
+              echo ""
+              echo "Checking pair: $file1 <-> $file2"
+              
+              # Run spell check on both files
+              echo "  Spell-checking $file1..."
+              python .github/scripts/translate_qmd.py "$file1" --check-spelling || true
+              
+              echo "  Spell-checking $file2..."
+              python .github/scripts/translate_qmd.py "$file2" --check-spelling || true
+            done
+          fi
+      
+      - name: Check for changes
+        id: git-check
+        run: |
+          git diff --exit-code || echo "changes=true" >> $GITHUB_OUTPUT
+      
+      - name: Commit translations
+        if: steps.git-check.outputs.changes == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -A
+          git commit -m "chore: auto-translate QMD files
+          
+          Automatically generated translations for modified QMD files.
+          
+          Co-authored-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+      
+      - name: Push changes
+        if: steps.git-check.outputs.changes == 'true'
+        run: |
+          git push origin ${{ github.event.pull_request.head.ref }}
+      
+      - name: Review translations with GitHub Copilot (if available)
+        if: steps.git-check.outputs.changes == 'true' && secrets.COPILOT_TOKEN
+        uses: austenstone/copilot-cli@v2
+        continue-on-error: true
+        with:
+          copilot-token: ${{ secrets.COPILOT_TOKEN }}
+          prompt: |
+            Review the translated QMD files in this pull request for:
+            1. Translation accuracy and natural language flow
+            2. Consistency of biomedical and bioinformatics terminology
+            3. Preservation of technical terms and proper nouns
+            4. Markdown formatting integrity
+            5. Any potential mistranslations or awkward phrasing
+            
+            Focus on the newly added .qmd and .zh.qmd files.
+      
+      - name: Comment on PR
+        if: steps.git-check.outputs.changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '🤖 **Auto-Translation Complete**\n\n' +
+                    'I have automatically translated the QMD files in this PR using external AI models.\n\n' +
+                    (process.env.COPILOT_TOKEN ? '✨ **GitHub Copilot Review**: A Copilot review has been performed on the translations.\n\n' : '') +
+                    '**Please review the translations for accuracy**, especially:\n' +
+                    '- Technical terminology\n' +
+                    '- Biomedical terms\n' +
+                    '- Code examples and their descriptions\n\n' +
+                    'You can make manual corrections by editing the translated files directly.'
+            });
