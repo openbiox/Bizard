@@ -55,11 +55,12 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            let prNumber, prRef;
+            let prNumber, prRef, prRepo;
             
             if (context.eventName === 'pull_request') {
               prNumber = context.payload.pull_request.number;
               prRef = context.payload.pull_request.head.ref;
+              prRepo = context.payload.pull_request.head.repo.full_name;
             } else if (context.eventName === 'issue_comment') {
               const issue = context.payload.issue;
               prNumber = issue.number;
@@ -71,6 +72,7 @@ jobs:
                 pull_number: prNumber
               });
               prRef = pr.head.ref;
+              prRepo = pr.head.repo.full_name;
             } else if (context.eventName === 'workflow_dispatch') {
               const inputPrNumber = context.payload.inputs.pr_number;
               prNumber = inputPrNumber ? parseInt(inputPrNumber, 10) : null;
@@ -81,16 +83,41 @@ jobs:
                   pull_number: prNumber
                 });
                 prRef = pr.head.ref;
+                prRepo = pr.head.repo.full_name;
               } else {
                 prRef = context.ref.replace('refs/heads/', '');
+                prRepo = context.repo.owner + '/' + context.repo.repo;
               }
             }
             
             core.setOutput('pr_number', prNumber || '');
             core.setOutput('pr_ref', prRef || context.ref.replace('refs/heads/', ''));
+            core.setOutput('pr_repo', prRepo || '');
             
             console.log(`PR Number: ${prNumber}`);
             console.log(`PR Ref: ${prRef}`);
+            console.log(`PR Repo: ${prRepo}`);
+      
+      - name: Check if PR is from a fork
+        id: fork-check
+        run: |
+          pr_repo="${{ steps.pr-info.outputs.pr_repo }}"
+          current_repo="${{ github.repository }}"
+          
+          if [ -n "$pr_repo" ] && [ "$pr_repo" != "$current_repo" ]; then
+            echo "is_fork=true" >> $GITHUB_OUTPUT
+            echo "⚠️ PR is from a fork ($pr_repo). Skipping for security reasons."
+          else
+            echo "is_fork=false" >> $GITHUB_OUTPUT
+            echo "✓ PR is from the same repository"
+          fi
+      
+      - name: Exit if PR is from a fork
+        if: steps.fork-check.outputs.is_fork == 'true'
+        run: |
+          echo "Translation workflow does not run on PRs from forks for security reasons."
+          echo "The workflow requires write access to the repository."
+          exit 0
       
       - name: Checkout PR branch
         uses: actions/checkout@v4
