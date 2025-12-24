@@ -317,18 +317,19 @@ jobs:
         id: git-check
         run: |
           # Check for both modified and untracked files
-          if [ -n "$(git status --porcelain)" ]; then
+          STATUS_OUTPUT="$(git status --porcelain)"
+          if [ -n "$STATUS_OUTPUT" ]; then
             echo "changes=true" >> $GITHUB_OUTPUT
             echo "✓ Changes detected:"
-            git status --short
+            echo "$STATUS_OUTPUT"
             
             # Show newly created translation files
             echo ""
             echo "📄 New translation files:"
-            git status --porcelain | grep '^??' | awk '{print $2}' | grep '\.zh\.qmd$\|\.qmd$' || echo "  (none)"
+            echo "$STATUS_OUTPUT" | grep '^??' | awk '{print $2}' | grep '\.zh\.qmd$\|\.qmd$' || echo "  (none)"
             
             # Show first 20 lines of each new translation
-            for file in $(git status --porcelain | grep '^??' | awk '{print $2}' | grep '\.zh\.qmd$\|\.qmd$'); do
+            for file in $(echo "$STATUS_OUTPUT" | grep '^??' | awk '{print $2}' | grep '\.zh\.qmd$\|\.qmd$'); do
               if [ -f "$file" ]; then
                 echo ""
                 echo "📝 Preview of $file (first 20 lines):"
@@ -358,21 +359,32 @@ jobs:
           git push origin ${{ steps.pr-info.outputs.pr_ref }}
       
       - name: Post translation preview to PR
-        if: steps.git-check.outputs.changes == 'true' && github.event_name == 'pull_request'
+        if: steps.git-check.outputs.changes == 'true' && (github.event_name == 'pull_request' || github.event_name == 'issue_comment')
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
             const { execSync } = require('child_process');
             
+            // Get PR number
+            let prNumber;
+            if (context.eventName === 'pull_request') {
+              prNumber = context.payload.pull_request.number;
+            } else if (context.eventName === 'issue_comment') {
+              prNumber = context.payload.issue.number;
+            } else {
+              console.log('Not a PR event, skipping comment');
+              return;
+            }
+            
             // Get list of translated files from the last commit
-            const translatedFiles = execSync('git diff-tree --no-commit-id --name-only -r HEAD')
+            const translatedFiles = execSync('git show --name-only --format= HEAD')
               .toString()
               .split('\n')
-              .filter(f => f.endsWith('.qmd') || f.endsWith('.zh.qmd'));
+              .filter(f => f.trim() && (f.endsWith('.qmd') || f.endsWith('.zh.qmd')));
             
             if (translatedFiles.length === 0) {
-              console.log('No translated files found');
+              console.log('No translated files found in last commit');
               return;
             }
             
@@ -402,7 +414,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
+              issue_number: prNumber,
               body: comment
             });
       
