@@ -55,7 +55,7 @@ client = OpenAI(
 - `mimo-v2-flash` - Fast, cost-effective
 - `mimo-v2-pro` - Higher quality
 
-**获取密钥 (Get API Key):** [Xiaomi AI Platform](https://xiaoai.mi.com/)
+**获取密钥 (Get API Key):** Check Xiaomi AI Platform for API access
 
 ---
 
@@ -181,7 +181,7 @@ Approximate costs per 1000 translations (varies by content length):
 |----------|-------|------------|-------|---------|
 | OpenAI | gpt-4o-mini | $10-50 | Fast | High |
 | OpenAI | gpt-4o | $30-150 | Medium | Very High |
-| Xiaomi MiMo | mimo-v2-flash | TBD | Very Fast | Good |
+| Xiaomi MiMo | mimo-v2-flash | Check provider | Very Fast | Good |
 | DeepSeek | deepseek-chat | $1-10 | Fast | Good |
 | Alibaba | qwen-turbo | $5-20 | Fast | Good |
 
