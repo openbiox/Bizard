@@ -143,17 +143,22 @@ class QMDTranslator:
 Translate the following text from {lang_names[source_lang]} to {lang_names[target_lang]}.
 
 Requirements:
-1. Maintain the original meaning and technical accuracy
-2. Preserve all markdown formatting EXACTLY as it appears in the source (headers, lists, links, emphasis, etc.)
-3. Do NOT add or remove any markdown syntax
-4. Do NOT translate code placeholders like <<<CODE_BLOCK_N>>>
-5. Maintain scientific terminology accuracy
-6. Keep the same tone and style
-7. For technical terms, use commonly accepted translations in the biomedical field
-8. Preserve any special characters and symbols
-9. ONLY translate the text content, do not add explanations or extra content
 
-Only return the translated text, no explanations or additions."""
+**Formatting Preservation:**
+1. Preserve all markdown formatting EXACTLY as it appears in the source (headers, lists, links, emphasis, etc.)
+2. Do NOT add or remove any markdown syntax
+3. Do NOT translate code placeholders like <<<CODE_BLOCK_N>>>
+
+**Content Accuracy:**
+4. Maintain the original meaning and technical accuracy
+5. Maintain scientific terminology accuracy
+6. For technical terms, use commonly accepted translations in the biomedical field
+7. Keep the same tone and style
+8. Preserve any special characters and symbols
+
+**Output Restrictions:**
+9. ONLY translate the text content, do not add explanations or extra content
+10. Only return the translated text, no explanations or additions."""
 
         try:
             response = self.client.chat.completions.create(
@@ -193,8 +198,17 @@ Only return the translated text, no explanations or additions."""
             translated_title = self.translate_text(title, source_lang, target_lang)
             # Strip markdown heading symbols from translated title as well
             translated_title = re.sub(r'^#+\s*', '', translated_title).strip()
-            # Quote the title if it contains special characters
-            if ':' in translated_title or '#' in translated_title or translated_title.startswith('"'):
+            # Quote the title if it contains YAML special characters
+            yaml_special_chars = [':', '#', '[', ']', '{', '}', '|', '>', '&', '*', '!', '@', '`']
+            needs_quoting = (
+                any(char in translated_title for char in yaml_special_chars) or
+                translated_title.startswith('"') or
+                translated_title.startswith("'") or
+                translated_title != translated_title.strip()  # Leading/trailing spaces
+            )
+            if needs_quoting and not (translated_title.startswith('"') and translated_title.endswith('"')):
+                # Escape any double quotes in the title and wrap in quotes
+                translated_title = translated_title.replace('"', '\\"')
                 translated_title = f'"{translated_title}"'
             yaml_content = re.sub(
                 r'^title:\s*.+$',
