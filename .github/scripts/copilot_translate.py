@@ -86,7 +86,7 @@ def generate_copilot_translation_file(input_file: str, output_file: str) -> str:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: copilot_translate.py <input_file>")
+        print(f"Usage: {sys.argv[0]} <input_file>")
         sys.exit(1)
     
     input_file = sys.argv[1]
