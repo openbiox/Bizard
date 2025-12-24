@@ -1,0 +1,263 @@
+---
+title: "细胞-细胞通讯网络圈图"
+author:
+  - "**[编辑]** GitHub Copilot"
+---
+
+细胞-细胞通讯在多细胞生物中发挥着至关重要的作用，细胞通过各种信号分子和受体协调其活动。理解这些通讯网络对于发育生物学、免疫学和癌症研究等领域至关重要。圈图（又称和弦图）提供了一种直观的可视化方式来展示细胞-细胞相互作用的方向性和强度，使得在复杂的生物系统中更容易识别关键的信号传导模式和枢纽细胞类型。
+
+## 示例
+
+![](../images/Omics/CellCommunicationCirclePlot_demo.png){fig-alt="CellCommunicationCirclePlot DEMO" fig-align="center" width="60%"}
+
+上述示例显示了以圈图形式展示的细胞-细胞通讯网络。圆圈上的每个节点代表不同的细胞类型（例如，B细胞、CD8 T细胞、CD14+ 单核细胞等），连接线（和弦）代表细胞类型之间的通讯路径。和弦的宽度和颜色强度表示相互作用的强度。
+
+## 环境配置
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`CellChat`; `patchwork`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("devtools", quietly = TRUE)) {
+  install.packages("devtools")
+}
+if (!requireNamespace("CellChat", quietly = TRUE)) {
+  devtools::install_github("sqjin/CellChat")
+}
+if (!requireNamespace("patchwork", quietly = TRUE)) {
+  install.packages("patchwork")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+
+# 加载包
+library(CellChat)
+library(patchwork)
+library(dplyr)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+### 1. 导入数据
+
+CellChat 需要带有细胞类型注释的单细胞 RNA-seq 数据。该包包含可用于演示的示例数据集。
+
+```{r load data1, message=FALSE}
+# 从 CellChat 加载示例数据
+data("CellChatDB.human")
+data("cellchat_humanSkin_LS")
+
+# cellchat 对象包含预处理的数据
+cellchat <- cellchat_humanSkin_LS
+
+# 查看基本信息
+cellchat
+```
+
+### 2. 探索通讯网络
+
+加载 CellChat 对象后，我们可以探索推断的细胞-细胞通讯网络。
+
+```{r load data2}
+# 获取聚合的细胞-细胞通讯网络
+# 这显示了细胞类型之间的相互作用数量
+net <- cellchat@net$count
+
+# 查看前几行和列
+net[1:5, 1:5]
+
+# 获取每种细胞类型的总相互作用数
+rowSums(net) %>% head()
+```
+
+### 3. 理解数据结构
+
+CellChat 对象包含几个关键组件：
+- `@data.signaling`：标准化的基因表达数据
+- `@net`：推断的细胞-细胞通讯网络
+- `@netP`：信号通路水平的通讯网络
+- `@idents`：细胞类型标签
+
+```{r load data3}
+# 查看可用的细胞类型
+levels(cellchat@idents)
+
+# 查看每种类型的细胞数量
+table(cellchat@idents)
+```
+
+## 可视化
+
+### 1. 基础圈图
+
+最直接的可视化是在单个圈图中显示所有细胞-细胞通讯。
+
+```{r fig1.1BasicCircle}
+#| label: fig1.1BasicCircle
+#| fig-cap: "细胞-细胞通讯的基础圈图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# 显示所有相互作用的基础圈图
+netVisual_circle(cellchat@net$count, 
+                 vertex.weight = rowSums(cellchat@net$count),
+                 weight.scale = TRUE,
+                 label.edge = FALSE,
+                 title.name = "相互作用数量")
+```
+
+::: callout-tip
+**关键参数：**
+
+- `vertex.weight`：根据相互作用强度控制节点（细胞类型）的大小
+- `weight.scale`：是否按权重缩放边的宽度
+- `label.edge`：是否在边上显示标签
+- `arrow.width` 和 `arrow.size`：控制方向箭头的外观
+:::
+
+### 2. 带有细胞分组的圈图
+
+我们可以通过对细胞按类别分组来可视化通讯网络，这有助于识别不同细胞群之间的相互作用模式。
+
+```{r fig1.2GroupedCircle}
+#| label: fig1.2GroupedCircle
+#| fig-cap: "带有细胞分组的圈图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# 定义细胞组（示例：免疫细胞 vs. 结构细胞）
+groupSize <- as.numeric(table(cellchat@idents))
+
+# 使用自定义颜色的圈图
+netVisual_circle(cellchat@net$count, 
+                 vertex.weight = groupSize,
+                 weight.scale = TRUE,
+                 label.edge = FALSE,
+                 title.name = "相互作用数量",
+                 vertex.label.cex = 0.8,
+                 vertex.size = groupSize/10)
+```
+
+### 3. 特定通路的圈图
+
+我们还可以可视化特定的信号通路，以了解哪些细胞类型参与特定的生物过程。
+
+```{r fig1.3PathwayCircle}
+#| label: fig1.3PathwayCircle
+#| fig-cap: "特定通路的圈图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# 获取可用的通路
+pathways <- cellchat@netP$pathways
+
+# 可视化第一个通路（如果可用）
+if(length(pathways) > 0) {
+  pathway.show <- pathways[1]
+  
+  # 特定通路的圈图
+  netVisual_aggregate(cellchat, 
+                      signaling = pathway.show, 
+                      layout = "circle",
+                      vertex.label.cex = 0.8,
+                      title.name = paste0(pathway.show, " 信号通路"))
+}
+```
+
+::: callout-tip
+**理解通路特异性图表：**
+
+通路特异性可视化有助于识别：
+- 哪些细胞类型是特定信号的主要发送者或接收者
+- 特定生物过程中的主导通讯模式
+- 疾病背景下的潜在治疗靶点
+:::
+
+### 4. 比较传入和传出信号
+
+比较每种细胞类型的传入和传出信号模式通常很有用。
+
+```{r fig1.4SignalDirection}
+#| label: fig1.4SignalDirection
+#| fig-cap: "传入和传出信号"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# 计算总的传出和传入信号
+outgoing <- rowSums(cellchat@net$count)
+incoming <- colSums(cellchat@net$count)
+
+# 创建比较数据框
+signal_comparison <- data.frame(
+  CellType = names(outgoing),
+  Outgoing = outgoing,
+  Incoming = incoming
+)
+
+# 显示传出信号最多的细胞类型
+signal_comparison %>% 
+  arrange(desc(Outgoing)) %>%
+  head(5)
+```
+
+### 5. 层次图替代方案
+
+除了圈图，CellChat 还提供层次布局，这对某些类型的网络可能很有用。
+
+```{r fig1.5Hierarchical}
+#| label: fig1.5Hierarchical
+#| fig-cap: "细胞-细胞通讯的层次图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# 层次图
+if(length(pathways) > 0) {
+  netVisual_aggregate(cellchat, 
+                      signaling = pathway.show, 
+                      layout = "hierarchy",
+                      vertex.label.cex = 0.8,
+                      title.name = paste0(pathway.show, " 信号（层次）"))
+}
+```
+
+## 应用
+
+### 疾病中的细胞-细胞通讯
+
+细胞-细胞通讯网络的圈图在生物医学研究中被广泛用于理解：
+
+1. **癌症微环境**：识别肿瘤细胞如何与免疫细胞和基质细胞通讯
+2. **免疫反应**：理解不同免疫细胞类型在感染或炎症期间如何协调
+3. **组织发育**：揭示器官发育和组织稳态期间的信号传导模式
+4. **疾病机制**：发现纤维化、神经退行性疾病或自身免疫性疾病中的异常通讯模式
+
+### 最佳实践
+
+创建细胞-细胞通讯圈图时：
+
+- 过滤弱相互作用以关注生物学上重要的通讯
+- 使用颜色编码突出显示特定的细胞群或感兴趣的通路
+- 比较不同条件下的网络（例如，健康 vs. 疾病，治疗前 vs. 治疗后）
+- 通过实验方法（如共培养实验或空间转录组学）验证关键发现
+
+## 参考文献
+
+\[1\] Jin, S., Guerrero-Juarez, C. F., Zhang, L., Chang, I., Ramos, R., Kuan, C. H., ... & Nie, Q. (2021). Inference and analysis of cell-cell communication using CellChat. *Nature communications*, 12(1), 1088. <https://doi.org/10.1038/s41467-021-21246-9>
+
+\[2\] CellChat GitHub 仓库：<https://github.com/sqjin/CellChat>
+
+\[3\] CellChat 文档：<http://www.cellchat.org/>

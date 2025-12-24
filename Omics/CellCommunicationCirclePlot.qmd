@@ -1,0 +1,263 @@
+---
+title: "Circle Plot of Cell-Cell Communication Network"
+author:
+  - "**[Editor]** GitHub Copilot"
+---
+
+Cell-cell communication plays a crucial role in multicellular organisms, where cells coordinate their activities through various signaling molecules and receptors. Understanding these communication networks is essential in fields such as developmental biology, immunology, and cancer research. The circle plot (also known as a chord diagram) provides an intuitive visualization of the directionality and strength of cell-cell interactions, making it easier to identify key signaling patterns and hub cell types in complex biological systems.
+
+## Example
+
+![](../images/Omics/CellCommunicationCirclePlot_demo.png){fig-alt="CellCommunicationCirclePlot DEMO" fig-align="center" width="60%"}
+
+The above example shows a cell-cell communication network displayed as a circle plot. Each node on the circle represents a different cell type (e.g., B cells, CD8 T, CD14+ Mono, etc.), and the connecting lines (chords) represent communication pathways between cell types. The width and color intensity of the chords indicate the strength of the interactions.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `CellChat`; `patchwork`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Installing necessary packages
+if (!requireNamespace("devtools", quietly = TRUE)) {
+  install.packages("devtools")
+}
+if (!requireNamespace("CellChat", quietly = TRUE)) {
+  devtools::install_github("sqjin/CellChat")
+}
+if (!requireNamespace("patchwork", quietly = TRUE)) {
+  install.packages("patchwork")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+
+# Load packages
+library(CellChat)
+library(patchwork)
+library(dplyr)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+### 1. Load data
+
+CellChat requires single-cell RNA-seq data with cell type annotations. The package includes example datasets that we can use for demonstration.
+
+```{r load data1, message=FALSE}
+# Load example data from CellChat
+data("CellChatDB.human")
+data("cellchat_humanSkin_LS")
+
+# The cellchat object contains preprocessed data
+cellchat <- cellchat_humanSkin_LS
+
+# View basic information
+cellchat
+```
+
+### 2. Explore the communication network
+
+After loading the CellChat object, we can explore the inferred cell-cell communication network.
+
+```{r load data2}
+# Get the aggregated cell-cell communication network
+# This shows the number of interactions between cell types
+net <- cellchat@net$count
+
+# View the first few rows and columns
+net[1:5, 1:5]
+
+# Get the total number of interactions per cell type
+rowSums(net) %>% head()
+```
+
+### 3. Understanding the data structure
+
+The CellChat object contains several key components:
+- `@data.signaling`: normalized gene expression data
+- `@net`: the inferred cell-cell communication network
+- `@netP`: the communication network at the signaling pathway level
+- `@idents`: cell type labels
+
+```{r load data3}
+# View available cell types
+levels(cellchat@idents)
+
+# View number of cells per type
+table(cellchat@idents)
+```
+
+## Visualization
+
+### 1. Basic circle plot
+
+The most straightforward visualization is to show all cell-cell communications in a single circle plot.
+
+```{r fig1.1BasicCircle}
+#| label: fig1.1BasicCircle
+#| fig-cap: "Basic Circle Plot of Cell-Cell Communication"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# Basic circle plot showing all interactions
+netVisual_circle(cellchat@net$count, 
+                 vertex.weight = rowSums(cellchat@net$count),
+                 weight.scale = TRUE,
+                 label.edge = FALSE,
+                 title.name = "Number of interactions")
+```
+
+::: callout-tip
+**Key Parameters:**
+
+- `vertex.weight`: Controls the size of nodes (cell types) based on their interaction strength
+- `weight.scale`: Whether to scale the edge width by weight
+- `label.edge`: Whether to display labels on edges
+- `arrow.width` and `arrow.size`: Control the appearance of directional arrows
+:::
+
+### 2. Circle plot with cell groups
+
+We can visualize the communication network with cells grouped by categories, which helps identify interaction patterns between different cell populations.
+
+```{r fig1.2GroupedCircle}
+#| label: fig1.2GroupedCircle
+#| fig-cap: "Circle Plot with Cell Groups"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# Define cell groups (example: immune cells vs. structural cells)
+groupSize <- as.numeric(table(cellchat@idents))
+
+# Circle plot with custom colors
+netVisual_circle(cellchat@net$count, 
+                 vertex.weight = groupSize,
+                 weight.scale = TRUE,
+                 label.edge = FALSE,
+                 title.name = "Number of interactions",
+                 vertex.label.cex = 0.8,
+                 vertex.size = groupSize/10)
+```
+
+### 3. Pathway-specific circle plot
+
+We can also visualize specific signaling pathways to understand which cell types are involved in particular biological processes.
+
+```{r fig1.3PathwayCircle}
+#| label: fig1.3PathwayCircle
+#| fig-cap: "Circle Plot for Specific Pathways"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# Get available pathways
+pathways <- cellchat@netP$pathways
+
+# Visualize the first pathway (if available)
+if(length(pathways) > 0) {
+  pathway.show <- pathways[1]
+  
+  # Circle plot for a specific pathway
+  netVisual_aggregate(cellchat, 
+                      signaling = pathway.show, 
+                      layout = "circle",
+                      vertex.label.cex = 0.8,
+                      title.name = paste0(pathway.show, " signaling pathway"))
+}
+```
+
+::: callout-tip
+**Understanding Pathway-Specific Plots:**
+
+Pathway-specific visualizations help identify:
+- Which cell types are the major senders or receivers of specific signals
+- The dominant communication patterns in particular biological processes
+- Potential therapeutic targets in disease contexts
+:::
+
+### 4. Comparing incoming and outgoing signals
+
+It's often useful to compare the incoming and outgoing signaling patterns for each cell type.
+
+```{r fig1.4SignalDirection}
+#| label: fig1.4SignalDirection
+#| fig-cap: "Incoming and Outgoing Signals"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# Calculate total outgoing and incoming signals
+outgoing <- rowSums(cellchat@net$count)
+incoming <- colSums(cellchat@net$count)
+
+# Create a comparison data frame
+signal_comparison <- data.frame(
+  CellType = names(outgoing),
+  Outgoing = outgoing,
+  Incoming = incoming
+)
+
+# Show top cell types by outgoing signals
+signal_comparison %>% 
+  arrange(desc(Outgoing)) %>%
+  head(5)
+```
+
+### 5. Hierarchical plot alternative
+
+In addition to circle plots, CellChat provides hierarchical layouts that can be useful for certain types of networks.
+
+```{r fig1.5Hierarchical}
+#| label: fig1.5Hierarchical
+#| fig-cap: "Hierarchical Plot of Cell-Cell Communication"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# Hierarchical plot
+if(length(pathways) > 0) {
+  netVisual_aggregate(cellchat, 
+                      signaling = pathway.show, 
+                      layout = "hierarchy",
+                      vertex.label.cex = 0.8,
+                      title.name = paste0(pathway.show, " signaling (hierarchical)"))
+}
+```
+
+## Applications
+
+### Cell-Cell Communication in Disease
+
+Circle plots of cell-cell communication networks are widely used in biomedical research to understand:
+
+1. **Cancer Microenvironment**: Identifying how tumor cells communicate with immune cells and stromal cells
+2. **Immune Response**: Understanding how different immune cell types coordinate during infection or inflammation  
+3. **Tissue Development**: Revealing signaling patterns during organ development and tissue homeostasis
+4. **Disease Mechanisms**: Discovering aberrant communication patterns in diseases like fibrosis, neurodegeneration, or autoimmune disorders
+
+### Best Practices
+
+When creating cell-cell communication circle plots:
+
+- Filter weak interactions to focus on biologically significant communications
+- Use color coding to highlight specific cell populations or pathways of interest
+- Compare networks across different conditions (e.g., healthy vs. disease, before vs. after treatment)
+- Validate key findings with experimental approaches such as co-culture assays or spatial transcriptomics
+
+## Reference
+
+\[1\] Jin, S., Guerrero-Juarez, C. F., Zhang, L., Chang, I., Ramos, R., Kuan, C. H., ... & Nie, Q. (2021). Inference and analysis of cell-cell communication using CellChat. *Nature communications*, 12(1), 1088. <https://doi.org/10.1038/s41467-021-21246-9>
+
+\[2\] CellChat GitHub Repository: <https://github.com/sqjin/CellChat>
+
+\[3\] CellChat Documentation: <http://www.cellchat.org/>
