@@ -1,0 +1,202 @@
+name: Auto-Translate QMD Files
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - '**.qmd'
+      - '**.Qmd'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-translate:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install openai
+      
+      - name: Get changed QMD files
+        id: changed-files
+        uses: tj-actions/changed-files@v46.0.5
+        with:
+          files: |
+            **.qmd
+            **.Qmd
+      
+      - name: Load translation blacklist
+        id: blacklist
+        run: |
+          if [ -f .github/translation-blacklist.txt ]; then
+            echo "Blacklist file found"
+            cat .github/translation-blacklist.txt
+          else
+            echo "No blacklist file found"
+          fi
+      
+      - name: Process translations
+        if: steps.changed-files.outputs.any_changed == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+        run: |
+          # Function to check if file is in blacklist
+          is_blacklisted() {
+            local file="$1"
+            if [ -f .github/translation-blacklist.txt ]; then
+              while IFS= read -r pattern || [ -n "$pattern" ]; do
+                # Skip comments and empty lines
+                [[ "$pattern" =~ ^#.*$ ]] && continue
+                [[ -z "$pattern" ]] && continue
+                
+                # Simple pattern matching
+                if [[ "$file" == $pattern ]] || [[ "$file" == *"$pattern"* ]]; then
+                  return 0
+                fi
+              done < .github/translation-blacklist.txt
+            fi
+            return 1
+          }
+          
+          # Arrays to store files
+          files_to_translate=()
+          files_with_pairs=()
+          
+          # Process each changed file
+          for file in ${CHANGED_FILES}; do
+            echo "Processing: $file"
+            
+            # Check blacklist
+            if is_blacklisted "$file"; then
+              echo "  ⊗ Skipped (blacklisted): $file"
+              continue
+            fi
+            
+            # Determine the translation pair
+            if [[ "$file" == *.zh.qmd ]]; then
+              # Chinese file - English pair
+              pair="${file%.zh.qmd}.qmd"
+            else
+              # English file - Chinese pair
+              pair="${file%.qmd}.zh.qmd"
+            fi
+            
+            echo "  Translation pair: $pair"
+            
+            # Check if pair exists in the PR changes
+            if echo "$CHANGED_FILES" | grep -qw "$pair"; then
+              echo "  ✓ Both language versions present in PR"
+              files_with_pairs+=("$file|$pair")
+            else
+              # Check if pair exists in repo
+              if [ -f "$pair" ]; then
+                echo "  ⚠ Translation pair exists but not in PR, skipping auto-translation"
+              else
+                echo "  → Will auto-translate to: $pair"
+                files_to_translate+=("$file")
+              fi
+            fi
+          done
+          
+          # Perform translations
+          if [ ${#files_to_translate[@]} -gt 0 ]; then
+            echo ""
+            echo "========================================="
+            echo "Auto-translating ${#files_to_translate[@]} file(s)"
+            echo "========================================="
+            
+            for file in "${files_to_translate[@]}"; do
+              echo ""
+              echo "Translating: $file"
+              python .github/scripts/translate_qmd.py "$file" --model gpt-4o-mini
+              
+              if [ $? -eq 0 ]; then
+                echo "✓ Translation successful"
+              else
+                echo "✗ Translation failed"
+              fi
+            done
+          else
+            echo ""
+            echo "No files need automatic translation"
+          fi
+          
+          # Validate file pairs (both languages in PR)
+          if [ ${#files_with_pairs[@]} -gt 0 ]; then
+            echo ""
+            echo "========================================="
+            echo "Validating ${#files_with_pairs[@]} bilingual pair(s)"
+            echo "========================================="
+            
+            for pair_entry in "${files_with_pairs[@]}"; do
+              IFS='|' read -r file1 file2 <<< "$pair_entry"
+              echo ""
+              echo "Checking pair: $file1 <-> $file2"
+              
+              # Run spell check on both files
+              echo "  Spell-checking $file1..."
+              python .github/scripts/translate_qmd.py "$file1" --check-spelling || true
+              
+              echo "  Spell-checking $file2..."
+              python .github/scripts/translate_qmd.py "$file2" --check-spelling || true
+            done
+          fi
+      
+      - name: Check for changes
+        id: git-check
+        run: |
+          git diff --exit-code || echo "changes=true" >> $GITHUB_OUTPUT
+      
+      - name: Commit translations
+        if: steps.git-check.outputs.changes == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -A
+          git commit -m "chore: auto-translate QMD files
+          
+          Automatically generated translations for modified QMD files.
+          
+          Co-authored-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+      
+      - name: Push changes
+        if: steps.git-check.outputs.changes == 'true'
+        run: |
+          git push origin ${{ github.event.pull_request.head.ref }}
+      
+      - name: Comment on PR
+        if: steps.git-check.outputs.changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '🤖 **Auto-Translation Complete**\n\n' +
+                    'I have automatically translated the QMD files in this PR.\n\n' +
+                    '**Please review the translations for accuracy**, especially:\n' +
+                    '- Technical terminology\n' +
+                    '- Biomedical terms\n' +
+                    '- Code examples and their descriptions\n\n' +
+                    'You can make manual corrections by editing the translated files directly.'
+            });
