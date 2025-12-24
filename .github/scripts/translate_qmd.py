@@ -144,14 +144,16 @@ Translate the following text from {lang_names[source_lang]} to {lang_names[targe
 
 Requirements:
 1. Maintain the original meaning and technical accuracy
-2. Preserve all markdown formatting (headers, lists, links, emphasis, etc.)
-3. Do NOT translate code placeholders like <<<CODE_BLOCK_N>>>
-4. Maintain scientific terminology accuracy
-5. Keep the same tone and style
-6. For technical terms, use commonly accepted translations in the biomedical field
-7. Preserve any special characters and symbols
+2. Preserve all markdown formatting EXACTLY as it appears in the source (headers, lists, links, emphasis, etc.)
+3. Do NOT add or remove any markdown syntax
+4. Do NOT translate code placeholders like <<<CODE_BLOCK_N>>>
+5. Maintain scientific terminology accuracy
+6. Keep the same tone and style
+7. For technical terms, use commonly accepted translations in the biomedical field
+8. Preserve any special characters and symbols
+9. ONLY translate the text content, do not add explanations or extra content
 
-Only return the translated text, no explanations."""
+Only return the translated text, no explanations or additions."""
 
         try:
             response = self.client.chat.completions.create(
@@ -186,7 +188,14 @@ Only return the translated text, no explanations."""
         title_match = re.search(r'^title:\s*(.+)$', yaml_content, re.MULTILINE)
         if title_match:
             title = title_match.group(1).strip().strip('"\'')
+            # Strip any markdown heading symbols from the title
+            title = re.sub(r'^#+\s*', '', title).strip()
             translated_title = self.translate_text(title, source_lang, target_lang)
+            # Strip markdown heading symbols from translated title as well
+            translated_title = re.sub(r'^#+\s*', '', translated_title).strip()
+            # Quote the title if it contains special characters
+            if ':' in translated_title or '#' in translated_title or translated_title.startswith('"'):
+                translated_title = f'"{translated_title}"'
             yaml_content = re.sub(
                 r'^title:\s*.+$',
                 f'title: {translated_title}',
