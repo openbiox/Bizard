@@ -17,6 +17,9 @@ name: Github Page
 env:
   isExtPR: ${{ github.event.pull_request.head.repo.fork == true }}
   RUST_BACKTRACE: 1
+  # Optimize Quarto to use working directory instead of temp
+  QUARTO_DENO_EXTRA_OPTIONS: "--v8-flags=--max-old-space-size=4096"
+  R_LIBS_USER: "/home/runner/work/_temp/r-libs"
 
 jobs:
   build-deploy:
@@ -29,10 +32,51 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Show initial disk usage
+        run: |
+          echo "=== Initial Disk Usage ==="
+          df -h
+          echo ""
+          echo "=== Largest directories in /usr ==="
+          sudo du -h /usr | sort -rh | head -20 || true
+
+      - name: Free up disk space
+        run: |
+          echo "=== Freeing up disk space ==="
+          # Remove unnecessary pre-installed software
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/graalvm
+          sudo rm -rf /usr/local/.ghcup
+          
+          # Remove Docker images
+          docker rmi $(docker images -q) || true
+          
+          # Clean up apt cache
+          sudo apt-get clean
+          sudo apt-get autoremove -y
+          sudo apt-get autoclean -y
+          
+          # Remove unnecessary packages
+          sudo apt-get remove -y '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' 'php.*' '^mongodb-.*' '^mysql-.*' azure-cli google-chrome-stable firefox powershell mono-devel || true
+          sudo apt-get autoremove -y
+          
+          echo "=== Disk usage after cleanup ==="
+          df -h
+
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      
+      - name: Show disk usage after checkout
+        run: |
+          echo "=== Disk usage after checkout ==="
+          df -h
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
@@ -40,12 +84,27 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tinytex: true
+      
+      - name: Show disk usage after Quarto setup
+        run: |
+          echo "=== Disk usage after Quarto setup ==="
+          df -h
 
       - uses: r-lib/actions/setup-r@v2
         with:
           use-public-rspm: true
+      
+      - name: Show disk usage after R setup
+        run: |
+          echo "=== Disk usage after R setup ==="
+          df -h
 
       - uses: r-lib/actions/setup-r-dependencies@v2
+      
+      - name: Show disk usage after R dependencies
+        run: |
+          echo "=== Disk usage after R dependencies ==="
+          df -h
 
       - name: Scan .qmd for dependencies and update
         run: Rscript update-dependencies.R
@@ -59,6 +118,14 @@ jobs:
           git push origin || echo "No changes to commit"
 
       - uses: r-lib/actions/setup-r-dependencies@v2
+      
+      - name: Show disk usage before rendering
+        run: |
+          echo "=== Disk usage before rendering ==="
+          df -h
+          echo ""
+          echo "=== R temp directory size ==="
+          du -sh /tmp/Rtmp* 2>/dev/null || echo "No R temp directories yet"
 
     #  - name: Render Quarto Project
     #    uses: quarto-dev/quarto-actions/render@v2
@@ -66,13 +133,43 @@ jobs:
     #      QUARTO_PROFILE: preview
 
       - name: Render website with Babelquarto
-        run: Rscript -e 'babelquarto::render_website()'
+        run: |
+          # Set environment variables to optimize disk usage
+          export TMPDIR="${GITHUB_WORKSPACE}/_tmp"
+          export R_USER_CACHE_DIR="${GITHUB_WORKSPACE}/_cache"
+          mkdir -p "$TMPDIR" "$R_USER_CACHE_DIR"
+          
+          # Run rendering
+          Rscript -e 'babelquarto::render_website()'
+          
+      - name: Clean up temporary files after rendering
+        run: |
+          echo "=== Cleaning up temporary files ==="
+          # Clean R temp files
+          rm -rf /tmp/Rtmp* || true
+          rm -rf ${GITHUB_WORKSPACE}/_tmp || true
+          rm -rf ${GITHUB_WORKSPACE}/_cache || true
+          
+          # Clean Quarto cache if it exists
+          rm -rf ${GITHUB_WORKSPACE}/.quarto || true
+          
+          # Clean any intermediate rendering files
+          find ${GITHUB_WORKSPACE} -type f -name "*.knit.md" -delete || true
+          find ${GITHUB_WORKSPACE} -type f -name "*.utf8.md" -delete || true
+          
+          echo "=== Disk usage after cleanup ==="
+          df -h
 
       - name: Upload Quarto artifacts
         if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: "_site"
+      
+      - name: Show disk usage after artifact upload
+        run: |
+          echo "=== Disk usage after artifact upload ==="
+          df -h
 
       - name: Commit the updated _freeze
         if: github.event_name != 'pull_request'
@@ -93,3 +190,9 @@ jobs:
           render: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Show final disk usage
+        if: always()
+        run: |
+          echo "=== Final disk usage ==="
+          df -h
