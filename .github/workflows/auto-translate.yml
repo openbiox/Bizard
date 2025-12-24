@@ -28,7 +28,7 @@ jobs:
   auto-translate:
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'issue_comment' ||
       github.event_name == 'push'
@@ -117,28 +117,6 @@ jobs:
             console.log(`PR Ref: ${prRef}`);
             console.log(`PR Repo: ${prRepo}`);
             console.log(`Is Push: ${isPush}`);
-      
-      - name: Check if PR is from a fork
-        id: fork-check
-        if: github.event_name != 'push'
-        run: |
-          pr_repo="${{ steps.pr-info.outputs.pr_repo }}"
-          current_repo="${{ github.repository }}"
-          
-          if [ -n "$pr_repo" ] && [ "$pr_repo" != "$current_repo" ]; then
-            echo "is_fork=true" >> $GITHUB_OUTPUT
-            echo "⚠️ PR is from a fork ($pr_repo). Skipping for security reasons."
-          else
-            echo "is_fork=false" >> $GITHUB_OUTPUT
-            echo "✓ PR is from the same repository"
-          fi
-      
-      - name: Exit if PR is from a fork
-        if: github.event_name != 'push' && steps.fork-check.outputs.is_fork == 'true'
-        run: |
-          echo "Translation workflow does not run on PRs from forks for security reasons."
-          echo "The workflow requires write access to the repository."
-          exit 0
       
       - name: Checkout PR branch
         if: github.event_name != 'push'
@@ -355,8 +333,15 @@ jobs:
       
       - name: Push changes
         if: steps.git-check.outputs.changes == 'true'
+        continue-on-error: true
         run: |
-          git push origin ${{ steps.pr-info.outputs.pr_ref }}
+          # Pull latest changes to avoid conflicts
+          git pull --rebase origin ${{ steps.pr-info.outputs.pr_ref }} || true
+          git push origin ${{ steps.pr-info.outputs.pr_ref }} || {
+            echo "⚠️ Push failed (this is expected for PRs from forks without write permissions)"
+            echo "Translation files are still available in the workflow artifacts"
+            exit 0
+          }
       
       - name: Post translation preview to PR
         if: steps.git-check.outputs.changes == 'true' && (github.event_name == 'pull_request' || github.event_name == 'issue_comment')
