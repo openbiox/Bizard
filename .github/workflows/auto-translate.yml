@@ -33,6 +33,13 @@ jobs:
         run: |
           pip install openai
       
+      - name: Set up GitHub Copilot CLI (if available)
+        if: secrets.COPILOT_TOKEN != ''
+        uses: austenstone/copilot-cli@v2
+        continue-on-error: true
+        with:
+          copilot-token: ${{ secrets.COPILOT_TOKEN }}
+      
       - name: Get changed QMD files
         id: changed-files
         uses: tj-actions/changed-files@v46.0.5
@@ -54,7 +61,9 @@ jobs:
       - name: Process translations
         if: steps.changed-files.outputs.any_changed == 'true'
         env:
-          # Support multiple AI providers via configurable environment variables
+          # GitHub Copilot token (primary method)
+          COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+          # Support multiple AI providers via configurable environment variables (fallback)
           # Priority: AI_Model_* variables, fallback to OPENAI_API_KEY for backward compatibility
           AI_Model_API_KEY: ${{ secrets.AI_Model_API_KEY || secrets.OPENAI_API_KEY }}
           AI_Model_BASE_URL: ${{ secrets.AI_Model_BASE_URL }}
@@ -129,16 +138,56 @@ jobs:
             echo "Auto-translating ${#files_to_translate[@]} file(s)"
             echo "========================================="
             
+            # Check translation provider availability
+            HAS_COPILOT=false
+            HAS_EXTERNAL_AI=false
+            
+            if [ -n "$COPILOT_TOKEN" ]; then
+              echo "✓ GitHub Copilot token detected"
+              HAS_COPILOT=true
+            fi
+            
+            if [ -n "$AI_Model_API_KEY" ]; then
+              echo "✓ External AI provider configured"
+              HAS_EXTERNAL_AI=true
+            fi
+            
+            if [ "$HAS_COPILOT" = false ] && [ "$HAS_EXTERNAL_AI" = false ]; then
+              echo "✗ No translation provider configured"
+              echo "   Need either COPILOT_TOKEN or AI_Model_API_KEY/OPENAI_API_KEY"
+              exit 1
+            fi
+            
+            # Store files that need translation in a file for potential Copilot batch processing
+            printf "%s\n" "${files_to_translate[@]}" > /tmp/files_to_translate.txt
+            
             for file in "${files_to_translate[@]}"; do
               echo ""
               echo "Translating: $file"
-              # Script will automatically use AI_Model_* environment variables if set
-              python .github/scripts/translate_qmd.py "$file"
               
-              if [ $? -eq 0 ]; then
-                echo "✓ Translation successful"
-              else
-                echo "✗ Translation failed"
+              TRANSLATION_SUCCESS=false
+              
+              # Use external AI models (more reliable for automated translation)
+              # GitHub Copilot CLI is better for interactive use
+              if [ "$HAS_EXTERNAL_AI" = true ]; then
+                echo "  Using external AI provider for translation..."
+                if python .github/scripts/translate_qmd.py "$file"; then
+                  echo "  ✓ Translation successful"
+                  TRANSLATION_SUCCESS=true
+                fi
+              fi
+              
+              # If external AI failed or not available, could try other methods here
+              if [ "$TRANSLATION_SUCCESS" = false ]; then
+                echo "  ✗ Translation failed for $file"
+                
+                # Note: GitHub Copilot CLI (austenstone/copilot-cli) is designed for
+                # interactive Q&A and reviews, not for generating complete file translations.
+                # For automated translation, external AI APIs (OpenAI, MiMo, etc.) are more suitable.
+                if [ "$HAS_COPILOT" = true ] && [ "$HAS_EXTERNAL_AI" = false ]; then
+                  echo "  ℹ Copilot token available but better suited for review than translation"
+                  echo "    Consider configuring an external AI provider for automated translation"
+                fi
               fi
             done
           else
@@ -189,6 +238,22 @@ jobs:
         run: |
           git push origin ${{ github.event.pull_request.head.ref }}
       
+      - name: Review translations with GitHub Copilot (if available)
+        if: steps.git-check.outputs.changes == 'true' && secrets.COPILOT_TOKEN != ''
+        uses: austenstone/copilot-cli@v2
+        continue-on-error: true
+        with:
+          copilot-token: ${{ secrets.COPILOT_TOKEN }}
+          prompt: |
+            Review the translated QMD files in this pull request for:
+            1. Translation accuracy and natural language flow
+            2. Consistency of biomedical and bioinformatics terminology
+            3. Preservation of technical terms and proper nouns
+            4. Markdown formatting integrity
+            5. Any potential mistranslations or awkward phrasing
+            
+            Focus on the newly added .qmd and .zh.qmd files.
+      
       - name: Comment on PR
         if: steps.git-check.outputs.changes == 'true'
         uses: actions/github-script@v7
@@ -201,7 +266,8 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.issue.number,
               body: '🤖 **Auto-Translation Complete**\n\n' +
-                    'I have automatically translated the QMD files in this PR.\n\n' +
+                    'I have automatically translated the QMD files in this PR using external AI models.\n\n' +
+                    (process.env.COPILOT_TOKEN ? '✨ **GitHub Copilot Review**: A Copilot review has been performed on the translations.\n\n' : '') +
                     '**Please review the translations for accuracy**, especially:\n' +
                     '- Technical terminology\n' +
                     '- Biomedical terms\n' +
