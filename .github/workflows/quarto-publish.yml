@@ -26,6 +26,7 @@ jobs:
       group: quarto-publish-${{ github.event_name != 'pull_request' || github.run_id }}
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      TMP_DIR: /mnt/TMP
     permissions:
       contents: write
     steps:
@@ -65,8 +66,35 @@ jobs:
     #    env:
     #      QUARTO_PROFILE: preview
 
+      - name: Create temporary directory at /mnt/TMP
+        run: |
+          sudo mkdir -p ${{ env.TMP_DIR }}
+          sudo chown -R $USER:$USER ${{ env.TMP_DIR }}
+          echo "Created ${{ env.TMP_DIR }} directory"
+
+      - name: Check disk usage before rendering
+        run: |
+          echo "=== Initial Disk Usage ==="
+          df -h
+          echo ""
+          echo "=== Working Directory ==="
+          pwd
+
       - name: Render website with Babelquarto
+        env:
+          TMPDIR: ${{ env.TMP_DIR }}
+          TMP: ${{ env.TMP_DIR }}
+          TEMP: ${{ env.TMP_DIR }}
+          R_COMPILE_PKGS: 0
         run: Rscript -e 'babelquarto::render_website()'
+
+      - name: Check disk usage after rendering
+        run: |
+          echo "=== Final Disk Usage ==="
+          df -h
+          echo ""
+          echo "=== Working Directory ==="
+          pwd
 
       - name: Upload Quarto artifacts
         if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
@@ -93,3 +121,15 @@ jobs:
           render: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup temporary directory
+        if: always()
+        run: |
+          TMP_PATH="${{ env.TMP_DIR }}"
+          # Validate path is non-empty, matches expected pattern, and directory exists
+          if [ -n "$TMP_PATH" ] && [[ "$TMP_PATH" =~ ^/mnt/TMP ]] && [ -d "$TMP_PATH" ]; then
+            sudo rm -rf "$TMP_PATH"
+            echo "Removed $TMP_PATH directory"
+          else
+            echo "Skipping cleanup - validation failed (path: $TMP_PATH)"
+          fi
