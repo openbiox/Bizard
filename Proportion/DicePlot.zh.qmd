@@ -1,0 +1,305 @@
+---
+title: "骰子图"
+author:
+  - "**[编辑]** [Copilot](https://github.com/);"
+  - "**[贡献]** "
+---
+
+骰子图是一种用于表示高维分类数据的可视化技术。ggdiceplot 包提供了 ggplot2 扩展，用于创建基于骰子的可视化，其中骰子上的每个点位置代表一个特定的分类变量。这允许使用传统的骰子模式同时直观地可视化多达 6 个分类变量。每个骰子位置（1-6）代表不同的类别，仅当该类别存在时才显示点。
+
+## 示例
+
+![](../images/ggdiceplot/example2.png){fig-alt="Dice Plot DEMO" fig-align="center" width="60%"}
+
+该骰子图显示了不同化合物和器官中 miRNA 表达变化。每个骰子表示 miRNA 在不同器官（肺、肝脏、大脑）中的存在和调控方向。点代表不同的器官，颜色表示 miRNA 是上调（红色）、下调（蓝色）还是不变（灰色）。
+
+## 环境配置
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`; `ggdiceplot`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("ggdiceplot", quietly = TRUE)) {
+  install.packages("ggdiceplot")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+
+# 加载包
+library(ggplot2)
+library(ggdiceplot)
+library(dplyr)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+该包包含用于演示骰子图功能的示例数据。我们将使用 miRNA 失调数据集，其中包含有关不同化合物和器官中 microRNA 表达变化的信息。
+
+```{r load data, message=FALSE}
+# 从包中加载示例数据
+data("sample_dice_miRNA", package = "ggdiceplot")
+df_dice <- sample_dice_miRNA
+
+# 查看数据结构
+head(df_dice)
+
+# 检查数据维度
+str(df_dice)
+```
+
+该数据集包含以下列：
+- `miRNA`：microRNA 标识符
+- `Compound`：治疗化合物
+- `Organ`：组织/器官类型
+- `log2FC`：表达的 log2 倍数变化
+- `direction`：调控方向（上调/下调/不变）
+
+## 可视化
+
+### 1. 基础骰子图
+
+基础骰子图使用 `geom_dice()` 来表示多个分类变量。每个骰子方块可以使用传统的骰子点模式显示多达 6 个类别。
+
+::: callout-tip
+**关键参数：**
+
+- `dots`：映射到骰子位置的变量（1-6 个点）
+- `fill`：骰子背景的颜色映射
+- `width` 和 `height`：控制每个骰子方块的大小
+- `ndots`：要显示的唯一类别数
+:::
+
+```{r fig-1BasicDice}
+#| label: fig-1BasicDice
+#| fig-cap: "显示不同化合物和器官中 miRNA 调控的基础骰子图"
+#| out.width: "95%"
+#| fig-height: 5
+#| fig-width: 7
+#| warning: false
+
+# 定义调控方向的颜色
+direction_colors <- c(
+  Down      = "#2166ac",
+  Unchanged = "grey80",
+  Up        = "#b2182b"
+)
+
+# 创建基础骰子图
+p1 <- ggplot(df_dice, aes(x = miRNA, y = Compound)) +
+  geom_dice(
+    aes(
+      dots   = Organ,
+      fill   = direction,
+      width  = 0.8,
+      height = 0.8
+    ),
+    show.legend = TRUE,
+    ndots       = length(levels(df_dice$Organ)),
+    x_length    = length(levels(df_dice$miRNA)),
+    y_length    = length(levels(df_dice$Compound))
+  ) +
+  scale_fill_manual(values = direction_colors, name = "调控") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    axis.text.y = element_text(hjust = 1),
+    panel.grid  = element_blank()
+  ) +
+  labs(
+    x = "miRNA",
+    y = "化合物"
+  )
+
+p1
+```
+
+每个骰子显示 miRNA 在不同器官中的存在和调控方向。点代表不同的器官（肺、肝脏、大脑），颜色表示 miRNA 是上调（红色）、下调（蓝色）还是不变（灰色）。
+
+### 2. 具有连续变量的高级骰子图
+
+骰子图还可以使用大小和颜色渐变来合并连续变量。这对于显示效应大小和统计显著性特别有用。
+
+```{r load taxonomy data, message=FALSE}
+# 加载分类学示例数据
+data("sample_dice_data1", package = "ggdiceplot")
+toy_data <- sample_dice_data1
+
+# 查看数据
+head(toy_data)
+```
+
+::: callout-tip
+**高级参数：**
+
+- `size`：映射到连续变量（例如，-log10(q-value)）
+- `fill`：可以使用渐变尺度表示连续效应大小
+- `scale_fill_gradient2()`：为正/负效应创建发散颜色尺度
+:::
+
+```{r fig-2AdvancedDice}
+#| label: fig-2AdvancedDice
+#| fig-cap: "具有连续颜色和大小映射的高级骰子图"
+#| out.width: "95%"
+#| fig-height: 6
+#| fig-width: 8
+#| warning: false
+
+# 计算尺度参数
+lo <- floor(min(toy_data$lfc, na.rm = TRUE))
+up <- ceiling(max(toy_data$lfc, na.rm = TRUE))
+mid <- (lo + up) / 2
+
+minsize <- floor(min(-log10(toy_data$q), na.rm = TRUE))
+maxsize <- ceiling(max(-log10(toy_data$q), na.rm = TRUE))
+midsize <- ceiling(quantile(-log10(toy_data$q), c(0.5), na.rm = TRUE))
+
+# 创建高级骰子图
+p2 <- ggplot(toy_data, aes(x = specimen, y = taxon)) +
+  geom_dice(
+    aes(
+      dots   = disease,
+      fill   = lfc,
+      size   = -log10(q),
+      width  = 0.5,
+      height = 0.5
+    ),
+    show.legend = TRUE,
+    ndots       = length(unique(toy_data$disease)),
+    x_length    = length(unique(toy_data$specimen)),
+    y_length    = length(unique(toy_data$taxon))
+  ) +
+  scale_fill_gradient2(
+    low      = "#40004B",
+    high     = "#00441B",
+    mid      = "white",
+    na.value = "white",
+    limit    = c(lo, up),
+    midpoint = mid,
+    name     = "Log2FC"
+  ) +
+  scale_size_continuous(
+    limits = c(minsize, maxsize),
+    breaks = c(minsize, midsize, maxsize),
+    labels = c(10^minsize, 10^-midsize, 10^-maxsize),
+    name   = "q-value"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 10),
+    legend.text = element_text(size = 10)
+  ) +
+  labs(
+    x = "样本",
+    y = "分类群"
+  )
+
+p2
+```
+
+该高级图显示分类学数据，其中：
+- **点**：不同疾病
+- **颜色**：Log2 倍数变化（紫色 = 下调，绿色 = 上调）
+- **大小**：统计显著性（-log10 q-value）
+
+### 3. 自定义主题
+
+该包包含 `theme_dice()` 以实现更清晰的可视化：
+
+```{r fig-3ThemedDice}
+#| label: fig-3ThemedDice
+#| fig-cap: "具有自定义主题的骰子图"
+#| out.width: "95%"
+#| fig-height: 5
+#| fig-width: 7
+#| warning: false
+
+# 使用 theme_dice() 创建骰子图
+p3 <- ggplot(df_dice, aes(x = miRNA, y = Compound)) +
+  geom_dice(
+    aes(
+      dots   = Organ,
+      fill   = direction,
+      width  = 0.8,
+      height = 0.8
+    ),
+    show.legend = TRUE,
+    ndots       = length(levels(df_dice$Organ)),
+    x_length    = length(levels(df_dice$miRNA)),
+    y_length    = length(levels(df_dice$Compound))
+  ) +
+  scale_fill_manual(values = direction_colors, name = "调控") +
+  theme_dice() +
+  labs(
+    title = "不同化合物和器官中的 miRNA 失调",
+    x = "miRNA",
+    y = "化合物"
+  )
+
+p3
+```
+
+`theme_dice()` 提供了一个针对骰子图优化的简洁主题，具有清晰的背景和适当的间距。
+
+## 应用
+
+骰子图在生物医学研究中特别有用，用于可视化复杂的分类关系。它们已应用于各个领域，包括基因组学、转录组学和临床研究。
+
+### 1. 基因表达分析
+
+::: {#fig-GeneExpression}
+![](../images/ggdiceplot/zebra_example.png){fig-alt="ZEBRA 基因表达" fig-align="center" width="90%"}
+
+ZEBRA 基因表达多米诺图
+:::
+
+该图显示了多种疾病（MS、AD、ASD、FTD、HD）和细胞类型中差异表达基因的多米诺图。每个骰子表示：
+- **点**：不同疾病条件
+- **颜色**：Log 倍数变化（蓝色 = 下调，红色 = 上调）
+- **大小**：统计显著性（FDR）
+
+多米诺图允许同时可视化多个维度的基因表达模式，使识别疾病特异性和细胞类型特异性失调模式变得容易。
+
+### 2. 分类学分析
+
+::: {#fig-TaxonomyApp}
+![](../images/ggdiceplot/example1.png){fig-alt="分类学骰子图" fig-align="center" width="80%"}
+
+分类学骰子图应用
+:::
+
+该应用演示了骰子图如何可视化样本和疾病中的分类学丰度数据，每个点代表不同的疾病状态，颜色/大小表示效应大小和显著性水平。
+
+### 3. miRNA 失调研究
+
+::: {#fig-miRNAApp}
+![](../images/ggdiceplot/example2.png){fig-alt="miRNA 骰子图" fig-align="center" width="70%"}
+
+miRNA 失调骰子图
+:::
+
+该示例显示了不同化合物和器官中 miRNA 表达变化，骰子点代表器官，颜色表示调控方向。这种可视化模式对于检查组织特异性药物效应的药理学研究特别有用。
+
+## 参考文献
+
+1. M. Flotho, P. Flotho, A. Keller, "Diceplot: A package for high dimensional categorical data visualization," *arXiv preprint*, 2024. <https://doi.org/10.48550/arXiv.2410.23897>
+
+2. ggdiceplot GitHub 仓库：<https://github.com/maflot/ggdiceplot>
+
+3. ggdiceplot CRAN 包：<https://CRAN.R-project.org/package=ggdiceplot>
+
+## 贡献者
+
+-   **编辑**：GitHub Copilot。
