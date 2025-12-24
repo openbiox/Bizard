@@ -6,6 +6,11 @@ on:
     paths:
       - '**.qmd'
       - '**.Qmd'
+  push:
+    branches: [main, master]
+    paths:
+      - '**.qmd'
+      - '**.Qmd'
   workflow_dispatch:
     inputs:
       pr_number:
@@ -25,7 +30,8 @@ jobs:
     if: |
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'issue_comment'
+      github.event_name == 'issue_comment' ||
+      github.event_name == 'push'
     
     steps:
       - name: Check if triggered by valid comment command
@@ -55,7 +61,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            let prNumber, prRef, prRepo;
+            let prNumber, prRef, prRepo, isPush = false;
             
             if (context.eventName === 'pull_request') {
               prNumber = context.payload.pull_request.number;
@@ -73,6 +79,16 @@ jobs:
               });
               prRef = pr.head.ref;
               prRepo = pr.head.repo.full_name;
+            } else if (context.eventName === 'push') {
+              // For push events, create a new branch for translation
+              isPush = true;
+              const baseBranch = context.ref.replace('refs/heads/', '');
+              const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+              prRef = `auto-translate-${baseBranch}-${timestamp}`;
+              prRepo = context.repo.owner + '/' + context.repo.repo;
+              
+              console.log(`Push event detected on ${baseBranch}`);
+              console.log(`Will create new branch: ${prRef}`);
             } else if (context.eventName === 'workflow_dispatch') {
               const inputPrNumber = context.payload.inputs.pr_number;
               prNumber = inputPrNumber ? parseInt(inputPrNumber, 10) : null;
@@ -93,13 +109,17 @@ jobs:
             core.setOutput('pr_number', prNumber || '');
             core.setOutput('pr_ref', prRef || context.ref.replace('refs/heads/', ''));
             core.setOutput('pr_repo', prRepo || '');
+            core.setOutput('is_push', isPush ? 'true' : 'false');
+            core.setOutput('base_branch', context.ref.replace('refs/heads/', ''));
             
             console.log(`PR Number: ${prNumber}`);
             console.log(`PR Ref: ${prRef}`);
             console.log(`PR Repo: ${prRepo}`);
+            console.log(`Is Push: ${isPush}`);
       
       - name: Check if PR is from a fork
         id: fork-check
+        if: github.event_name != 'push'
         run: |
           pr_repo="${{ steps.pr-info.outputs.pr_repo }}"
           current_repo="${{ github.repository }}"
@@ -113,18 +133,33 @@ jobs:
           fi
       
       - name: Exit if PR is from a fork
-        if: steps.fork-check.outputs.is_fork == 'true'
+        if: github.event_name != 'push' && steps.fork-check.outputs.is_fork == 'true'
         run: |
           echo "Translation workflow does not run on PRs from forks for security reasons."
           echo "The workflow requires write access to the repository."
           exit 0
       
       - name: Checkout PR branch
+        if: github.event_name != 'push'
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.pr-info.outputs.pr_ref }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Checkout and create new branch for push events
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr-info.outputs.base_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create new translation branch
+        if: github.event_name == 'push'
+        run: |
+          git checkout -b ${{ steps.pr-info.outputs.pr_ref }}
+          echo "Created new branch: ${{ steps.pr-info.outputs.pr_ref }}"
       
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -340,6 +375,54 @@ jobs:
         run: |
           git push origin ${{ steps.pr-info.outputs.pr_ref }}
       
+      - name: Create Pull Request for push events
+        if: github.event_name == 'push' && steps.git-check.outputs.changes == 'true'
+        id: create-pr
+        uses: actions/github-script@v7
+        env:
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+        with:
+          script: |
+            const baseBranch = '${{ steps.pr-info.outputs.base_branch }}';
+            const headBranch = '${{ steps.pr-info.outputs.pr_ref }}';
+            const changedFiles = process.env.CHANGED_FILES;
+            
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🤖 Auto-translate QMD files from ${baseBranch}`,
+              head: headBranch,
+              base: baseBranch,
+              body: `## 🤖 Automatic Translation
+              
+              This PR was automatically created by the auto-translate workflow after detecting changes to QMD files in the \`${baseBranch}\` branch.
+              
+              **Changed files:**
+              \`\`\`
+              ${changedFiles}
+              \`\`\`
+              
+              ### What was done:
+              - Detected new or modified .qmd files
+              - Generated translations for files without translation pairs
+              - Created this PR for review
+              
+              **Please review the translations for accuracy**, especially:
+              - Technical terminology
+              - Biomedical terms  
+              - Code examples and their descriptions
+              
+              You can make manual corrections by editing the translated files directly in this PR.
+              
+              ---
+              *This PR was created automatically by the [Auto-Translate workflow](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).*`
+            });
+            
+            core.setOutput('pr_number', pr.number);
+            core.setOutput('pr_url', pr.html_url);
+            
+            console.log(`Created PR #${pr.number}: ${pr.html_url}`);
+      
       - name: Review translations with GitHub Copilot (if available)
         if: steps.git-check.outputs.changes == 'true' && secrets.COPILOT_TOKEN
         uses: austenstone/copilot-cli@v2
@@ -369,7 +452,7 @@ jobs:
             });
       
       - name: Comment on PR
-        if: steps.git-check.outputs.changes == 'true'
+        if: github.event_name != 'push' && steps.git-check.outputs.changes == 'true'
         uses: actions/github-script@v7
         env:
           PR_NUMBER: ${{ steps.pr-info.outputs.pr_number }}
@@ -406,4 +489,28 @@ jobs:
                     '- Biomedical terms\n' +
                     '- Code examples and their descriptions\n\n' +
                     'You can make manual corrections by editing the translated files directly.'
+            });
+      
+      - name: Comment on created PR (for push events)
+        if: github.event_name == 'push' && steps.git-check.outputs.changes == 'true' && steps.create-pr.outputs.pr_number
+        uses: actions/github-script@v7
+        env:
+          NEW_PR_NUMBER: ${{ steps.create-pr.outputs.pr_number }}
+        with:
+          script: |
+            const prNumber = process.env.NEW_PR_NUMBER;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: '🤖 **Auto-Translation Complete**\n\n' +
+                    'Triggered by: push to main/master branch\n\n' +
+                    'I have automatically translated the QMD files and created this PR using external AI models.\n\n' +
+                    (process.env.COPILOT_TOKEN ? '✨ **GitHub Copilot Review**: A Copilot review has been performed on the translations.\n\n' : '') +
+                    '**Please review the translations for accuracy**, especially:\n' +
+                    '- Technical terminology\n' +
+                    '- Biomedical terms\n' +
+                    '- Code examples and their descriptions\n\n' +
+                    'You can make manual corrections by editing the translated files directly in this PR.'
             });
