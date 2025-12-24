@@ -65,8 +65,35 @@ jobs:
     #    env:
     #      QUARTO_PROFILE: preview
 
+      - name: Create temporary directory at /mnt/TMP
+        run: |
+          sudo mkdir -p /mnt/TMP
+          sudo chmod 777 /mnt/TMP
+          echo "Created /mnt/TMP directory"
+
+      - name: Check disk usage before rendering
+        run: |
+          echo "=== Initial Disk Usage ==="
+          df -h
+          echo ""
+          echo "=== Working Directory ==="
+          pwd
+
       - name: Render website with Babelquarto
+        env:
+          TMPDIR: /mnt/TMP
+          TMP: /mnt/TMP
+          TEMP: /mnt/TMP
+          R_COMPILE_PKGS: 0
         run: Rscript -e 'babelquarto::render_website()'
+
+      - name: Check disk usage after rendering
+        run: |
+          echo "=== Final Disk Usage ==="
+          df -h
+          echo ""
+          echo "=== Working Directory ==="
+          pwd
 
       - name: Upload Quarto artifacts
         if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
@@ -93,3 +120,13 @@ jobs:
           render: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup temporary directory
+        if: always()
+        run: |
+          if [ -d "/mnt/TMP" ]; then
+            sudo rm -rf /mnt/TMP
+            echo "Removed /mnt/TMP directory"
+          else
+            echo "/mnt/TMP directory does not exist"
+          fi
