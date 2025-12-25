@@ -420,8 +420,6 @@ def main():
                     print(f"  - {issue}")
             else:
                 print("✓ No issues found")
-            # Continue to next file without translating when only checking spelling
-            continue
         
         # Translate
         if translator.translate_qmd_file(input_file, output_file, args.target_lang):
