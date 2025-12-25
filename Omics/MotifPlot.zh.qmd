@@ -1,0 +1,166 @@
+---
+title: "Motif图"
+author:
+  - "**[贡献]** [金子伦](https://github.com/kintilin)"
+  - "**[编辑]** GitHub Copilot"
+---
+
+Motif图，也称为序列logo图，用于可视化生物序列（DNA、RNA或蛋白质）中的保守模式。它们常用于转录因子结合位点分析、miRNA靶标预测以及其他序列motif发现应用。每个字母的高度代表该位置的信息含量，帮助研究人员识别重要的结合位点或功能区域。
+
+## 示例
+
+<!-- 注意：需要添加演示图像。请将issue中的motif plot图像添加到 ../images/Omics/MotifPlot_demo.png -->
+<!-- ![](../images/Omics/MotifPlot_demo.png){fig-alt="MotifPlot DEMO" fig-align="center" width="60%"} -->
+
+Motif图显示序列logo，其中每个核苷酸的高度代表其在该位置的信息含量，有助于识别生物序列中的保守结合位点或功能区域。
+
+## 环境配置
+
+-   系统要求： 跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`motifStack`; `Biostrings`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+  install.packages("BiocManager")
+}
+if (!requireNamespace("motifStack", quietly = TRUE)) {
+  BiocManager::install("motifStack")
+}
+if (!requireNamespace("Biostrings", quietly = TRUE)) {
+  BiocManager::install("Biostrings")
+}
+
+# 加载包
+library(motifStack)
+library(Biostrings)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+Motif数据可以来自各种来源，如转录因子结合位点数据库（例如JASPAR、TRANSFAC），或从头motif发现工具（例如MEME）。motifStack包可以导入多种格式的motif，包括位置频率矩阵（PFM）或位置权重矩阵（PWM）。
+
+```{r load data, message=FALSE, warning=FALSE}
+# 从motifStack包加载示例motif数据
+library(motifStack)
+
+# 导入示例motif
+pcm <- read.table(system.file("extdata", "bin_SOLEXA.pcm", 
+                              package = "motifStack"))
+pcm <- pcm[, 3:ncol(pcm)]
+rownames(pcm) <- c("A", "C", "G", "T")
+
+# 标准化每列使其总和为1.0（将PCM转换为PFM）
+pcm_matrix <- as.matrix(pcm)
+pfm_matrix <- apply(pcm_matrix, 2, function(x) x / sum(x))
+
+# 转换为pfm对象
+motif <- new("pfm", mat = pfm_matrix, name = "RNA_motif")
+
+# 查看标准化后的motif矩阵
+head(pfm_matrix, 4)
+```
+
+## 可视化
+
+### 1. 基础Motif图
+
+基础motif图显示序列logo，其中每个核苷酸的高度代表其在该位置的信息含量。
+
+```{r}
+#| label: fig-1BasicMotif
+#| fig-cap: "基础motif图"
+#| out.width: "95%"
+#| warning: false
+
+# 基础motif图
+plotMotifLogo(motif)
+```
+
+### 2. 自定义颜色Motif图
+
+可以应用不同的颜色方案来突出显示不同类型的核苷酸或氨基酸。
+
+```{r}
+#| label: fig-2ColorMotif
+#| fig-cap: "自定义颜色motif图"
+#| out.width: "95%"
+#| warning: false
+
+# 自定义颜色方案的motif图
+# 颜色方案：A=绿色，C=蓝色，G=橙色，T=红色
+color <- c(A = "#00CC00", C = "#0000CC", G = "#FFB300", T = "#CC0000")
+plotMotifLogo(motif, ic.scale = TRUE, 
+              colset = color,
+              font = "sans")
+```
+
+### 3. 堆叠Motif图
+
+多个motif可以堆叠在一起进行比较，这在比较不同转录因子或条件下的结合位点时很有用。
+
+```{r}
+#| label: fig-3StackedMotif
+#| fig-cap: "堆叠motif图用于比较"
+#| out.width: "95%"
+#| warning: false
+
+# 创建多个motif进行比较
+# 导入额外的示例motif
+pcm1 <- pfm_matrix
+motif1 <- new("pfm", mat = pcm1, name = "Motif_1")
+
+# 创建第二个motif（为演示略作修改）
+pcm2 <- pfm_matrix[, c(2:ncol(pfm_matrix), 1)]
+motif2 <- new("pfm", mat = pcm2, name = "Motif_2")
+
+# 堆叠motif
+motifs <- list(motif1, motif2)
+motifStack(motifs, layout = "stack")
+```
+
+### 4. 径向系统发育Motif布局
+
+为了可视化motif之间的进化关系，可以使用径向系统发育布局。
+
+```{r}
+#| label: fig-4RadialMotif
+#| fig-cap: "径向系统发育motif布局"
+#| out.width: "95%"
+#| warning: false
+
+# motif比较的径向布局
+motifStack(motifs, layout = "radialPhylog")
+```
+
+## 应用
+
+Motif图在基因组学和分子生物学研究中应用广泛：
+
+1. **转录因子结合位点分析**：识别和可视化基因调控区域中转录因子的保守结合序列。
+
+2. **miRNA靶标预测**：显示miRNA结合位点中的保守种子序列。
+
+3. **蛋白质结构域分析**：可视化蛋白质家族中保守的氨基酸模式。
+
+4. **ChIP-seq分析**：表示从染色质免疫共沉淀测序数据中发现的富集序列motif。
+
+5. **比较基因组学**：比较不同物种或条件下的调控motif。
+
+## 参考文献
+
+1. Ou, J., Wolfe, S. A., Brodsky, M. H., & Zhu, L. J. (2018). motifStack for the analysis of transcription factor binding site evolution. *Nature Methods, 15*(1), 8–9. <https://doi.org/10.1038/nmeth.4555>
+
+2. Bioconductor motifStack包：<https://bioconductor.org/packages/release/bioc/html/motifStack.html>
+
+## 共享者
+
+-   **编辑**：GitHub Copilot。
+-   **审阅**：待分配。
