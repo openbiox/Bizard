@@ -1,28 +1,28 @@
 ---
-title: "文字叠加的富集分析柱状图"
+title: Text-Overlaid Enrichment Barplot
 author:
-  - "**[编辑]** [严彬](https://github.com/yanbin85)"
-  - "**[贡献]**  [郑虎](https://github.com/ZhengTiger)."
+  - "**[Editor]** [Yan Bin](https://github.com/yanbin85)"
+  - "**[Contributor]** [Hu Zheng](https://github.com/ZhengTiger)."
 ---
 
-文字叠加富集柱状图是一种用于高密度展示功能富集分析结果（如 GO、KEGG）的可视化工具。它通常以圆角柱状图的长度映射富集显著性（adjust p value），并利用图形内部空间直接叠加标注通路名称与核心基因列表，同时辅以左侧色块与气泡来区分功能分类及基因数量。
+**文本覆盖富集柱状图**是一种可视化工具，专为高密度展示功能富集分析结果（如 GO、KEGG）而设计。它通常将富集显著性（校正 p 值）映射为圆角条的长度，并利用图形内部空间直接覆盖注释通路名称和核心基因列表。此外，它在左侧使用彩色方块和气泡来区分功能类别和基因计数。
 
-这种图表形态改变了传统条形图文本与图形分离的布局，特别适用于单细胞亚群标记基因的功能注释展示，以及其他需要同时呈现“通路显著性”与“具体驱动基因”的研究场景。其可视化效果不仅优化了绘图空间利用率，还便于研究者在概览生物学功能的同时，快速锁定导致通路富集的关键基因特征。
+这种图表形式改变了传统图文分离的布局。它特别适用于展示单细胞亚群中标志基因的功能注释，以及其他需要同时呈现“通路显著性”和“特定驱动基因”的研究场景。其视觉效果不仅优化了绘图空间的利用，还便于研究人员在概览生物功能的同时，快速锁定导致通路富集的关键基因特征。
 
-## Example
+## 示例
 
 ![](../images/Omics/TextEnrichmentBarplot_demo.png){fig-alt="NetworkPlot DEMO" fig-align="center" width="60%"}
 
-## 环境配置
+## 设置
 
--   系统要求 跨平台（Linux/MacOS/Windows）
+-   系统要求：跨平台（Linux/MacOS/Windows）
 
--   编程语言: R
+-   编程语言：R
 
--   依赖包: `tidyverse`, `ggprism`, `gground`
+-   依赖包：`tidyverse`, `ggprism`, `gground`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
-# 安装包
+# Install packages
 if (!requireNamespace("tidyverse", quietly = TRUE)){
   install.packages("tidyverse")
 } 
@@ -32,7 +32,7 @@ if (!requireNamespace("ggprism", quietly = TRUE)){
 if (!requireNamespace("gground", quietly = TRUE)) {
   remotes::install_github("dxsbiocc/gground")
 }
-# 加载包
+# Load packages
 library(tidyverse)
 library(ggprism)
 library(gground)
@@ -40,67 +40,67 @@ library(gground)
 
 ## 数据准备
 
-### 1.上游富集分析流程 (参考)
+### 1. 上游富集分析工作流（参考）
 
 在实际的生物信息学分析中，我们通常使用 `clusterProfiler` 进行富集分析。
 
 ::: callout-note
-以下代码仅用于演示上游分析流程（获取原始数据），本教程绘图将直接使用下文的示例数据。
+以下代码仅用于演示上游分析工作流（获取原始数据）。本教程将直接使用下方提供的示例数据进行绘图。
 :::
 
 ```{r processing flow}
 #| eval: false
 #| echo: true
-# 1. 环境准备
+
+# 1. Environment Preparation
 library(clusterProfiler)
 library(org.Hs.eg.db)
 
-#2. 运行富集分析
-# 假设 gene_list 是差异基因的 Entrez ID 向量
+# 2. Run Enrichment Analysis
+# Assume gene_list is a vector of Entrez IDs for differentially expressed genes
 
-# 2.1 GO 富集分析 (同时获取 BP/CC/MF)
+# 2.1 GO Enrichment Analysis (Get BP/CC/MF simultaneously)
 ego <- enrichGO(
   gene     = gene_list,
   OrgDb    = org.Hs.eg.db,
   ont      = "ALL",
-  readable = TRUE  # 自动将结果中的 ID 转换为 Symbol
+  readable = TRUE  # Automatically convert IDs in results to Symbols
 )
 
-# 2.2 KEGG 富集分析
+# 2.2 KEGG Enrichment Analysis
 ekegg <- enrichKEGG(
   gene     = gene_list,
   organism = 'hsa'
 )
-# KEGG 结果默认为 Entrez ID，需手动转为 Symbol 以匹配绘图数据格式
+# KEGG results default to Entrez ID; manually convert to Symbol to match plotting data format
 ekegg <- setReadable(ekegg, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
 
-# 3. 数据清洗与合并
-# 提取 GO 结果 (重命名 ONTOLOGY 为 Category)
+# 3. Data Cleaning and Merging
+# Extract GO results (Rename ONTOLOGY to Category)
 df_go <- as.data.frame(ego) %>% 
   select(Category = ONTOLOGY, Description, p.adjust, Count, geneID)
 
-# 提取 KEGG 结果 (手动添加 Category 列并赋值为 "KEGG")
+# Extract KEGG results (Manually add Category column and assign as "KEGG")
 df_kegg <- as.data.frame(ekegg) %>% 
   mutate(Category = "KEGG") %>% 
   select(Category, Description, p.adjust, Count, geneID)
 
-# 合并所有结果 -> 得到最终用于绘图的 raw_data
+# Merge all results -> Get raw_data for plotting
 raw_data <- rbind(df_go, df_kegg)
-
 ```
 
-### 2.示例数据加载与清洗
+### 2. 加载和清洗示例数据
 
-为了方便教程运行，我们导入来自 [DAVID](https://github.com/user-attachments/files/20958956/DAVID.txt) 的网络药理学注释分析通路富集数据，该数据包含了 GO (BP/CC/MF) 和 KEGG 的富集结果。
+为方便教程，我们导入使用 DAVID 进行网络药理学注释分析得到的通路富集数据。该数据包含 GO (BP/CC/MF) 和 KEGG 的富集结果。
 
 ```{r load data 2, message=FALSE}
-#1.读取数据
+# 1. Read Data
 raw_data <- read_tsv("files/DAVID.txt")
 
-# 2. 数据清洗
-# 将 DAVID 的格式转换为绘图所需的标准格式
+# 2. Data Cleaning
+# Convert DAVID format to the standard format required for plotting
 raw_data <- raw_data %>%
-  # 2.1 提取分类标签
+  # 2.1 Extract Category Labels
   mutate(Category = case_when(
     grepl("BP_DIRECT", Category) ~ "BP",
     grepl("CC_DIRECT", Category) ~ "CC",
@@ -108,49 +108,49 @@ raw_data <- raw_data %>%
     grepl("KEGG_PATHWAY", Category) ~ "KEGG",
     TRUE ~ "Other"
   )) %>%
-  # 只保留GO、KEGG结果
+  # Keep only GO and KEGG results
   filter(Category %in% c("BP", "CC", "MF", "KEGG")) %>%
   
-  # 2.2 清洗通路名称 (去掉 ID)
+  # 2.2 Clean Pathway Names (Remove IDs, e.g., "GO:001~Name" -> "Name")
   mutate(Description = sub("^.*~|.*:", "", Term)) %>%
   
-  # 2.3 重命名列
+  # 2.3 Rename Columns (Unified variable names for plotting code)
+  # FDR -> p.adjust (Significance)
+  # Genes -> geneID (Gene List)
   rename(
     p.adjust = FDR,
     geneID = Genes
   ) %>%
   
-  # 2.4 格式化基因列表
-  mutate(geneID = gsub(", ", "/", geneID)) 
-
-
+  # 2.4 Format Gene Lists (Replace commas with slashes)
+  mutate(geneID = gsub(", ", "/", geneID))
 ```
 
-### 3.创建绘图数据
+### 3. 创建绘图数据
 
 ```{r create plotdata, message=FALSE}
-
-# 1.筛选每个分类下最显著的 Top 5 通路
+# 1. Select the Top 5 most significant pathways for each category
 use_pathway <- raw_data %>%
   arrange(p.adjust) %>%
   group_by(Category) %>%
   slice_head(n = 5) %>%
   ungroup()
 
-# 2. 构造绘图辅助列
+# 2. Construct Auxiliary Plotting Columns
 use_pathway <- use_pathway %>%
-  # 设置因子水平：决定图例和绘图的垂直顺序
+  # Set factor levels: determines the vertical order of legend and plot (BP -> CC -> MF -> KEGG)
   mutate(Category = factor(Category, levels = rev(c('BP', 'CC', 'MF', 'KEGG')))) %>%
-  # 二次排序
+  # Secondary sorting
   arrange(Category, p.adjust) %>%
-  # 固定 Y 轴顺序
+  # Fix Y-axis order
   mutate(Description = factor(Description, levels = Description)) %>%
-  # 添加 index 列作为 Y 轴坐标
+  # Add index column as Y-axis coordinates
   tibble::rowid_to_column('index')
-# 3. 构造左侧分类色块的数据 (rect.data)
-#布局参数
+
+# 3. Construct Data for Left Category Blocks (rect.data)
+# Layout parameters
 width <- 0.5 
-# 计算 X 轴最大长度，用于绘制底部横线
+# Calculate max X-axis length for drawing the bottom line
 xaxis_max <- max(-log10(use_pathway$p.adjust)) + 1
 
 rect.data <- use_pathway %>%
@@ -158,40 +158,39 @@ rect.data <- use_pathway %>%
   group_by(Category) %>%
   summarize(n = n(), .groups = "drop") %>%
   mutate(
-    xmin = -3 * width,          
-    xmax = -2 * width,         
-    ymax = cumsum(n),          
-    ymin = lag(ymax, default = 0) + 0.6, 
-    ymax = ymax + 0.4          
+    xmin = -3 * width,          # Block left boundary
+    xmax = -2 * width,          # Block right boundary
+    ymax = cumsum(n),           # Block top boundary (based on cumulative count)
+    ymin = lag(ymax, default = 0) + 0.6, # Block bottom boundary (leave a small gap)
+    ymax = ymax + 0.4           # Adjust top boundary
   )
 
-# 查看数据结构
+# Check data structure
 head(use_pathway)
-
 ```
 
 ## 可视化
 
 ### 1. 基础绘图（简化版）
 
-该版本主要展示了核心的圆角柱状图和左侧的分类色块，去除了基因列表等过多文本信息，适合需要简洁展示的场景。
+此版本主要展示核心圆角柱状图和左侧类别方块，去除了基因列表等过多的文本信息。适用于需要简洁展示的场景。
 
 ```{r fig1.SimpleRound}
 #| label: fig1.SimpleRound
-#| fig-cap: "基础富集分析柱状图"
+#| fig-cap: "Basic Enrichment Analysis Barplot"
 #| out.width: "95%"
 #| warning: false
 #| fig.width: 12
 #| fig.height: 8
 
-# 定义配色
+# Define color palette
 pal <- c('#eaa052', '#b74147', '#90ad5b', '#23929c')
 
-#其它推荐配色
+# Other recommended palettes
 #pal <- c('#c3e1e6', '#f3dfb7', '#dcc6dc', '#96c38e')
 #pal <- c('#7bc4e2', '#acd372', '#fbb05b', '#ed6ca4')
 
-# 调整简化版的左侧色块位置参数
+# Adjust position parameters for left blocks in the simplified version
 rect.data.simple <- rect.data %>%
   mutate(
     xmin = -1.5 * width,
@@ -199,13 +198,13 @@ rect.data.simple <- rect.data %>%
   )
 
 p1 <- ggplot(use_pathway, aes(-log10(p.adjust), y = index, fill = Category)) +
-  # 1. 圆角柱状图主体
+  # 1. Rounded Bar Chart Body
   geom_round_col(aes(y = Description), width = 0.6, alpha = 0.8) +
   
-  # 2. 通路名称文本
+  # 2. Pathway Name Text
   geom_text(aes(x = 0.05, label = Description), hjust = 0, size = 4) +
   
-  # 3. 左侧分类色块
+  # 3. Left Category Blocks
   geom_round_rect(
     aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, fill = Category),
     data = rect.data.simple,
@@ -213,7 +212,7 @@ p1 <- ggplot(use_pathway, aes(-log10(p.adjust), y = index, fill = Category)) +
     inherit.aes = FALSE
   ) +
   
-  # 4. 左侧分类文字
+  # 4. Left Category Text
   geom_text(
     aes(x = (xmin + xmax) / 2, y = (ymin + ymax) / 2, label = Category),
     data = rect.data.simple,
@@ -221,14 +220,14 @@ p1 <- ggplot(use_pathway, aes(-log10(p.adjust), y = index, fill = Category)) +
     inherit.aes = FALSE
   ) +
   
-  # 5. 底部装饰横线
+  # 5. Bottom Decorative Line
   geom_segment(
     aes(x = 0, y = 0, xend = xaxis_max, yend = 0),
     linewidth = 1,
     inherit.aes = FALSE
   ) +
   
-  # 6. 样式调整
+  # 6. Style Adjustments
   labs(y = NULL, x = "-log10(p.adjust)") +
   scale_fill_manual(name = 'Category', values = pal) +
   scale_x_continuous(breaks = seq(0, xaxis_max, 2), expand = expansion(c(0, 0.1))) +
@@ -237,7 +236,7 @@ p1 <- ggplot(use_pathway, aes(-log10(p.adjust), y = index, fill = Category)) +
     axis.text.y = element_blank(),
     axis.line.y = element_blank(),
     axis.ticks.y = element_blank(),
-    axis.line.x = element_blank(), # 隐藏系统自带的 X 轴线，只保留我们用 geom_segment 画的那条
+    axis.line.x = element_blank(), # Hide default X-axis line, keeping only the one drawn by geom_segment
     legend.title = element_text(),
     legend.position = "right" 
   )
@@ -245,43 +244,41 @@ p1 <- ggplot(use_pathway, aes(-log10(p.adjust), y = index, fill = Category)) +
 p1
 ```
 
-### 2. 进阶绘图 (详细信息版)
+### 2. 进阶绘图（详细版）
 
-该版本在简化版的基础上，增加了：
+在简化版的基础上，此版本增加了：
 
--   Gene List: 在通路名称下方显示基因列表（灰色斜体）。
-
--   Count Bubbles: 在左侧展示富集基因的数量（气泡大小）。
-
--   Layout: 调整了左侧色块的位置，为气泡留出空间。
+-   基因列表：在通路名称下方显示基因列表（灰色斜体）。
+-   计数气泡：在左侧显示富集基因的数量（气泡大小）。
+-   布局：调整左侧方块的位置，为气泡留出空间。
 
 ```{r fig2.ComplexRound}
 #| label: fig2.ComplexRound
-#| fig-cap: "进阶富集分析柱状图"
+#| fig-cap: "Advanced Enrichment Analysis Barplot"
 #| out.width: "95%"
 #| warning: false
 #| fig-width: 12
 #| fig-height: 8
 
 p2 <- ggplot(use_pathway, aes(-log10(p.adjust), y = index, fill = Category)) +
-  # 1. 主体圆角柱
+  # 1. Main Rounded Bars
   geom_round_col(aes(y = Description), width = 0.6, alpha = 0.8) +
   
-  # 2. 通路名称 
+  # 2. Pathway Name (Main Title)
   geom_text(aes(x = 0.05, label = Description), hjust = 0, size = 5) +
   
-  # 3. 基因列表
+  # 3. Gene List (Subtitle) - Grey Italics
   geom_text(
     aes(x = 0.1, label = geneID, colour = Category),
     hjust = 0, vjust = 2.6, size = 3, fontface = 'italic',
     show.legend = FALSE
   ) +
   
-  # 4. 左侧基因计数气泡
-  geom_point(aes(x = -width, size = Count,fill = Category), shape = 21, stroke = 1) +
+  # 4. Left Gene Count Bubbles (Count)
+  geom_point(aes(x = -width, size = Count, fill = Category), shape = 21, stroke = 1) +
   geom_text(aes(x = -width, label = Count), size = 3) +
   
-  # 5. 左侧分类色块
+  # 5. Left Category Blocks (Category Label)
   geom_round_rect(
     aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, fill = Category),
     data = rect.data,
@@ -295,21 +292,21 @@ p2 <- ggplot(use_pathway, aes(-log10(p.adjust), y = index, fill = Category)) +
     color = "black", fontface = "bold"
   ) +
   
-  # 6. 底部横线
+  # 6. Bottom Line
   geom_segment(
     aes(x = 0, y = 0, xend = xaxis_max, yend = 0),
     linewidth = 1.5,
     inherit.aes = FALSE
   ) +
   
-  # 7. 标尺与配色
+  # 7. Scales and Colors
   labs(y = NULL, x = "-log10(p.adjust)") +
   scale_fill_manual(name = 'Category', values = pal) +
   scale_colour_manual(values = pal) + 
   scale_size_continuous(name = 'Count', range = c(4, 10)) +
   scale_x_continuous(breaks = seq(0, xaxis_max, 2), expand = expansion(c(0, 0))) +
   
-  # 8. 主题美化
+  # 8. Theme Customization
   theme_prism() +
   theme(
     axis.text.y = element_blank(),
@@ -322,6 +319,6 @@ p2 <- ggplot(use_pathway, aes(-log10(p.adjust), y = index, fill = Category)) +
 p2
 ```
 
-## 参考资料
+## 参考文献
 
 \[1\] 生信医道. 超好看的单细胞GO，KEGG富集分析图！确定不来看看吗？ \[Internet\]. 微信公众号: 生信医道. 2025 \[cited 2025 Dec 30\]. Available from: <https://mp.weixin.qq.com/s/pY1S0EJQAhdezvxeNt-SzA>
