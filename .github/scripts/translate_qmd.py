@@ -240,14 +240,57 @@ Requirements:
             # Extract YAML frontmatter
             yaml_part, body_part = self.extract_yaml_frontmatter(content)
             
-            # Detect source language
-            source_lang = self.detect_language(body_part)
+            # Determine source and target languages using filename-based detection
+            # Priority: filename-based > target_lang parameter > content-based detection
+            input_filename = os.path.basename(input_path)
+            output_filename = os.path.basename(output_path)
+            
+            # Infer language from filenames
+            filename_source_lang = None
+            filename_target_lang = None
+            
+            # Determine source language from input filename
+            if input_filename.endswith('.zh.qmd'):
+                filename_source_lang = 'zh'
+            elif input_filename.endswith('.qmd'):
+                filename_source_lang = 'en'
+            
+            # Determine target language from output filename
+            if output_filename.endswith('.zh.qmd'):
+                filename_target_lang = 'zh'
+            elif output_filename.endswith('.qmd'):
+                filename_target_lang = 'en'
+            
+            # Content-based language detection (for validation)
+            content_detected_lang = self.detect_language(body_part)
+            
+            # Determine actual source language
+            if filename_source_lang:
+                source_lang = filename_source_lang
+                # Validate against content detection
+                if content_detected_lang != filename_source_lang:
+                    print(f"⚠ Warning: Filename indicates {filename_source_lang} but content appears to be {content_detected_lang}")
+                    print(f"  Using filename-based detection: {filename_source_lang}")
+            else:
+                # Fallback to content detection if filename doesn't indicate language
+                source_lang = content_detected_lang
+                print(f"  No language indicator in filename, using content detection: {source_lang}")
             
             # Determine target language
-            if target_lang is None:
+            if target_lang is not None:
+                # Explicit target language provided via parameter (manual override)
+                pass
+            elif filename_target_lang:
+                # Use filename-based target language
+                target_lang = filename_target_lang
+            else:
+                # Default: translate to opposite language
                 target_lang = 'zh' if source_lang == 'en' else 'en'
             
-            print(f"Translating from {source_lang} to {target_lang}: {input_path}")
+            # Log translation direction clearly
+            print(f"📄 Input: {input_filename} (detected as {source_lang})")
+            print(f"📝 Output: {output_filename} (translating to {target_lang})")
+            print(f"🔄 Translation direction: {source_lang} → {target_lang}")
             
             # Extract code blocks
             text_to_translate, code_blocks = self.extract_code_blocks(body_part)
