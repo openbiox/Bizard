@@ -246,20 +246,46 @@ Requirements:
             output_filename = os.path.basename(output_path)
             
             # Infer language from filenames
+            # This system only supports English (.qmd) and Chinese (.zh.qmd) files
             filename_source_lang = None
             filename_target_lang = None
             
             # Determine source language from input filename
+            # Only recognize .zh.qmd (Chinese) and plain .qmd (English)
             if input_filename.endswith('.zh.qmd'):
                 filename_source_lang = 'zh'
-            elif input_filename.endswith('.qmd'):
-                filename_source_lang = 'en'
+            elif input_filename.endswith('.qmd') and not input_filename.endswith('.zh.qmd'):
+                # Ensure it's a plain .qmd file (not .fr.qmd, .de.qmd, etc.)
+                # Extract the extension before .qmd to check for language codes
+                name_without_qmd = input_filename[:-4]  # Remove .qmd
+                if '.' in name_without_qmd:
+                    possible_lang = name_without_qmd.split('.')[-1]
+                    # If there's a period followed by 2-3 letters, it might be another language
+                    if len(possible_lang) in [2, 3] and possible_lang.isalpha() and possible_lang != 'zh':
+                        # This looks like a different language extension (e.g., .fr.qmd, .de.qmd)
+                        # Don't assume it's English, let content detection handle it
+                        filename_source_lang = None
+                    else:
+                        # No language extension, so it's English
+                        filename_source_lang = 'en'
+                else:
+                    # No additional extension, so it's English
+                    filename_source_lang = 'en'
             
             # Determine target language from output filename
             if output_filename.endswith('.zh.qmd'):
                 filename_target_lang = 'zh'
-            elif output_filename.endswith('.qmd'):
-                filename_target_lang = 'en'
+            elif output_filename.endswith('.qmd') and not output_filename.endswith('.zh.qmd'):
+                # Same check for output filename
+                name_without_qmd = output_filename[:-4]
+                if '.' in name_without_qmd:
+                    possible_lang = name_without_qmd.split('.')[-1]
+                    if len(possible_lang) in [2, 3] and possible_lang.isalpha() and possible_lang != 'zh':
+                        filename_target_lang = None
+                    else:
+                        filename_target_lang = 'en'
+                else:
+                    filename_target_lang = 'en'
             
             # Content-based language detection (for validation)
             content_detected_lang = self.detect_language(body_part)
@@ -269,12 +295,12 @@ Requirements:
                 source_lang = filename_source_lang
                 # Validate against content detection
                 if content_detected_lang != filename_source_lang:
-                    print(f"⚠ Warning: Filename indicates {filename_source_lang} but content appears to be {content_detected_lang}")
-                    print(f"  Using filename-based detection: {filename_source_lang}")
+                    print(f"WARNING: Filename indicates {filename_source_lang} but content appears to be {content_detected_lang}")
+                    print(f"         Using filename-based detection: {filename_source_lang}")
             else:
                 # Fallback to content detection if filename doesn't indicate language
                 source_lang = content_detected_lang
-                print(f"  No language indicator in filename, using content detection: {source_lang}")
+                print(f"INFO: No language indicator in filename, using content detection: {source_lang}")
             
             # Determine target language
             if target_lang is not None:
@@ -288,9 +314,9 @@ Requirements:
                 target_lang = 'zh' if source_lang == 'en' else 'en'
             
             # Log translation direction clearly
-            print(f"📄 Input: {input_filename} (detected as {source_lang})")
-            print(f"📝 Output: {output_filename} (translating to {target_lang})")
-            print(f"🔄 Translation direction: {source_lang} → {target_lang}")
+            print(f"[INPUT]  {input_filename} (detected as {source_lang})")
+            print(f"[OUTPUT] {output_filename} (translating to {target_lang})")
+            print(f"[DIRECTION] {source_lang} -> {target_lang}")
             
             # Extract code blocks
             text_to_translate, code_blocks = self.extract_code_blocks(body_part)
