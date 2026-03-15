@@ -1,16 +1,16 @@
 name: Auto-Translate QMD Files
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Trigger: run on PR (new/updated .qmd files), direct push to main, manual
+# dispatch, or a /translate comment on a PR.
+# ──────────────────────────────────────────────────────────────────────────────
 on:
   pull_request:
     types: [opened, synchronize]
-    paths:
-      - '**.qmd'
-      - '**.Qmd'
+    paths: ['**.qmd', '**.Qmd']
   push:
     branches: [main, master]
-    paths:
-      - '**.qmd'
-      - '**.Qmd'
+    paths: ['**.qmd', '**.Qmd']
   workflow_dispatch:
     inputs:
       pr_number:
@@ -27,508 +27,257 @@ permissions:
 jobs:
   auto-translate:
     runs-on: ubuntu-latest
+    # Skip issue_comment events that are not /translate commands on a PR
     if: |
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'issue_comment' ||
-      github.event_name == 'push'
-    
+      github.event_name != 'issue_comment' ||
+      (startsWith(github.event.comment.body, '/translate') &&
+       github.event.issue.pull_request != null)
+
     steps:
-      - name: Check if triggered by valid comment command
-        id: check-comment
-        if: github.event_name == 'issue_comment'
-        run: |
-          comment="${{ github.event.comment.body }}"
-          if [[ "$comment" =~ ^/translate ]]; then
-            echo "valid_command=true" >> $GITHUB_OUTPUT
-            if [[ ! "${{ github.event.issue.pull_request }}" ]]; then
-              echo "valid_command=false" >> $GITHUB_OUTPUT
-              echo "Comment was not on a PR, skipping"
-            fi
-          else
-            echo "valid_command=false" >> $GITHUB_OUTPUT
-            echo "Comment does not contain /translate command, skipping"
-          fi
-      
-      - name: Exit if invalid comment trigger
-        if: github.event_name == 'issue_comment' && steps.check-comment.outputs.valid_command != 'true'
-        run: |
-          echo "Workflow triggered by comment but command is invalid or not on a PR. Exiting."
-          exit 0
-      
-      - name: Get PR information
-        id: pr-info
+      # ── 1. Resolve branch / PR context ─────────────────────────────────────
+      - name: Resolve PR / branch context
+        id: ctx
         uses: actions/github-script@v7
         with:
           script: |
-            let prNumber, prRef, prRepo, isPush = false;
-            
-            if (context.eventName === 'pull_request') {
-              prNumber = context.payload.pull_request.number;
-              prRef = context.payload.pull_request.head.ref;
-              prRepo = context.payload.pull_request.head.repo.full_name;
-            } else if (context.eventName === 'issue_comment') {
-              const issue = context.payload.issue;
-              prNumber = issue.number;
-              
-              // Get PR details
+            const ev = context.eventName;
+            let prNumber = '', prRef = '', prRepo = '', isPush = false;
+
+            if (ev === 'pull_request') {
+              prNumber = String(context.payload.pull_request.number);
+              prRef    = context.payload.pull_request.head.ref;
+              prRepo   = context.payload.pull_request.head.repo.full_name;
+
+            } else if (ev === 'issue_comment') {
+              prNumber = String(context.payload.issue.number);
               const { data: pr } = await github.rest.pulls.get({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: prNumber
+                owner: context.repo.owner, repo: context.repo.repo,
+                pull_number: context.payload.issue.number
               });
-              prRef = pr.head.ref;
+              prRef  = pr.head.ref;
               prRepo = pr.head.repo.full_name;
-            } else if (context.eventName === 'push') {
-              // For push events, create a new branch for translation
+
+            } else if (ev === 'push') {
               isPush = true;
-              const baseBranch = context.ref.replace('refs/heads/', '');
-              // Generate timestamp: remove milliseconds and 'Z' suffix, replace : and . with -
-              const timestamp = new Date().toISOString().split('.')[0].replace(/[:.]/g, '-');
-              prRef = `auto-translate-${baseBranch}-${timestamp}`;
-              prRepo = context.repo.owner + '/' + context.repo.repo;
-              
-              console.log(`Push event detected on ${baseBranch}`);
-              console.log(`Will create new branch: ${prRef}`);
-            } else if (context.eventName === 'workflow_dispatch') {
-              const inputPrNumber = context.payload.inputs.pr_number;
-              prNumber = inputPrNumber ? parseInt(inputPrNumber, 10) : null;
-              if (prNumber) {
+              const base = context.ref.replace('refs/heads/', '');
+              const ts   = new Date().toISOString().replace(/[:.]/g, '-').split('Z')[0];
+              prRef  = `auto-translate-${base}-${ts}`;
+              prRepo = `${context.repo.owner}/${context.repo.repo}`;
+
+            } else if (ev === 'workflow_dispatch') {
+              const inputPr = context.payload.inputs?.pr_number;
+              if (inputPr) {
+                prNumber = String(inputPr);
                 const { data: pr } = await github.rest.pulls.get({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: prNumber
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  pull_number: Number(inputPr)
                 });
-                prRef = pr.head.ref;
+                prRef  = pr.head.ref;
                 prRepo = pr.head.repo.full_name;
               } else {
-                prRef = context.ref.replace('refs/heads/', '');
-                prRepo = context.repo.owner + '/' + context.repo.repo;
+                prRef  = context.ref.replace('refs/heads/', '');
+                prRepo = `${context.repo.owner}/${context.repo.repo}`;
               }
             }
-            
-            core.setOutput('pr_number', prNumber || '');
-            core.setOutput('pr_ref', prRef || context.ref.replace('refs/heads/', ''));
-            core.setOutput('pr_repo', prRepo || '');
-            core.setOutput('is_push', isPush ? 'true' : 'false');
+
+            core.setOutput('pr_number',   prNumber);
+            core.setOutput('pr_ref',      prRef || context.ref.replace('refs/heads/', ''));
+            core.setOutput('pr_repo',     prRepo);
+            core.setOutput('is_push',     isPush ? 'true' : 'false');
             core.setOutput('base_branch', context.ref.replace('refs/heads/', ''));
-            
-            console.log(`PR Number: ${prNumber}`);
-            console.log(`PR Ref: ${prRef}`);
-            console.log(`PR Repo: ${prRepo}`);
-            console.log(`Is Push: ${isPush}`);
-      
-      - name: Checkout PR branch
-        if: github.event_name != 'push'
+
+      # ── 2. Checkout ─────────────────────────────────────────────────────────
+      - name: Checkout (PR / dispatch / comment)
+        if: steps.ctx.outputs.is_push != 'true'
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.pr-info.outputs.pr_repo }}
-          ref: ${{ steps.pr-info.outputs.pr_ref }}
+          repository: ${{ steps.ctx.outputs.pr_repo }}
+          ref: ${{ steps.ctx.outputs.pr_ref }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Checkout and create new branch for push events
-        if: github.event_name == 'push'
+
+      - name: Checkout (push – create new translation branch)
+        if: steps.ctx.outputs.is_push == 'true'
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.pr-info.outputs.base_branch }}
+          ref: ${{ steps.ctx.outputs.base_branch }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Create new translation branch
-        if: github.event_name == 'push'
-        run: |
-          git checkout -b ${{ steps.pr-info.outputs.pr_ref }}
-          echo "Created new branch: ${{ steps.pr-info.outputs.pr_ref }}"
-      
+
+      - name: Create translation branch (push only)
+        if: steps.ctx.outputs.is_push == 'true'
+        run: git checkout -b ${{ steps.ctx.outputs.pr_ref }}
+
+      # ── 3. Python setup ─────────────────────────────────────────────────────
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
-      - name: Install dependencies
-        run: |
-          pip install openai
-      
-      - name: Get changed QMD files
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install openai
+
+      # ── 4. Detect changed QMD files ─────────────────────────────────────────
+      - name: Detect changed QMD files
         id: changed-files
         uses: tj-actions/changed-files@v46.0.5
         with:
           files: |
             **.qmd
             **.Qmd
-      
-      - name: Load translation blacklist
-        id: blacklist
-        run: |
-          if [ -f .github/translation-blacklist.txt ]; then
-            echo "Blacklist file found"
-            cat .github/translation-blacklist.txt
-          else
-            echo "No blacklist file found"
-          fi
-      
-      - name: Process translations
+
+      # ── 5. Translate / validate ──────────────────────────────────────────────
+      - name: Translate and validate QMD pairs
         if: steps.changed-files.outputs.any_changed == 'true'
         env:
-          # Support multiple AI providers via configurable environment variables
-          # Priority: AI_Model_* variables, fallback to OPENAI_API_KEY for backward compatibility
           AI_Model_API_KEY: ${{ secrets.AI_Model_API_KEY || secrets.OPENAI_API_KEY }}
           AI_Model_BASE_URL: ${{ secrets.AI_Model_BASE_URL }}
           AI_Model_Name: ${{ secrets.AI_Model_Name }}
           CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
-          IS_PUSH_EVENT: ${{ steps.pr-info.outputs.is_push }}
+          IS_PUSH_EVENT: ${{ steps.ctx.outputs.is_push }}
         run: |
-          # Function to check if file is in blacklist using glob patterns
+          set -euo pipefail
+
+          # ── helpers ──
           is_blacklisted() {
             local file="$1"
-            if [ -f .github/translation-blacklist.txt ]; then
-              while IFS= read -r pattern || [ -n "$pattern" ]; do
-                # Skip comments and empty lines
-                [[ "$pattern" =~ ^#.*$ ]] && continue
-                [[ -z "$pattern" ]] && continue
-                [[ "$pattern" =~ ^[[:space:]]*$ ]] && continue
-                
-                # Use case statement for glob pattern matching
-                case "$file" in
-                  $pattern)
-                    return 0
-                    ;;
-                esac
-              done < .github/translation-blacklist.txt
-            fi
+            [ -f .github/translation-blacklist.txt ] || return 1
+            while IFS= read -r pattern || [ -n "$pattern" ]; do
+              [[ "$pattern" =~ ^[[:space:]]*$ || "$pattern" =~ ^# ]] && continue
+              case "$file" in $pattern) return 0 ;; esac
+            done < .github/translation-blacklist.txt
             return 1
           }
-          
-          # Arrays to store files
+
           files_to_translate=()
           files_with_pairs=()
-          
-          # Process each changed file
-          for file in ${CHANGED_FILES}; do
-            echo "Processing: $file"
-            
-            # Check blacklist
-            if is_blacklisted "$file"; then
-              echo "  [SKIPPED] Blacklisted: $file"
-              continue
-            fi
-            
-            # Determine the translation pair
+
+          for file in $CHANGED_FILES; do
+            echo "▶ $file"
+            if is_blacklisted "$file"; then echo "  ⊘ blacklisted"; continue; fi
+
             if [[ "$file" == *.zh.qmd ]]; then
-              # Chinese file - English pair
               pair="${file%.zh.qmd}.qmd"
             else
-              # English file - Chinese pair
               pair="${file%.qmd}.zh.qmd"
             fi
-            
-            echo "  Translation pair: $pair"
-            
-            # Check if pair exists in the PR changes
+
             if echo "$CHANGED_FILES" | grep -qw "$pair"; then
-              echo "  [OK] Both language versions present in PR"
+              echo "  ✓ bilingual pair both in PR"
               files_with_pairs+=("$file|$pair")
+            elif [ -f "$pair" ]; then
+              echo "  ⚠ pair exists in repo – skipping auto-translate to avoid overwrite"
             else
-              # Check if pair exists in repo
-              if [ -f "$pair" ]; then
-                # Pair exists in repo - behavior depends on event type
-                if [ "$IS_PUSH_EVENT" = "true" ]; then
-                  echo "  [SKIPPED] Translation pair exists in repo (push event - avoiding overwrite)"
-                  echo "            To update translation, modify both files or create a PR"
-                else
-                  echo "  [WARNING] Translation pair exists but not in PR, skipping auto-translation"
-                fi
-              else
-                echo "  [TRANSLATE] Will auto-translate to: $pair"
-                files_to_translate+=("$file")
-              fi
+              echo "  → will translate to: $pair"
+              files_to_translate+=("$file")
             fi
           done
-          
-          # Perform translations
+
+          # Translations
           if [ ${#files_to_translate[@]} -gt 0 ]; then
-            echo ""
-            echo "========================================="
-            echo "Auto-translating ${#files_to_translate[@]} file(s)"
-            echo "========================================="
-            
-            # Check translation provider availability
-            if [ -z "$AI_Model_API_KEY" ]; then
-              echo "✗ No translation provider configured"
-              echo "   Need AI_Model_API_KEY or OPENAI_API_KEY"
-              exit 1
+            if [ -z "${AI_Model_API_KEY:-}" ]; then
+              echo "✗ No AI_Model_API_KEY / OPENAI_API_KEY secret configured – skipping translation"
+            else
+              echo "=== Translating ${#files_to_translate[@]} file(s) ==="
+              for file in "${files_to_translate[@]}"; do
+                echo "  Translating $file …"
+                python .github/scripts/translate_qmd.py "$file" && echo "  ✓" || echo "  ✗ failed"
+              done
             fi
-            
-            echo "✓ External AI provider configured"
-            
-            for file in "${files_to_translate[@]}"; do
-              echo ""
-              echo "Translating: $file"
-              
-              echo "  Using external AI provider for translation..."
-              if python .github/scripts/translate_qmd.py "$file"; then
-                echo "  ✓ Translation successful"
-              else
-                echo "  ✗ Translation failed for $file"
-              fi
-            done
-          else
-            echo ""
-            echo "No files need automatic translation"
           fi
-          
-          # Validate file pairs (both languages in PR)
+
+          # Spell-check bilingual pairs
           if [ ${#files_with_pairs[@]} -gt 0 ]; then
-            echo ""
-            echo "========================================="
-            echo "Validating ${#files_with_pairs[@]} bilingual pair(s)"
-            echo "========================================="
-            
-            for pair_entry in "${files_with_pairs[@]}"; do
-              IFS='|' read -r file1 file2 <<< "$pair_entry"
-              echo ""
-              echo "Checking pair: $file1 <-> $file2"
-              
-              # Run spell check on both files
-              echo "  Spell-checking $file1..."
-              python .github/scripts/translate_qmd.py "$file1" --check-spelling || true
-              
-              echo "  Spell-checking $file2..."
-              python .github/scripts/translate_qmd.py "$file2" --check-spelling || true
+            echo "=== Spell-checking ${#files_with_pairs[@]} pair(s) ==="
+            for entry in "${files_with_pairs[@]}"; do
+              IFS='|' read -r f1 f2 <<< "$entry"
+              python .github/scripts/translate_qmd.py "$f1" --check-spelling || true
+              python .github/scripts/translate_qmd.py "$f2" --check-spelling || true
             done
           fi
-      
-      - name: Check for changes
-        id: git-check
-        run: |
-          # Check for both modified and untracked files
-          STATUS_OUTPUT="$(git status --porcelain)"
-          if [ -n "$STATUS_OUTPUT" ]; then
-            echo "changes=true" >> $GITHUB_OUTPUT
-            echo "✓ Changes detected:"
-            echo "$STATUS_OUTPUT"
-            
-            # Show newly created translation files
-            echo ""
-            echo "📄 New translation files:"
-            echo "$STATUS_OUTPUT" | grep '^??' | awk '{print $2}' | grep '\.zh\.qmd$\|\.qmd$' || echo "  (none)"
-            
-            # Show first 20 lines of each new translation
-            for file in $(echo "$STATUS_OUTPUT" | grep '^??' | awk '{print $2}' | grep '\.zh\.qmd$\|\.qmd$'); do
-              if [ -f "$file" ]; then
-                echo ""
-                echo "📝 Preview of $file (first 20 lines):"
-                head -20 "$file"
-                echo "..."
-              fi
-            done
-          else
-            echo "No changes detected"
-          fi
-      
+
+      # ── 6. Commit & push ────────────────────────────────────────────────────
       - name: Commit translations
-        if: steps.git-check.outputs.changes == 'true'
+        id: git-commit
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add -A
-          git commit -m "chore: auto-translate QMD files
-          
-          Automatically generated translations for modified QMD files.
-          
-          Co-authored-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-      
-      - name: Push changes
-        if: steps.git-check.outputs.changes == 'true'
+          if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
+            echo "committed=false" >> "$GITHUB_OUTPUT"
+          else
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git config user.name  "github-actions[bot]"
+            git add -A
+            git commit -m "chore: auto-translate QMD files" \
+              -m "Automatically generated translations for modified QMD files."
+            echo "committed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push translations
+        if: steps.git-commit.outputs.committed == 'true'
         continue-on-error: true
         run: |
-          # Pull latest changes to avoid conflicts
-          git pull --rebase origin ${{ steps.pr-info.outputs.pr_ref }} || true
-          git push origin ${{ steps.pr-info.outputs.pr_ref }} || {
-            echo "⚠️ Push failed (this is expected for PRs from forks without write permissions)"
-            echo "Translation files are still available in the workflow artifacts"
-            exit 0
-          }
-      
-      - name: Post translation preview to PR
-        if: steps.git-check.outputs.changes == 'true' && (github.event_name == 'pull_request' || github.event_name == 'issue_comment')
+          git pull --rebase origin ${{ steps.ctx.outputs.pr_ref }} || true
+          git push origin ${{ steps.ctx.outputs.pr_ref }} || \
+            echo "⚠️ Push failed (fork PR without write permission) – translations available as artifacts"
+
+      # ── 7. PR comments ──────────────────────────────────────────────────────
+      - name: Post translation summary to PR
+        if: |
+          steps.git-commit.outputs.committed == 'true' &&
+          (github.event_name == 'pull_request' || github.event_name == 'issue_comment')
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
             const { execSync } = require('child_process');
-            
-            // Get PR number
-            let prNumber;
-            if (context.eventName === 'pull_request') {
-              prNumber = context.payload.pull_request.number;
-            } else if (context.eventName === 'issue_comment') {
-              prNumber = context.payload.issue.number;
-            } else {
-              console.log('Not a PR event, skipping comment');
-              return;
+            const fs = require('fs');
+
+            const prNum = context.eventName === 'issue_comment'
+              ? context.payload.issue.number
+              : context.payload.pull_request.number;
+
+            const files = execSync('git show --name-only --format= HEAD')
+              .toString().trim().split('\n')
+              .filter(f => f.endsWith('.qmd') || f.endsWith('.zh.qmd'));
+
+            if (!files.length) return;
+
+            let body = `## 🤖 Translation Preview\n\nTranslated **${files.length}** file(s):\n\n`;
+            for (const f of files) {
+              const preview = fs.existsSync(f)
+                ? fs.readFileSync(f, 'utf8').split('\n').slice(0, 20).join('\n')
+                : '(file not readable)';
+              body += `<details><summary>📄 \`${f}\`</summary>\n\n\`\`\`\n${preview}\n\`\`\`\n</details>\n\n`;
             }
-            
-            // Get list of translated files from the last commit
-            const translatedFiles = execSync('git show --name-only --format= HEAD')
-              .toString()
-              .split('\n')
-              .filter(f => f.trim() && (f.endsWith('.qmd') || f.endsWith('.zh.qmd')));
-            
-            if (translatedFiles.length === 0) {
-              console.log('No translated files found in last commit');
-              return;
-            }
-            
-            let comment = '## 🤖 Translation Preview\n\n';
-            comment += `Successfully translated ${translatedFiles.length} file(s):\n\n`;
-            
-            for (const file of translatedFiles) {
-              if (!file) continue;
-              
-              try {
-                const content = fs.readFileSync(file, 'utf-8');
-                const lines = content.split('\n');
-                const preview = lines.slice(0, 20).join('\n');
-                
-                comment += `### 📄 \`${file}\`\n\n`;
-                comment += '<details>\n';
-                comment += '<summary>Preview (first 20 lines)</summary>\n\n';
-                comment += '```\n';
-                comment += preview;
-                comment += '\n```\n';
-                comment += '</details>\n\n';
-              } catch (err) {
-                console.log(`Could not read ${file}: ${err.message}`);
-              }
-            }
-            
+
             await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: comment
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: prNum, body
             });
-      
-      - name: Create Pull Request for push events
-        if: github.event_name == 'push' && steps.git-check.outputs.changes == 'true'
-        id: create-pr
+
+      - name: Create PR for push-triggered translations
+        if: steps.ctx.outputs.is_push == 'true' && steps.git-commit.outputs.committed == 'true'
         uses: actions/github-script@v7
         env:
           CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
         with:
           script: |
-            const baseBranch = '${{ steps.pr-info.outputs.base_branch }}';
-            const headBranch = '${{ steps.pr-info.outputs.pr_ref }}';
-            const changedFiles = process.env.CHANGED_FILES;
-            
+            const base = '${{ steps.ctx.outputs.base_branch }}';
+            const head = '${{ steps.ctx.outputs.pr_ref }}';
             const { data: pr } = await github.rest.pulls.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `🤖 Auto-translate QMD files from ${baseBranch}`,
-              head: headBranch,
-              base: baseBranch,
-              body: `## 🤖 Automatic Translation
-            
-            This PR was automatically created by the auto-translate workflow after detecting changes to QMD files in the \`${baseBranch}\` branch.
-            
-            **Changed files**
-            \`\`\`
-            ${changedFiles}
-            \`\`\`
-            
-            ### What was done
-            - Detected new or modified .qmd files
-            - Generated translations for files without translation pairs
-            - Created this PR for review
-            
-            **Please review the translations for accuracy**, especially:
-            - Technical terminology
-            - Biomedical terms  
-            - Code examples and their descriptions
-            
-            You can make manual corrections by editing the translated files directly in this PR.
-            
-            ---
-            *This PR was created automatically by the [Auto-Translate workflow](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).*`
+              owner: context.repo.owner, repo: context.repo.repo,
+              title: `🤖 Auto-translate QMD files from ${base}`,
+              head, base,
+              body: `## 🤖 Automatic Translation\n\nThis PR was created automatically after a push to \`${base}\`.\n\n**Changed files:**\n\`\`\`\n${process.env.CHANGED_FILES}\n\`\`\`\n\n> Please review translations for accuracy, especially biomedical terminology.\n\n---\n*Created by [Auto-Translate workflow](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})*`
             });
-            
-            core.setOutput('pr_number', pr.number);
-            core.setOutput('pr_url', pr.html_url);
-            
             console.log(`Created PR #${pr.number}: ${pr.html_url}`);
-      
-      - name: React to comment (if triggered by comment)
-        if: github.event_name == 'issue_comment' && steps.git-check.outputs.changes == 'true'
+
+      - name: React to /translate comment
+        if: github.event_name == 'issue_comment' && steps.git-commit.outputs.committed == 'true'
         uses: actions/github-script@v7
         with:
           script: |
             await github.rest.reactions.createForIssueComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+              owner: context.repo.owner, repo: context.repo.repo,
               comment_id: context.payload.comment.id,
               content: 'rocket'
-            });
-      
-      - name: Comment on PR
-        if: github.event_name != 'push' && steps.git-check.outputs.changes == 'true'
-        uses: actions/github-script@v7
-        env:
-          PR_NUMBER: ${{ steps.pr-info.outputs.pr_number }}
-        with:
-          script: |
-            const fs = require('fs');
-            let prNumber = process.env.PR_NUMBER;
-            
-            // Fallback to get PR number based on event type if not set
-            if (!prNumber) {
-              if (context.eventName === 'pull_request') {
-                prNumber = context.payload.pull_request.number;
-              } else if (context.eventName === 'issue_comment') {
-                prNumber = context.payload.issue.number;
-              } else {
-                prNumber = context.issue.number;
-              }
-            }
-            
-            const triggerMethod = context.eventName === 'issue_comment' ? 'manual command `/translate`' :
-                                  context.eventName === 'workflow_dispatch' ? 'manual workflow dispatch' :
-                                  'automatic trigger';
-            
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: '🤖 **Auto-Translation Complete**\n\n' +
-                    `Triggered by: ${triggerMethod}\n\n` +
-                    'I have automatically translated the QMD files in this PR using external AI models.\n\n' +
-                    '**Please review the translations for accuracy**, especially:\n' +
-                    '- Technical terminology\n' +
-                    '- Biomedical terms\n' +
-                    '- Code examples and their descriptions\n\n' +
-                    'You can make manual corrections by editing the translated files directly.'
-            });
-      
-      - name: Comment on created PR (for push events)
-        if: github.event_name == 'push' && steps.git-check.outputs.changes == 'true' && steps.create-pr.outputs.pr_number
-        uses: actions/github-script@v7
-        env:
-          NEW_PR_NUMBER: ${{ steps.create-pr.outputs.pr_number }}
-        with:
-          script: |
-            const prNumber = process.env.NEW_PR_NUMBER;
-            
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: '🤖 **Auto-Translation Complete**\n\n' +
-                    'Triggered by: push to main/master branch\n\n' +
-                    'I have automatically translated the QMD files and created this PR using external AI models.\n\n' +
-                    '**Please review the translations for accuracy**, especially:\n' +
-                    '- Technical terminology\n' +
-                    '- Biomedical terms\n' +
-                    '- Code examples and their descriptions\n\n' +
-                    'You can make manual corrections by editing the translated files directly in this PR.'
             });

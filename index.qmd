@@ -35,3 +35,133 @@ Bizard brings together powerful visualization tools, curated code, and collabora
 ::: callout-note
 If you find this useful or have suggestions for improvement, please let us know by leaving your comments in the GitHub Discussions:speech_balloon: at the bottom of any page.
 :::
+
+---
+
+## 🔍 Chart Recommender {#recommender}
+
+Not sure which chart to use? Describe your data or research goal below and get instant recommendations from Bizard's curated visualization library — **no server required, runs entirely in your browser**.
+
+```{=html}
+<div id="bizard-recommender" style="
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 1.5rem 1.8rem;
+  background: #fafafa;
+  margin-bottom: 1.5rem;
+">
+  <label for="rec-input" style="font-weight:600; font-size:1rem; display:block; margin-bottom:.6rem;">
+    Describe your data or analysis goal:
+  </label>
+  <textarea id="rec-input" rows="3" placeholder="e.g. I want to compare gene expression between two cell groups and show statistical significance" style="
+    width:100%; box-sizing:border-box;
+    padding:.6rem .8rem; font-size:.95rem;
+    border:1px solid #ccc; border-radius:6px;
+    resize:vertical; font-family:inherit;
+  "></textarea>
+  <div style="margin-top:.8rem; display:flex; gap:.6rem; flex-wrap:wrap; align-items:center;">
+    <button onclick="bizardRecommend()" style="
+      background:#3a86ff; color:#fff; border:none;
+      padding:.5rem 1.2rem; border-radius:6px;
+      font-size:.95rem; cursor:pointer; font-weight:600;
+    ">✨ Recommend Charts</button>
+    <button onclick="document.getElementById('rec-input').value=''; document.getElementById('rec-results').innerHTML='';" style="
+      background:#f0f0f0; color:#333; border:1px solid #ccc;
+      padding:.5rem 1rem; border-radius:6px;
+      font-size:.9rem; cursor:pointer;
+    ">Clear</button>
+  </div>
+  <div id="rec-results" style="margin-top:1rem;"></div>
+</div>
+
+<script>
+const BIZARD_CHARTS = [
+  { name:"Violin Plot",            url:"Distribution/ViolinPlot.html",           category:"Distribution", tags:["distribution","group","compare","continuous","expression","single cell"] },
+  { name:"Box Plot",               url:"Distribution/BoxPlot.html",              category:"Distribution", tags:["distribution","group","compare","median","outlier","clinical","biomarker"] },
+  { name:"Density Plot",           url:"Distribution/Density.html",              category:"Distribution", tags:["distribution","continuous","smooth","kde","overlap"] },
+  { name:"Histogram",              url:"Distribution/Histogram.html",            category:"Distribution", tags:["distribution","count","frequency","binning"] },
+  { name:"Beeswarm Plot",          url:"Distribution/Beeswarm.html",             category:"Distribution", tags:["distribution","individual points","group","small data"] },
+  { name:"Ridgeline Plot",         url:"Distribution/Ridgeline.html",            category:"Distribution", tags:["distribution","multiple groups","overlap","time","continuous"] },
+  { name:"Scatter Plot",           url:"Correlation/Scatter.html",               category:"Correlation",  tags:["correlation","two variables","regression","linear","relationship"] },
+  { name:"Heatmap",                url:"Correlation/Heatmap.html",               category:"Correlation",  tags:["heatmap","matrix","correlation","gene expression","cluster"] },
+  { name:"ComplexHeatmap",         url:"Correlation/ComplexHeatmap.html",        category:"Correlation",  tags:["heatmap","complex","annotation","omics","gene","multi-omics"] },
+  { name:"Correlogram",            url:"Correlation/Correlogram.html",           category:"Correlation",  tags:["correlation","multiple variables","matrix","pearson","spearman"] },
+  { name:"Bubble Plot",            url:"Correlation/Bubble.html",                category:"Correlation",  tags:["scatter","size","three variables","enrichment","pathway"] },
+  { name:"PCA Plot",               url:"Correlation/PCAplot.html",               category:"Correlation",  tags:["pca","dimensionality reduction","cluster","sample","omics","batch effect"] },
+  { name:"UMAP Plot",              url:"Correlation/UMAPplot.html",              category:"Correlation",  tags:["umap","single cell","cluster","dimensionality reduction","scRNA"] },
+  { name:"Bar Plot",               url:"Ranking/BarPlot.html",                   category:"Ranking",      tags:["bar","compare","category","count","ranking","group"] },
+  { name:"Lollipop Plot",          url:"Ranking/Lollipop.html",                  category:"Ranking",      tags:["lollipop","ranking","compare","clean","minimal","mutation"] },
+  { name:"VennPlot",               url:"Ranking/VennPlot.html",                  category:"Ranking",      tags:["venn","overlap","set","gene list","intersection"] },
+  { name:"UpsetPlot",              url:"Ranking/UpsetPlot.html",                 category:"Ranking",      tags:["upset","set","intersection","overlap","many groups","gene"] },
+  { name:"Pie Chart",              url:"Composition/PieChart.html",              category:"Composition",  tags:["pie","proportion","part of whole","category","simple"] },
+  { name:"Grouped/Stacked Barplot",url:"Composition/GroupedBarplot.html",        category:"Composition",  tags:["stacked bar","proportion","part of whole","group","time","cell type"] },
+  { name:"Treemap",                url:"Composition/Treemap.html",               category:"Composition",  tags:["treemap","hierarchical","proportion","nested","area"] },
+  { name:"Chord Diagram",          url:"Proportion/ChordDiagram.html",           category:"Proportion",   tags:["chord","flow","interaction","matrix","relationship","cell communication"] },
+  { name:"Sankey Diagram",         url:"Proportion/Sankey.html",                 category:"Proportion",   tags:["sankey","flow","process","alluvial","trajectory","proportion"] },
+  { name:"Network Graph",          url:"Proportion/Network.html",                category:"Proportion",   tags:["network","graph","node","edge","protein interaction","PPI","pathway"] },
+  { name:"Line Chart",             url:"DataOverTime/LineChart.html",            category:"Evolution",    tags:["line","time series","trend","longitudinal","change"] },
+  { name:"Volcano Plot",           url:"Omics/VolcanoPlot.html",                 category:"Omics",        tags:["volcano","differential expression","DEG","p-value","fold change","RNA-seq","significance"] },
+  { name:"Manhattan Plot",         url:"Omics/ManhattanPlot.html",               category:"Omics",        tags:["manhattan","GWAS","SNP","genome","association","variant"] },
+  { name:"KEGG Pathway Plot",      url:"Omics/KeggPathwayPlot.html",             category:"Omics",        tags:["KEGG","pathway","enrichment","biological pathway","metabolism"] },
+  { name:"TextEnrichment BarPlot", url:"Omics/TextEnrichmentBarPlot.html",       category:"Omics",        tags:["enrichment","GO","KEGG","pathway","bar","gene list","text","single cell marker"] },
+  { name:"Cell-Cell Comm. Circle", url:"Omics/CellChatCirclePlot.html",          category:"Omics",        tags:["cell communication","CellChat","single cell","circle","ligand receptor","scRNA","interaction"] },
+  { name:"MEBOCOST Flow Plot",     url:"Omics/MebocostFlowPlot.html",            category:"Omics",        tags:["metabolic","flow","MEBOCOST","cell communication","metabolite","single cell","scRNA"] },
+  { name:"Kaplan-Meier Plot",      url:"Clinics/KaplanMeierPlot.html",           category:"Clinics",      tags:["survival","Kaplan-Meier","time to event","clinical","prognosis","OS","PFS"] },
+  { name:"Forest Plot (Meta)",     url:"Clinics/MetaForestPlot.html",            category:"Clinics",      tags:["forest","meta-analysis","odds ratio","hazard ratio","confidence interval","systematic review"] },
+  { name:"Nomogram",               url:"Clinics/Nomogram.html",                  category:"Clinics",      tags:["nomogram","clinical prediction","regression","probability","risk","model"] },
+];
+
+function bizardScore(query, chart) {
+  const q = query.toLowerCase().replace(/[^\w\s]/g, ' ');
+  const words = q.split(/\s+/).filter(w => w.length > 1);
+  let score = 0;
+  const nameWords = chart.name.toLowerCase().split(/\W+/);
+  for (const w of words) {
+    if (chart.tags.some(t => t === w || t.includes(w) || w.includes(t))) score += 3;
+    if (nameWords.some(n => n.includes(w) || w.includes(n))) score += 2;
+    if (chart.category.toLowerCase().includes(w)) score += 1;
+  }
+  return score;
+}
+
+function bizardRecommend() {
+  const query   = document.getElementById('rec-input').value.trim();
+  const results = document.getElementById('rec-results');
+  if (!query) { results.innerHTML = '<p style="color:#888;">Please enter a description above.</p>'; return; }
+
+  const scored = BIZARD_CHARTS
+    .map(c => ({ ...c, score: bizardScore(query, c) }))
+    .filter(c => c.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
+
+  if (scored.length === 0) {
+    results.innerHTML = '<p style="color:#888;">No strong match found. Try keywords like <em>scatter, heatmap, survival, enrichment, volcano, single cell, distribution</em>…</p>';
+    return;
+  }
+
+  const catColors = {
+    Distribution:'#4895ef', Correlation:'#4cc9f0', Ranking:'#f72585',
+    Composition:'#7209b7',  Proportion:'#3a0ca3',  Evolution:'#4361ee',
+    Omics:'#06d6a0',        Clinics:'#ef476f'
+  };
+
+  let html = '<p style="font-size:.9rem;color:#555;margin-bottom:.8rem;">Top suggestions:</p>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.7rem;">';
+
+  for (const c of scored) {
+    const color = catColors[c.category] || '#666';
+    html += `<a href="${c.url}" style="display:block;text-decoration:none;color:inherit;border:1px solid #e0e0e0;border-left:4px solid ${color};border-radius:6px;padding:.7rem .9rem;background:#fff;transition:box-shadow .15s;" onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,.12)'" onmouseout="this.style.boxShadow='none'">
+      <div style="font-weight:600;font-size:.9rem;">${c.name}</div>
+      <div style="font-size:.78rem;color:${color};margin-top:.2rem;">${c.category}</div>
+    </a>`;
+  }
+  html += '</div>';
+  results.innerHTML = html;
+}
+
+document.getElementById('rec-input').addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') bizardRecommend();
+});
+</script>
+```
