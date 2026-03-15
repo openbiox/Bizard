@@ -1,0 +1,584 @@
+---
+title: "Bizard 技能库"
+subtitle: "面向生物医学研究的 AI 就绪可视化技能"
+from: markdown+emoji
+---
+
+## 什么是 Bizard 技能？ :brain:
+
+**Bizard 技能**将本图谱中的每个教程转换为简洁、结构化的 **AI 技能文档**——一份纯文本摘要，说明图表是什么、何时使用、需要哪些 R 包以及生成该图表的最小可复现代码。技能文档可用于：
+
+- 直接复制到 AI 助手的上下文窗口中（ChatGPT、Copilot、Claude 等）
+- 与本地 LLM 工具配合使用，如 [LM Studio](https://lmstudio.ai/) 或 [Ollama](https://ollama.ai/)
+- 作为 ZIP 包下载，用于自定义 AI 流水线的离线使用
+- 在自动化生物信息学工作流中引用
+
+::: callout-tip
+**如何使用技能**：点击下方任意卡片查看技能文档，然后将其内容复制到您的 AI 助手提示中。例如：*"请使用以下技能帮我创建一个比较肿瘤和正常样本基因表达的小提琴图。"*
+:::
+
+---
+
+## 按分类浏览技能 {#browse}
+
+使用搜索框或点击分类标签来筛选技能。
+
+```{=html}
+<div id="skills-browser" style="margin-bottom:2rem;">
+
+  <!-- Search + filter bar -->
+  <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;">
+    <input id="skill-search" type="text" placeholder="Search skills…" oninput="filterSkills()"
+      style="flex:1;min-width:200px;padding:.5rem .8rem;font-size:.95rem;border:1px solid #ccc;border-radius:6px;font-family:inherit;">
+    <div id="cat-filters" style="display:flex;gap:.4rem;flex-wrap:wrap;"></div>
+  </div>
+
+  <!-- Skills grid -->
+  <div id="skills-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.8rem;"></div>
+
+  <!-- Skill detail modal -->
+  <div id="skill-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;overflow-y:auto;padding:2rem 1rem;">
+    <div style="max-width:720px;margin:auto;background:#fff;border-radius:10px;padding:1.8rem 2rem;position:relative;">
+      <button onclick="document.getElementById('skill-modal').style.display='none'"
+        style="position:absolute;top:1rem;right:1rem;background:#f0f0f0;border:none;border-radius:4px;
+               padding:.3rem .7rem;cursor:pointer;font-size:1rem;">✕</button>
+      <h3 id="modal-title" style="margin-top:0;"></h3>
+      <div style="margin-bottom:.6rem;">
+        <span id="modal-category" style="font-size:.8rem;padding:.2rem .6rem;border-radius:12px;color:#fff;font-weight:600;"></span>
+      </div>
+      <pre id="modal-content" style="background:#f7f7f7;padding:1rem;border-radius:6px;
+           font-size:.82rem;overflow-x:auto;white-space:pre-wrap;max-height:55vh;overflow-y:auto;"></pre>
+      <div style="margin-top:1rem;display:flex;gap:.6rem;flex-wrap:wrap;">
+        <button onclick="copySkill()" style="background:#3a86ff;color:#fff;border:none;padding:.5rem 1.1rem;
+          border-radius:6px;cursor:pointer;font-weight:600;">📋 Copy Skill</button>
+        <a id="modal-tutorial-link" href="#" target="_blank" style="
+          background:#06d6a0;color:#fff;border:none;padding:.5rem 1.1rem;
+          border-radius:6px;cursor:pointer;font-weight:600;text-decoration:none;
+          display:inline-flex;align-items:center;">📖 Open Tutorial</a>
+        <button id="download-btn" onclick="downloadSkill()" style="
+          background:#f0f0f0;color:#333;border:1px solid #ccc;padding:.5rem 1rem;
+          border-radius:6px;cursor:pointer;">⬇ Download</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Bizard skills database ───────────────────────────────────────────────────
+// Each entry contains a compact skill document template.
+const SKILLS = [
+  {
+    name: "Violin Plot",
+    category: "Distribution",
+    url: "Distribution/ViolinPlot.html",
+    packages: ["ggplot2", "ggpubr"],
+    useWhen: "Comparing the distribution of a continuous variable (e.g. gene expression) across two or more groups. Shows data density + spread + outliers simultaneously.",
+    skill: `# Skill: Violin Plot (R/ggplot2)
+
+## When to use
+Compare continuous variable distributions across groups (e.g. gene expression between
+tumor/normal, treatment/control). Best for n > 20 per group.
+
+## Key packages
+- ggplot2 (core plotting)
+- ggpubr (statistical annotations)
+
+## Minimal reproducible example
+\`\`\`r
+library(ggplot2)
+library(ggpubr)
+
+ggplot(iris, aes(x = Species, y = Sepal.Length, fill = Species)) +
+  geom_violin(trim = FALSE, alpha = 0.7) +
+  geom_boxplot(width = 0.1, fill = "white", outlier.size = 0.5) +
+  stat_compare_means(comparisons = list(c("setosa","versicolor"),
+                                        c("versicolor","virginica")),
+                     method = "wilcox.test") +
+  scale_fill_brewer(palette = "Set2") +
+  theme_classic() +
+  labs(title = "Violin Plot", x = "Species", y = "Sepal Length (cm)")
+\`\`\`
+
+## Customization tips
+- Add jitter points: + geom_jitter(width=0.1, alpha=0.3)
+- Remove legend: + theme(legend.position="none")
+- Horizontal: + coord_flip()
+
+## Full tutorial: https://openbiox.github.io/Bizard/Distribution/ViolinPlot.html`
+  },
+  {
+    name: "Box Plot",
+    category: "Distribution",
+    url: "Distribution/BoxPlot.html",
+    packages: ["ggplot2", "ggpubr"],
+    useWhen: "Comparing medians, quartiles, and outliers of a continuous variable across groups. Standard choice for clinical data, biomarker comparison.",
+    skill: `# Skill: Box Plot (R/ggplot2)
+
+## When to use
+Compare medians/quartiles/outliers of a continuous variable across groups.
+Standard for clinical biomarker data; works with small and large datasets.
+
+## Key packages
+- ggplot2, ggpubr
+
+## Minimal reproducible example
+\`\`\`r
+library(ggplot2)
+library(ggpubr)
+
+ggplot(iris, aes(x = Species, y = Sepal.Length, fill = Species)) +
+  geom_boxplot(outlier.shape = 19, outlier.size = 1.5) +
+  stat_compare_means(comparisons = list(c("setosa","versicolor"),
+                                        c("versicolor","virginica")),
+                     method = "wilcox.test", label = "p.signif") +
+  scale_fill_brewer(palette = "Pastel1") +
+  theme_bw() +
+  labs(x = NULL, y = "Sepal Length (cm)")
+\`\`\`
+
+## Full tutorial: https://openbiox.github.io/Bizard/Distribution/BoxPlot.html`
+  },
+  {
+    name: "Volcano Plot",
+    category: "Omics",
+    url: "Omics/VolcanoPlot.html",
+    packages: ["ggplot2", "ggrepel", "EnhancedVolcano"],
+    useWhen: "Visualizing differential expression results (RNA-seq, proteomics, metabolomics). Shows fold-change vs significance for thousands of features simultaneously.",
+    skill: `# Skill: Volcano Plot (R/ggplot2)
+
+## When to use
+Display differential expression or differential abundance results (RNA-seq, proteomics,
+metabolomics). Plots -log10(p-value) vs log2(fold-change) to simultaneously show
+statistical significance and biological effect size for all features.
+
+## Key packages
+- ggplot2, ggrepel (labels), EnhancedVolcano (advanced)
+
+## Minimal reproducible example
+\`\`\`r
+library(ggplot2)
+library(ggrepel)
+
+# df has columns: gene, log2FC, padj
+set.seed(42)
+df <- data.frame(
+  gene   = paste0("Gene", 1:500),
+  log2FC = rnorm(500, 0, 2),
+  padj   = runif(500, 1e-10, 1)
+)
+df$sig <- with(df, ifelse(padj < 0.05 & abs(log2FC) > 1,
+                          ifelse(log2FC > 1, "Up", "Down"), "NS"))
+
+ggplot(df, aes(log2FC, -log10(padj), color = sig)) +
+  geom_point(alpha = 0.6, size = 1.2) +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "grey40") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "grey40") +
+  scale_color_manual(values = c(Up="#e63946", Down="#457b9d", NS="grey70")) +
+  geom_text_repel(data = subset(df, sig != "NS")[1:15,],
+                  aes(label = gene), size = 2.5, max.overlaps = 20) +
+  theme_bw() +
+  labs(title = "Volcano Plot", x = "log2(Fold Change)", y = "-log10(padj)")
+\`\`\`
+
+## Full tutorial: https://openbiox.github.io/Bizard/Omics/VolcanoPlot.html`
+  },
+  {
+    name: "Heatmap",
+    category: "Correlation",
+    url: "Correlation/Heatmap.html",
+    packages: ["pheatmap", "ComplexHeatmap"],
+    useWhen: "Visualizing a matrix of values (gene expression, correlation, methylation). Reveals patterns, clusters, and gradients across rows/columns.",
+    skill: `# Skill: Heatmap (R/pheatmap)
+
+## When to use
+Visualize a matrix of numeric values: gene expression profiles, correlation matrices,
+methylation data, drug response matrices. Use clustering (rows/cols) to reveal patterns.
+
+## Key packages
+- pheatmap (simple), ComplexHeatmap (advanced annotations)
+
+## Minimal reproducible example
+\`\`\`r
+library(pheatmap)
+
+# Use the built-in mtcars dataset
+mat <- scale(t(mtcars[1:20, 1:8]))  # scale each gene
+
+pheatmap(
+  mat,
+  scale          = "none",
+  cluster_rows   = TRUE,
+  cluster_cols   = TRUE,
+  color          = colorRampPalette(c("#2166ac","white","#d73027"))(100),
+  fontsize       = 9,
+  main           = "Sample Heatmap"
+)
+\`\`\`
+
+## Customization tips
+- Add column annotations: use annotation_col argument
+- Custom color breaks: use breaks argument
+- For large matrices (>5000 genes): use ComplexHeatmap for performance
+
+## Full tutorial: https://openbiox.github.io/Bizard/Correlation/Heatmap.html`
+  },
+  {
+    name: "TextEnrichment BarPlot",
+    category: "Omics",
+    url: "Omics/TextEnrichmentBarPlot.html",
+    packages: ["ggplot2", "ggprism", "gground"],
+    useWhen: "Displaying GO/KEGG enrichment results with text overlaid on rounded bars. Ideal for single-cell marker gene enrichment or any functional enrichment with many pathways.",
+    skill: `# Skill: Text-Overlaid Enrichment BarPlot (R/ggplot2)
+
+## When to use
+Display functional enrichment results (GO, KEGG) with pathway names directly overlaid
+on rounded bars. Best for single-cell subpopulation marker enrichment or any analysis
+requiring simultaneous display of pathway significance + driver genes.
+
+## Key packages
+- ggplot2, ggprism (theme), gground (rounded bars via geom_round_col/geom_round_rect)
+
+## Install gground
+\`\`\`r
+remotes::install_github("dxsbiocc/gground")
+\`\`\`
+
+## Minimal reproducible example
+\`\`\`r
+library(ggplot2); library(ggprism); library(gground)
+
+# Example enrichment data (replace with your clusterProfiler output)
+df <- data.frame(
+  Description = paste("Pathway", 1:10),
+  p.adjust    = c(0.001,0.003,0.005,0.008,0.012,0.015,0.02,0.03,0.04,0.049),
+  Category    = rep(c("BP","KEGG"), 5)
+) |> dplyr::mutate(
+  Category    = factor(Category),
+  Description = factor(Description, levels = rev(Description)),
+  index       = seq_len(nrow(df))
+)
+
+ggplot(df, aes(-log10(p.adjust), y = index, fill = Category)) +
+  geom_round_col(aes(y = Description), width = 0.6, alpha = 0.8) +
+  geom_text(aes(x = 0.05, label = Description), hjust = 0, size = 3.5) +
+  labs(x = "-log10(p.adjust)", y = NULL) +
+  scale_fill_manual(values = c(BP="#4895ef", KEGG="#f72585")) +
+  theme_prism() +
+  theme(axis.text.y = element_blank(), axis.line.y = element_blank(),
+        axis.ticks.y = element_blank())
+\`\`\`
+
+## Full tutorial: https://openbiox.github.io/Bizard/Omics/TextEnrichmentBarPlot.html`
+  },
+  {
+    name: "Cell-Cell Communication Circle Plot",
+    category: "Omics",
+    url: "Omics/CellChatCirclePlot.html",
+    packages: ["CellChat"],
+    useWhen: "Visualizing ligand-receptor mediated cell-cell communication inferred from scRNA-seq data. Shows sender-receiver relationships and interaction strengths between cell types.",
+    skill: `# Skill: Cell-Cell Communication Circle Plot (R/CellChat)
+
+## When to use
+Visualize ligand-receptor mediated cell-cell communication networks from single-cell
+RNA-seq data. Shows which cell types send/receive signals and how strongly they interact.
+
+## Key packages
+- CellChat (install from GitHub: jinworks/CellChat)
+
+## Minimal reproducible example (requires CellChat object)
+\`\`\`r
+library(CellChat)
+
+# Assuming 'cellchat' is a pre-built CellChat object with aggregateNet() run
+groupSize <- as.numeric(table(cellchat@idents))
+
+par(mfrow = c(1,2), xpd = TRUE)
+
+# Number of interactions
+netVisual_circle(cellchat@net$count, vertex.weight = groupSize,
+                 weight.scale = TRUE, title.name = "Number of interactions")
+
+# Interaction strength
+netVisual_circle(cellchat@net$weight, vertex.weight = groupSize,
+                 weight.scale = TRUE, title.name = "Interaction weights/strength")
+\`\`\`
+
+## Build CellChat object (reference)
+\`\`\`r
+cellchat <- createCellChat(object = expr_matrix, meta = meta_df, group.by = "cell_type")
+cellchat@DB <- CellChatDB.human
+cellchat <- subsetData(cellchat)
+cellchat <- identifyOverExpressedGenes(cellchat)
+cellchat <- identifyOverExpressedInteractions(cellchat)
+cellchat <- computeCommunProb(cellchat)
+cellchat <- filterCommunication(cellchat, min.cells = 10)
+cellchat <- computeCommunProbPathway(cellchat)
+cellchat <- aggregateNet(cellchat)
+\`\`\`
+
+## Full tutorial: https://openbiox.github.io/Bizard/Omics/CellChatCirclePlot.html`
+  },
+  {
+    name: "MEBOCOST Flow Plot",
+    category: "Omics",
+    url: "Omics/MebocostFlowPlot.html",
+    packages: ["ggplot2", "ggraph", "igraph", "tidygraph"],
+    useWhen: "Visualizing metabolite-mediated intercellular communication from scRNA-seq. Shows which cell types produce and sense metabolites and the strength of metabolic crosstalk.",
+    skill: `# Skill: MEBOCOST Metabolic Flow Plot (R/ggraph)
+
+## When to use
+Visualize metabolite-mediated cell-cell communication inferred from scRNA-seq data
+using MEBOCOST. Shows metabolic flux between cell types (sender = metabolite producer,
+receiver = metabolite sensor). Complements protein-based communication (CellChat).
+
+## Key packages
+- ggraph, igraph, tidygraph (for the flow network visualization)
+- MEBOCOST (GitHub: kaifuchenlab/MEBOCOST) for inference
+
+## Minimal reproducible example
+\`\`\`r
+library(ggraph); library(igraph); library(tidygraph); library(dplyr)
+
+# comm_df: data frame with columns sender, receiver, score
+# (output from MEBOCOST aggregated communication table)
+
+g <- graph_from_data_frame(
+  d = comm_df %>% rename(weight = score), directed = TRUE,
+  vertices = data.frame(name = unique(c(comm_df$sender, comm_df$receiver)))
+)
+
+set.seed(42)
+ggraph(g, layout = "circle") +
+  geom_edge_arc(aes(width = weight, alpha = weight),
+                arrow = arrow(length = unit(3,"mm"), type = "closed"),
+                end_cap = circle(6,"mm"), color = "#3a86ff", curvature = 0.2) +
+  geom_node_point(size = 12, fill = "#fb5607", shape = 21, color = "white", stroke = 2) +
+  geom_node_label(aes(label = name), size = 3, fontface = "bold",
+                  color = "white", fill = NA, label.size = 0) +
+  scale_edge_width_continuous(range = c(0.5, 4)) +
+  scale_edge_alpha_continuous(range = c(0.3, 1), guide = "none") +
+  theme_graph() +
+  labs(title = "Metabolic Cell-Cell Communication Flow")
+\`\`\`
+
+## Full tutorial: https://openbiox.github.io/Bizard/Omics/MebocostFlowPlot.html`
+  },
+  {
+    name: "Kaplan-Meier Survival Plot",
+    category: "Clinics",
+    url: "Clinics/KaplanMeierPlot.html",
+    packages: ["survminer", "survival"],
+    useWhen: "Displaying time-to-event data (overall survival, progression-free survival) stratified by a clinical variable or molecular subgroup. Standard for cancer clinical research.",
+    skill: `# Skill: Kaplan-Meier Survival Plot (R/survminer)
+
+## When to use
+Display time-to-event (survival) data stratified by groups (e.g. high/low expression,
+treatment arm, molecular subtype). Standard for OS, PFS, DFS in cancer research.
+
+## Key packages
+- survival (core), survminer (publication-quality KM plots)
+
+## Minimal reproducible example
+\`\`\`r
+library(survival)
+library(survminer)
+
+# Use built-in lung dataset
+lung$status2 <- ifelse(lung$status == 2, 1, 0)
+
+fit <- survfit(Surv(time, status2) ~ sex, data = lung)
+
+ggsurvplot(
+  fit,
+  data          = lung,
+  pval          = TRUE,
+  conf.int      = TRUE,
+  risk.table    = TRUE,
+  palette       = c("#e63946","#457b9d"),
+  xlab          = "Time (days)",
+  ylab          = "Survival probability",
+  legend.labs   = c("Male","Female"),
+  title         = "Overall Survival by Sex"
+)
+\`\`\`
+
+## Full tutorial: https://openbiox.github.io/Bizard/Clinics/KaplanMeierPlot.html`
+  },
+  {
+    name: "PCA Plot",
+    category: "Correlation",
+    url: "Correlation/PCAplot.html",
+    packages: ["FactoMineR", "factoextra", "ggplot2"],
+    useWhen: "Reducing high-dimensional omics data to 2D for quality control, batch effect detection, and sample clustering. First step in any omics exploratory analysis.",
+    skill: `# Skill: PCA Plot (R/FactoMineR + factoextra)
+
+## When to use
+Dimensionality reduction for high-dimensional omics data (RNA-seq, proteomics, metabolomics).
+Use for QC (detect outliers, batch effects), sample clustering, and exploration before
+downstream differential analysis.
+
+## Key packages
+- FactoMineR (PCA), factoextra (visualization), ggplot2
+
+## Minimal reproducible example
+\`\`\`r
+library(FactoMineR)
+library(factoextra)
+
+pca_res <- PCA(iris[,1:4], graph = FALSE)
+
+fviz_pca_ind(
+  pca_res,
+  geom.ind   = "point",
+  col.ind    = iris$Species,
+  palette    = c("#e63946","#457b9d","#2a9d8f"),
+  addEllipses = TRUE,
+  ellipse.type = "confidence",
+  legend.title = "Species"
+) +
+  theme_bw() +
+  labs(title = "PCA of Iris Dataset")
+\`\`\`
+
+## Full tutorial: https://openbiox.github.io/Bizard/Correlation/PCAplot.html`
+  },
+];
+
+// ── Render skills grid ──────────────────────────────────────────────────────
+const catColors = {
+  Distribution:'#4895ef', Correlation:'#4cc9f0', Ranking:'#f72585',
+  Composition:'#7209b7',  Proportion:'#3a0ca3',  Evolution:'#4361ee',
+  Omics:'#06d6a0',        Clinics:'#ef476f'
+};
+
+function renderSkills(skills) {
+  const grid = document.getElementById('skills-grid');
+  grid.innerHTML = '';
+  skills.forEach((s, i) => {
+    const color = catColors[s.category] || '#999';
+    const card = document.createElement('div');
+    card.style.cssText = `border:1px solid #e0e0e0;border-left:4px solid ${color};border-radius:8px;
+      padding:1rem 1.1rem;background:#fff;cursor:pointer;transition:box-shadow .15s;`;
+    card.onmouseover = () => card.style.boxShadow = '0 2px 10px rgba(0,0,0,.12)';
+    card.onmouseout  = () => card.style.boxShadow = 'none';
+    card.onclick     = () => openSkill(i);
+    card.innerHTML = `
+      <div style="font-weight:700;font-size:.95rem;margin-bottom:.3rem;">${s.name}</div>
+      <span style="background:${color};color:#fff;font-size:.72rem;padding:.15rem .5rem;border-radius:10px;">${s.category}</span>
+      <p style="font-size:.82rem;color:#555;margin:.5rem 0 0;">${s.useWhen.slice(0,90)}…</p>
+      <div style="margin-top:.6rem;font-size:.78rem;color:#888;">
+        📦 ${s.packages.slice(0,3).join(', ')}${s.packages.length>3?'…':''}
+      </div>`;
+    grid.appendChild(card);
+  });
+  if (skills.length === 0) {
+    grid.innerHTML = '<p style="color:#888;grid-column:1/-1;">No skills match your search.</p>';
+  }
+}
+
+// ── Category filter buttons ─────────────────────────────────────────────────
+const cats = [...new Set(SKILLS.map(s => s.category))];
+let activeCat = null;
+const filterDiv = document.getElementById('cat-filters');
+cats.forEach(cat => {
+  const color = catColors[cat] || '#999';
+  const btn = document.createElement('button');
+  btn.textContent = cat;
+  btn.dataset.cat = cat;
+  btn.style.cssText = `border:2px solid ${color};color:${color};background:#fff;padding:.25rem .7rem;
+    border-radius:12px;font-size:.8rem;cursor:pointer;font-weight:600;transition:all .15s;`;
+  btn.onclick = () => {
+    activeCat = activeCat === cat ? null : cat;
+    document.querySelectorAll('#cat-filters button').forEach(b => {
+      const bc = catColors[b.dataset.cat]||'#999';
+      b.style.background = (b.dataset.cat === activeCat) ? bc : '#fff';
+      b.style.color      = (b.dataset.cat === activeCat) ? '#fff' : bc;
+    });
+    filterSkills();
+  };
+  filterDiv.appendChild(btn);
+});
+
+function filterSkills() {
+  const q = document.getElementById('skill-search').value.toLowerCase();
+  let filtered = SKILLS;
+  if (activeCat) filtered = filtered.filter(s => s.category === activeCat);
+  if (q) filtered = filtered.filter(s =>
+    s.name.toLowerCase().includes(q) ||
+    s.category.toLowerCase().includes(q) ||
+    s.useWhen.toLowerCase().includes(q) ||
+    s.packages.some(p => p.toLowerCase().includes(q))
+  );
+  renderSkills(filtered);
+}
+
+// ── Skill detail modal ──────────────────────────────────────────────────────
+let currentSkill = null;
+function openSkill(idx) {
+  // Use the same filter logic as filterSkills() to resolve the correct skill
+  const q = document.getElementById('skill-search').value.toLowerCase();
+  let filtered = SKILLS;
+  if (activeCat) filtered = filtered.filter(s => s.category === activeCat);
+  if (q) filtered = filtered.filter(s =>
+    s.name.toLowerCase().includes(q) ||
+    s.category.toLowerCase().includes(q) ||
+    s.useWhen.toLowerCase().includes(q) ||
+    s.packages.some(p => p.toLowerCase().includes(q))
+  );
+  currentSkill = filtered[idx];
+  if (!currentSkill) return;
+
+  document.getElementById('modal-title').textContent = currentSkill.name;
+  const badge = document.getElementById('modal-category');
+  badge.textContent = currentSkill.category;
+  badge.style.background = catColors[currentSkill.category] || '#999';
+  document.getElementById('modal-content').textContent = currentSkill.skill;
+  document.getElementById('modal-tutorial-link').href = currentSkill.url;
+  document.getElementById('skill-modal').style.display = 'block';
+}
+
+function copySkill() {
+  if (!currentSkill) return;
+  navigator.clipboard.writeText(currentSkill.skill)
+    .then(() => { const btn = document.querySelector('#skill-modal button'); btn.textContent = '✓ Copied!'; setTimeout(()=>btn.textContent='📋 Copy Skill',2000); })
+    .catch(() => { /* fallback */ const ta=document.createElement('textarea'); ta.value=currentSkill.skill; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); });
+}
+
+function downloadSkill() {
+  if (!currentSkill) return;
+  const blob = new Blob([currentSkill.skill], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = currentSkill.name.replace(/[^a-z0-9]/gi,'_').toLowerCase() + '_skill.md';
+  a.click();
+}
+
+// Close modal on backdrop click
+document.getElementById('skill-modal').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none';
+});
+
+// Initial render
+renderSkills(SKILLS);
+</script>
+```
+
+---
+
+## 下载全部技能 {#download}
+
+::: callout-note
+使用 `.github/scripts/generate_skills.py` 脚本可从所有 QMD 教程自动重新生成技能文档。运行：
+```bash
+python .github/scripts/generate_skills.py --output skills/
+```
+:::
+
+自动生成的技能文件命名规则：`<教程名称>_skill.md`
+
+每份技能文档包含：
+- **图表名称和分类**
+- **使用时机** — 简洁的决策指南
+- **所需 R 包**
+- **最小可复现 R 代码**，用于生成图表
+- **链接**，指向完整教程

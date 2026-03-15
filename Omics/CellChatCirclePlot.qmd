@@ -19,40 +19,29 @@ The arc width of each edge encodes communication probability, and the self-loops
 
 -   Programming Language: R
 
--   Dependencies: `CellChat`, `ggplot2`, `patchwork`, `Seurat` (optional, for loading scRNA-seq data)
+-   Dependencies: `CellChat`, `ggplot2`, `circlize`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
-# Install Bioconductor dependencies first
+# Install Bioconductor manager if needed
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
   install.packages("BiocManager")
 }
 
-# Install NMF and other CRAN dependencies
-if (!requireNamespace("NMF", quietly = TRUE)) {
-  install.packages("NMF")
-}
-if (!requireNamespace("ggplot2", quietly = TRUE)) {
-  install.packages("ggplot2")
-}
-if (!requireNamespace("patchwork", quietly = TRUE)) {
-  install.packages("patchwork")
-}
-if (!requireNamespace("igraph", quietly = TRUE)) {
-  install.packages("igraph")
+# Install CRAN dependencies
+for (pkg in c("ggplot2", "circlize", "igraph")) {
+  if (!requireNamespace(pkg, quietly = TRUE)) install.packages(pkg)
 }
 
-# Install CellChat from GitHub
+# Install CellChat from GitHub (jinworks/CellChat is the current maintained fork)
 if (!requireNamespace("CellChat", quietly = TRUE)) {
-  if (!requireNamespace("devtools", quietly = TRUE)) {
-    install.packages("devtools")
-  }
+  if (!requireNamespace("devtools", quietly = TRUE)) install.packages("devtools")
   devtools::install_github("jinworks/CellChat")
 }
 
 # Load packages
 library(CellChat)
 library(ggplot2)
-library(patchwork)
+library(circlize)
 ```
 
 ```{r session info}
@@ -61,318 +50,195 @@ sessioninfo::session_info("attached")
 
 ## Data Preparation
 
-We use the built-in example dataset from the CellChat package, which contains a processed single-cell RNA-seq dataset of human skin cells at wound healing stages. This dataset has pre-computed cell-cell communication results ready for visualization.
+For this tutorial, we build a simulated CellChat-compatible communication matrix so the
+example is fully self-contained and runs without requiring an external dataset or model
+inference. The same visualizations work identically with a real `CellChat` object produced
+from your own scRNA-seq data.
 
-```{r load data, message=FALSE, warning=FALSE}
-# For demonstration, we load CellChat's built-in example object
-# In practice, you would have built a CellChat object from your own scRNA-seq data
-cellchat <- createCellChat(
-  object = CellChat::normalHuman,   # built-in scRNA-seq count matrix (subset)
-  meta = CellChat::normalHumanMeta, # cell-type metadata
-  group.by = "labels"               # column specifying cell type labels
-)
+```{r simulate data, message=FALSE, warning=FALSE}
+# Simulate a communication count/weight matrix
+# In real use, these come from cellchat@net$count and cellchat@net$weight
+
+set.seed(42)
+cell_types <- c("CD4 T", "CD8 T", "NK", "B cell", "Monocyte",
+                "DC", "Fibroblast", "Epithelial", "Endothelial")
+n <- length(cell_types)
+
+net_count  <- matrix(sample(0:50, n * n, replace = TRUE), n, n,
+                     dimnames = list(cell_types, cell_types))
+net_weight <- matrix(runif(n * n, 0, 1), n, n,
+                     dimnames = list(cell_types, cell_types))
+diag(net_count)  <- 0  # remove self-communication
+diag(net_weight) <- 0
+
+# Group size (proportional to number of cells per type, simulated)
+group_size <- sample(50:500, n, replace = TRUE)
+names(group_size) <- cell_types
+
+cat("Simulated", n, "cell types with", sum(net_count), "total interactions\n")
+print(net_count)
 ```
 
-::: callout-note
-If `CellChat::normalHuman` is not available in your CellChat version, replace the above with loading a pre-built CellChat RDS object or build one from your own Seurat object as shown in the "Upstream Workflow" section below.
-:::
+### Build a CellChat Object from Your Own Data (Reference)
 
-### Alternative: Build CellChat Object from Scratch (Reference)
+The following code is for reference only (`eval: false`). It shows how to build a CellChat
+object from a Seurat scRNA-seq object before running the visualizations below.
 
-The following code is for reference only and will not be executed. It demonstrates how to build a CellChat object from a Seurat single-cell dataset before making communication plots.
-
-```{r upstream workflow}
-#| eval: false
-#| echo: true
-
+```{r upstream workflow, eval=FALSE, echo=TRUE}
 library(Seurat)
 library(CellChat)
 
-# Step 1: Prepare the count matrix and metadata from a Seurat object
-seurat_obj <- readRDS("your_seurat_object.rds")
-data_input <- GetAssayData(seurat_obj, assay = "RNA", slot = "data") # normalized counts
-meta       <- seurat_obj@meta.data
+# 1. Extract normalised count matrix and metadata from a Seurat object
+seurat_obj  <- readRDS("your_seurat_object.rds")
+data_input  <- GetAssayData(seurat_obj, assay = "RNA", slot = "data")
+meta        <- seurat_obj@meta.data
 
-# Step 2: Create a CellChat object
+# 2. Create CellChat object
 cellchat <- createCellChat(object = data_input, meta = meta, group.by = "cell_type")
 
-# Step 3: Set the ligand-receptor interaction database
-CellChatDB <- CellChatDB.human  # use CellChatDB.mouse for mouse data
-cellchat@DB <- CellChatDB
+# 3. Set ligand-receptor database
+cellchat@DB <- CellChatDB.human  # or CellChatDB.mouse
 
-# Step 4: Pre-process the expression data
-cellchat <- subsetData(cellchat)         # subset to expressed signaling genes
+# 4. Pre-process & infer communication
+cellchat <- subsetData(cellchat)
 cellchat <- identifyOverExpressedGenes(cellchat)
 cellchat <- identifyOverExpressedInteractions(cellchat)
-
-# Step 5: Infer communication probabilities
 cellchat <- computeCommunProb(cellchat, type = "triMean")
 cellchat <- filterCommunication(cellchat, min.cells = 10)
-
-# Step 6: Infer signaling pathways
 cellchat <- computeCommunProbPathway(cellchat)
 cellchat <- aggregateNet(cellchat)
-```
-
-### Load Pre-built CellChat Example Object
-
-For this tutorial, we download a pre-built CellChat object from the Bizard data repository so the tutorial remains self-contained and reproducible.
-
-```{r load example cellchat, message=FALSE, warning=FALSE}
-# Download pre-built CellChat example object
-cellchat_rds_url <- "https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/CellChat_example.rds"
-local_rds <- tempfile(fileext = ".rds")
-
-if (!file.exists(local_rds)) {
-  tryCatch(
-    download.file(cellchat_rds_url, local_rds, quiet = TRUE),
-    error = function(e) message("Download failed, using simulation data")
-  )
-}
-
-# If download succeeded, load the object; otherwise build a minimal simulation
-if (file.exists(local_rds) && file.size(local_rds) > 1000) {
-  cellchat <- readRDS(local_rds)
-} else {
-  # Fallback: build a minimal CellChat-like net matrix for demonstration
-  message("Using simulated communication matrix for demonstration")
-  
-  # Simulate a communication count matrix (cell types x cell types)
-  cell_types <- c("CD4 T", "CD8 T", "NK", "B cell", "Monocyte",
-                  "DC", "Fibroblast", "Epithelial", "Endothelial")
-  n <- length(cell_types)
-  set.seed(42)
-  
-  # Create a fake aggregated net list that CellChat's netVisual_circle expects
-  net_count  <- matrix(sample(0:50,  n * n, replace = TRUE), n, n,
-                       dimnames = list(cell_types, cell_types))
-  net_weight <- matrix(runif(n * n, 0, 1), n, n,
-                       dimnames = list(cell_types, cell_types))
-  diag(net_count)  <- 0
-  diag(net_weight) <- 0
-  
-  # Store in a minimal list (mimics cellchat@net)
-  cellchat_net <- list(count = net_count, weight = net_weight)
-}
+# Now cellchat@net$count and cellchat@net$weight are available for plotting
 ```
 
 ## Visualization
 
 ### 1. Circle Plot of Overall Cell-Cell Communication Network
 
-The overall circle plot summarizes all inferred communication interactions. Each node represents a cell type; the size of the node is proportional to the total number of interactions that cell type participates in. The arc width encodes communication strength (interaction weight).
+The overall circle plot summarizes all inferred communication interactions. Each node
+represents a cell type; node size is proportional to the number of interactions it
+participates in. Arc width encodes communication strength.
 
-```{r fig1-overall-circle, fig.width=8, fig.height=8, warning=FALSE}
-#| label: fig1-overall-circle
+```{r fig1-overall-circle, fig.width=9, fig.height=5, warning=FALSE}
 #| fig-cap: "Overall Cell-Cell Communication Circle Plot"
-#| out.width: "80%"
+#| out.width: "95%"
 
-if (inherits(cellchat, "CellChat")) {
-  # For a real CellChat object
-  groupSize <- as.numeric(table(cellchat@idents))
-  
-  par(mfrow = c(1, 2), xpd = TRUE)
-  
-  # Panel A: Number of interactions
-  netVisual_circle(
-    cellchat@net$count,
-    vertex.weight    = groupSize,
-    weight.scale     = TRUE,
-    label.edge       = FALSE,
-    title.name       = "Number of interactions"
-  )
-  
-  # Panel B: Interaction strength (weights)
-  netVisual_circle(
-    cellchat@net$weight,
-    vertex.weight    = groupSize,
-    weight.scale     = TRUE,
-    label.edge       = FALSE,
-    title.name       = "Interaction weights/strength"
-  )
-  
-  par(mfrow = c(1, 1))
-} else {
-  # Fallback: use the simulated matrix
-  groupSize <- rowSums(cellchat_net$count)
-  
-  par(mfrow = c(1, 2), xpd = TRUE)
-  
-  netVisual_circle(
-    cellchat_net$count,
-    vertex.weight    = groupSize,
-    weight.scale     = TRUE,
-    label.edge       = FALSE,
-    title.name       = "Number of interactions"
-  )
-  
-  netVisual_circle(
-    cellchat_net$weight,
-    vertex.weight    = groupSize,
-    weight.scale     = TRUE,
-    label.edge       = FALSE,
-    title.name       = "Interaction weights/strength"
-  )
-  
-  par(mfrow = c(1, 1))
-}
+par(mfrow = c(1, 2), xpd = TRUE)
+
+# Panel A: Number of interactions
+netVisual_circle(
+  net_count,
+  vertex.weight = group_size,
+  weight.scale  = TRUE,
+  label.edge    = FALSE,
+  title.name    = "Number of interactions"
+)
+
+# Panel B: Interaction strength (weights)
+netVisual_circle(
+  net_weight,
+  vertex.weight = group_size,
+  weight.scale  = TRUE,
+  label.edge    = FALSE,
+  title.name    = "Interaction weights/strength"
+)
+
+par(mfrow = c(1, 1))
 ```
 
 ### 2. Circle Plot for Individual Cell Groups
 
-To focus on a specific cell type and its outgoing or incoming communications, we can subset the network matrix to highlight that cell type.
+To highlight the outgoing signals from each cell type separately, we subset the weight
+matrix row by row and produce one circle per cell type.
 
 ```{r fig2-individual-circle, fig.width=10, fig.height=10, warning=FALSE}
-#| label: fig2-individual-circle
-#| fig-cap: "Cell-Specific Communication Circle Plot"
-#| out.width: "90%"
+#| fig-cap: "Per-Cell-Type Outgoing Communication Circle Plot"
+#| out.width: "95%"
 
-if (inherits(cellchat, "CellChat")) {
-  mat  <- cellchat@net$weight
-  groupSize <- as.numeric(table(cellchat@idents))
-} else {
-  mat  <- cellchat_net$weight
-  groupSize <- rowSums(cellchat_net$count)
-}
-
-n_types <- nrow(mat)
+n_types <- nrow(net_weight)
 n_cols  <- ceiling(sqrt(n_types))
 n_rows  <- ceiling(n_types / n_cols)
 
 par(mfrow = c(n_rows, n_cols), xpd = TRUE, mar = c(1, 1, 2, 1))
 
 for (i in seq_len(n_types)) {
-  mat_i <- matrix(0, nrow = n_types, ncol = n_types,
-                  dimnames = dimnames(mat))
-  mat_i[i, ] <- mat[i, ]   # outgoing signals from cell type i
-  
+  mat_i          <- matrix(0, nrow = n_types, ncol = n_types,
+                           dimnames = dimnames(net_weight))
+  mat_i[i, ]    <- net_weight[i, ]   # outgoing signals from cell type i
+
   netVisual_circle(
     mat_i,
-    vertex.weight = groupSize,
-    weight.scale  = TRUE,
-    edge.weight.max = max(mat),
-    title.name    = rownames(mat)[i]
+    vertex.weight   = group_size,
+    weight.scale    = TRUE,
+    edge.weight.max = max(net_weight),
+    title.name      = rownames(net_weight)[i]
   )
 }
 
 par(mfrow = c(1, 1))
 ```
 
-### 3. Signaling Pathway-Specific Circle Plot
+### 3. Chord Diagram
 
-When a real CellChat object is available, we can visualize communication for specific signaling pathways (e.g., MHC-II, CXCL, CCL). This reveals which cell types are the dominant senders and receivers for a particular pathway.
+The chord diagram provides an alternative circular view using `circlize`, clearly showing
+bidirectional communication volumes between cell type pairs.
 
-```{r fig3-pathway-circle, fig.width=7, fig.height=7, warning=FALSE}
-#| label: fig3-pathway-circle
-#| fig-cap: "Signaling Pathway Circle Plot (MHC-II pathway)"
-#| out.width: "70%"
-
-if (inherits(cellchat, "CellChat") &&
-    length(cellchat@netP$pathways) > 0) {
-  
-  # Choose the first available pathway for demonstration
-  pathway_show <- cellchat@netP$pathways[1]
-  message("Visualizing pathway: ", pathway_show)
-  
-  netVisual_aggregate(
-    cellchat,
-    signaling    = pathway_show,
-    layout       = "circle",
-    edge.weight.max = NULL
-  )
-} else {
-  message("No signaling pathway data available in the loaded object.")
-  message("With a complete CellChat object, use:")
-  message('  netVisual_aggregate(cellchat, signaling = "MHC-II", layout = "circle")')
-  
-  # Show an annotated placeholder with simulated data
-  if (exists("cellchat_net")) {
-    par(xpd = TRUE)
-    netVisual_circle(
-      cellchat_net$weight,
-      vertex.weight = rowSums(cellchat_net$count),
-      weight.scale  = TRUE,
-      title.name    = "Simulated pathway view"
-    )
-  }
-}
-```
-
-### 4. Chord Diagram Variant
-
-CellChat also supports chord diagram visualization (`layout = "chord"`), which is an alternative representation of the same circle plot data.
-
-```{r fig4-chord, fig.width=7, fig.height=7, warning=FALSE}
-#| label: fig4-chord
+```{r fig3-chord, fig.width=7, fig.height=7, warning=FALSE}
 #| fig-cap: "Cell-Cell Communication Chord Diagram"
-#| out.width: "70%"
+#| out.width: "80%"
 
-if (inherits(cellchat, "CellChat") && length(cellchat@netP$pathways) > 0) {
-  netVisual_aggregate(
-    cellchat,
-    signaling = cellchat@netP$pathways[1],
-    layout    = "chord"
-  )
-} else if (exists("cellchat_net")) {
-  # Fallback: draw a basic chord using the circlize library
-  if (!requireNamespace("circlize", quietly = TRUE)) install.packages("circlize")
-  library(circlize)
-  
-  chordDiagram(
-    cellchat_net$weight,
-    transparency = 0.5,
-    annotationTrack = "grid",
-    preAllocateTracks = 1
-  )
-  circos.trackPlotRegion(
-    track.index = 1,
-    panel.fun  = function(x, y) {
-      circos.text(
-        CELL_META$xcenter,
-        ylim()[1] + .1,
-        CELL_META$sector.index,
-        facing    = "clockwise",
-        niceFacing = TRUE,
-        adj       = c(0, 0.5),
-        cex       = 0.7
-      )
-    },
-    bg.border = NA
-  )
-  title("Cell-Cell Communication (Chord Diagram)")
-  circos.clear()
-}
+# Use circlize for a chord diagram of communication weights
+chordDiagram(
+  net_weight,
+  transparency      = 0.4,
+  annotationTrack   = "grid",
+  preAllocateTracks = 1
+)
+
+circos.trackPlotRegion(
+  track.index = 1,
+  panel.fun   = function(x, y) {
+    circos.text(
+      CELL_META$xcenter,
+      ylim()[1] + 0.1,
+      CELL_META$sector.index,
+      facing     = "clockwise",
+      niceFacing = TRUE,
+      adj        = c(0, 0.5),
+      cex        = 0.7
+    )
+  },
+  bg.border = NA
+)
+
+title("Cell-Cell Communication (Chord Diagram)")
+circos.clear()
 ```
 
-## Advanced: Heatmap and Bubble Plot Views
+### 4. Communication Heatmap
 
-Beyond circle plots, CellChat provides complementary heatmap and bubble plot views of the same communication data.
+A heatmap view allows rapid identification of dominant sender-receiver pairs and
+asymmetric communication patterns.
 
-```{r fig5-heatmap, fig.width=8, fig.height=6, warning=FALSE}
-#| label: fig5-heatmap
+```{r fig4-heatmap, fig.width=7, fig.height=6, warning=FALSE}
 #| fig-cap: "Cell-Cell Communication Heatmap"
 #| out.width: "80%"
 
-if (inherits(cellchat, "CellChat")) {
-  netVisual_heatmap(cellchat, measure = "weight", color.heatmap = "Reds")
-} else if (exists("cellchat_net")) {
-  library(ggplot2)
-  df_heat <- as.data.frame(as.table(cellchat_net$weight))
-  colnames(df_heat) <- c("Sender", "Receiver", "Weight")
-  
-  ggplot(df_heat, aes(x = Receiver, y = Sender, fill = Weight)) +
-    geom_tile(color = "white") +
-    scale_fill_gradient(low = "white", high = "#b74147", name = "Weight") +
-    theme_minimal(base_size = 11) +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      panel.grid  = element_blank()
-    ) +
-    labs(
-      title = "Cell-Cell Communication Heatmap",
-      x = "Receiver", y = "Sender"
-    )
-}
+df_heat <- as.data.frame(as.table(net_weight))
+colnames(df_heat) <- c("Sender", "Receiver", "Weight")
+
+ggplot(df_heat, aes(x = Receiver, y = Sender, fill = Weight)) +
+  geom_tile(color = "white", linewidth = 0.4) +
+  scale_fill_gradient(low = "white", high = "#b74147", name = "Weight") +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid  = element_blank(),
+    plot.title  = element_text(size = 13, face = "bold", hjust = 0.5)
+  ) +
+  labs(
+    title = "Cell-Cell Communication Heatmap",
+    x = "Receiver", y = "Sender"
+  )
 ```
 
 ## References

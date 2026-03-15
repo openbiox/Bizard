@@ -1,50 +1,50 @@
 ---
-title: "MEBOCOST Metabolic Flow Plot"
+title: "MEBOCOST 代谢流图"
 author:
-  - "**[Editor]** [Bizard Team](https://github.com/openbiox/Bizard);"
-  - "**[Contributors]** [ShiXiang Wang](https://github.com/ShixiangWang)."
+  - "**[编辑]** [Bizard 团队](https://github.com/openbiox/Bizard);"
+  - "**[贡献]** [王诗翔](https://github.com/ShixiangWang)."
 ---
 
-The MEBOCOST Metabolic Flow Plot (流图) is an innovative visualization developed within the **MEBOCOST** (Metabolite-mediated Cell Communication Prediction) framework. It depicts metabolite-mediated intercellular communication by rendering directed flow arrows between cell types, where the thickness and color of each flow encode the magnitude and direction of predicted metabolic signaling.
+MEBOCOST 代谢流图（流图）是在 **MEBOCOST**（代谢物介导的细胞通讯预测）框架内开发的创新可视化方法。它通过在细胞类型之间绘制有向流箭头来描绘代谢物介导的细胞间通讯，其中每条流的粗细和颜色编码预测代谢信号的大小和方向。
 
-Unlike conventional cell-cell communication tools that focus solely on protein ligand-receptor pairs, MEBOCOST explicitly models small metabolites (e.g., lipids, amino acids, sugars) as signaling molecules. The flow plot integrates:
+与仅关注蛋白质配体-受体对的传统细胞-细胞通讯工具不同，MEBOCOST 明确地将小分子代谢物（如脂质、氨基酸、糖类）建模为信号分子。流图整合了：
 
--   **Sender cells** (metabolite producers) and **receiver cells** (metabolite sensor-expressing cells)
--   **Communication score** mapped to arrow width and opacity
--   **Metabolite identity** optionally color-coded on edges
+-   **发送细胞**（代谢物生产者）和**接收细胞**（表达代谢物感应器的细胞）
+-   映射到箭头宽度和不透明度的**通讯评分**
+-   边上可选的代谢物身份**颜色编码**
 
-This chart is particularly suited for studying metabolic crosstalk in tumor microenvironments, tissue development, and metabolic disease contexts where small-molecule signaling complements protein-based communication.
+该图表特别适用于研究肿瘤微环境、组织发育和代谢疾病背景下的代谢串扰，在这些场景中小分子信号传导对蛋白质通讯起到补充作用。
 
-## Example
+## 示例
 
 ![](../images/Omics/MebocostFlowPlot_demo.png){fig-alt="MEBOCOST Flow Plot DEMO" fig-align="center" width="60%"}
 
-## Setup
+## 环境配置
 
--   System Requirements: Cross-platform (Linux/MacOS/Windows)
+-   系统要求：跨平台（Linux/MacOS/Windows）
 
--   Programming Language: R (primary) / Python (MEBOCOST backend)
+-   编程语言：R（主要）/ Python（MEBOCOST 后端）
 
--   Dependencies: `MEBOCOST`, `ggplot2`, `dplyr`, `ggraph`, `igraph`, `tidygraph`
+-   依赖包：`ggplot2`、`dplyr`、`ggraph`、`igraph`、`tidygraph`
 
 ::: callout-note
-MEBOCOST has both Python and R interfaces. The R wrapper (`MEBOCOST`) calls the Python back-end internally. If you prefer the pure Python workflow, see the [MEBOCOST Python documentation](https://wwylab.github.io/mebocost/).
+MEBOCOST 同时提供 Python 和 R 接口。R 封装包（`MEBOCOST`）在内部调用 Python 后端。如果您希望使用纯 Python 工作流，请参阅 [MEBOCOST Python 文档](https://wwylab.github.io/mebocost/)。
 :::
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
-# Install CRAN dependencies
+# 安装 CRAN 依赖
 for (pkg in c("ggplot2", "dplyr", "ggraph", "igraph", "tidygraph",
               "patchwork", "scales", "RColorBrewer")) {
   if (!requireNamespace(pkg, quietly = TRUE)) install.packages(pkg)
 }
 
-# Install MEBOCOST R package from GitHub
+# 从 GitHub 安装 MEBOCOST R 包
 if (!requireNamespace("MEBOCOST", quietly = TRUE)) {
   if (!requireNamespace("devtools", quietly = TRUE)) install.packages("devtools")
   devtools::install_github("kaifuchenlab/MEBOCOST", subdir = "R")
 }
 
-# Load packages
+# 加载包
 library(ggplot2)
 library(dplyr)
 library(ggraph)
@@ -58,42 +58,39 @@ library(scales)
 sessioninfo::session_info("attached")
 ```
 
-## Data Preparation
+## 数据准备
 
-### 1. Overview of the MEBOCOST Workflow (Reference)
+### 1. MEBOCOST 工作流概述（参考代码）
 
-A typical MEBOCOST analysis proceeds as follows:
+典型的 MEBOCOST 分析流程如下：
 
-```{r upstream workflow}
-#| eval: false
-#| echo: true
-
+```{r upstream workflow, eval=FALSE, echo=TRUE}
 library(MEBOCOST)
 
-# Step 1: Load scRNA-seq expression data and metadata
-data_input <- readRDS("your_scRNA_normalized.rds")   # genes × cells matrix
-cell_meta  <- read.csv("your_cell_metadata.csv")     # cell type annotation
+# 第 1 步：加载 scRNA-seq 表达数据和元数据
+data_input <- readRDS("your_scRNA_normalized.rds")   # 基因 × 细胞矩阵
+cell_meta  <- read.csv("your_cell_metadata.csv")     # 细胞类型注释
 
-# Step 2: Run MEBOCOST inference
-# MEBOCOST predicts metabolite production (enzymes) and sensing (transporters/GPCRs)
+# 第 2 步：运行 MEBOCOST 推断
+# MEBOCOST 预测代谢物产生（酶）和感应（转运蛋白/GPCR）
 mebo_result <- mebocost_flow(
   data     = data_input,
   meta     = cell_meta,
   group.by = "cell_type",
-  species  = "human"     # or "mouse"
+  species  = "human"     # 小鼠数据使用 "mouse"
 )
 
-# Step 3: The result contains a communication table:
+# 第 3 步：结果包含一个通讯表格：
 # sender | receiver | metabolite | score | p.value
 head(mebo_result@communication)
 ```
 
-### 2. Load Example Data
+### 2. 加载示例数据
 
-For this tutorial we prepare a synthetic communication table that mirrors the MEBOCOST output format, keeping the example fully self-contained.
+本教程使用与 MEBOCOST 输出格式相同的合成通讯表格，使示例完全自包含。
 
 ```{r load data, message=FALSE, warning=FALSE}
-# Attempt to download a pre-built MEBOCOST result from Bizard data repository
+# 尝试从 Bizard 数据仓库下载预构建的 MEBOCOST 结果
 mebo_url   <- "https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/MEBOCOST_example.rds"
 local_rds  <- tempfile(fileext = ".rds")
 
@@ -104,10 +101,10 @@ download_ok <- tryCatch({
 
 if (download_ok) {
   mebo_comm <- readRDS(local_rds)
-  message("Loaded pre-built MEBOCOST example.")
+  message("已加载预构建的 MEBOCOST 示例。")
 } else {
-  # Fallback: simulate a realistic communication table
-  message("Using simulated MEBOCOST communication data for demonstration.")
+  # 回退：模拟真实的通讯表格
+  message("使用模拟的 MEBOCOST 通讯数据进行演示。")
   
   set.seed(2024)
   cell_types  <- c("Cancer", "T cell", "NK", "Macrophage",
@@ -124,22 +121,22 @@ if (download_ok) {
     score      = runif(n_pairs, 0.1, 1.0),
     p_value    = runif(n_pairs, 0.001, 0.05)
   ) %>%
-    filter(sender != receiver) %>%          # remove self-loops
+    filter(sender != receiver) %>%
     group_by(sender, receiver, metabolite) %>%
     summarise(score = mean(score),
               p_value = min(p_value),
               .groups = "drop")
   
-  message(sprintf("Simulated %d sender-receiver-metabolite triplets.", nrow(mebo_comm)))
+  message(sprintf("模拟了 %d 个发送者-接收者-代谢物三元组。", nrow(mebo_comm)))
 }
 
 head(mebo_comm)
 ```
 
-### 3. Aggregate Communication Scores
+### 3. 聚合通讯评分
 
 ```{r aggregate scores, message=FALSE}
-# Aggregate across metabolites: total communication score between each cell pair
+# 跨代谢物聚合：计算每对细胞之间的总通讯评分
 agg_comm <- mebo_comm %>%
   group_by(sender, receiver) %>%
   summarise(
@@ -152,17 +149,17 @@ agg_comm <- mebo_comm %>%
 head(agg_comm)
 ```
 
-## Visualization
+## 可视化
 
-### 1. Basic Flow Plot (Arrow Network)
+### 1. 基础流图（箭头网络）
 
-The basic flow plot uses `ggraph` to draw directed arrows between sender and receiver cell types. Arrow width encodes total communication score.
+基础流图使用 `ggraph` 在发送者和接收者细胞类型之间绘制有向箭头。箭头宽度编码总通讯评分。
 
 ```{r fig1-flow-basic, fig.width=8, fig.height=7, warning=FALSE}
-#| fig-cap: "Basic MEBOCOST Metabolic Flow Plot"
+#| fig-cap: "MEBOCOST 代谢流图（基础版）"
 #| out.width: "85%"
 
-# Build graph object
+# 构建图对象
 g_basic <- graph_from_data_frame(
   d        = agg_comm %>% rename(weight = total_score),
   directed = TRUE,
@@ -184,11 +181,11 @@ p1 <- ggraph(g_basic, layout = "circle") +
   geom_node_label(aes(label = name), repel = FALSE, size = 3.2,
                   fontface = "bold", color = "white",
                   fill = NA, label.size = 0) +
-  scale_edge_width_continuous(range = c(0.5, 4), name = "Total Score") +
+  scale_edge_width_continuous(range = c(0.5, 4), name = "总评分") +
   scale_edge_alpha_continuous(range = c(0.3, 1), guide = "none") +
   labs(
-    title    = "Metabolic Cell-Cell Communication Flow",
-    subtitle = "Arrow width = aggregated communication score"
+    title    = "代谢细胞-细胞通讯流图",
+    subtitle = "箭头宽度 = 聚合通讯评分"
   ) +
   theme_graph(base_family = "sans") +
   theme(
@@ -200,22 +197,22 @@ p1 <- ggraph(g_basic, layout = "circle") +
 p1
 ```
 
-### 2. Flow Plot Colored by Top Metabolite
+### 2. 按主要代谢物着色的流图
 
-Color each arrow by the identity of the metabolite with the highest communication score for that cell pair.
+对每对细胞的箭头按通讯评分最高的代谢物身份着色。
 
 ```{r fig2-flow-colored, fig.width=9, fig.height=8, warning=FALSE}
-#| fig-cap: "Flow Plot Colored by Dominant Metabolite"
+#| fig-cap: "按主要代谢物着色的流图"
 #| out.width: "85%"
 
-# Find dominant metabolite for each sender-receiver pair
+# 为每对发送者-接收者找到主要代谢物
 dominant_meta <- mebo_comm %>%
   group_by(sender, receiver) %>%
   slice_max(score, n = 1, with_ties = FALSE) %>%
   ungroup() %>%
   select(sender, receiver, metabolite, score)
 
-# Select top metabolites for legible legend
+# 选择出现频率最高的代谢物以保持图例清晰
 top_metabolites <- dominant_meta %>%
   count(metabolite, sort = TRUE) %>%
   slice_head(n = 8) %>%
@@ -227,17 +224,15 @@ dominant_meta <- dominant_meta %>%
                          metabolite, "Other")
   )
 
-# Build graph
+# 构建图
 g_meta <- graph_from_data_frame(
   d        = dominant_meta %>% rename(weight = score),
   directed = TRUE,
   vertices = data.frame(name = unique(c(dominant_meta$sender, dominant_meta$receiver)))
 )
 
-# Add metabolite edge attribute
 E(g_meta)$meta_label <- dominant_meta$meta_label
 
-# Color palette
 n_meta   <- length(unique(dominant_meta$meta_label))
 pal_meta <- c(RColorBrewer::brewer.pal(min(n_meta, 9), "Set1"),
               "grey70")[seq_len(n_meta)]
@@ -256,12 +251,12 @@ p2 <- ggraph(g_meta, layout = "circle") +
   geom_node_label(aes(label = name), size = 3,
                   fontface = "bold", color = "white",
                   fill = NA, label.size = 0) +
-  scale_edge_width_continuous(range = c(0.5, 4), name = "Score") +
+  scale_edge_width_continuous(range = c(0.5, 4), name = "评分") +
   scale_edge_alpha_continuous(range = c(0.4, 1), guide = "none") +
-  scale_edge_color_manual(values = pal_meta, name = "Metabolite") +
+  scale_edge_color_manual(values = pal_meta, name = "代谢物") +
   labs(
-    title    = "Metabolic Flow Colored by Dominant Metabolite",
-    subtitle = "Arrow color = metabolite with highest communication score"
+    title    = "按主要代谢物着色的代谢流图",
+    subtitle = "箭头颜色 = 通讯评分最高的代谢物"
   ) +
   theme_graph(base_family = "sans") +
   theme(
@@ -273,21 +268,21 @@ p2 <- ggraph(g_meta, layout = "circle") +
 p2
 ```
 
-### 3. Flow Bubble Summary Plot
+### 3. 流气泡汇总图
 
-An alternative representation uses a bubble matrix where rows are senders, columns are receivers, and bubble size encodes communication strength.
+另一种表示方式使用气泡矩阵，行为发送者，列为接收者，气泡大小编码通讯强度。
 
 ```{r fig3-bubble-summary, fig.width=8, fig.height=6, warning=FALSE}
-#| fig-cap: "Communication Bubble Summary Matrix"
+#| fig-cap: "通讯气泡汇总矩阵"
 #| out.width: "80%"
 
 p3 <- ggplot(agg_comm,
        aes(x = receiver, y = sender,
            size = total_score, color = n_metabolites)) +
   geom_point(alpha = 0.8) +
-  scale_size_continuous(name = "Total Score", range = c(2, 14)) +
+  scale_size_continuous(name = "总评分", range = c(2, 14)) +
   scale_color_gradient(
-    name  = "# Metabolites",
+    name  = "代谢物数量",
     low   = "#90e0ef",
     high  = "#03045e"
   ) +
@@ -298,23 +293,23 @@ p3 <- ggplot(agg_comm,
     plot.title     = element_text(size = 13, face = "bold", hjust = 0.5)
   ) +
   labs(
-    title = "Metabolic Communication Bubble Matrix",
-    x     = "Receiver Cell Type",
-    y     = "Sender Cell Type"
+    title = "代谢通讯气泡矩阵",
+    x     = "接收细胞类型",
+    y     = "发送细胞类型"
   )
 
 p3
 ```
 
-### 4. Top Sender/Receiver Bar Charts
+### 4. 主要发送者/接收者柱状图
 
-Identify which cell types are the most active senders and receivers.
+识别通讯活动最活跃的发送者和接收者细胞类型。
 
 ```{r fig4-bar-charts, fig.width=10, fig.height=5, warning=FALSE}
-#| fig-cap: "Top Senders and Receivers by Metabolic Communication"
+#| fig-cap: "代谢通讯中的主要发送者和接收者"
 #| out.width: "95%"
 
-# Top senders
+# 主要发送者
 p_sender <- agg_comm %>%
   group_by(sender) %>%
   summarise(outgoing = sum(total_score), .groups = "drop") %>%
@@ -324,9 +319,9 @@ p_sender <- agg_comm %>%
   scale_fill_gradient(low = "#caf0f8", high = "#0077b6", guide = "none") +
   coord_flip() +
   theme_classic(base_size = 11) +
-  labs(title = "Top Senders", x = NULL, y = "Total Outgoing Score")
+  labs(title = "主要发送者", x = NULL, y = "总输出评分")
 
-# Top receivers
+# 主要接收者
 p_receiver <- agg_comm %>%
   group_by(receiver) %>%
   summarise(incoming = sum(total_score), .groups = "drop") %>%
@@ -336,26 +331,24 @@ p_receiver <- agg_comm %>%
   scale_fill_gradient(low = "#ffd6a5", high = "#f77f00", guide = "none") +
   coord_flip() +
   theme_classic(base_size = 11) +
-  labs(title = "Top Receivers", x = NULL, y = "Total Incoming Score")
+  labs(title = "主要接收者", x = NULL, y = "总输入评分")
 
 p_sender + p_receiver
 ```
 
-### 5. Heatmap of Metabolite-Level Communication
+### 5. 代谢物水平通讯热图
 
-Visualize communication at metabolite resolution to identify the most prominent metabolic signals.
+在代谢物分辨率下可视化通讯，识别最突出的代谢信号。
 
 ```{r fig5-metabolite-heatmap, fig.width=10, fig.height=7, warning=FALSE}
-#| fig-cap: "Metabolite-Level Communication Heatmap"
+#| fig-cap: "代谢物水平通讯热图"
 #| out.width: "90%"
 
-# Create a pair label for each sender-receiver combination
 heat_data <- mebo_comm %>%
   mutate(pair = paste(sender, "→", receiver)) %>%
   group_by(pair, metabolite) %>%
   summarise(score = sum(score), .groups = "drop")
 
-# Keep top pairs and metabolites for readability
 top_pairs <- heat_data %>%
   group_by(pair) %>%
   summarise(total = sum(score), .groups = "drop") %>%
@@ -375,10 +368,10 @@ ggplot(heat_sub,
        aes(x = metabolite, y = pair, fill = score)) +
   geom_tile(color = "white", linewidth = 0.4) +
   scale_fill_gradient2(
-    name   = "Score",
-    low    = "white",
-    mid    = "#ffb3c6",
-    high   = "#d00000",
+    name     = "评分",
+    low      = "white",
+    mid      = "#ffb3c6",
+    high     = "#d00000",
     midpoint = median(heat_sub$score)
   ) +
   theme_minimal(base_size = 11) +
@@ -388,18 +381,16 @@ ggplot(heat_sub,
     plot.title    = element_text(size = 13, face = "bold", hjust = 0.5)
   ) +
   labs(
-    title = "Metabolite-Level Communication Heatmap",
-    x     = "Metabolite",
-    y     = "Sender → Receiver"
+    title = "代谢物水平通讯热图",
+    x     = "代谢物",
+    y     = "发送者 → 接收者"
   )
 ```
 
-## References
+## 参考文献
 
-\[1\] Chen K, et al. MEBOCOST: metabolite-mediated cell communication modeling by single cell transcriptome. *bioRxiv*. 2022. <https://doi.org/10.1101/2022.05.30.494067>
+\[1\] Chen K 等. MEBOCOST：基于单细胞转录组的代谢物介导细胞通讯建模. *bioRxiv*. 2022. <https://doi.org/10.1101/2022.05.30.494067>
 
 \[2\] MEBOCOST GitHub: <https://github.com/kaifuchenlab/MEBOCOST>
 
-\[3\] MEBOCOST Documentation: <https://wwylab.github.io/mebocost/>
-
-\[4\] Demo Notebook: <https://github.com/kaifuchenlab/MEBOCOST/blob/main/Demo_Communication_Prediction.ipynb>
+\[3\] MEBOCOST 文档: <https://wwylab.github.io/mebocost/>
