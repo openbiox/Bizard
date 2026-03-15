@@ -1,8 +1,13 @@
 name: Auto-Translate QMD Files
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Trigger: run on PR (new/updated .qmd files), direct push to main, manual
-# dispatch, or a /translate comment on a PR.
+# Triggers:
+#   - pull_request: auto-translate new .qmd files added in a PR
+#   - push:         translate on direct push to main/master (creates a new PR)
+#   - workflow_dispatch: manual trigger (optionally targeting a specific PR)
+#
+# Note: The issue_comment (/translate command) trigger has been removed for
+# security reasons. Use workflow_dispatch to manually trigger translations.
 # ──────────────────────────────────────────────────────────────────────────────
 on:
   pull_request:
@@ -17,8 +22,6 @@ on:
         description: 'PR number to translate (leave empty for current branch)'
         required: false
         type: number
-  issue_comment:
-    types: [created]
 
 permissions:
   contents: write
@@ -27,11 +30,6 @@ permissions:
 jobs:
   auto-translate:
     runs-on: ubuntu-latest
-    # Skip issue_comment events that are not /translate commands on a PR
-    if: |
-      github.event_name != 'issue_comment' ||
-      (startsWith(github.event.comment.body, '/translate') &&
-       github.event.issue.pull_request != null)
 
     steps:
       # ── 1. Resolve branch / PR context ─────────────────────────────────────
@@ -47,15 +45,6 @@ jobs:
               prNumber = String(context.payload.pull_request.number);
               prRef    = context.payload.pull_request.head.ref;
               prRepo   = context.payload.pull_request.head.repo.full_name;
-
-            } else if (ev === 'issue_comment') {
-              prNumber = String(context.payload.issue.number);
-              const { data: pr } = await github.rest.pulls.get({
-                owner: context.repo.owner, repo: context.repo.repo,
-                pull_number: context.payload.issue.number
-              });
-              prRef  = pr.head.ref;
-              prRepo = pr.head.repo.full_name;
 
             } else if (ev === 'push') {
               isPush = true;
@@ -87,7 +76,7 @@ jobs:
             core.setOutput('base_branch', context.ref.replace('refs/heads/', ''));
 
       # ── 2. Checkout ─────────────────────────────────────────────────────────
-      - name: Checkout (PR / dispatch / comment)
+      - name: Checkout (PR / dispatch)
         if: steps.ctx.outputs.is_push != 'true'
         uses: actions/checkout@v4
         with:
@@ -222,19 +211,14 @@ jobs:
 
       # ── 7. PR comments ──────────────────────────────────────────────────────
       - name: Post translation summary to PR
-        if: |
-          steps.git-commit.outputs.committed == 'true' &&
-          (github.event_name == 'pull_request' || github.event_name == 'issue_comment')
+        if: steps.git-commit.outputs.committed == 'true' && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
             const { execSync } = require('child_process');
             const fs = require('fs');
 
-            const prNum = context.eventName === 'issue_comment'
-              ? context.payload.issue.number
-              : context.payload.pull_request.number;
-
+            const prNum = context.payload.pull_request.number;
             const files = execSync('git show --name-only --format= HEAD')
               .toString().trim().split('\n')
               .filter(f => f.endsWith('.qmd') || f.endsWith('.zh.qmd'));
@@ -270,14 +254,3 @@ jobs:
               body: `## 🤖 Automatic Translation\n\nThis PR was created automatically after a push to \`${base}\`.\n\n**Changed files:**\n\`\`\`\n${process.env.CHANGED_FILES}\n\`\`\`\n\n> Please review translations for accuracy, especially biomedical terminology.\n\n---\n*Created by [Auto-Translate workflow](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})*`
             });
             console.log(`Created PR #${pr.number}: ${pr.html_url}`);
-
-      - name: React to /translate comment
-        if: github.event_name == 'issue_comment' && steps.git-commit.outputs.committed == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.reactions.createForIssueComment({
-              owner: context.repo.owner, repo: context.repo.repo,
-              comment_id: context.payload.comment.id,
-              content: 'rocket'
-            });

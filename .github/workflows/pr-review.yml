@@ -13,160 +13,153 @@ env:
 
 jobs:
   # ── Job 1: Format check ────────────────────────────────────────────────────
+  # Security note: Uses only the GitHub API to read changed file contents;
+  # NO checkout of untrusted PR code occurs in this job.
   format-check:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Detect changed QMD files
-        id: changed-qmd
-        uses: tj-actions/changed-files@v46.0.5
-        with:
-          files: |
-            **.qmd
-            **.Qmd
-
-      - name: Set up Python
-        if: steps.changed-qmd.outputs.any_changed == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
-
-      - name: Run QMD format checker
-        if: steps.changed-qmd.outputs.any_changed == 'true'
+      - name: Detect changed QMD files and run format check
         id: format-check
-        env:
-          QMD_FILES: ${{ steps.changed-qmd.outputs.all_changed_files }}
-        run: |
-          python - <<'PYEOF'
-          import os, re, sys
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // ── Get list of changed files in the PR ───────────────────────
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner:       context.repo.owner,
+              repo:        context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page:    100,
+            });
 
-          REQUIRED_SECTIONS = ["## Example", "## Setup", "## Data Preparation", "## Visualization"]
-          REQUIRED_YAML_FIELDS = ["title", "author"]
-          YAML_BLOCK_RE = re.compile(r'^---\s*\n(.*?)\n---', re.DOTALL)
-          CODE_BLOCK_RE = re.compile(r'```\{r\s+([^}]+)\}')
+            const qmdFiles = files.filter(f =>
+              (f.filename.endsWith('.qmd') || f.filename.endsWith('.Qmd')) &&
+              !f.filename.endsWith('.zh.qmd') &&
+              f.status !== 'removed'
+            );
 
-          files = os.environ.get("QMD_FILES", "").split()
-          errors = {}
-          warnings = {}
+            if (qmdFiles.length === 0) {
+              core.setOutput('summary', 'No new QMD tutorial files to check.');
+              core.setOutput('has_errors', 'false');
+              return;
+            }
 
-          for filepath in files:
-              if not filepath.endswith((".qmd", ".Qmd")):
-                  continue
-              # Skip Chinese translations – they mirror the English source
-              if filepath.endswith(".zh.qmd"):
-                  continue
+            // ── Validation helpers ────────────────────────────────────────
+            const REQUIRED_YAML_FIELDS = ['title', 'author'];
+            const REQUIRED_SECTIONS    = ['## Example', '## Setup', '## Data Preparation', '## Visualization'];
 
-              try:
-                  content = open(filepath, encoding="utf-8").read()
-              except FileNotFoundError:
-                  continue
+            const errors   = {};
+            const warnings = {};
 
-              file_errors = []
-              file_warnings = []
+            for (const f of qmdFiles) {
+              let content;
+              try {
+                const { data: blob } = await github.rest.repos.getContent({
+                  owner:   context.repo.owner,
+                  repo:    context.repo.repo,
+                  path:    f.filename,
+                  ref:     context.payload.pull_request.head.sha,
+                });
+                content = Buffer.from(blob.content, 'base64').toString('utf8');
+              } catch (e) {
+                console.log(`Could not fetch ${f.filename}: ${e.message}`);
+                continue;
+              }
 
-              # 1. YAML frontmatter
-              m = YAML_BLOCK_RE.match(content)
-              if not m:
-                  file_errors.append("Missing YAML frontmatter (expected `---` block at top)")
-              else:
-                  yaml_text = m.group(1)
-                  for field in REQUIRED_YAML_FIELDS:
-                      if not re.search(rf'^{field}\s*:', yaml_text, re.MULTILINE):
-                          file_errors.append(f"Missing required YAML field: `{field}`")
+              const fp = f.filename;
+              const fileErrors   = [];
+              const fileWarnings = [];
 
-              # 2. Required sections
-              for section in REQUIRED_SECTIONS:
-                  if section not in content:
-                      file_warnings.append(f"Missing recommended section: `{section}`")
+              // 1. YAML frontmatter
+              const yamlMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+              if (!yamlMatch) {
+                fileErrors.push('Missing YAML frontmatter (expected `---` block at top)');
+              } else {
+                const yaml = yamlMatch[1];
+                for (const field of REQUIRED_YAML_FIELDS) {
+                  if (!new RegExp(`^${field}\\s*:`, 'm').test(yaml)) {
+                    fileErrors.push(`Missing required YAML field: \`${field}\``);
+                  }
+                }
+              }
 
-              # 3. Code block labels (should have labels for figures)
-              for match in CODE_BLOCK_RE.finditer(content):
-                  opts       = match.group(1)
-                  block_body = match.group(2)
-                  if "fig-cap" in block_body and "label" not in opts:
-                      line_no = content[:match.start()].count("\n") + 1
-                      file_warnings.append(f"Code block near line {line_no} has `fig-cap` but no `label`")
+              // 2. Required sections
+              for (const section of REQUIRED_SECTIONS) {
+                if (!content.includes(section)) {
+                  fileWarnings.push(`Missing recommended section: \`${section}\``);
+                }
+              }
 
-              # 4. Demo image
-              if "![" not in content:
-                  file_warnings.append("No demo image found (recommended: `![](../images/...)`)")
+              // 3. Figure code blocks should have labels
+              const codeBlockRe = /```\{r([^}]*)\}([\s\S]*?)```/g;
+              let m;
+              while ((m = codeBlockRe.exec(content)) !== null) {
+                const opts = m[1], body = m[2];
+                if (body.includes('fig-cap') && !opts.includes('label')) {
+                  const lineNo = content.slice(0, m.index).split('\n').length;
+                  fileWarnings.push(`Code block near line ${lineNo} has \`fig-cap\` but no \`label\``);
+                }
+              }
 
-              # 5. Line length sanity (warn on very long lines in prose)
-              for i, line in enumerate(content.splitlines(), 1):
-                  if len(line) > 500 and not line.startswith("```"):
-                      file_warnings.append(f"Very long line ({len(line)} chars) at line {i} – consider breaking it up")
-                      break  # one warning per file is enough
+              // 4. Demo image
+              if (!content.includes('![')) {
+                fileWarnings.push('No demo image found (recommended: `![](../images/...)`)');
+              }
 
-              if file_errors:
-                  errors[filepath] = file_errors
-              if file_warnings:
-                  warnings[filepath] = file_warnings
+              if (fileErrors.length)   errors[fp]   = fileErrors;
+              if (fileWarnings.length) warnings[fp] = fileWarnings;
+            }
 
-          # Build output
-          summary_lines = []
-          has_errors = bool(errors)
+            // ── Build summary ──────────────────────────────────────────────
+            const hasErrors = Object.keys(errors).length > 0;
+            const lines = [];
 
-          if errors:
-              summary_lines.append("### ❌ Format Errors (must fix)")
-              for fp, errs in errors.items():
-                  summary_lines.append(f"\n**`{fp}`**")
-                  for e in errs:
-                      summary_lines.append(f"- {e}")
+            if (hasErrors) {
+              lines.push('### ❌ Format Errors (must fix)');
+              for (const [fp, errs] of Object.entries(errors)) {
+                lines.push(`\n**\`${fp}\`**`);
+                errs.forEach(e => lines.push(`- ${e}`));
+              }
+            }
+            if (Object.keys(warnings).length > 0) {
+              lines.push('\n### ⚠️ Format Warnings (recommended)');
+              for (const [fp, warns] of Object.entries(warnings)) {
+                lines.push(`\n**\`${fp}\`**`);
+                warns.forEach(w => lines.push(`- ${w}`));
+              }
+            }
+            if (!hasErrors && Object.keys(warnings).length === 0) {
+              lines.push(`### ✅ All ${qmdFiles.length} checked QMD file(s) pass format validation!`);
+            }
 
-          if warnings:
-              summary_lines.append("\n### ⚠️ Format Warnings (recommended)")
-              for fp, warns in warnings.items():
-                  summary_lines.append(f"\n**`{fp}`**")
-                  for w in warns:
-                      summary_lines.append(f"- {w}")
+            const summary = lines.join('\n');
+            core.setOutput('summary',    summary);
+            core.setOutput('has_errors', String(hasErrors));
 
-          if not errors and not warnings:
-              summary_lines.append("### ✅ All checked QMD files pass format validation!")
+            if (hasErrors) core.setFailed('QMD format errors found');
 
-          summary = "\n".join(summary_lines)
-          print(summary)
-
-          # Write to GITHUB_OUTPUT
-          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
-              # Escape newlines for multi-line output
-              safe = summary.replace("%", "%25").replace("\n", "%0A").replace("\r", "%0D")
-              fh.write(f"summary={safe}\n")
-              fh.write(f"has_errors={'true' if has_errors else 'false'}\n")
-
-          if has_errors:
-              sys.exit(1)
-          PYEOF
-
-      - name: Comment format check results on PR
-        if: steps.changed-qmd.outputs.any_changed == 'true' && always()
+      - name: Post format check comment on PR
+        if: always()
         uses: actions/github-script@v7
         env:
           FORMAT_SUMMARY: ${{ steps.format-check.outputs.summary }}
           HAS_ERRORS: ${{ steps.format-check.outputs.has_errors }}
         with:
           script: |
-            const summary = process.env.FORMAT_SUMMARY || '(no output)';
+            const summary   = process.env.FORMAT_SUMMARY || '(no output)';
             const hasErrors = process.env.HAS_ERRORS === 'true';
-            const icon = hasErrors ? '❌' : '✅';
+            const icon      = hasErrors ? '❌' : '✅';
 
             const body = `## ${icon} QMD Format Check\n\n${summary}\n\n` +
-              `> Automated check by the [PR Review workflow](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).\n` +
+              `> Automated check by the [PR Review workflow]` +
+              `(${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).\n` +
               `> See [contribution guidance](../blob/main/Template/visualization_guidance_EN.qmd) for the expected tutorial format.`;
 
             await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number, body
             });
 
   # ── Job 2: Render preview ──────────────────────────────────────────────────
