@@ -1,0 +1,111 @@
+name: Handle /translate PR Comment Command
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Triggered when someone posts a /translate comment on a PR.
+# This workflow performs NO checkout and NO code execution – it only:
+#   1. Adds a reaction to acknowledge the command
+#   2. Verifies the commenter has write / maintain / admin access
+#   3. Dispatches auto-translate.yml (workflow_dispatch) with the PR context
+#
+# Usage in a PR comment:
+#   /translate                          → translate all changed QMD files
+#   /translate Omics/VolcanoPlot.qmd    → translate one specific file
+#   /translate File1.qmd File2.qmd      → translate multiple specific files
+# ──────────────────────────────────────────────────────────────────────────────
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  dispatch-translate:
+    # Only run on PR comments that start with /translate
+    if: |
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/translate')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Add 👀 reaction to acknowledge command
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner:      context.repo.owner,
+              repo:       context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content:    'eyes',
+            });
+
+      - name: Check commenter permissions and dispatch translation
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commenter = context.payload.comment.user.login;
+
+            // ── Permission check ──────────────────────────────────────────────
+            let hasPermission = false;
+            try {
+              const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner:    context.repo.owner,
+                repo:     context.repo.repo,
+                username: commenter,
+              });
+              hasPermission = ['admin', 'write', 'maintain'].includes(perm.permission);
+            } catch (_) {
+              hasPermission = false;
+            }
+
+            if (!hasPermission) {
+              await github.rest.reactions.createForIssueComment({
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
+                comment_id: context.payload.comment.id,
+                content:    '-1',
+              });
+              await github.rest.issues.createComment({
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
+                issue_number: context.issue.number,
+                body:         `@${commenter} Sorry, only repository collaborators with write access can trigger the auto-translate workflow.`,
+              });
+              core.setFailed('Insufficient permissions');
+              return;
+            }
+
+            // ── Parse optional file arguments ─────────────────────────────────
+            // /translate [file1.qmd] [file2.qmd] …
+            // .zh.qmd files are excluded (they are translation outputs, not sources)
+            const parts = context.payload.comment.body.trim().split(/\s+/).slice(1);
+            const files = parts
+              .filter(p => (p.endsWith('.qmd') || p.endsWith('.Qmd')) && !p.endsWith('.zh.qmd'))
+              .join(' ');
+
+            // ── Dispatch the translation workflow ─────────────────────────────
+            const defaultBranch = context.payload.repository.default_branch;
+            await github.rest.actions.createWorkflowDispatch({
+              owner:       context.repo.owner,
+              repo:        context.repo.repo,
+              workflow_id: 'auto-translate.yml',
+              ref:         defaultBranch,
+              inputs: {
+                pr_number: String(context.issue.number),
+                files:     files || '',
+              },
+            });
+
+            // ── Post acknowledgement comment ──────────────────────────────────
+            // Note: createWorkflowDispatch returns 204 (No Content), so there is
+            // no run ID available.  We link to the workflow's runs page instead.
+            const runsUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/auto-translate.yml`;
+            const filesMsg = files
+              ? `\n\n**Target files:** \`${files.replace(/ /g, '`, `')}\``
+              : '';
+            await github.rest.issues.createComment({
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              issue_number: context.issue.number,
+              body:         `🤖 Translation workflow dispatched by @${commenter}.${filesMsg}\n\n[View recent workflow runs](${runsUrl})`,
+            });

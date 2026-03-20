@@ -2,12 +2,15 @@ name: Auto-Translate QMD Files
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Triggers:
-#   - pull_request: auto-translate new .qmd files added in a PR
-#   - push:         translate on direct push to main/master (creates a new PR)
-#   - workflow_dispatch: manual trigger (optionally targeting a specific PR)
+#   - pull_request:      auto-translate new .qmd files added in a PR
+#   - push:              translate on direct push to main/master (creates a new PR)
+#   - workflow_dispatch: manual trigger (optionally targeting a specific PR and files)
+#                        Also dispatched by translate-command.yml when a /translate
+#                        comment is posted on a PR.
 #
-# Note: The issue_comment (/translate command) trigger has been removed for
-# security reasons. Use workflow_dispatch to manually trigger translations.
+# To trigger translation from a PR comment, post: /translate [file1.qmd] …
+# The translate-command.yml workflow handles comment parsing and permission
+# checking, then dispatches this workflow via workflow_dispatch.
 # ──────────────────────────────────────────────────────────────────────────────
 on:
   pull_request:
@@ -22,6 +25,10 @@ on:
         description: 'PR number to translate (leave empty for current branch)'
         required: false
         type: number
+      files:
+        description: 'Specific files to translate, space-separated (leave empty for all changed files)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -39,7 +46,7 @@ jobs:
         with:
           script: |
             const ev = context.eventName;
-            let prNumber = '', prRef = '', prRepo = '', isPush = false;
+            let prNumber = '', prRef = '', prRepo = '', isPush = false, specificFiles = '';
 
             if (ev === 'pull_request') {
               prNumber = String(context.payload.pull_request.number);
@@ -54,6 +61,7 @@ jobs:
               prRepo = `${context.repo.owner}/${context.repo.repo}`;
 
             } else if (ev === 'workflow_dispatch') {
+              specificFiles = context.payload.inputs?.files || '';
               const inputPr = context.payload.inputs?.pr_number;
               if (inputPr) {
                 prNumber = String(inputPr);
@@ -69,11 +77,12 @@ jobs:
               }
             }
 
-            core.setOutput('pr_number',   prNumber);
-            core.setOutput('pr_ref',      prRef || context.ref.replace('refs/heads/', ''));
-            core.setOutput('pr_repo',     prRepo);
-            core.setOutput('is_push',     isPush ? 'true' : 'false');
-            core.setOutput('base_branch', context.ref.replace('refs/heads/', ''));
+            core.setOutput('pr_number',      prNumber);
+            core.setOutput('pr_ref',         prRef || context.ref.replace('refs/heads/', ''));
+            core.setOutput('pr_repo',        prRepo);
+            core.setOutput('is_push',        isPush ? 'true' : 'false');
+            core.setOutput('base_branch',    context.ref.replace('refs/heads/', ''));
+            core.setOutput('specific_files', specificFiles);
 
       # ── 2. Checkout ─────────────────────────────────────────────────────────
       - name: Checkout (PR / dispatch)
@@ -107,22 +116,40 @@ jobs:
         run: pip install openai
 
       # ── 4. Detect changed QMD files ─────────────────────────────────────────
+      # Skipped when specific_files were passed via workflow_dispatch input.
       - name: Detect changed QMD files
         id: changed-files
+        if: steps.ctx.outputs.specific_files == ''
         uses: tj-actions/changed-files@v46.0.5
         with:
           files: |
             **.qmd
             **.Qmd
 
-      # ── 5. Translate / validate ──────────────────────────────────────────────
+      # ── 5. Resolve the final list of files to process ───────────────────────
+      - name: Resolve files to process
+        id: resolve-files
+        run: |
+          SPECIFIC="${{ steps.ctx.outputs.specific_files }}"
+          if [ -n "$SPECIFIC" ]; then
+            echo "has_files=true"       >> "$GITHUB_OUTPUT"
+            echo "all_files=$SPECIFIC" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.changed-files.outputs.any_changed }}" = "true" ]; then
+            echo "has_files=true"                                                  >> "$GITHUB_OUTPUT"
+            echo "all_files=${{ steps.changed-files.outputs.all_changed_files }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_files=false" >> "$GITHUB_OUTPUT"
+            echo "all_files="      >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── 6. Translate / validate ──────────────────────────────────────────────
       - name: Translate and validate QMD pairs
-        if: steps.changed-files.outputs.any_changed == 'true'
+        if: steps.resolve-files.outputs.has_files == 'true'
         env:
           AI_Model_API_KEY: ${{ secrets.AI_Model_API_KEY || secrets.OPENAI_API_KEY }}
           AI_Model_BASE_URL: ${{ secrets.AI_Model_BASE_URL }}
           AI_Model_Name: ${{ secrets.AI_Model_Name }}
-          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+          CHANGED_FILES: ${{ steps.resolve-files.outputs.all_files }}
           IS_PUSH_EVENT: ${{ steps.ctx.outputs.is_push }}
         run: |
           set -euo pipefail
@@ -185,7 +212,7 @@ jobs:
             done
           fi
 
-      # ── 6. Commit & push ────────────────────────────────────────────────────
+      # ── 7. Commit & push ────────────────────────────────────────────────────
       - name: Commit translations
         id: git-commit
         run: |
@@ -208,16 +235,24 @@ jobs:
           git push origin ${{ steps.ctx.outputs.pr_ref }} || \
             echo "⚠️ Push failed (fork PR without write permission) – translations available as artifacts"
 
-      # ── 7. PR comments ──────────────────────────────────────────────────────
+      # ── 8. PR comments ──────────────────────────────────────────────────────
       - name: Post translation summary to PR
-        if: steps.git-commit.outputs.committed == 'true' && github.event_name == 'pull_request'
+        if: |
+          steps.git-commit.outputs.committed == 'true' &&
+          (github.event_name == 'pull_request' ||
+           (github.event_name == 'workflow_dispatch' && steps.ctx.outputs.pr_number != ''))
         uses: actions/github-script@v7
         with:
           script: |
             const { execSync } = require('child_process');
             const fs = require('fs');
 
-            const prNum = context.payload.pull_request.number;
+            const prNum = '${{ steps.ctx.outputs.pr_number }}';
+            if (!prNum) {
+              console.log('No PR number available (push-triggered or non-PR dispatch) – skipping PR comment.');
+              return;
+            }
+
             const files = execSync('git show --name-only --format= HEAD')
               .toString().trim().split('\n')
               .filter(f => f.endsWith('.qmd') || f.endsWith('.zh.qmd'));
@@ -234,14 +269,14 @@ jobs:
 
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: prNum, body
+              issue_number: Number(prNum), body
             });
 
       - name: Create PR for push-triggered translations
         if: steps.ctx.outputs.is_push == 'true' && steps.git-commit.outputs.committed == 'true'
         uses: actions/github-script@v7
         env:
-          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+          CHANGED_FILES: ${{ steps.resolve-files.outputs.all_files }}
         with:
           script: |
             const base = '${{ steps.ctx.outputs.base_branch }}';
