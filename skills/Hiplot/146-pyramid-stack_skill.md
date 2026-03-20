@@ -16,15 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1pyramid-stack
-#| fig-cap: "Pyramid Stack"
-#| out.width: "95%"
-#| fig-height: 7
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Pyramid Stack
 p <- ggplot(data = data, aes(x = age, y = pop, fill = year)) +
   geom_bar(data = data %>% filter(gender == "female") %>% arrange(rev(year)),

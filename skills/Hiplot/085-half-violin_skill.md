@@ -17,15 +17,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1group-line
-#| fig-cap: "Half Violin"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Half Violin
 geom_flat_violin <- function(
   mapping = NULL, data = NULL, stat = "ydensity", position = "dodge", 

@@ -20,14 +20,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Complex-heatmap
-#| fig-cap: "Complex Heatmap"
-#| out.width: "95%"
-#| fig-height: 10
-#| fig-width: 8
-#| warning: false
-#| message: false
-
 # Complex Heatmap
 params <- list()
 for (i in names(col_meta)) {

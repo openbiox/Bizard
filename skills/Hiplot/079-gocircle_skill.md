@@ -15,16 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1gobubble
-#| fig-cap: "GOCircle Plot"
-#| out.width: "95%"
-#| fig-height: 8
-#| fig-width: 12
-#| warning: false
-#| error: false
-#| message: false
-#| eval: false
-
 # GOCircle Plot
 p <- function () {
   GOCircle(data, title = "GO Enrichment Circleplot",

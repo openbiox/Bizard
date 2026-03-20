@@ -17,15 +17,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1network-igraph
-#| fig-cap: "Network (igraph)"
-#| out.width: "95%"
-#| fig-height: 10
-#| fig-width: 10
-#| warning: false
-#| error: false
-#| message: false
-
 # Network (igraph)
 raw <- par()
 p <- as.ggplot(function () {

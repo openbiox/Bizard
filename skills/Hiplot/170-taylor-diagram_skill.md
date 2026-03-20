@@ -12,15 +12,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1taylor-diagram
-#| fig-cap: "Taylor Diagram"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Taylor Diagram
 TaylorDiagram(mod.dat, obs = "obs", mod = "mod", group = "model",
               main = "Taylor diagram", 

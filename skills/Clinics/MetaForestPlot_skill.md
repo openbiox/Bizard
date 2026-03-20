@@ -17,14 +17,6 @@ Visualize meta-analysis forest plot data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1BasicPlot
-#| fig-cap: "Basic Plot"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 10
-#| fig-height: 5
-
 # Basic forest plot
 p <-
   ggplot(meta_data, aes(x = `Odds Ratio`, y = `Study Name`)) +

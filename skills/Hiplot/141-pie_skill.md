@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1pie
-#| fig-cap: "Pie"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Pie
 p <- ggplot(data, aes(x = "", y = Value, fill = Group)) +
   geom_col(width = 1) +

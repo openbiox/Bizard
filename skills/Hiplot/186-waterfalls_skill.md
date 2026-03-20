@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1waterfalls
-#| fig-cap: "Waterfalls"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Waterfalls
 p <- waterfall(data, rect_text_labels = data$value, rect_text_size = 1,
     rect_text_labels_anchor = "centre", calc_total = T,

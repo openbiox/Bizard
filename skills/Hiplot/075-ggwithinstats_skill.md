@@ -16,15 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1ggwithinstats
-#| fig-cap: "Complex-Violin"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 7
-#| warning: false
-#| error: false
-#| message: false
-
 # Complex-Violin
 g <- unique(data[,axis[3]])
 plist <- list()

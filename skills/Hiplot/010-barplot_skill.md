@@ -15,13 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Barplot
-#| fig-cap: "Barplot"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 7
-#| warning: false
-
 # Barplot
 p <- ggplot(data, aes(x = dose, y = value, fill = treat)) +
   geom_bar(position = position_dodge(0.9), stat = "identity") +

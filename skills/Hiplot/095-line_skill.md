@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1line
-#| fig-cap: "Line"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Line
 p <- ggplot(data, aes(x = Value1, y = Value2)) +
   geom_line(alpha = 1, aes(color = Group, linetype = Group)) +

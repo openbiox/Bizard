@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1ggpubr-boxplot
-#| fig-cap: "GGPubr Boxplot"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 10
-#| warning: false
-#| error: false
-#| message: false
-
 # GGPubr Boxplot
 p <- ggboxplot(
   data = data, x = "supp", y = "len", facet.by = "dose",

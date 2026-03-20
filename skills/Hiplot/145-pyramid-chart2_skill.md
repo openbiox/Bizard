@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1pyramid-chart2
-#| fig-cap: "Pyramid Chart 2"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 7
-#| warning: false
-#| error: false
-#| message: false
-
 # Pyramid Chart 2
 p <- age_pyramid(data, "age_group", split_by = "Gender") + 
   scale_fill_manual(values = c("#BC3C29FF","#0072B5FF")) +

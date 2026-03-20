@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1point-sd
-#| fig-cap: "Point (SD)"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Point (SD)
 p <- plot_point_sd(data = data, Student, Doubling_time, symsize = 5,
                    symthick = 0.5, s_alpha = 1, ewid = 0, symshape = 21,

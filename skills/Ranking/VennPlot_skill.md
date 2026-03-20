@@ -4,7 +4,7 @@
 Ranking
 
 ## When to use
-For the visualization of Venn diagrams, the commonly used R packages are ggVennDiagram and VennDiagram. Compared with the VennDiagram package, ggVennDiagram has the advantages of being applicable to more groups, adapting to ggplot2 syntax, and flexibly setting output formats, and…
+For the visualization of Venn diagrams, the commonly used R packages are ggVennDiagram and VennDiagram. Compared with the VennDiagram package, ggVennDiagram has the advantages of being applicable to more groups, adapting to ggplot2 syntax, and flexibly setting output formats, and is easier to learn and post-process. However, the set color of ggVennDiagram can only be set to a continuous gradient color related to the number of elements, and cannot be set to a discrete color with one color for...
 
 ## Required R packages
 - VennDiagram
@@ -13,12 +13,6 @@ For the visualization of Venn diagrams, the commonly used R packages are ggVennD
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1BasicVeen
-#| fig-cap: "Basic Venn Diagram"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-
 # Basic Venn Diagram
 ggVennDiagram(x)
 ```

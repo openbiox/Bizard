@@ -17,14 +17,6 @@ Visualize kaplan meier plot data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1basicKM
-#| fig-cap: "Basic survival curve"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 6
-#| fig-height: 4
-
 # Basic survival curve
 p1 <- ggplot(surv_curve, aes(x = time, y = surv, color = strata)) +
   geom_step(linewidth = 1) +

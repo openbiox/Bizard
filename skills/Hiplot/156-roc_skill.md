@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1roc
-#| fig-cap: "ROC"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # ROC
 col <- c("#00468BFF","#ED0000FF","#42B540FF")
 p <- as.ggplot(function() {

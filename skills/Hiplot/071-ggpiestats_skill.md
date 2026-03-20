@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1ggpiestats
-#| fig-cap: "Piestats"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 7
-#| warning: false
-#| error: false
-#| message: false
-
 # Piestats
 p <- ggpiestats(data = data, x = am, y = cyl,
                 paired = F) +

@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1treeheatr
-#| fig-cap: "Treeheatr"
-#| out.width: "95%"
-#| fig-height: 3
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Treeheatr
 p <- as.ggplot(function() {
   print(heat_tree(data,

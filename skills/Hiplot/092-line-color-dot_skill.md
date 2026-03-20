@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1line-color-dot
-#| fig-cap: "Line (Color Dot)"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 5.5
-#| warning: false
-#| error: false
-#| message: false
-
 # Line (Color Dot)
 p <- plot_befafter_colours(
   data = data, xcol = get(x), ycol = get(y), match = get(group),

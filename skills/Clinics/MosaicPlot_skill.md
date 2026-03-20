@@ -17,14 +17,6 @@ Visualize mosaic plot data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1basicplot
-#| fig-cap: "Basic Plot"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 8
-#| fig-height: 8
-
 # Basic Plot
 p <- ggplot() +
   geom_rect(aes(ymin = ymin, ymax = ymax, xmin = xmin, xmax = xmax, fill = variable),dfm2,colour = "black") +

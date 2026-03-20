@@ -1,0 +1,113 @@
+---
+title: "散点图（Python）"
+author:
+  - "**[编辑]** [Bizard 团队](https://github.com/openbiox)。"
+---
+
+散点图以点的集合展示两个连续变量的值。在生物医学研究中，散点图广泛用于可视化基因表达水平之间的相关性、比较生物标志物，以及探索多组学数据集中的关系。Python 的 `matplotlib` 和 `seaborn` 库提供了灵活且可用于发表的散点图功能。
+
+## 示例
+
+![](../images/Python/ScatterPlot_demo.png){fig-align="center" width="80%"}
+
+## 环境配置
+
+- 系统要求：跨平台（Linux/MacOS/Windows）
+- 编程语言：**Python**
+- 依赖包：`matplotlib`、`seaborn`、`pandas`、`numpy`、`scipy`
+
+```{python}
+#| label: packages-setup
+#| output: false
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import numpy as np
+from scipy import stats
+```
+
+## 数据准备
+
+我们使用经典的 iris 数据集和模拟的基因表达数据进行演示。
+
+```{python}
+#| label: data-prep
+iris = sns.load_dataset("iris")
+
+np.random.seed(42)
+n = 200
+gene_data = pd.DataFrame({
+    'GeneA': np.random.normal(5, 2, n),
+    'GeneB': np.random.normal(5, 2, n),
+    'Group': np.random.choice(['Tumor', 'Normal'], n)
+})
+gene_data.loc[gene_data['Group'] == 'Tumor', 'GeneA'] += 2
+gene_data.loc[gene_data['Group'] == 'Tumor', 'GeneB'] += 1.5
+```
+
+## 可视化
+
+### 基础散点图
+
+```{python}
+#| label: fig-py-scatter-basic
+#| fig-cap: "使用 Iris 数据的基础散点图"
+
+fig, ax = plt.subplots(figsize=(8, 6))
+for species in iris['species'].unique():
+    subset = iris[iris['species'] == species]
+    ax.scatter(subset['sepal_length'], subset['sepal_width'],
+               label=species, alpha=0.7, edgecolors='white', linewidth=0.5)
+ax.set_xlabel('Sepal Length (cm)')
+ax.set_ylabel('Sepal Width (cm)')
+ax.set_title('Iris Scatter Plot')
+ax.legend(title='Species')
+ax.spines[['top', 'right']].set_visible(False)
+plt.tight_layout()
+plt.show()
+```
+
+### 带回归线的散点图
+
+```{python}
+#| label: fig-py-scatter-regression
+#| fig-cap: "带线性回归的散点图"
+
+fig, ax = plt.subplots(figsize=(8, 6))
+colors = {'Tumor': '#e63946', 'Normal': '#457b9d'}
+for group in ['Tumor', 'Normal']:
+    subset = gene_data[gene_data['Group'] == group]
+    ax.scatter(subset['GeneA'], subset['GeneB'], c=colors[group],
+               label=group, alpha=0.6, edgecolors='white', linewidth=0.5)
+    slope, intercept, r, p, se = stats.linregress(subset['GeneA'], subset['GeneB'])
+    x_line = np.linspace(subset['GeneA'].min(), subset['GeneA'].max(), 100)
+    ax.plot(x_line, slope * x_line + intercept, color=colors[group],
+            linestyle='--', linewidth=1.5)
+ax.set_xlabel('Gene A Expression')
+ax.set_ylabel('Gene B Expression')
+ax.set_title('Gene Expression Correlation by Group')
+ax.legend()
+ax.spines[['top', 'right']].set_visible(False)
+plt.tight_layout()
+plt.show()
+```
+
+### Seaborn 联合图
+
+```{python}
+#| label: fig-py-scatter-joint
+#| fig-cap: "带边际分布的联合图"
+
+g = sns.jointplot(data=gene_data, x='GeneA', y='GeneB', hue='Group',
+                  palette={'Tumor': '#e63946', 'Normal': '#457b9d'},
+                  kind='scatter', alpha=0.6, marginal_kws=dict(fill=True, alpha=0.4))
+g.set_axis_labels('Gene A Expression', 'Gene B Expression')
+plt.suptitle('Joint Distribution of Gene Expression', y=1.02)
+plt.tight_layout()
+plt.show()
+```
+
+## 参考文献
+
+1. Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. *Computing in Science & Engineering*, 9(3), 90-95.
+2. Waskom, M. L. (2021). seaborn: statistical data visualization. *Journal of Open Source Software*, 6(60), 3021.

@@ -18,15 +18,6 @@ Visualize umap plot data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1ClinicUMAP
-#| fig-cap: "UMAP visualization of clinical phenotype data"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 6
-#| fig-height: 6
-#| eval: false
-
 set.seed(123)
 wdbc_umap <- umap(features, 
                  n_neighbors = 15, 

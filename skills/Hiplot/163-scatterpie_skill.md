@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1scatterpie
-#| fig-cap: "Scatterpie"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 7
-#| warning: false
-#| error: false
-#| message: false
-
 # Scatterpie
 p <- ggplot() +
   geom_scatterpie(data = data, aes(x = x, y = y), cols = colnames(data)[-c(1, 2)]) +

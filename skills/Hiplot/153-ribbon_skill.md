@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1ribbon
-#| fig-cap: "Ribbon"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Ribbon
 p <- ggplot(data, aes(xvalue, yvalue, fill = group)) +
   geom_ribbon(alpha = 0.2, aes(ymin = yvalue1, ymax = yvalue2)) +

@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1rose-chart
-#| fig-cap: "Rose Chart"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Rose Chart
 p <- ggplot(data, aes(x = Sample, y = Freq)) +
   geom_col(aes(fill = Group), width = 0.9, size = 0, alpha = 0.8) +

@@ -16,14 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Circle-packing
-#| fig-cap: "Circle Packing"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 8
-#| warning: false
-#| message: false
-
 # Circle Packing
 p <- ggplot() +
   geom_polygon(data = dat_gg, aes(x, y, group = id, fill = value), colour = "black", alpha = 0.4) +

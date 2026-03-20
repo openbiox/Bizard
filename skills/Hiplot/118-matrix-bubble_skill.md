@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1matrix-bubble
-#| fig-cap: "Matrix Bubble"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Matrix Bubble
 p <- ggplot(data = data, aes(x = x, y = y, size = value, color = y)) +
   geom_point(alpha = 1) +

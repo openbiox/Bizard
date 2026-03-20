@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Dual-y-axis
-#| fig-cap: "Dual Y Axis Chart"
-#| out.width: "95%"
-#| fig-height: 3
-#| fig-width: 4
-#| warning: false
-#| message: false
-
 # Dual Y Axis Chart
 p <- ggplot(data, aes(x = x)) +
   geom_line(aes(y = data[, 2]), size = 1, color = "#D72C15") +

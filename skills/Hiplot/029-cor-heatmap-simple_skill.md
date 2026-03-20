@@ -15,14 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Cor-heatmap-simple
-#| fig-cap: "Simplified Correlation Heatmap"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 6
-#| warning: false
-#| message: false
-
 # Simplified Correlation Heatmap
 p <- show_cor(
   data = data,

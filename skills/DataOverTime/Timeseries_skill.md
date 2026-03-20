@@ -13,11 +13,6 @@ A time series graph is a statistical chart with time on the horizontal axis and 
 
 ## Minimal reproducible code
 ```r
-#| label: fig1BasicPlot
-#| fig-cap: "Basic plot"
-#| out.width: "95%"
-#| warning: false
-
 # Basic plot
 p <- ggplot(data, aes(x = date, y = psavert)) +
   geom_line() +

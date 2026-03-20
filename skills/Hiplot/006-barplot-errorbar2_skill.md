@@ -16,14 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1barplot-errorbar2
-#| fig-cap: "Barplot (errorbar2)"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| message: false
-
 # Barplot (errorbar2)
 p <- plot_scatterbar_sd(
   data, ycol = get(colnames(data)[1]), xcol = get(colnames(data)[2]),

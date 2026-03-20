@@ -17,15 +17,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Contour-matrix
-#| fig-cap: "Contour (Matrix)"
-#| out.width: "95%"
-#| fig-height: 3.5
-#| fig-width: 7.5
-#| warning: false
-#| message: false
-#| eval: false
-
 # Contour (Matrix)
 complex_general_theme <- 
   theme(text = element_text(family = "Arial"),

@@ -16,15 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1survival
-#| fig-cap: "Survival Analysis"
-#| out.width: "95%"
-#| fig-height: 7
-#| fig-width: 5
-#| warning: false
-#| error: false
-#| message: false
-
 # Survival Analysis
 p <- ggsurvplot(
   fit, data = data, risk.table = T, pval = T, conf.int = T, fun = "pct", 

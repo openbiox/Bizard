@@ -13,11 +13,6 @@ A waffle chart visually represents categorical data using a grid of small square
 
 ## Minimal reproducible code
 ```r
-#| label: fig1BasicPlot
-#| fig-cap: "Basic plot"
-#| out.width: "95%"
-#| warning: false
-
 waffle(counts)
 ```
 

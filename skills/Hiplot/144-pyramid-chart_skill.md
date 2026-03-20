@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1pyramid-chart
-#| fig-cap: "Pyramid Chart"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 4
-#| warning: false
-#| error: false
-#| message: false
-
 # Pyramid Chart
 p <- pyramid_chart(data = data, x = age, y = pop, group = sex, 
                    title = "", sort = "no", bar_colors = c("#C20B01","#196ABD")) +

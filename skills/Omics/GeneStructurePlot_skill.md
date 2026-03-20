@@ -4,7 +4,7 @@
 Omics
 
 ## When to use
-In biology, especially in molecular biology research, analyzing the expression and regulation patterns of genes has always been a research focus. In this process, it is inevitable that there will be a need to draw the structure of a gene or the upstream and downstream relationshi…
+In biology, especially in molecular biology research, analyzing the expression and regulation patterns of genes has always been a research focus. In this process, it is inevitable that there will be a need to draw the structure of a gene or the upstream and downstream relationships. Therefore, this tutorial will summarize some common gene structure drawing methods based on the R package gggenes.
 
 ## Required R packages
 - gggenes
@@ -13,14 +13,6 @@ In biology, especially in molecular biology research, analyzing the expression a
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1BasicPlot
-#| fig-cap: "Plotting the relative positions of a series of genes"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 6
-#| fig-height: 6
-
 # Plotting the relative positions of a series of genes
 ggplot(example_genes, aes(xmin = start, xmax = end, y = molecule)) +
     geom_gene_arrow() +

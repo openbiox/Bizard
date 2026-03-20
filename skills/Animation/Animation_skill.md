@@ -20,12 +20,6 @@ Visualize animation data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig1PointAnimation
-#| fig-cap: "Scattered bubble animation"
-#| out.width: "95%"
-#| warning: false
-#| eval: false
-
 # Scattered bubble animation----
 p <- ggplot(data_gapminder, aes(gdpPercap, lifeExp, size = pop, color = continent)) +
   geom_point() +

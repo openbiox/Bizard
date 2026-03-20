@@ -17,14 +17,11 @@ Interactive charts allow users to perform actions: zoom, hover the mouse over ma
 - plotly
 - streamgraph
 - tidyverse
+- webshot
+- xts
 
 ## Minimal reproducible code
 ```r
-#| label: fig1gapminder
-#| fig-cap: "Bubble chart (using plotly)"
-#| out.width: "95%"
-#| warning: false
-
 plot1 <- gapminder %>%
   filter(year==1977) %>%
   ggplot(aes(gdpPercap, lifeExp, size = pop, color=continent))+

@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1simple-funnel-diagram
-#| fig-cap: "Simple Funnel Diagram"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Simple Funnel Diagram
 p <- data %>%
   e_charts() %>%

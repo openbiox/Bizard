@@ -17,15 +17,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1visdat
-#| fig-cap: "Visdat"
-#| out.width: "95%"
-#| fig-height: 10
-#| fig-width: 10
-#| warning: false
-#| error: false
-#| message: false
-
 # Visdat
 add_palette <- function (p) {
   ## add color palette

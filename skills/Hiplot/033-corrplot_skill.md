@@ -16,14 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Corrplot
-#| fig-cap: "Corrplot"
-#| out.width: "95%"
-#| fig-height: 9
-#| fig-width: 9
-#| warning: false
-#| message: false
-
 # Corrplot
 p <- as.ggplot(function(){
   corrplot(

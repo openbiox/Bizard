@@ -17,15 +17,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1upset-plot
-#| fig-cap: "Upset Plot"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 10
-#| warning: false
-#| error: false
-#| message: false
-
 # Upset Plot
 p <- as.ggplot(function(){
   top_annotation <- HeatmapAnnotation(

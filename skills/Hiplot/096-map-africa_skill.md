@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1map-africa
-#| fig-cap: "Africa Map"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 5
-#| warning: false
-#| error: false
-#| message: false
-
 # Africa Map
 p <- ggplot(dt_map) +
   geom_polygon(aes(x = long, y = lat, group = group, fill = Value),

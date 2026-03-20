@@ -17,16 +17,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1ggpie
-#| fig-cap: "GGPIE"
-#| out.width: "95%"
-#| fig-height: 10
-#| fig-width: 14
-#| warning: false
-#| error: false
-#| message: false
-#| eval: false
-
 # GGPIE
 plist <- list()
 for (j in unique(data[, axis[2]])) {

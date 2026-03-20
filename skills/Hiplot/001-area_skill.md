@@ -15,13 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Area
-#| fig-cap: "Area Plot"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-
 # Area Plot
 p <- ggplot(data, aes(x = xaxis.value, y = yaxis.value, fill = group)) +
   geom_area(alpha = 1) +

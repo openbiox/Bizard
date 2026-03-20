@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1scatter
-#| fig-cap: "Scatter"
-#| out.width: "95%"
-#| fig-height: 3
-#| fig-width: 4
-#| warning: false
-#| error: false
-#| message: false
-
 # Scatter
 p <- ggplot(data, aes(x = Value1, y = Value2)) +
   geom_point(size = 1, alpha = 1, aes(color = Group, shape = Group)) +

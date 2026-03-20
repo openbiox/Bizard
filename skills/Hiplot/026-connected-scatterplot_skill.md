@@ -16,14 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Connected-scatterplot
-#| fig-cap: "Connected Scatterplot"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 7
-#| warning: false
-#| message: false
-
 # Connected Scatterplot
 connected_scatterplot <- function(data, x, y, label, label_ratio, line_color, arrow_size, label_size) {
 

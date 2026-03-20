@@ -15,14 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Dumbbell
-#| fig-cap: "Dumbbell Chart"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 7
-#| warning: false
-#| message: false
-
 # Dumbbell Chart
 colors <- c("#3B4992FF","#EE0000FF")
 p <- ggplot(data, aes(y = reorder(country, y1952), x = y1952, xend = y2007)) +

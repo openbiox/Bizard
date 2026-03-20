@@ -11,11 +11,6 @@ A radar chart, spider chart, or web chart is a two-dimensional chart type used t
 
 ## Minimal reproducible code
 ```r
-#| label: fig-BasicPlot
-#| fig-cap: "Basic Plot"
-#| out.width: "95%"
-#| warning: false
-
 # Data collation
 iris_setosa <- iris[c(1:50),]
 iris_setosa <- iris_setosa[,-5]

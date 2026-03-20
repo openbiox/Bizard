@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1slopegraph
-#| fig-cap: "Slopegraph"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 7
-#| warning: false
-#| error: false
-#| message: false
-
 # Slopegraph
 p <- newggslopegraph(data, year, lifeExp, country) +
   labs(subtitle = "", title = "Slope Graph", x = "Life Expectancy (years)",

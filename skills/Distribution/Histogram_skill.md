@@ -18,11 +18,6 @@ A histogram uses rectangular bars to represent the frequency of data within spec
 
 ## Minimal reproducible code
 ```r
-#| label: fig-BasicHist
-#| fig-cap: "Basic Histogram"
-#| out.width: "95%"
-#| warning: false
-
 # Basic Histogram
 p1 <- ggplot(data1, aes(x = expression)) +
   geom_histogram() + 

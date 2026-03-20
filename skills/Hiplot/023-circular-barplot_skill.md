@@ -15,14 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Circular-barplot
-#| fig-cap: "Circular Barplot"
-#| out.width: "95%"
-#| fig-height: 7.5
-#| fig-width: 9.5
-#| warning: false
-#| message: false
-
 # Circular Barplot
 p <- ggplot(data, aes(x=as.factor(id), y=value, fill=group)) +
   geom_bar(aes(x=as.factor(id), y=value, fill=group), stat="identity", alpha=0.5) +

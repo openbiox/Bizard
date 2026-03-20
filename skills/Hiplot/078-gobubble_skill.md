@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1gobubble
-#| fig-cap: "GOBubble Plot"
-#| out.width: "95%"
-#| fig-height: 14
-#| fig-width: 12
-#| warning: false
-#| error: false
-#| message: false
-
 # GOBubble Plot
 p <- function () {
   GOBubble(data, display = "single", title = "GO Enrichment Bubbleplot",

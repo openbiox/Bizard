@@ -4,7 +4,7 @@
 Proportion
 
 ## When to use
-Dice plots are a visualization technique for representing high-dimensional categorical data. The ggdiceplot package provides ggplot2 extensions for creating dice-based visualizations where each dot position on a dice represents a specific categorical variable. This allows intuiti…
+Dice plots are a visualization technique for representing high-dimensional categorical data. The ggdiceplot package provides ggplot2 extensions for creating dice-based visualizations where each dot position on a dice represents a specific categorical variable. This allows intuitive visualization of up to 6 categorical variables simultaneously using traditional dice patterns. Each dice position (1-6) represents a different category, with dots shown only when that category is present.
 
 ## Required R packages
 - dplyr
@@ -13,13 +13,6 @@ Dice plots are a visualization technique for representing high-dimensional categ
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1BasicDice
-#| fig-cap: "Basic Dice Plot showing miRNA regulation across compounds and organs"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 7
-#| warning: false
-
 # Define colors for regulation direction
 direction_colors <- c(
   Down      = "#2166ac",

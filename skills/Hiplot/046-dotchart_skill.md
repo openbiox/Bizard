@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Dotchart
-#| fig-cap: "Dotchart"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 8
-#| warning: false
-#| message: false
-
 # Dotchart
 p <- ggdotchart(data, x = "Name", y = "Value", group = "Group", color = "Group",
                 rotate = T, sorting = "descending",

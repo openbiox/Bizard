@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1parliament
-#| fig-cap: "Parliament"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Parliament
 p <- ggplot(data) +
   geom_parliament(alpha = 1, aes(seats = value, fill = group), color = "black") +

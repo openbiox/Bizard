@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1violin
-#| fig-cap: "Violin"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 7
-#| warning: false
-#| error: false
-#| message: false
-
 # Violin
 p <- ggviolin(data, x = "Tumor", y = "Expresssion", fill = "Tumor", add = "boxplot",
               xlab = "Tumor", ylab = "Expresssion", 

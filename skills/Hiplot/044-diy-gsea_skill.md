@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Diy-gsea
-#| fig-cap: "DIY GSEA"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 7
-#| warning: false
-#| message: false
-
 # DIY GSEA
 y <- clusterProfiler::GSEA(geneList, TERM2GENE = term, pvalueCutoff = 1)
 p <- gseaplot(

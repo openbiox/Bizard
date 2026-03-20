@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1gobar
-#| fig-cap: "GOBar Plot"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 10
-#| warning: false
-#| error: false
-#| message: false
-
 # GOBar Plot
 p <- GOBar(data, display = "multiple", order.by.zscore = T,
            title = "GO Enrichment Barplot ", 

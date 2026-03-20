@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1map-south-america
-#| fig-cap: "South America Map"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # South America Map
 p <- ggplot(dt_map) +
   geom_polygon(aes(x = long, y = lat, group = group, fill = Value),

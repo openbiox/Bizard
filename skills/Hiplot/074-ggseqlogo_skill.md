@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1ggseqlogo
-#| fig-cap: "Seqlogo"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Seqlogo
 p <- ggseqlogo(
   data,

@@ -16,15 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1pcatools
-#| fig-cap: "PCAtools"
-#| out.width: "95%"
-#| fig-height: 14
-#| fig-width: 22
-#| warning: false
-#| error: false
-#| message: false
-
 # PCAtools
 ## Define the plot function
 call_pcatools <- function(datTable, sampleInfo,

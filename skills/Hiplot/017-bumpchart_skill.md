@@ -16,13 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Bumpchart
-#| fig-cap: "Bumpchart"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-
 # Bumpchart
 p <- ggplot(data, aes(x = x, y = y, color = group)) +
   geom_bump(size = 1.5) +

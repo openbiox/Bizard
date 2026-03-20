@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1map-germany-town
-#| fig-cap: "Germany Map (Town)"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Germany Map (Town)
 p <- ggplot(dt_map) +
   geom_polygon(aes(x = long, y = lat, group = group, fill = Value),

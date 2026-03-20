@@ -17,12 +17,6 @@ A word cloud is a visual representation of text words, which allows you to clear
 
 ## Minimal reproducible code
 ```r
-#| label: fig-BasicPlot
-#| fig-cap: "Basic Plotting"
-#| out.width: "95%"
-#| warning: false
-#| eval: false
-
 # Basic Plotting
 BasicPlot <- wordcloud2(data = words_seg, size = 1)
 BasicPlot

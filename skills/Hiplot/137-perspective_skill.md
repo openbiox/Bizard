@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1perspective
-#| fig-cap: "Perspective"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 5
-#| warning: false
-#| error: false
-#| message: false
-
 # Perspective
 p <- as.ggplot(function() {
   persp(as.matrix(data),

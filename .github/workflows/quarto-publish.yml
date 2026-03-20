@@ -3,20 +3,16 @@ on:
     branches: [main, master]
     paths-ignore:
       - '.github/**'
+      - '*.md'
+      - 'LICENSE'
   pull_request:
     branches: [main, master]
     paths-ignore:
       - '.github/**'
-  # to be able to trigger a manual build
+      - '*.md'
   workflow_dispatch:
 
 name: Github Page
-
-# Render and Deploy Site to GitHub Pages Using Freeze Cache
-# 
-#
-# https://github.com/r-lib/actions/tree/v2/examples#render-rmarkdown
-# https://github.com/quarto-dev/quarto-actions
 
 env:
   isExtPR: ${{ github.event.pull_request.head.repo.fork == true }}
@@ -25,14 +21,17 @@ env:
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
-    # Only restrict concurrency for non-PR jobs
+    timeout-minutes: 120
     concurrency:
       group: quarto-publish-${{ github.event_name != 'pull_request' || github.run_id }}
+      cancel-in-progress: true
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       TMP_DIR: /mnt/TMP
     permissions:
       contents: write
+      pages: write
+      id-token: write
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -46,43 +45,68 @@ jobs:
         with:
           tinytex: true
 
+      # ── R Setup ──────────────────────────────────────────────
       - uses: r-lib/actions/setup-r@v2
         with:
           use-public-rspm: true
 
+      - name: Cache R packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/renv
+            ~/.cache/R/renv
+            /usr/local/lib/R/site-library
+            ~/R
+          key: r-packages-${{ runner.os }}-${{ hashFiles('DESCRIPTION') }}
+          restore-keys: |
+            r-packages-${{ runner.os }}-
+
       - uses: r-lib/actions/setup-r-dependencies@v2
 
-      - name: Scan .qmd for dependencies and update
-        run: Rscript update-dependencies.R
+      # ── Python Setup ─────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
 
-      - name: Commit the updated DESCRIPTION
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      # ── Dependency Scanning ──────────────────────────────────
+      - name: Scan and update dependencies
+        run: |
+          Rscript update-dependencies.R
+          python manage-dependencies.py --scan
+
+      - name: Commit updated dependency files
         if: github.event_name != 'pull_request'
         run: |
           git config --local user.name "$GITHUB_ACTOR"
           git config --local user.email "$GITHUB_ACTOR@users.noreply.github.com"
-          git commit DESCRIPTION -m 'chore: Update dependencies' || echo "No changes to commit"
+          git add DESCRIPTION requirements.txt
+          git commit -m 'chore: update dependencies' || echo "No changes to commit"
           git push origin || echo "No changes to commit"
 
-      - uses: r-lib/actions/setup-r-dependencies@v2
+      # ── Freeze Cache ─────────────────────────────────────────
+      - name: Cache freeze directory
+        uses: actions/cache@v4
+        with:
+          path: _freeze
+          key: freeze-${{ runner.os }}-${{ hashFiles('**/*.qmd') }}
+          restore-keys: |
+            freeze-${{ runner.os }}-
 
-    #  - name: Render Quarto Project
-    #    uses: quarto-dev/quarto-actions/render@v2
-    #    env:
-    #      QUARTO_PROFILE: preview
-
-      - name: Create temporary directory at /mnt/TMP
+      # ── Render ───────────────────────────────────────────────
+      - name: Create temporary directory
         run: |
           sudo mkdir -p ${{ env.TMP_DIR }}
           sudo chown -R $USER:$USER ${{ env.TMP_DIR }}
-          echo "Created ${{ env.TMP_DIR }} directory"
-
-      - name: Check disk usage before rendering
-        run: |
-          echo "=== Initial Disk Usage ==="
-          df -h
-          echo ""
-          echo "=== Working Directory ==="
-          pwd
 
       - name: Render website with Babelquarto
         env:
@@ -92,21 +116,14 @@ jobs:
           R_COMPILE_PKGS: 0
         run: Rscript -e 'babelquarto::render_website()'
 
-      - name: Check disk usage after rendering
-        run: |
-          echo "=== Final Disk Usage ==="
-          df -h
-          echo ""
-          echo "=== Working Directory ==="
-          pwd
-
+      # ── Deploy ───────────────────────────────────────────────
       - name: Upload Quarto artifacts
         if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: "_site"
 
-      - name: Commit the updated _freeze
+      - name: Commit updated _freeze
         if: github.event_name != 'pull_request'
         run: |
           if [ -d "_freeze" ] && [ -n "$(ls -A _freeze)" ]; then
@@ -130,7 +147,6 @@ jobs:
         if: always()
         run: |
           TMP_PATH="${{ env.TMP_DIR }}"
-          # Validate path is non-empty, matches expected pattern, and directory exists
           if [ -n "$TMP_PATH" ] && [[ "$TMP_PATH" =~ ^/mnt/TMP ]] && [ -d "$TMP_PATH" ]; then
             sudo rm -rf "$TMP_PATH"
             echo "Removed $TMP_PATH directory"

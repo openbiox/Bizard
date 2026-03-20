@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1group-bubble
-#| fig-cap: "Group Bubble"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Group Bubble
 p <- ggplot(data = data, aes(x = Sepal.Length, y = Sepal.Width, 
                              size = Petal.Width, color = Species)) +

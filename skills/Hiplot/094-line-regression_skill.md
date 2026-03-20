@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1line-regression
-#| fig-cap: "Line Regression"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 5
-#| warning: false
-#| message: false
-#| eval: false
-
 # Line Regression
 ## Defining the equation
 equation <- function(x, add_p = FALSE) {

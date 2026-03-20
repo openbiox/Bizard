@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1qqplot
-#| fig-cap: "QQ Plot"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 5.5
-#| warning: false
-#| error: false
-#| message: false
-
 # QQ Plot
 p <- plot_qqline(data = data, ycol = Cytokine, group = Genotype,
                  symsize = 2, symthick = 0.5, s_alpha = 1) +

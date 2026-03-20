@@ -16,15 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1nomogram
-#| fig-cap: "Nomogram"
-#| out.width: "95%"
-#| fig-height: 9
-#| fig-width: 12
-#| warning: false
-#| error: false
-#| message: false
-
 # Nomogram
 p <- as.ggplot(function() {
   plot(cox_nomo, scale = 1)

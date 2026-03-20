@@ -12,14 +12,6 @@ Visualize biplot data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1BasicPlot
-#| fig-cap: "Basic Plot"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 6
-#| fig-height: 6
-
 iris.gg <-
   ggbiplot(iris.pca, obs.scale = 1, var.scale = 1,
            groups = iris$Species, point.size=2,

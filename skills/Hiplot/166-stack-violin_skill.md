@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1stack-violin
-#| fig-cap: "Stack Violin"
-#| out.width: "95%"
-#| fig-height: 10
-#| fig-width: 7
-#| warning: false
-#| error: false
-#| message: false
-
 # Stack Violin
 ## Define the plot function
 modify_vlnplot <- function(obj,

@@ -16,15 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1ggwordcloud
-#| fig-cap: "ggwordcloud"
-#| out.width: "95%"
-#| fig-height: 7
-#| fig-width: 7
-#| warning: false
-#| error: false
-#| message: false
-
 # ggwordcloud
 p <- ggplot(data, aes(label = word, size = freq, color = col)) +
   scale_size_area(max_size = 40) +

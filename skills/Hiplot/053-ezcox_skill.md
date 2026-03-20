@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Ezcox
-#| fig-cap: "Cox Models Forest"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| message: false
-
 # Cox Models Forest
 p <- show_forest(
   data = data,

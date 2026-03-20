@@ -16,12 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig1-pca
-#| fig-cap: "PCA"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 8
-
 # PCA
 p <- ggplot(pca_data, aes(x = PC1, y = PC2, color = colorBy)) +
   geom_point(size = 4, alpha = 0.8) +

@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1volcano
-#| fig-cap: "Volcano"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Volcano
 options(ggrepel.max.overlaps = 100)
 p <- ggscatter(data, x = "logFC", y = "logP", color = "Group", 

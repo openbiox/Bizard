@@ -14,14 +14,6 @@ Visualize radial column chart data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1BasicRadial
-#| fig-cap: "Radial plot of gene expression range"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 6
-#| fig-height: 6
-
 # Basic histogram
 p1 <- ggplot(df, aes(x = factor(id), y = value)) +
   geom_col(aes(fill = group), width = 0.8, alpha = 0.8) +

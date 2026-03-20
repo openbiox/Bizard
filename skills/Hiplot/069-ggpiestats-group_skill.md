@@ -16,15 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1ggpiestats-group
-#| fig-cap: "Piestats Group"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 14
-#| warning: false
-#| error: false
-#| message: false
-
 # Piestats Group
 g <- unique(data[,axis[2]])
 plist <- list()

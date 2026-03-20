@@ -11,8 +11,6 @@ Visualize tool links data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| echo: false
-
 library(pixture)
 
 paths <- c(

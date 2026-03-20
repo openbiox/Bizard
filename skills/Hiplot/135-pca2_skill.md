@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1pca2
-#| fig-cap: "PCA2"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # PCA2
 p <- fviz_pca_ind(pca_data, geom.ind = "point", pointsize = 6, addEllipses = TRUE,
                   mean.point = F, col.ind = sample_info[,"Group"]) +

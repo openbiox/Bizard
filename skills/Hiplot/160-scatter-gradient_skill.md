@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1scatter-gradient
-#| fig-cap: "Gradient Scatter"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Gradient Scatter
 p <- ggplot(data, aes(x = mpg, y = disp)) + 
   geom_point(aes(fill = gear), size = 5, alpha = 1, shape = 21, stroke = 0.5) +

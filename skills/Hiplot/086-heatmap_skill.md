@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1heatmap
-#| fig-cap: "Heatmap"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Heatmap
 ## Set annotation_col and annotation_row to add annotations to samples and genes respectively
 top_var <- 100

@@ -15,12 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Custom-icon-scatter
-#| fig-cap: "Custom Icon Scatter"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-
 # Custom Icon Scatter
 p <- draw_data |>
   e_charts(x) |>

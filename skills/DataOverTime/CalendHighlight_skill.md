@@ -11,11 +11,6 @@ Date highlighting marks are mainly used to display changes in data within certai
 
 ## Minimal reproducible code
 ```r
-#| label: fig1CalendChina
-#| fig-cap: "Chinese Calendar"
-#| out.width: "95%"
-#| warning: false
-
 # Chinese Calendar
 p <- calendR(
 	year = 2025,

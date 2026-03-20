@@ -16,13 +16,6 @@ Visualize break plot data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1BasicBarplot
-#| fig-cap: "Basic BarPlot"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| eval: false
-
 # Basic BarPlot
 p1 <- ggplot(df, aes(x=dose, y=mean_len, fill=supp)) +
   geom_col(position=position_dodge(0.4), width=0.2) +

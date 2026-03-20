@@ -17,15 +17,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1time-roc
-#| fig-cap: "Time ROC"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 7
-#| warning: false
-#| error: false
-#| message: false
-
 # Time ROC
 col <- c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF","#F39B7FFF")
 p <- ggplot(mroc, aes(x = FPF, y = TPF, label = cut, color = time)) +

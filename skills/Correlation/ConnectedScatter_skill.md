@@ -13,11 +13,6 @@ Connected scatter is a type of chart that builds upon scatter by adding lines to
 
 ## Minimal reproducible code
 ```r
-#| label: fig-BasicHist
-#| fig-cap: "Basic Plotting"
-#| out.width: "95%"
-#| warning: false
-
 # Basic plotting, only adding `geom_line`
 p <- ggplot(data[data$Species == "setosa", ], aes(x = Sepal.Width, y = Sepal.Length)) +
   geom_point(shape = 17, size = 1.5, color = "blue") +

@@ -4,7 +4,7 @@
 Omics
 
 ## When to use
-The Text-Overlaid Enrichment Barplot is a visualization tool designed for the high-density display of functional enrichment analysis results (e.g., GO, KEGG). It typically maps enrichment significance (adjusted p-value) to the length of rounded bars and utilizes the internal spac…
+The Text-Overlaid Enrichment Barplot is a visualization tool designed for the high-density display of functional enrichment analysis results (e.g., GO, KEGG). It typically maps enrichment significance (adjusted p-value) to the length of rounded bars and utilizes the internal space of the graphics to directly overlay annotations of pathway names and core gene lists. Additionally, it uses colored blocks and bubbles on the left side to distinguish functional categories and gene counts.
 
 ## Required R packages
 - clusterProfiler
@@ -15,13 +15,6 @@ The Text-Overlaid Enrichment Barplot is a visualization tool designed for the hi
 
 ## Minimal reproducible code
 ```r
-#| label: fig1.SimpleRound
-#| fig-cap: "Basic Enrichment Analysis Barplot"
-#| out.width: "95%"
-#| warning: false
-#| fig.width: 12
-#| fig.height: 8
-
 # Define color palette
 pal <- c('#eaa052', '#b74147', '#90ad5b', '#23929c')
 

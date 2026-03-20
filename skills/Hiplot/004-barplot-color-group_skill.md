@@ -15,13 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1barplot-color-group
-#| fig-cap: "Barplot Color Group"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-
 # Barplot Color Group
 p <- ggplot(data = data, aes(x = term, y = count, fill = type)) +
   geom_bar(stat = "identity", width = 0.8) + 

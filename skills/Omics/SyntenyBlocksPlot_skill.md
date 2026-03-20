@@ -11,14 +11,6 @@ Collinearity is widely used in the study of complex genomes. This tutorial, base
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1AdjustOrder1
-#| fig-cap: "Adjust the order of the graphs"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 6
-#| fig-height: 6
-
 # Adjust the order of the graphs
 plot_maps(map_df = map_list[[1]], map1_chrom_breaks = map_list[[2]], map2_chrom_breaks = map_list[[3]])
 ```

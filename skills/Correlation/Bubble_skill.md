@@ -15,11 +15,6 @@ A bubble plot is a scatter plot in which a third numeric variable is mapped to t
 
 ## Minimal reproducible code
 ```r
-#| label: fig-BasicPlot
-#| fig-cap: "Basic Plot"
-#| out.width: "95%"
-#| warning: false
-
 # Taking iris data as an example
 p <- ggplot(iris, aes(x=Sepal.Length, y=Sepal.Width, size = Species)) +
   geom_point(alpha=0.4)

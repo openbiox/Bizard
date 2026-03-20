@@ -17,15 +17,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1parallel-coordinate
-#| fig-cap: "Parallel Coordinate"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 10
-#| warning: false
-#| error: false
-#| message: false
-
 # Parallel Coordinate
 p <- ggparcoord(data, columns = 2:(ncol(data) - 1), groupColumn = ncol(data),
                 title = "Parallel Coordinate Plot for cancer Data",

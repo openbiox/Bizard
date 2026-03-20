@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1barplot
-#| fig-cap: "Diverging Scale Barplot"
-#| out.width: "95%"
-#| fig-height: 3.5
-#| fig-width: 4
-#| warning: false
-#| message: false
-
 # Diverging Scale Barplot
 fill_colors <- c("#C20B01", "#196ABD")
 fill_colors <- fill_colors[c(any(data[, "y"] > 0), any(data[, "y"] < 0))]

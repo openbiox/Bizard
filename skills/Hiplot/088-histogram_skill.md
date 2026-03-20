@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1histogram
-#| fig-cap: "Histogram"
-#| out.width: "95%"
-#| fig-height: 7
-#| fig-width: 10
-#| warning: false
-#| error: false
-#| message: false
-
 # Histogram
 p <- ggplot(data, aes(x=Value, fill=Group2)) +
   geom_histogram(alpha = 1, bins = 12, col = "white") +

@@ -14,14 +14,6 @@ Visualize lollipop plot data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1BasicPlot
-#| fig-cap: "Basic Lollipop Plot"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 6
-#| fig-height: 4
-
 # Basic Lollipop Plot
 # Convert correlation coefficients and p-values to categorical variables
 data$pvalue_group <- cut(data$pvalue,

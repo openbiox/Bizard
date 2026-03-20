@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1streamgraph
-#| fig-cap: "Streamgraph"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Streamgraph
 p <- streamgraph(data, key = "key", value = "value", date = "date",
                  offset = "silhouette", interpolate = "cardinal",

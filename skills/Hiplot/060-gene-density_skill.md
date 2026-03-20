@@ -19,14 +19,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Gene-density
-#| fig-cap: "Gene Density"
-#| out.width: "95%"
-#| fig-height: 3
-#| fig-width: 7
-#| warning: false
-#| message: false
-
 # Set the palettes
 palettes <- c("#B2182B","#EF8A62","#FDDBC7","#D1E5F0","#67A9CF","#2166AC")
 col_fun <- colorRamp2(

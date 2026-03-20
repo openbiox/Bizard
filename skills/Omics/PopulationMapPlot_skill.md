@@ -17,14 +17,11 @@ Visualize population map plot data in a biomedical context.
 - gstat
 - rnaturalearth
 - rnaturalearthdata
+- sf
+- viridis
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1BasicPopulationMapPlot1
-#| fig-cap: "Basic map of global disease incidence distribution"
-#| out.width: "95%"
-#| warning: false
-
 # Basic map of global disease incidence distribution
 p1 <- ggplot(data = world) +
   geom_sf(aes(fill = incidence)) +

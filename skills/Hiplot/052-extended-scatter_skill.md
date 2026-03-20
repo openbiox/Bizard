@@ -15,14 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Eulerr
-#| fig-cap: "Extended Scatter"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| message: false
-
 # Extended Scatter
 p <- ggplot(data, aes(x = wt, y = mpg, color = cyl, size = cyl)) +
   geom_point() +

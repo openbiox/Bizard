@@ -4,7 +4,7 @@
 Ranking
 
 ## When to use
-The Upset diagram is similar to the Venn diagram, mainly showing the number of elements in the intersection of different sets. However, when the number of sets in the Venn diagram reaches 5, the readability begins to drop sharply. The Upset diagram can well solve the problem of p…
+The Upset diagram is similar to the Venn diagram, mainly showing the number of elements in the intersection of different sets. However, when the number of sets in the Venn diagram reaches 5, the readability begins to drop sharply. The Upset diagram can well solve the problem of poor readability of the Venn diagram and can also provide additional statistical information on element properties.
 
 ## Required R packages
 - UpSetR
@@ -12,12 +12,6 @@ The Upset diagram is similar to the Venn diagram, mainly showing the number of e
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1BasicUpset
-#| fig-cap: "Basic Upset Plot"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-
 # Use the above three data types to draw the Upset graph
 upset(fromList(listInput))
 upset(fromExpression(expressionInput))

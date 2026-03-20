@@ -14,13 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Barcode-plot
-#| fig-cap: "Barcode Plot"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 8
-#| warning: false
-
 # Barcode Plot
 p <- ggplot(data, aes(x = sales, y = region)) +
   geom_tile(width = 0.01, height = 0.9, fill = "#606fcc") + # Control the width and height of the Barcode

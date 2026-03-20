@@ -16,11 +16,6 @@ The arc diagram is a diagram connected by arcs, showing the relationships betwee
 
 ## Minimal reproducible code
 ```r
-#| label: fig1BasicPlot
-#| fig-cap: "Basic arc diagram"
-#| out.width: "95%"
-#| warning: false
-
 # Basic arc diagram
 mygraph <- graph_from_data_frame(links, vertices = nodes) # Generate graph structure
 

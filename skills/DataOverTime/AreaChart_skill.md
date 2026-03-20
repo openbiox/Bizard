@@ -16,11 +16,6 @@ An area chart is a line chart in which the area below the line is filled with co
 
 ## Minimal reproducible code
 ```r
-#| label: fig1BasicPlot
-#| fig-cap: "Basic area plot"
-#| out.width: "95%"
-#| warning: false
-
 # Basic area plot
 p <- ggplot(monthly_death_counts, aes(x = month, y = deaths)) +
   geom_area() +

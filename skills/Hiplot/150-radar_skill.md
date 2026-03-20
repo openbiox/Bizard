@@ -18,15 +18,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1radar
-#| fig-cap: "Radar"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Radar
 p <- ggradar(data_radar, gridline.max.linetype = 1, group.point.size = 4,
              group.line.width = 1, font.radar = "Arial", fill.alpha = 0.5,

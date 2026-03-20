@@ -15,14 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Gantt
-#| fig-cap: "Gantt"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 10
-#| warning: false
-#| message: false
-
 # Gantt
 p <- ggplot(data_gather, aes(date, sample, color = item)) +
   geom_line(size = 10, alpha = 1) +

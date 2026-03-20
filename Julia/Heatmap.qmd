@@ -1,0 +1,107 @@
+---
+title: "Heatmap (Julia)"
+author:
+  - "**[Editor]** [Bizard Team](https://github.com/openbiox)."
+---
+
+A heatmap visualizes matrix data using color gradients. Julia's `CairoMakie` provides high-performance heatmap rendering suitable for large gene expression matrices and multi-omics data. The Makie ecosystem supports annotations, clustering, and complex layouts for publication-quality figures.
+
+## Example
+
+![](../images/Julia/Heatmap_demo.png){fig-align="center" width="80%"}
+
+## Setup
+
+- System Requirements: Cross-platform (Linux/MacOS/Windows)
+- Programming Language: **Julia**
+- Dependencies: `CairoMakie`, `DataFrames`, `Statistics`
+
+```{julia}
+#| label: packages-setup
+#| output: false
+using CairoMakie
+using Statistics
+using Random
+```
+
+## Data Preparation
+
+```{julia}
+#| label: data-prep
+Random.seed!(42)
+n_genes = 20
+n_samples = 10
+expr_matrix = randn(n_genes, n_samples)
+expr_matrix[1:8, 1:5] .+= 2.5
+expr_matrix[9:15, 6:10] .+= 2.0
+gene_names = ["Gene_$i" for i in 1:n_genes]
+sample_names = ["S$i" for i in 1:n_samples]
+```
+
+## Visualization
+
+### Basic Heatmap
+
+```{julia}
+#| label: fig-jl-heatmap-basic
+#| fig-cap: "Basic Gene Expression Heatmap"
+
+fig = Figure(size=(700, 600))
+ax = Axis(fig[1,1], xlabel="Samples", ylabel="Genes",
+          title="Gene Expression Heatmap",
+          xticks=(1:n_samples, sample_names),
+          yticks=(1:n_genes, gene_names))
+hm = heatmap!(ax, 1:n_samples, 1:n_genes, expr_matrix',
+              colormap=:RdBu, colorrange=(-3, 3))
+Colorbar(fig[1,2], hm, label="Expression (z-score)")
+fig
+```
+
+### Annotated Heatmap
+
+```{julia}
+#| label: fig-jl-heatmap-annotated
+#| fig-cap: "Annotated Heatmap with Group Labels"
+
+fig2 = Figure(size=(750, 650))
+group_ax = Axis(fig2[1,1], height=20, ylabel="",
+                xticks=(1:n_samples, sample_names),
+                yticks=([1], ["Group"]))
+group_colors = vcat(fill(:red, 5), fill(:steelblue, 5))
+for i in 1:n_samples
+    poly!(group_ax, Rect(i-0.5, 0.5, 1, 1), color=group_colors[i])
+end
+hidexdecorations!(group_ax)
+
+ax2 = Axis(fig2[2,1], xlabel="Samples", ylabel="Genes",
+           xticks=(1:n_samples, sample_names),
+           yticks=(1:n_genes, gene_names))
+hm2 = heatmap!(ax2, 1:n_samples, 1:n_genes, expr_matrix',
+               colormap=:RdBu, colorrange=(-3, 3))
+Colorbar(fig2[2,2], hm2, label="Expression")
+rowgap!(fig2.layout, 5)
+fig2
+```
+
+### Correlation Matrix
+
+```{julia}
+#| label: fig-jl-heatmap-corr
+#| fig-cap: "Gene-Gene Correlation Heatmap"
+
+corr_mat = cor(expr_matrix')
+fig3 = Figure(size=(650, 600))
+ax3 = Axis(fig3[1,1], xlabel="Gene", ylabel="Gene",
+           title="Gene-Gene Correlation",
+           xticks=(1:n_genes, gene_names),
+           yticks=(1:n_genes, gene_names),
+           xticklabelrotation=π/4)
+hm3 = heatmap!(ax3, 1:n_genes, 1:n_genes, corr_mat,
+               colormap=:coolwarm, colorrange=(-1, 1))
+Colorbar(fig3[1,2], hm3, label="Pearson r")
+fig3
+```
+
+## References
+
+1. Danisch, S., & Krumbiegel, J. (2021). Makie.jl: Flexible high-performance data visualization for Julia. *JOSS*, 6(65), 3349.

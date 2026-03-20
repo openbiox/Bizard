@@ -1,0 +1,117 @@
+---
+title: "Scatter Plot (Julia)"
+author:
+  - "**[Editor]** [Bizard Team](https://github.com/openbiox)."
+---
+
+A scatter plot displays values for two continuous variables as a collection of points. Julia's `CairoMakie` package (part of the Makie.jl ecosystem) provides high-performance, GPU-accelerated plotting capabilities ideal for large biomedical datasets. Makie offers publication-quality rendering with a composable, declarative API.
+
+## Example
+
+![](../images/Julia/ScatterPlot_demo.png){fig-align="center" width="80%"}
+
+## Setup
+
+- System Requirements: Cross-platform (Linux/MacOS/Windows)
+- Programming Language: **Julia**
+- Dependencies: `CairoMakie`, `DataFrames`, `Statistics`
+
+```{julia}
+#| label: packages-setup
+#| output: false
+using CairoMakie
+using DataFrames
+using Statistics
+using Random
+```
+
+## Data Preparation
+
+```{julia}
+#| label: data-prep
+Random.seed!(42)
+n = 150
+species = repeat(["setosa", "versicolor", "virginica"], inner=50)
+sepal_length = [randn(50) .* 0.35 .+ 5.0;
+                randn(50) .* 0.52 .+ 5.9;
+                randn(50) .* 0.64 .+ 6.6]
+sepal_width = [randn(50) .* 0.38 .+ 3.4;
+               randn(50) .* 0.31 .+ 2.8;
+               randn(50) .* 0.32 .+ 3.0]
+iris_df = DataFrame(species=species, sepal_length=sepal_length, sepal_width=sepal_width)
+```
+
+## Visualization
+
+### Basic Scatter Plot
+
+```{julia}
+#| label: fig-jl-scatter-basic
+#| fig-cap: "Basic Scatter Plot with Simulated Iris Data"
+
+fig = Figure(size=(700, 500))
+ax = Axis(fig[1,1], xlabel="Sepal Length (cm)", ylabel="Sepal Width (cm)",
+          title="Iris Scatter Plot")
+colors_map = Dict("setosa" => :steelblue, "versicolor" => :coral, "virginica" => :green)
+for sp in unique(iris_df.species)
+    mask = iris_df.species .== sp
+    scatter!(ax, iris_df.sepal_length[mask], iris_df.sepal_width[mask],
+             color=colors_map[sp], markersize=10, alpha=0.7, label=sp)
+end
+axislegend(ax, position=:rt)
+fig
+```
+
+### Scatter Plot with Trend Lines
+
+```{julia}
+#| label: fig-jl-scatter-trend
+#| fig-cap: "Scatter Plot with Linear Trend Lines"
+
+Random.seed!(42)
+n2 = 100
+gene_a_tumor = randn(n2) .* 2 .+ 7
+gene_b_tumor = 0.6 .* gene_a_tumor .+ randn(n2) .* 1.0 .+ 1.5
+gene_a_normal = randn(n2) .* 2 .+ 5
+gene_b_normal = 0.4 .* gene_a_normal .+ randn(n2) .* 1.2 .+ 2.0
+
+fig2 = Figure(size=(700, 500))
+ax2 = Axis(fig2[1,1], xlabel="Gene A Expression", ylabel="Gene B Expression",
+           title="Gene Expression Correlation by Group")
+scatter!(ax2, gene_a_tumor, gene_b_tumor, color=(:red, 0.5), markersize=8, label="Tumor")
+scatter!(ax2, gene_a_normal, gene_b_normal, color=(:steelblue, 0.5), markersize=8, label="Normal")
+
+for (x, y, col) in [(gene_a_tumor, gene_b_tumor, :red),
+                     (gene_a_normal, gene_b_normal, :steelblue)]
+    x_sorted = sort(x)
+    m = (length(x) * sum(x .* y) - sum(x) * sum(y)) /
+        (length(x) * sum(x.^2) - sum(x)^2)
+    b = mean(y) - m * mean(x)
+    lines!(ax2, x_sorted, m .* x_sorted .+ b, color=col, linewidth=2, linestyle=:dash)
+end
+axislegend(ax2, position=:lt)
+fig2
+```
+
+### Density Scatter Plot
+
+```{julia}
+#| label: fig-jl-scatter-density
+#| fig-cap: "Density Scatter Plot for Large Data"
+
+Random.seed!(123)
+n3 = 2000
+x_dense = randn(n3) .* 3
+y_dense = x_dense .* 0.5 .+ randn(n3) .* 2
+
+fig3 = Figure(size=(700, 550))
+ax3 = Axis(fig3[1,1], xlabel="Log2 Fold Change", ylabel="-Log10(P-value)",
+           title="Density Scatter")
+hm = hexbin!(ax3, x_dense, y_dense, cellsize=0.4, colormap=:viridis)
+Colorbar(fig3[1,2], hm, label="Count")
+fig3
+```
+
+## References
+
+1. Danisch, S., & Krumbiegel, J. (2021). Makie.jl: Flexible high-performance data visualization for Julia. *JOSS*, 6(65), 3349.

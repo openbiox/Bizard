@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1waffle
-#| fig-cap: "Waffle Plot"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 10
-#| warning: false
-#| error: false
-#| message: false
-
 # Waffle Plot
 p <- waffle(parts, rows = 8, size = 1, legend_pos = "right") +
   ggtitle("Waffle Plot") +

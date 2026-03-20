@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1venn
-#| fig-cap: "Venn"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 5
-#| warning: false
-#| error: false
-#| message: false
-
 # Venn
 col <- c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF","#F39B7FFF")
 p <- venn.diagram(

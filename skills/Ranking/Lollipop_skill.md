@@ -4,7 +4,7 @@
 Ranking
 
 ## When to use
-A lollipop plot is a variation of a bar chart and a scatter plot. It consists of a line segment and a point, which can clearly display data while reducing the amount of graphics. At the same time, the lollipop plot can help align values with categories and is very suitable for co…
+A lollipop plot is a variation of a bar chart and a scatter plot. It consists of a line segment and a point, which can clearly display data while reducing the amount of graphics. At the same time, the lollipop plot can help align values with categories and is very suitable for comparing the differences between values of multiple categories.
 
 ## Required R packages
 - cowplot
@@ -18,11 +18,6 @@ A lollipop plot is a variation of a bar chart and a scatter plot. It consists of
 
 ## Minimal reproducible code
 ```r
-#| label: fig-BasicPlot
-#| fig-cap: "`TCGA` data"
-#| out.width: "95%"
-#| warning: false
-
 # `TCGA` data
 p <- ggplot(data_tcga, aes(x=gene, y=expression)) +
   geom_point() + 

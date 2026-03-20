@@ -17,16 +17,13 @@ Circular Packing can be viewed as a special type of classification tree diagram,
 - ggraph
 - htmlwidgets
 - igraph
+- packcircles
+- tidyr
+- tidyverse
+- viridis
 
 ## Minimal reproducible code
 ```r
-#| label: fig1BasicPlot
-#| fig-cap: "Basic Circular Packing Chart"
-#| out.width: "95%"
-#| warning: false
-#| fig-width: 8
-#| fig-height: 8
-
 ## color
 data_BP1 <- data_BP
 data_BP1$pvalue_log <- -log10(data_BP1$pvalue)

@@ -16,14 +16,6 @@ Visualize part highlights the pie chart data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1BasicPlot
-#| fig-cap: "Basic pie chart"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 6
-#| fig-height: 6
-
 # Basic pie chart
 mycols <- c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF")
 p <- 

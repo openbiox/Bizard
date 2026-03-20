@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1pie-3d
-#| fig-cap: "3D Pie"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 6.5
-#| warning: false
-#| error: false
-#| message: false
-
 # 3D Pie
 pie3D(data$Value, radius = 0.8, height = 0.05, theta = 0.8,
       labels = paste(data$Group, "\n(n=", data$Value, ", ",

@@ -18,15 +18,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1risk-plot
-#| fig-cap: "Risk Factor Analysis"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Risk Factor Analysis
 ## Figure A
 fA <- ggplot(data = data2, aes(x = 1:nrow(data2), y = data2$riskscore, 

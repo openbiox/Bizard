@@ -1,0 +1,102 @@
+---
+title: "Violin Plot (Julia)"
+author:
+  - "**[Editor]** [Bizard Team](https://github.com/openbiox)."
+---
+
+A violin plot combines box plot statistics with kernel density estimation to show data distributions. Julia's `CairoMakie` makes it straightforward to create violin plots for comparing gene expression, biomarker levels, or clinical measurements across groups.
+
+## Example
+
+![](../images/Julia/ViolinPlot_demo.png){fig-align="center" width="80%"}
+
+## Setup
+
+- System Requirements: Cross-platform (Linux/MacOS/Windows)
+- Programming Language: **Julia**
+- Dependencies: `CairoMakie`, `DataFrames`, `Statistics`
+
+```{julia}
+#| label: packages-setup
+#| output: false
+using CairoMakie
+using DataFrames
+using Statistics
+using Random
+```
+
+## Data Preparation
+
+```{julia}
+#| label: data-prep
+Random.seed!(42)
+n_per = 80
+groups = vcat(fill("Tumor", n_per), fill("Normal", n_per), fill("Adjacent", n_per))
+expression = vcat(
+    randn(n_per) .* 1.5 .+ 8,
+    randn(n_per) .* 1.2 .+ 5,
+    randn(n_per) .* 1.8 .+ 6.5
+)
+group_idx = vcat(fill(1, n_per), fill(2, n_per), fill(3, n_per))
+df = DataFrame(Group=groups, Expression=expression, GroupIdx=group_idx)
+```
+
+## Visualization
+
+### Basic Violin Plot
+
+```{julia}
+#| label: fig-jl-violin-basic
+#| fig-cap: "Basic Violin Plot of Gene Expression"
+
+fig = Figure(size=(700, 500))
+ax = Axis(fig[1,1], xlabel="Group", ylabel="Expression Level",
+          title="Gene Expression Distribution",
+          xticks=(1:3, ["Tumor", "Normal", "Adjacent"]))
+violin!(ax, df.GroupIdx, df.Expression, color=:steelblue, alpha=0.7)
+fig
+```
+
+### Grouped Violin with Box Plot Overlay
+
+```{julia}
+#| label: fig-jl-violin-grouped
+#| fig-cap: "Violin Plot with Box Plot Overlay"
+
+fig2 = Figure(size=(700, 500))
+ax2 = Axis(fig2[1,1], xlabel="Group", ylabel="Expression Level",
+           title="Violin + Box Plot",
+           xticks=(1:3, ["Tumor", "Normal", "Adjacent"]))
+colors = [:red, :steelblue, :green]
+for (i, g) in enumerate(["Tumor", "Normal", "Adjacent"])
+    mask = df.Group .== g
+    vals = df.Expression[mask]
+    violin!(ax2, fill(i, sum(mask)), vals, color=(colors[i], 0.4), side=:left)
+    boxplot!(ax2, fill(i, sum(mask)), vals, color=(colors[i], 0.7), width=0.3)
+end
+fig2
+```
+
+### Half Violin (Raincloud) Plot
+
+```{julia}
+#| label: fig-jl-violin-rain
+#| fig-cap: "Raincloud-style Half Violin Plot"
+
+fig3 = Figure(size=(800, 500))
+ax3 = Axis(fig3[1,1], xlabel="Group", ylabel="Expression Level",
+           title="Raincloud Plot",
+           xticks=(1:3, ["Tumor", "Normal", "Adjacent"]))
+for (i, g) in enumerate(["Tumor", "Normal", "Adjacent"])
+    mask = df.Group .== g
+    vals = df.Expression[mask]
+    violin!(ax3, fill(i, sum(mask)), vals, color=(colors[i], 0.5), side=:right)
+    scatter!(ax3, fill(i, sum(mask)) .- 0.15 .+ randn(sum(mask)) .* 0.03,
+             vals, color=(colors[i], 0.3), markersize=5)
+end
+fig3
+```
+
+## References
+
+1. Danisch, S., & Krumbiegel, J. (2021). Makie.jl: Flexible high-performance data visualization for Julia. *JOSS*, 6(65), 3349.

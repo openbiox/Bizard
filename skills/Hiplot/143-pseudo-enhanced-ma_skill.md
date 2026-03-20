@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1pseudo-enhanced-ma
-#| fig-cap: "EnhancedMA"
-#| out.width: "95%"
-#| fig-height: 8
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # EnhancedMA
 p <- EnhancedVolcano(
   data, lab = rownames(data), title = "MA plot", subtitle = "EnhancedMA",

@@ -14,12 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1D3-wordcloud
-#| fig-cap: "D3 Wordcloud"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-
 # D3 Wordcloud
 p <- d3wordcloud(
   words = data[, 1], 

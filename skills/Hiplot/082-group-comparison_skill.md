@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1group-comparison
-#| fig-cap: "Group-comparison Heatmap"
-#| out.width: "95%"
-#| fig-height: 2
-#| fig-width: 3
-#| warning: false
-#| error: false
-#| message: false
-
 # Define plot functions
 unlist_and_covert <- function(x, recursive = FALSE) {
   if (!is.null(x)) {

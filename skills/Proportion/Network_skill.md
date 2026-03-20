@@ -14,13 +14,6 @@ A network graph is a graphical model that resembles a network and consists of no
 
 ## Minimal reproducible code
 ```r
-#| label: fig1Plotdata
-#| fig-cap: "Four data types of drawing examples"
-#| out.width: "95%"
-#| warning: false
-#| fig-width: 8
-#| fig-height: 8
-
 # plot----
 par(mfrow=c(2,2), mar=c(1,1,1,1))
 plot(network1, main="Adjacency matrix (square matrix)")

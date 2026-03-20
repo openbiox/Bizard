@@ -15,14 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Dendrogram
-#| fig-cap: "Dendrogram"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| message: false
-
 # Dendrogram
 d <- dist(t(data), method = "euclidean")
 hc <- hclust(d, method = "complete")

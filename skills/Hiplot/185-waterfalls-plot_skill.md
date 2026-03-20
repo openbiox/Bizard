@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1waterfalls-plot
-#| fig-cap: "Waterfalls Plot2"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Waterfalls Plot2
 p <- waterfall(data, calc_total = T, rect_width = 0.7, fill_by_sign = F,
                fill_colours = data$fill, total_rect_color = "#1E065D") +

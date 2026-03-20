@@ -4,7 +4,7 @@
 Clinics
 
 ## When to use
-Simply put, a nomogram graphically displays the results of logistic regression or Cox regression. It uses the regression coefficient of each independent variable to develop a scoring criteria, assigning a score to each independent variable value. A total score is then calculated…
+Simply put, a nomogram graphically displays the results of logistic regression or Cox regression. It uses the regression coefficient of each independent variable to develop a scoring criteria, assigning a score to each independent variable value. A total score is then calculated for each patient, and a conversion function is used to convert this score into the probability of a specific outcome for that patient.
 
 ## Required R packages
 - readr
@@ -14,14 +14,6 @@ Simply put, a nomogram graphically displays the results of logistic regression o
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1BasicNomogram
-#| fig-cap: "Basic Nomogram"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 10
-#| fig-height: 5
-
 # Basic Nomogram
 dd=datadist(LIHC)
 options(datadist="dd")

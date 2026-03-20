@@ -15,13 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Bubble
-#| fig-cap: "Bubble"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-
 # Bubble
 p <- ggplot(data, aes(Ratio, Term)) +
   geom_point(aes(size = Count, colour = -log10(PValue))) +

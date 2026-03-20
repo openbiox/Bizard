@@ -17,14 +17,10 @@ A bar plot is a graph that uses the height or length of the bars to represent th
 - magrittr
 - palmerpenguins
 - rstatix
+- tidyr
 
 ## Minimal reproducible code
 ```r
-#| label: fig-BasicPlot
-#| fig-cap: "Basic bar plot"
-#| out.width: "95%"
-#| warning: false
-
 # Basic bar plot
 p <- ggplot(data_tcga_mean, aes(x=gene, y=expression)) + 
   geom_bar(stat = "identity")

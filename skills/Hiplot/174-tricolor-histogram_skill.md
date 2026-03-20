@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1tricolor-histogram
-#| fig-cap: "Tricolor Histogram"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Tricolor Histogram
 p <- ggplot(data, aes(x = values, fill = draw_color)) +
   geom_histogram(alpha = 0.5, binwidth = 0.05, position = "identity") +

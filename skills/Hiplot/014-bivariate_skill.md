@@ -14,13 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Bivariate
-#| fig-cap: "Bivariate Chart"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-
 # Bivariate Chart
 p <- ggbivariate(data, outcome = "smoker", 
                  explanatory = c("day","time","gender","tip")) +

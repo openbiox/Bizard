@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1treemap
-#| fig-cap: "Treemap"
-#| out.width: "95%"
-#| fig-height: 3
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Treemap
 treemap(data, index = colnames(data)[1], vSize = colnames(data)[2],
         vColor = colnames(data)[1], type = "index", title = "", 

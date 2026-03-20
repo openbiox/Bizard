@@ -15,14 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Flowerplot
-#| fig-cap: "Flower plot"
-#| out.width: "95%"
-#| fig-height: 7
-#| fig-width: 7
-#| warning: false
-#| message: false
-
 # Flower plot
 p <- as.ggplot(function(){
   flowerplot(

@@ -15,13 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Barplot-gradient
-#| fig-cap: "Barplot Gradient"
-#| out.width: "95%"
-#| fig-height: 3
-#| fig-width: 6
-#| warning: false
-
 # Barplot Gradient
 p <- ggplot(data, aes(x = Term, y = Count, fill = -log10(PValue))) +
   geom_bar(stat = "identity") +

@@ -16,11 +16,6 @@ A beeswarm plot disperses data points slightly to prevent overlap, making distri
 
 ## Minimal reproducible code
 ```r
-#| label: fig-BasicBee
-#| fig-cap: "Basic Beeswarm"
-#| out.width: "95%"
-#| warning: false
-
 p1 <- beeswarm(iris$Sepal.Length)
 ```
 

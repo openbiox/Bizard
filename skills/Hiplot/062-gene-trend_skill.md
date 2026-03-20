@@ -16,14 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Gene-trend
-#| fig-cap: "Gene Cluster Trend"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 10
-#| warning: false
-#| message: false
-
 # Gene Cluster Trend
 p <- as.ggplot(function(){
   mfuzz.plot2(

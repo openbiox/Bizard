@@ -15,14 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Density
-#| fig-cap: "Density Plot"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| message: false
-
 # Density Plot
 p <- plot_density(
   data = data, 

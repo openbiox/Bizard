@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1multiple-histograms
-#| fig-cap: "Multiple Histograms"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Multiple Histograms
 p <- ggplot(data, aes(x = value, fill = type)) +
   geom_histogram(color = "black", alpha = 0.5, 

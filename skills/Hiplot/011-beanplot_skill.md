@@ -15,13 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Beanplot
-#| fig-cap: "Beanplot"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 7
-#| warning: false
-
 # Beanplot
 p <- as.ggplot(function() {
   beanplot(Y ~ reorder(X, GroupOrder, mean), data = data, ll = 0.04,

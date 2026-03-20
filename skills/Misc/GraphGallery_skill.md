@@ -15,10 +15,6 @@ Misc
 
 ## Minimal reproducible code
 ```r
-#| echo: false
-#| message: false
-#| warning: false
-
 library(reactable)
 library(jsonlite)
 library(dplyr)

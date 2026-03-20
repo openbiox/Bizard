@@ -15,14 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Contour-xy
-#| fig-cap: "Contour (XY)"
-#| out.width: "95%"
-#| fig-height: 2.5
-#| fig-width: 4
-#| warning: false
-#| message: false
-
 # Contour (XY)
 p <- ggplot(data, aes(xvalue, yvalue)) +
   geom_density_bands(

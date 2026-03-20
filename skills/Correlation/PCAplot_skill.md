@@ -15,14 +15,6 @@ Visualize pca plot data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1fviz_eig
-#| fig-cap: "fviz_eig"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 6
-#| fig-height: 6
-
 fviz_eig(iris.pca, 
          addlabels = TRUE, 
          ylim = c(0, 85),

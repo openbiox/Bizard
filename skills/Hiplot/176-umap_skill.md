@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1umap
-#| fig-cap: "umap"
-#| out.width: "95%"
-#| fig-height: 3
-#| fig-width: 4
-#| warning: false
-#| error: false
-#| message: false
-
 # umap
 p <- ggscatter(data = umap_data, x = "UMAP_1", y = "UMAP_2", size = 2, 
                palette = "lancet", color = "colorBy") +

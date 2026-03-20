@@ -16,14 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1ggbarstats
-#| fig-cap: "Barstats"
-#| out.width: "95%"
-#| fig-height: 14
-#| fig-width: 9
-#| warning: false
-#| message: false
-
 # Barstats
 g <- unique(data[,axis[3]])
 plist <- list()

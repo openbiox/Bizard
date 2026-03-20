@@ -16,14 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Calibration-curve
-#| fig-cap: "Calibration Curve"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 6
-#| warning: false
-#| message: false
-
 # Calibration Curve
 p <- as.ggplot(function() {
   plot(lrm.cal,

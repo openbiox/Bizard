@@ -18,11 +18,6 @@ A [Sankey diagram](https://www.data-to-viz.com/graph/sankey.html) allows to stud
 
 ## Minimal reproducible code
 ```r
-#| label: fig-BasicSankeyDiagram
-#| fig-cap: "Basic Sankey Diagram"
-#| out.width: "95%"
-#| warning: false
-
 # Basic plotting
 p1 <- sankeyNetwork(Links = drugs, Nodes = nodes,
               Source = "IDsource", Target = "IDtarget",

@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1interval-bar-chart
-#| fig-cap: "Interval Bar Chart"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 7
-#| warning: false
-#| error: false
-#| message: false
-
 # Interval Bar Chart
 p <- ggplot(data, aes(x = month, y = max_temperature)) +
   geom_rect(aes(xmin = name_num - 0.4, xmax = name_num + 0.4,

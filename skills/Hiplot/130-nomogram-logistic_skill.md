@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1nomogram-logistic
-#| fig-cap: "Nomogram (Logistic)"
-#| out.width: "95%"
-#| fig-height: 7
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Nomogram (Logistic)
 p <- as.ggplot(function() {
   plot(logistic_nomo,

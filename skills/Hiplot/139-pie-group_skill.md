@@ -16,15 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1pie-group
-#| fig-cap: "Pie Group"
-#| out.width: "95%"
-#| fig-height: 16
-#| fig-width: 16
-#| warning: false
-#| error: false
-#| message: false
-
 # Pie Group
 col <- c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF","#F39B7FFF","#8491B4FF",
          "#91D1C2FF","#DC0000FF","#7E6148FF","#B09C85FF")

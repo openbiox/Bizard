@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1pyramid-stack2
-#| fig-cap: "Pyramid Stack2"
-#| out.width: "95%"
-#| fig-height: 7
-#| fig-width: 9
-#| warning: false
-#| error: false
-#| message: false
-
 # Pyramid Stack2
 p <- as.ggplot(function() {
   cols <- c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF")

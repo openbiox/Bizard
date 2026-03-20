@@ -18,15 +18,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1ggdist
-#| fig-cap: "Dist Plot"
-#| out.width: "95%"
-#| fig-height: 3
-#| fig-width: 4
-#| warning: false
-#| error: false
-#| message: false
-
 # Dist Plot
 p <- ggplot(data3, aes_(y = as.name(colnames(data[1])))) +
   stat_dist_halfeye(aes(dist = "student_t", arg1 = df.residual(data2),

@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1metawho
-#| fig-cap: "Meta-Subgroup Analysis"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Meta-Subgroup Analysis
 p1 <- deft_show(res, element = "all")
 p2 <- deft_show(res, element = "subgroup")

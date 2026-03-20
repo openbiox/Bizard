@@ -12,15 +12,6 @@ Visualize kegg pathway plot data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1KEGGView
-#| fig-cap: "KEGG View"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 6
-#| fig-height: 6
-#| eval: false
-
 p1 <- pathview(gene.data = gse16873.d[, 1], # Input gene matrix
                pathway.id = "04110", # Pathway ID
                species = "hsa", # Species: Human

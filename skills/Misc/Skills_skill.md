@@ -7,16 +7,7 @@ Misc
 Visualize bizard skills data in a biomedical context.
 
 ## Required R packages
-- CellChat
-- FactoMineR
-- factoextra
-- ggplot2
-- ggprism
-- ggpubr
-- ggrepel
-- gground
-- pheatmap
-- survival
+- (see tutorial)
 
 ## Minimal reproducible code
 (See full tutorial for code)

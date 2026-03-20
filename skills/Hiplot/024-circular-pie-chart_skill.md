@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Circular-pie-chart
-#| fig-cap: "Circular Pie Chart"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| message: false
-
 # Circular Pie Chart
 p <- ggplot(data, aes(x = draw_class, y = values, fill = labels)) +
   geom_bar(position = "stack", stat = "identity", width = 0.7) +

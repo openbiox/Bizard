@@ -15,14 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Fan
-#| fig-cap: "Fan Plot"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| message: false
-
 # Fan Plot
 p <- as.ggplot(function() {
   fan.plot(data[, 2], main = "", labels = as.character(data[, 1]),

@@ -16,13 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Barplot-line-multiple1
-#| fig-cap: "Multiple Line"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-
 # Multiple Line
 p <- ggplot(data = data_melt, aes(x = age, y = value, group = variable,
                                   colour = variable)) +

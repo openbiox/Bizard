@@ -4,7 +4,7 @@
 Composition
 
 ## When to use
-A treemap, also known as a rectangular tree structure diagram, is composed of multiple nested rectangles of varying areas. The sum of the areas of all rectangles represents the overall data. The area of each smaller rectangle represents the proportion of each sub-item; the larger…
+A treemap, also known as a rectangular tree structure diagram, is composed of multiple nested rectangles of varying areas. The sum of the areas of all rectangles represents the overall data. The area of each smaller rectangle represents the proportion of each sub-item; the larger the rectangle's area, the larger the proportion of that sub-item within the whole.
 
 ## Required R packages
 - DOSE
@@ -14,11 +14,6 @@ A treemap, also known as a rectangular tree structure diagram, is composed of mu
 
 ## Minimal reproducible code
 ```r
-#| label: fig-Labelfill
-#| fig-cap: "Color according to the label"
-#| out.width: "95%"
-#| warning: false
-
 treemap(data_USArrests, # data
         index = "State", # Categorical variables
         vSize = "Murder", # Categorical variable corresponding data values

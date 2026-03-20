@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1meta-cont
-#| fig-cap: "Meta-analysis of Continuous Data"
-#| out.width: "95%"
-#| fig-height: 7
-#| fig-width: 12
-#| warning: false
-#| error: false
-#| message: false
-
 # Meta-analysis of Continuous Data
 p <- as.ggplot(function(){
   meta::forest(m1, layout = "meta")

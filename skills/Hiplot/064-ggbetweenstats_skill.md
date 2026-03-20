@@ -16,15 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1ggbarstats
-#| fig-cap: "Betweenstats"
-#| out.width: "95%"
-#| fig-height: 10
-#| fig-width: 10
-#| warning: false
-#| error: false
-#| message: false
-
 # Betweenstats
 g <- unique(data[,axis[3]])
 plist <- list()

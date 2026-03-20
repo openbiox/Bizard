@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Donut
-#| fig-cap: "Donut"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 5
-#| warning: false
-#| message: false
-
 # Donut
 p <- ggplot(data, aes_(ymax = as.name("ymax"), ymin = as.name("ymin"), 
                        xmax = 4, xmin = 3, fill = as.name(colnames(data)[1]))) +

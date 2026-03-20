@@ -15,13 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Beeswarm
-#| fig-cap: "Beeswarm"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-
 # Beeswarm
 p <- ggplot(data, aes(Group, y, color = Group)) +
   geom_beeswarm(alpha = 1, size = 0.8) +

@@ -11,11 +11,6 @@ A donut chart is a circular plot divided into sectors, each sector representing 
 
 ## Minimal reproducible code
 ```r
-#| label: fig-TCGAdata
-#| fig-cap: "Taking TCGA data as an example"
-#| out.width: "95%"
-#| warning: false
-
 # Data Preparation
 counts <- table(TCGA_cli_df$T)
 counts <- as.data.frame(counts)

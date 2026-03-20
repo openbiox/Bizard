@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1tsne
-#| fig-cap: "tsne"
-#| out.width: "95%"
-#| fig-height: 3
-#| fig-width: 4
-#| warning: false
-#| error: false
-#| message: false
-
 # tsne
 p <- ggscatter(data = tsne_data, x = "tSNE_1", y = "tSNE_2", size = 2, 
                palette = "lancet", color = "colorBy") +

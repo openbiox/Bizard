@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Eeasy-som
-#| fig-cap: "Easy SOM"
-#| out.width: "95%"
-#| fig-height: 8
-#| fig-width: 8
-#| warning: false
-#| message: false
-
 # Easy SOM
 p <- function () {
   par(mfrow = c(3,2))

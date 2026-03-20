@@ -16,11 +16,6 @@ A ridgeline plot, also known as a joyplot, visualizes the distribution of multip
 
 ## Minimal reproducible code
 ```r
-#| label: fig-BasicRidgeline
-#| fig-cap: "Basic Ridgeline Plot Using the `iris` Dataset"
-#| out.width: "95%"
-#| warning: false
-
 # Basic Ridgeline plot
 p1_1 <- ggplot(iris, aes(x = Sepal.Length, y = Species, fill = Species)) +
   geom_density_ridges(alpha = 0.5) +

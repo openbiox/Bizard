@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1map-china
-#| fig-cap: "China Map"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # China Map
 p <- ggplot(dt_map, aes(x = long, y = lat, group = group, fill = Value)) +
   labs(fill = "Value") +

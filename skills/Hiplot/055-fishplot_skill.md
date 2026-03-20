@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Fan
-#| fig-cap: "Fishplot"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 10
-#| warning: false
-#| message: false
-
 ## Create a fish object
 fish = createFishObject(as.matrix(data[,4:7]), parents=data$parents, 
                         timepoints=data$timepoints, 

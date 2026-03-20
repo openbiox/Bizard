@@ -17,15 +17,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1stacked-percentage-bar-chart
-#| fig-cap: "Percentsge Stacked Bar Chart"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Percentsge Stacked Bar Chart
 p <- ggplot(data_long, aes(x = percent, y = days, fill = kinds)) +
   geom_bar(stat = "identity", position = "stack") +

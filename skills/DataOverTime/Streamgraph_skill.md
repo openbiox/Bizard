@@ -15,11 +15,6 @@ A Streamgraph is a stacked area diagram. It represents the evolution of numerica
 
 ## Minimal reproducible code
 ```r
-#| label: fig1BasicPlot
-#| fig-cap: "Basic code"
-#| out.width: "95%"
-#| warning: false
-
 streamgraph(covid_all, key = "location",
             value = "count",date = "time",
             height="300px", width="1000px")

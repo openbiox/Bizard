@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1violin-group
-#| fig-cap: "Violin Group"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Violin Group
 p <- ggviolin(data, x = "Group1", y = "Value", color = "Group2", add = "dotplot",
               add.params = list(fill = "white",size = 1), title = "Violin Diagram",

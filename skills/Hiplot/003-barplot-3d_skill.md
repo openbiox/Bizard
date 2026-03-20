@@ -15,13 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Barplot-3d
-#| fig-cap: "3D Barplot"
-#| out.width: "95%"
-#| fig-height: 8
-#| fig-width: 8
-#| warning: false
-
 # 3D Barplot
 p <- as.ggplot(function() {
   hist3D(

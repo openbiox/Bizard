@@ -4,7 +4,7 @@
 Omics
 
 ## When to use
-In microbiome research, it is crucial to understand the interactions between microorganisms. Network analysis is a powerful method that can help us visualize and quantify these complex relationships. Next, we will introduce the network operation and annotation functions of the `M…
+In microbiome research, it is crucial to understand the interactions between microorganisms. Network analysis is a powerful method that can help us visualize and quantify these complex relationships. Next, we will introduce the network operation and annotation functions of the `MetaNet` package, which can make our network analysis more in-depth and intuitive.
 
 ## Required R packages
 - MetaNet
@@ -14,12 +14,6 @@ In microbiome research, it is crucial to understand the interactions between mic
 
 ## Minimal reproducible code
 ```r
-#| label: fig1.1BasicNetwork
-#| fig-cap: "Basic Network"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-
 # Basic Network
 data("multi_test", package = "MetaNet")
 data("c_net", package = "MetaNet")

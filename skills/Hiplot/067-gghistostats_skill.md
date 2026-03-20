@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1gghistostats
-#| fig-cap: "Histostats"
-#| out.width: "95%"
-#| fig-height: 7
-#| fig-width: 7
-#| warning: false
-#| error: false
-#| message: false
-
 # Histostats
 p <- grouped_gghistostats(
   data = data, x = budget, grouping.var = genre,

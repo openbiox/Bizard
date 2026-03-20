@@ -15,14 +15,6 @@ The regression analysis table is used to display the results of the regression m
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1BasicRegressionTable
-#| fig-cap: "Basic regression analysis table"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-#| fig-width: 8
-#| fig-height: 6
-
 # Basic regression analysis table
 t1 <- coxph(Surv(time, status) ~ albumin + sex + age,
   data = df

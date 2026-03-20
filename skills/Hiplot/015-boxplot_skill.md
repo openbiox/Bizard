@@ -15,13 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Boxplot
-#| fig-cap: "Boxplot"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 8
-#| warning: false
-
 # Boxplot
 p <- ggboxplot(data, x = "Group1", y = "Value", notch = F, facet.by = "Group2",
                add = "point", color = "Group1", xlab = "Group2", ylab = "Value",

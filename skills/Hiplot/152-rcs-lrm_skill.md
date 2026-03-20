@@ -17,15 +17,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1rcs-lrm
-#| fig-cap: "RCS-LRM"
-#| out.width: "95%"
-#| fig-height: 2.5
-#| fig-width: 4
-#| warning: false
-#| error: false
-#| message: false
-
 # RCS-LRM
 p <- ggplot() +
   geom_line(data = orr, aes(main, yhat), linetype = "solid", size = 1, alpha = 1,

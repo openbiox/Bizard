@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Easy-pairs
-#| fig-cap: "Easy Pairs"
-#| out.width: "95%"
-#| fig-height: 8
-#| fig-width: 8
-#| warning: false
-#| message: false
-
 # Easy Pairs
 p <- ggpairs(data, columns = c("total_bill", "time", "tip"),
              mapping = aes_string(color = "gender")) +

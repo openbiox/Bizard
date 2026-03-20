@@ -16,14 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Gene-rank
-#| fig-cap: "Gene Ranking Dotplot"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| message: false
-
 # Gene Ranking Dotplot
 p <- 
   ggplot(data, aes(rank, log2FC, color = pvalue, size = abs(log2FC))) + 

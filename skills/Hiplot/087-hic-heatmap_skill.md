@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1hic-heatmap
-#| fig-cap: "Hi-C Heatmap"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 6.5
-#| warning: false
-#| error: false
-#| message: false
-
 # Hi-C Heatmap
 ## Calculate the number of bins
 bins_num <- max(data$index_bin1) + 1

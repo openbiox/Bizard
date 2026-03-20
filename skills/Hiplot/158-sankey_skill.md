@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1sankey
-#| fig-cap: "Sankey"
-#| out.width: "95%"
-#| fig-height: 2.5
-#| fig-width: 4
-#| warning: false
-#| error: false
-#| message: false
-
 # Sankey
 p <- ggplot(data_rename, aes(y = value, axis1 = axis1, axis2 = axis2)) +
   geom_alluvium(alpha = 1, aes(fill = data1[, colnames(data1) == "Sex"]),

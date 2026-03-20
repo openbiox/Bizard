@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Deviation-plot
-#| fig-cap: "Deviation Plot"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-#| message: false
-
 # Deviation Plot
 p <- ggbarplot(data,
     x = "name",

@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1line-errorbar
-#| fig-cap: "Line (errorbar)"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| error: false
-#| message: false
-
 # Line (errorbar)
 p <- ggline(
   data, x = "Group1", y = "Value", color = "Group2",

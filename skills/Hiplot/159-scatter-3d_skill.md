@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1scatter-3d
-#| fig-cap: "3D-Scatter"
-#| out.width: "95%"
-#| fig-height: 6
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # 3D-Scatter
 p <- as.ggplot(function() {
   plot3d <- scatter3D(data[, 1], data[, 2], data[, 3],

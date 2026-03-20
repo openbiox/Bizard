@@ -14,15 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1pareto-chart
-#| fig-cap: "Pareto Chart"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Pareto Chart
 p <- ggplot(data, aes(x = channel, y = sales, fill = channel)) +
   geom_bar(stat = "identity") +

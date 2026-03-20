@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Cor-heatmap
-#| fig-cap: "Correlation Heatmap"
-#| out.width: "95%"
-#| fig-height: 9
-#| fig-width: 9
-#| warning: false
-#| message: false
-
 # Correlation Heatmap
 p <- ggcorrplot(
   corr,

@@ -16,15 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1ridge
-#| fig-cap: "Ridge"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Ridge
 p <- ggplot(data, aes(x = value, y = group, fill = group, col = group)) +
   geom_density_ridges(scale = 5, alpha = 0.8) +

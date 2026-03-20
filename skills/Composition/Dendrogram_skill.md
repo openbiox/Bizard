@@ -15,12 +15,6 @@ A dendrogram is a graphical representation of hierarchical relationships between
 
 ## Minimal reproducible code
 ```r
-#| label: fig1dendrogram
-#| fig-cap: "Tree diagram of hierarchical data"
-#| out.width: "95%"
-#| warning: false
-#| message: false
-
 ggraph(mygraph_unique, layout = 'dendrogram', circular = FALSE) + 
   geom_edge_diagonal() +
   geom_node_point() +

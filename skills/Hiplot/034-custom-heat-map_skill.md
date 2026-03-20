@@ -14,14 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Custom-heat-map
-#| fig-cap: "Custom Heatmap"
-#| out.width: "95%"
-#| fig-height: 15
-#| fig-width: 25
-#| warning: false
-#| message: false
-
 # Custom Heatmap
 p <- ggplot(df, aes(x = col, y = row, fill = value)) +
   geom_point(shape = 21, size = 8, aes(fill = value), color = "white") +

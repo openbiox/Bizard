@@ -4,7 +4,7 @@
 Distribution
 
 ## When to use
-A violin plot combines elements of a density plot and a box plot to visualize data distribution. It displays key statistical information, including the median, quartiles, minimum, and maximum values. Violin plots are particularly useful for comparing distributions across differen…
+A violin plot combines elements of a density plot and a box plot to visualize data distribution. It displays key statistical information, including the median, quartiles, minimum, and maximum values. Violin plots are particularly useful for comparing distributions across different groups, offering a more intuitive representation than traditional box plots by revealing the shape of the data distribution.
 
 ## Required R packages
 - dplyr
@@ -17,14 +17,10 @@ A violin plot combines elements of a density plot and a box plot to visualize da
 - palmerpenguins
 - readr
 - tidyr
+- viridis
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1BasicViolin
-#| fig-cap: "Basic Violin Plot"
-#| out.width: "95%"
-#| warning: false
-
 # Basic Violin Plot
 p <- ggplot(data, aes(x=name, y=value, fill=name)) + 
   geom_violin()

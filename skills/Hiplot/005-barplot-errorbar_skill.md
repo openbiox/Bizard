@@ -16,13 +16,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1barplot-errorbar
-#| fig-cap: "Barplot (errorbar)"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-
 # Barplot (errorbar)
 p <- ggplot(data_sd, aes(x = data_sd[, 1], y = data_sd[, 3], fill = data_sd[, 1])) +
   geom_bar(stat = "identity", color = "black", 

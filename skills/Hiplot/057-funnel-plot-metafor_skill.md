@@ -15,14 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Funnel-plot-metafor
-#| fig-cap: "Funnel Plot"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-#| message: false
-
 # Funnel Plot
 p <- as.ggplot(function(){
   funnel(x = res, main = "Funnel Plot (metafor)",

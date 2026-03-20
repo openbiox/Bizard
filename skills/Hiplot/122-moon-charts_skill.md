@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1moon-charts
-#| fig-cap: "Moon charts"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 7
-#| warning: false
-#| error: false
-#| message: false
-
 # Moon charts
 p <- ggplot(tidyrest, aes(0, 0)) +
   geom_moon(aes(ratio = (Score - 1) / 4), fill = "black") +

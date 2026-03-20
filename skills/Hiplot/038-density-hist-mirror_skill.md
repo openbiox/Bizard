@@ -15,14 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Density-mirror
-#| fig-cap: "Mirror Density"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 6
-#| warning: false
-#| message: false
-
 # Mirror Density
 p <- ggplot(data, aes(x=x))
 colrs <- c("#e64b35ff","#4dbbd5ff","#00a087ff","#3c5488ff","#f39b7fff","#8491b4ff")

@@ -17,15 +17,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1pie-matrix
-#| fig-cap: "Pie Matrix"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 15
-#| warning: false
-#| error: false
-#| message: false
-
 # Pie Matrix
 p <- df %>% as.table() %>%
   as.data.frame() %>%

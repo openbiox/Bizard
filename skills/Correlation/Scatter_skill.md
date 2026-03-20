@@ -17,11 +17,6 @@ A scatter plot is a basic visualization chart used to represent the general tren
 
 ## Minimal reproducible code
 ```r
-#| label: fig-BasicPlot
-#| fig-cap: "Basic Plotting"
-#| out.width: "95%"
-#| warning: false
-
 # Basic plotting
 p <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length)) +
   geom_point()

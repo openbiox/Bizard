@@ -14,11 +14,6 @@ Visualize sankey bubble plot data in a biomedical context.
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1.1Sankey
-#| fig-cap: "Sankey Diagram"
-#| out.width: "95%"
-#| warning: false
-
 # Sankey diagram (the Term column does not display labels)
 
 # Ensure Group is of character type and does not contain NA

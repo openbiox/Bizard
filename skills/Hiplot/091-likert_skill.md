@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1likert
-#| fig-cap: "Likert Plot"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # Likert Plot
 pobj <- likert(data)
 colrs <- c("#3B4992FF","#EE0000FF")

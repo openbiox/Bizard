@@ -15,15 +15,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1scatter2
-#| fig-cap: "scatter2"
-#| out.width: "95%"
-#| fig-height: 5
-#| fig-width: 8
-#| warning: false
-#| error: false
-#| message: false
-
 # scatter2
 symsize <- data[,"gear"]
 data[,"gear"] <- factor(data[,"gear"], levels = unique(data[,"gear"]))

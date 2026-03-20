@@ -19,14 +19,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Diffusion-map2D
-#| fig-cap: "2D Diffusion Map"
-#| out.width: "95%"
-#| fig-height: 4
-#| fig-width: 5
-#| warning: false
-#| message: false
-
 # 2D Diffusion Map
 p <- ggscatter(data = dm_data,  x = "DC1", y = "DC2", color = "colorBy",
                size = 2, palette = "lancet", alpha = 1) +

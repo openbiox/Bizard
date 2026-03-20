@@ -16,11 +16,6 @@ Drawing line segments in various charts is common, and this module will draw all
 
 ## Minimal reproducible code
 ```r
-#| label: fig-BasicPlot
-#| fig-cap: "Basic Plotting"
-#| out.width: "95%"
-#| warning: false
-
 # Basic Plotting
 p <- ggplot(data, aes(x = Sepal.Length, y = Sepal.Width)) +
   geom_line()

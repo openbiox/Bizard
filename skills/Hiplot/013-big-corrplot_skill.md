@@ -14,13 +14,6 @@ Hiplot
 
 ## Minimal reproducible code
 ```r
-#| label: fig-1Big-corrplot
-#| fig-cap: "Corrplot Big Data"
-#| out.width: "95%"
-#| fig-height: 9
-#| fig-width: 9
-#| warning: false
-
 # Corrplot Big Data
 p <- ComplexHeatmap::Heatmap(
   corr, col = colorRampPalette(c("#4477AA","#FFFFFF","#BB4444"))(50),
