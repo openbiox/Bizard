@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Flower plot with multiple sets.
 
 ## Required R Packages
 - data.table
@@ -15,6 +14,21 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(flowerplot)
+library(ggplotify)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/flowerplot/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# View data
+head(data)
+
+# Create visualization
 # Flower plot
 p <- as.ggplot(function(){
   flowerplot(
@@ -30,6 +44,14 @@ p <- as.ggplot(function(){
 
 p
 ```
+
+## Key Parameters
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/056-flowerplot.html

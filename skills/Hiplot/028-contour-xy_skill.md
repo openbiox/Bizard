@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Contour plot (XY) is a data processing method that reflects data density through contour line.
 
 ## Required R Packages
 - data.table
@@ -15,6 +14,24 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggisoband)
+library(ggplot2)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/contour-xy/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# convert data structure
+colnames(data) <- c("xvalue", "yvalue")
+
+# View data
+head(data)
+
+# Create visualization
 # Contour (XY)
 p <- ggplot(data, aes(xvalue, yvalue)) +
   geom_density_bands(
@@ -39,6 +56,18 @@ p <- ggplot(data, aes(xvalue, yvalue)) +
 
 p
 ```
+
+## Key Parameters
+- `fill`: Maps `stat` to the fill aesthetic
+- `alpha`: Controls transparency (0 = fully transparent, 1 = opaque)
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+- `theme`: Plot theme; tutorial uses `theme_bw()`
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/028-contour-xy.html

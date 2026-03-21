@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+It is similar to the bubble chart, but on the basis of the histogram, a color gradient rectangle is used to simultaneously display the visualization of two variables.
 
 ## Required R Packages
 - data.table
@@ -15,6 +14,27 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggplot2)
+library(jsonlite)
+library(stringr)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/barplot-gradient/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# convert data structure
+data[, 1] <- str_to_sentence(str_remove(data[, 1], pattern = "\\w+:\\d+\\W"))
+topnum <- 7
+data <- data[1:topnum, ]
+data[, 1] <- factor(data[, 1], level = rev(unique(data[, 1])))
+
+# View data
+head(data)
+
+# Create visualization
 # Barplot Gradient
 p <- ggplot(data, aes(x = Term, y = Count, fill = -log10(PValue))) +
   geom_bar(stat = "identity") +
@@ -36,6 +56,19 @@ p <- ggplot(data, aes(x = Term, y = Count, fill = -log10(PValue))) +
 
 p
 ```
+
+## Key Parameters
+- `x`: Maps `Term` to the x aesthetic
+- `y`: Maps `Count` to the y aesthetic
+- `width`: Controls element width
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+- `theme`: Plot theme; tutorial uses `theme_bw()`
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Use `coord_flip()` for horizontal orientation when labels are long
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/008-barplot-gradient.html

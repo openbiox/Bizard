@@ -13,6 +13,23 @@ Dice plots are a visualization technique for representing high-dimensional categ
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(dplyr)
+library(ggdiceplot)
+library(ggplot2)
+
+# Prepare data
+# Load sample data from package
+data("sample_dice_miRNA", package = "ggdiceplot")
+df_dice <- sample_dice_miRNA
+
+# View data structure
+head(df_dice)
+
+# Check data dimensions
+str(df_dice)
+
+# Create visualization
 # Define colors for regulation direction
 direction_colors <- c(
   Down      = "#2166ac",
@@ -46,8 +63,20 @@ p1 <- ggplot(df_dice, aes(x = miRNA, y = Compound)) +
     y = "Compound"
   )
 
-p1
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `x`: Maps `miRNA` to the x aesthetic
+- `y`: Maps `Compound` to the y aesthetic
+- `fill`: Maps `direction` to the fill aesthetic
+- `width`: Controls element width
+- `theme`: Plot theme; tutorial uses `theme_minimal()`
+
+## Tips
+- The tutorial includes a '2. Advanced Dice Plot with Continuous Variables' section with advanced styling options
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Proportion/DicePlot.html

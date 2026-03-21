@@ -11,6 +11,18 @@ Multiple Sequence Alignment (MSA) is a fundamental and crucial technique in bioi
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(ggmsa)
+
+# Prepare data
+# Example data
+protein_fasta <- system.file("extdata", "sample.fasta", package = "ggmsa")
+
+# Data preview
+seqs <- readLines(protein_fasta)
+head(seqs)
+
+# Create visualization
 # Multiple sequence alignment of proteins
 p <- ggmsa(
   protein_fasta,
@@ -25,6 +37,17 @@ p <- ggmsa(
 
 p
 ```
+
+## Key Parameters
+- `width`: Controls element width
+- `stat`: Statistical transformation to use
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- Include appropriate statistical thresholds (e.g., FDR < 0.05, |log2FC| > 1) in the visualization
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/MultiSeqsAlignment.html

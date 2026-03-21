@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+The pyramid stack is a pyramid-like figure that distributes data on both sides of a central axis.
 
 ## Required R Packages
 - data.table
@@ -15,6 +14,27 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggplotify)
+library(jsonlite)
+library(plotrix)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pyramid-stack2/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# Convert data structure
+agegrps <- unique(data[,1])
+split_var <- unique(data[,2])
+dat_left <- as.matrix(data[data[,2] == split_var[1],-c(1,2)])
+dat_right <- as.matrix(data[data[,2] == split_var[2],-c(1,2)])
+
+# View data
+head(data)
+
+# Create visualization
 # Pyramid Stack2
 p <- as.ggplot(function() {
   cols <- c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF")
@@ -31,6 +51,14 @@ p <- as.ggplot(function() {
 
 p
 ```
+
+## Key Parameters
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/147-pyramid-stack2.html

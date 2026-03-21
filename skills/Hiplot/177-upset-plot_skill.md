@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Upset can be used to show the interactive relationship between collections.
 
 ## Required R Packages
 - ComplexHeatmap
@@ -17,6 +16,36 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(ComplexHeatmap)
+library(VennDiagram)
+library(data.table)
+library(ggplot2)
+library(ggplotify)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/upset-plot/data.json")$exampleData[[1]]$textarea[[1]])
+data <- as.data.frame(data)
+
+# convert data structure
+for (i in seq_len(ncol(data))) {
+  data[is.na(data[, i]), i] <- ""
+}
+data2 <- as.list(data)
+data2 <- lapply(data2, function(x) {x[x != ""]})
+data2 <- list_to_matrix(data2)
+m = make_comb_mat(data2, mode = "distinct")
+ss = set_size(m)
+cs = comb_size(m)
+set_order <- order(ss)
+comb_order <- order(comb_degree(m), -cs)
+
+# View data
+head(data)
+
+# Create visualization
 # Upset Plot
 p <- as.ggplot(function(){
   top_annotation <- HeatmapAnnotation(
@@ -37,32 +66,17 @@ p <- as.ggplot(function(){
       labels_rot = 0),
       baseline = 0,
       border = FALSE, 
-      gp = gpar(fill = "#000000", fontsize = 10), 
-      width = unit(4, "cm")
-    ),
-    set_name = anno_text(set_name(m), location = 0.5,  just = "center",
-                         width = max_text_width(set_name(m)) + unit(5, "mm"))
-  )
-  
-  ht = UpSet(m, comb_col = "#000000", bg_col = "#F0F0F0", bg_pt_col = "#CCCCCC",
-             pt_size = unit(3, "mm"), lwd = 2, set_order = set_order,
-             comb_order = comb_order, top_annotation = top_annotation,
-             left_annotation = left_annotation,  right_annotation = NULL,
-             show_row_names = FALSE)
-  ht = draw(ht)
-  od = column_order(ht)
-  decorate_annotation("Intersections", {
-    grid.text(cs[od], x = seq_along(cs), y = unit(cs[od], "native") + unit(2, "pt"),
-              default.units = "native", just = c("left", "bottom"), 
-              gp = gpar(fontsize = 10, col = "#000000",
-              fontfamily = "Arial"), hjust = 0.5)
-  })
-})
-p <- p + ggtitle("Upset Plot") + 
-  theme(plot.title = element_text(hjust = 0.6))
-
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `width`: Controls element width
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/177-upset-plot.html

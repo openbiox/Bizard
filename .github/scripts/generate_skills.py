@@ -138,12 +138,21 @@ def extract_description(content: str) -> str:
     body = YAML_RE.sub("", content).strip()
     parts = re.split(r'^##', body, maxsplit=1, flags=re.MULTILINE)
     prose = parts[0].strip()
+    # Remove callout blocks entirely
+    prose = re.sub(r'^:::\s*callout-\w+.*?^:::\s*$', '', prose, flags=re.MULTILINE | re.DOTALL)
+    prose = re.sub(r'^:::.*$', '', prose, flags=re.MULTILINE)
     for para in prose.split("\n\n"):
         para = para.strip()
-        if para and not para.startswith("#") and not para.startswith("!") and len(para) > 20:
-            if len(para) > 500:
-                return para[:497].rstrip() + "..."
-            return para
+        # Skip images, headers, code blocks, and short paragraphs
+        if not para or para.startswith("#") or para.startswith("!"):
+            continue
+        if para.startswith("```"):
+            continue
+        if len(para) < 20:
+            continue
+        if len(para) > 500:
+            return para[:497].rstrip() + "..."
+        return para
     return ""
 
 
@@ -159,21 +168,46 @@ def extract_best_code_block(content: str, language: str) -> str:
         labels = re.findall(r'#\|\s*label:\s*(.+)', code)
         return (opts + ' ' + ' '.join(labels)).lower()
 
+    def _clean_block(code):
+        lines = [l for l in code.strip().split('\n') if not l.strip().startswith('#|')]
+        return '\n'.join(lines).strip()
+
     # Prefer blocks with 'fig' in label
     for opts, code in blocks:
         meta = _block_meta(opts, code)
         if 'fig' in meta and 'packages' not in meta and 'setup' not in meta:
-            lines = [l for l in code.strip().split('\n') if not l.strip().startswith('#|')]
-            return '\n'.join(lines).strip()
+            return _clean_block(code)
 
     # Fall back to first non-setup block
     for opts, code in blocks:
         meta = _block_meta(opts, code)
         if 'setup' not in meta and 'session' not in meta and 'data-prep' not in meta:
-            lines = [l for l in code.strip().split('\n') if not l.strip().startswith('#|')]
-            return '\n'.join(lines).strip()
+            return _clean_block(code)
 
-    return blocks[0][1].strip()
+    return _clean_block(blocks[0][1])
+
+
+def extract_all_code_blocks(content: str, language: str) -> List[str]:
+    """Extract all code blocks for a language, excluding setup/package blocks."""
+    pattern = CODE_BLOCK_RE.get(language)
+    if not pattern:
+        return []
+    blocks = pattern.findall(content)
+    result = []
+    for opts, code in blocks:
+        meta = (opts + ' ' + ' '.join(re.findall(r'#\|\s*label:\s*(.+)', code))).lower()
+        if 'packages' in meta and 'setup' in meta:
+            continue
+        lines = [l for l in code.strip().split('\n') if not l.strip().startswith('#|')]
+        cleaned = '\n'.join(lines).strip()
+        if cleaned:
+            result.append(cleaned)
+    return result
+
+
+def extract_section_headings(content: str) -> List[str]:
+    """Extract section headings from markdown content."""
+    return re.findall(r'^###?\s+(.+)$', content, re.MULTILINE)
 
 
 def detect_category(filepath: Path) -> str:
@@ -202,14 +236,39 @@ def qmd_to_skill_offline(filepath: Path, base_url: str = DEFAULT_BASE_URL) -> Di
     packages = extract_packages(content, language)
     description = extract_description(content)
     code = extract_best_code_block(content, language)
+    all_blocks = extract_all_code_blocks(content, language)
+    headings = extract_section_headings(content)
 
     rel_html = str(filepath.with_suffix(".html")).lstrip("./")
     tutorial_url = base_url.rstrip("/") + "/" + rel_html
-    use_when = description or f"Visualize {title.lower()} data in a biomedical context."
+
+    # Build use_when description with better fallbacks
+    if description:
+        use_when = description
+    elif category == "Hiplot":
+        use_when = f"Create a {title} using R with the Hiplot platform's approach. Suitable for biomedical data visualization with publication-quality output."
+    else:
+        use_when = f"Create a {title} visualization in {lang_display} for biomedical data analysis and research publications."
 
     pkg_list = "\n".join(f"- {p}" for p in packages) or "- (see tutorial)"
     fence_lang = {'r': 'r', 'python': 'python', 'julia': 'julia'}.get(language, 'r')
-    code_block = f"```{fence_lang}\n{code}\n```" if code else "(See full tutorial for code)"
+
+    # Build combined self-contained code from data-prep + first figure block
+    combined_code = _build_combined_code(content, language, packages)
+    if combined_code:
+        code_block = f"```{fence_lang}\n{combined_code}\n```"
+    elif code:
+        code_block = f"```{fence_lang}\n{code}\n```"
+    else:
+        code_block = "(See full tutorial for code)"
+
+    # Extract key parameters from the code
+    key_params = _extract_key_parameters(content, language, all_blocks)
+    params_text = "\n".join(f"- `{k}`: {v}" for k, v in key_params.items()) if key_params else "- See full tutorial for customization options"
+
+    # Generate tips based on the tutorial content
+    tips = _generate_tips(content, language, category, headings, all_blocks)
+    tips_text = "\n".join(f"- {t}" for t in tips)
 
     skill_text = (
         f"# Skill: {title} ({lang_display})\n\n"
@@ -217,6 +276,8 @@ def qmd_to_skill_offline(filepath: Path, base_url: str = DEFAULT_BASE_URL) -> Di
         f"## When to Use\n{use_when}\n\n"
         f"## Required {lang_display} Packages\n{pkg_list}\n\n"
         f"## Minimal Reproducible Code\n{code_block}\n\n"
+        f"## Key Parameters\n{params_text}\n\n"
+        f"## Tips\n{tips_text}\n\n"
         f"## Full Tutorial\n{tutorial_url}\n"
     )
 
@@ -231,6 +292,212 @@ def qmd_to_skill_offline(filepath: Path, base_url: str = DEFAULT_BASE_URL) -> Di
         "source_file": str(filepath),
         "skill_file": f"skills/{category}/{filepath.stem}_skill.md",
     }
+
+
+def _build_combined_code(content: str, language: str, packages: List[str]) -> str:
+    """Build a combined self-contained code snippet from setup + data-prep + first figure."""
+    pattern = CODE_BLOCK_RE.get(language)
+    if not pattern:
+        return ""
+    blocks = pattern.findall(content)
+    if not blocks:
+        return ""
+
+    parts = []
+    # Add library/import loading
+    if language == 'r':
+        lib_lines = [f"library({p})" for p in packages[:6]]  # Limit to 6 main packages
+        if lib_lines:
+            parts.append("# Load packages\n" + "\n".join(lib_lines))
+    elif language == 'python':
+        # Extract actual import lines from the setup block
+        for opts, code in blocks:
+            meta = (opts + ' ' + ' '.join(re.findall(r'#\|\s*label:\s*(.+)', code))).lower()
+            if 'setup' in meta or 'packages' in meta:
+                import_lines = [l for l in code.strip().split('\n')
+                                if l.strip().startswith('import ') or l.strip().startswith('from ')]
+                if import_lines:
+                    parts.append("# Load packages\n" + "\n".join(import_lines))
+                break
+        if not parts:
+            imp_lines = []
+            for p in packages[:6]:
+                imp_lines.append(f"import {p}")
+            if imp_lines:
+                parts.append("# Load packages\n" + "\n".join(imp_lines))
+    elif language == 'julia':
+        using_lines = [f"using {p}" for p in packages[:6]]
+        if using_lines:
+            parts.append("# Load packages\n" + "\n".join(using_lines))
+
+    # Find and add data preparation block
+    for opts, code in blocks:
+        meta = (opts + ' ' + ' '.join(re.findall(r'#\|\s*label:\s*(.+)', code))).lower()
+        if 'data' in meta or 'prep' in meta:
+            cleaned = '\n'.join(l for l in code.strip().split('\n')
+                                if not l.strip().startswith('#|'))
+            if cleaned.strip():
+                parts.append("# Prepare data\n" + cleaned.strip())
+            break
+
+    # Find and add first figure block
+    for opts, code in blocks:
+        meta = (opts + ' ' + ' '.join(re.findall(r'#\|\s*label:\s*(.+)', code))).lower()
+        if 'fig' in meta and 'packages' not in meta and 'setup' not in meta:
+            cleaned = '\n'.join(l for l in code.strip().split('\n')
+                                if not l.strip().startswith('#|'))
+            if cleaned.strip():
+                parts.append("# Create visualization\n" + cleaned.strip())
+            break
+
+    if len(parts) >= 2:
+        combined = "\n\n".join(parts)
+        # Limit length
+        lines = combined.split('\n')
+        if len(lines) > 50:
+            lines = lines[:50]
+            lines.append("# ... (see full tutorial for more)")
+        return '\n'.join(lines)
+    return ""
+
+
+def _extract_key_parameters(content: str, language: str,
+                             all_blocks: List[str]) -> Dict[str, str]:
+    """Extract key parameters from code blocks based on language."""
+    params: Dict[str, str] = {}
+    combined_code = "\n".join(all_blocks)
+
+    if language == 'r':
+        # Common ggplot2 aes parameters
+        aes_params = re.findall(r'aes\(([^)]+)\)', combined_code)
+        for aes_str in aes_params:
+            for mapping in re.findall(r'(\w+)\s*=\s*(\w+)', aes_str):
+                if mapping[0] in ('x', 'y', 'fill', 'color', 'colour', 'size', 'shape', 'alpha', 'group'):
+                    params[mapping[0]] = f"Maps `{mapping[1]}` to the {mapping[0]} aesthetic"
+            if len(params) >= 4:
+                break
+        # Common geom parameters
+        geom_params = {
+            'alpha': 'Controls transparency (0 = fully transparent, 1 = opaque)',
+            'width': 'Controls element width',
+            'position': 'Position adjustment (identity, dodge, stack, fill)',
+            'stat': 'Statistical transformation to use',
+        }
+        for param, desc in geom_params.items():
+            if f'{param}' in combined_code and param not in params and len(params) < 8:
+                params[param] = desc
+        # Theme
+        if 'theme_' in combined_code:
+            themes = re.findall(r'theme_(\w+)\(\)', combined_code)
+            if themes:
+                params['theme'] = f"Plot theme; tutorial uses `theme_{themes[0]}()`"
+
+    elif language == 'python':
+        # Common matplotlib/seaborn parameters
+        py_params = {
+            'palette': 'Color palette for the plot (e.g., Set2, viridis, coolwarm)',
+            'figsize': 'Figure dimensions as (width, height) in inches',
+            'cmap': 'Colormap for continuous color mapping',
+            'alpha': 'Transparency level (0–1)',
+            'annot': 'Whether to annotate cells with values (True/False)',
+            'inner': 'Representation inside violin (box, quartile, point, stick, None)',
+            'hue': 'Variable for color grouping',
+        }
+        for param, desc in py_params.items():
+            if param in combined_code and len(params) < 8:
+                params[param] = desc
+
+    elif language == 'julia':
+        jl_params = {
+            'colormap': 'Color scheme for the plot (e.g., :viridis, :RdBu)',
+            'markersize': 'Size of scatter plot markers',
+            'alpha': 'Transparency level (0–1)',
+            'color': 'Color of plot elements',
+            'linewidth': 'Width of lines in the plot',
+            'colorrange': 'Range for color mapping as (min, max) tuple',
+        }
+        for param, desc in jl_params.items():
+            if param in combined_code and len(params) < 8:
+                params[param] = desc
+
+    # Ensure at least 3 params
+    if len(params) < 3:
+        if language == 'r':
+            if 'fill' not in params:
+                params['fill'] = 'Maps a variable to fill color for group comparison'
+            if 'color' not in params:
+                params['color'] = 'Maps a variable to outline/point color'
+        elif language == 'python':
+            if 'figsize' not in params:
+                params['figsize'] = 'Figure dimensions as (width, height) in inches'
+        elif language == 'julia':
+            if 'color' not in params:
+                params['color'] = 'Color of plot elements'
+
+    return dict(list(params.items())[:8])
+
+
+def _generate_tips(content: str, language: str, category: str,
+                   headings: List[str], all_blocks: List[str]) -> List[str]:
+    """Generate practical tips based on tutorial content."""
+    tips = []
+    combined_code = "\n".join(all_blocks)
+
+    # Tips based on visualization sections present
+    beautify_headings = [h for h in headings if any(
+        kw in h.lower() for kw in ['beautif', 'customiz', 'advanc', 'enhanc', 'polish']
+    )]
+    if beautify_headings:
+        tips.append(f"The tutorial includes a '{beautify_headings[0]}' section with advanced styling options")
+
+    # Language-specific tips
+    if language == 'r':
+        if 'theme_minimal' in combined_code or 'theme_bw' in combined_code:
+            tips.append("Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots")
+        if 'coord_flip' in combined_code:
+            tips.append("Use `coord_flip()` for horizontal orientation when labels are long")
+        if 'ggsave' in combined_code or 'ggsave' in content:
+            tips.append("Export with `ggsave()` for high-resolution output (try width=8, height=6, dpi=300)")
+        if 'scale_fill' in combined_code or 'scale_color' in combined_code:
+            tips.append("Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`")
+        if 'facet_' in combined_code:
+            tips.append("Use `facet_wrap()` or `facet_grid()` to create multi-panel plots by group")
+        if not tips or len(tips) < 2:
+            tips.append("Adjust text size with `theme(text = element_text(size = 14))` for presentations")
+    elif language == 'python':
+        if 'plt.tight_layout' in combined_code:
+            tips.append("Call `plt.tight_layout()` to prevent label overlap")
+        if 'sns.' in combined_code:
+            tips.append("Seaborn integrates with pandas DataFrames for convenient column-based plotting")
+        if 'plt.savefig' in combined_code or 'savefig' in content:
+            tips.append("Export with `plt.savefig('plot.png', dpi=300, bbox_inches='tight')`")
+        if not tips or len(tips) < 2:
+            tips.append("Set style globally with `sns.set_theme(style='whitegrid')` for consistent appearance")
+    elif language == 'julia':
+        if 'CairoMakie' in combined_code:
+            tips.append("CairoMakie produces high-quality vector output suitable for publication")
+        tips.append("Save figures with `save(\"plot.png\", fig)` or `save(\"plot.pdf\", fig)`")
+        if not tips or len(tips) < 2:
+            tips.append("Adjust figure resolution with `Figure(size=(800, 600), figure_padding=20)`")
+
+    # Category-specific tips
+    cat_tips = {
+        'Distribution': "Consider adding `geom_jitter()` or raw data points alongside distribution plots for small sample sizes",
+        'Correlation': "Always check and report the correlation coefficient and p-value alongside visual patterns",
+        'Ranking': "Sort categories by value rather than alphabetically for clearer ranking visualization",
+        'Composition': "Ensure proportions sum to 100% and consider using a colorblind-friendly palette",
+        'DataOverTime': "Highlight key time points or events with vertical reference lines or annotations",
+        'Omics': "Include appropriate statistical thresholds (e.g., FDR < 0.05, |log2FC| > 1) in the visualization",
+        'Clinics': "Follow CONSORT or STROBE guidelines for clinical data visualization where applicable",
+    }
+    if category in cat_tips and len(tips) < 5:
+        tips.append(cat_tips[category])
+
+    # General quality tip
+    if len(tips) < 3:
+        tips.append("See the full tutorial for additional customization options and advanced examples")
+
+    return tips[:5]  # Max 5 tips
 
 
 # ---------------------------------------------------------------------------

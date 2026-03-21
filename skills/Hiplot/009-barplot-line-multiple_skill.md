@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Displaying multiple bar or line plot in one diagram.
 
 ## Required R Packages
 - data.table
@@ -16,6 +15,26 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggplot2)
+library(ggthemes)
+library(jsonlite)
+library(reshape2)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/barplot-line-multiple/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# convert data structure
+data_melt <- melt(data, id.vars = colnames(data)[1])
+data_melt[, 1] <- factor(data_melt[, 1], level = unique(data_melt[, 1]))
+
+# View data
+head(data)
+
+# Create visualization
 # Multiple Line
 p <- ggplot(data = data_melt, aes(x = age, y = value, group = variable,
                                   colour = variable)) +
@@ -37,6 +56,21 @@ p <- ggplot(data = data_melt, aes(x = age, y = value, group = variable,
 
 p
 ```
+
+## Key Parameters
+- `x`: Maps `age` to the x aesthetic
+- `y`: Maps `value` to the y aesthetic
+- `group`: Maps `variable` to the group aesthetic
+- `colour`: Maps `variable` to the colour aesthetic
+- `alpha`: Controls transparency (0 = fully transparent, 1 = opaque)
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+- `theme`: Plot theme; tutorial uses `theme_stata()`
+
+## Tips
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/009-barplot-line-multiple.html

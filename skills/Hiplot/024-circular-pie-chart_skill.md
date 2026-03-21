@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Another form of the pie chart.
 
 ## Required R Packages
 - data.table
@@ -14,6 +13,29 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggplot2)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/circular-pie-chart/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# convert data structure
+data$draw_percent <- data[["values"]] / sum(data[["values"]]) * 100
+data$draw_class <- 1
+data2 <- data
+data2[["values"]] <- 0
+data2$draw_class <- 0
+data <- rbind(data, data2)
+filtered_data <- data[data[["values"]] > 0,]
+
+# View data
+head(data)
+
+# Create visualization
 # Circular Pie Chart
 p <- ggplot(data, aes(x = draw_class, y = values, fill = labels)) +
   geom_bar(position = "stack", stat = "identity", width = 0.7) +
@@ -39,6 +61,20 @@ p <- ggplot(data, aes(x = draw_class, y = values, fill = labels)) +
 
 p
 ```
+
+## Key Parameters
+- `x`: Maps `draw_class` to the x aesthetic
+- `y`: Maps `values` to the y aesthetic
+- `fill`: Maps `labels` to the fill aesthetic
+- `width`: Controls element width
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+- `theme`: Plot theme; tutorial uses `theme_minimal()`
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/024-circular-pie-chart.html

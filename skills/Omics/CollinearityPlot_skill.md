@@ -11,10 +11,27 @@ Collinearity plot is often used to compare genome sequences of different species
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(RIdeogram)
+
+# Prepare data
+data(karyotype_ternary_comparison, package="RIdeogram")
+data(synteny_ternary_comparison, package="RIdeogram")
+
+# Create visualization
 # Basic Collinearity Plot
 ideogram(karyotype = karyotype_ternary_comparison, synteny = synteny_ternary_comparison)
 convertSVG("chromosome.svg", device = "png")
 ```
+
+## Key Parameters
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- Include appropriate statistical thresholds (e.g., FDR < 0.05, |log2FC| > 1) in the visualization
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/CollinearityPlot.html

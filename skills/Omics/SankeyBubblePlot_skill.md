@@ -4,7 +4,7 @@
 Omics
 
 ## When to Use
-Visualize sankey bubble plot data in a biomedical context.
+Create a Sankey Bubble plot visualization in R for biomedical data analysis and research publications.
 
 ## Required R Packages
 - ggalluvial
@@ -14,61 +14,73 @@ Visualize sankey bubble plot data in a biomedical context.
 
 ## Minimal Reproducible Code
 ```r
-# Sankey diagram (the Term column does not display labels)
+# Load packages
+library(ggalluvial)
+library(patchwork)
+library(readr)
+library(tidyverse)
 
-# Ensure Group is of character type and does not contain NA
-alluvial_data$Group <- as.character(alluvial_data$Group)
-alluvial_data$Group[is.na(alluvial_data$Group)] <- "Other"
-# Calculate the total Count of each Group
-group_order <- alluvial_data %>%
-  group_by(Group) %>%
-  summarise(group_count = sum(Count, na.rm = TRUE)) %>%
-  arrange(desc(group_count)) %>%
-  pull(Group)
-# Set group to an ordered factor
-alluvial_data$Group <- factor(alluvial_data$Group, levels = group_order)
-# Sort the Term column and set term as an ordered factor
-term_order <- alluvial_data %>%
-  group_by(Term) %>%
-  summarise(total_count = sum(Count, na.rm = TRUE)) %>%
-  arrange(desc(total_count)) %>%
-  pull(Term)
-alluvial_data$Term <- factor(alluvial_data$Term, levels = term_order)
-# Retrieve the ordered labels of the group
-group_labels <- levels(alluvial_data$Group)
-group_labels <- c("BP", "MF", "CC", "Nervous system", "Immune system", "Lipid metabolism", "Other KEGG")
-term_labels <- levels(alluvial_data$Term)
+# Prepare data
+# Load data
+data <- read_tsv("files/DAVID.txt")
 
-p1 <- ggplot(
-  alluvial_data,
-  aes(axis1 = Source, axis2 = Group, axis3 = Term, y = 1)) +
-  geom_alluvium(aes(fill = Group), width = 1/12, alpha = 0.8) +
-  geom_stratum(width = 1/12, fill = "grey", color = "black") +
-  scale_fill_manual(values = c(
-    "BP" = "#33ad37","MF" = "#f2c867","CC" = "#d45327", 
-    "Nervous system" = "#2eb6aa", "Immune system" = "#3e4999", 
-    "Lipid metabolism" = "#4fc1e4", "Other KEGG" = "#e0c4ce")) +
-  geom_text(stat = "stratum", aes(label = ifelse(
-    after_stat(stratum) %in% group_labels, after_stat(stratum),
-    ifelse(after_stat(stratum) %in% term_labels, after_stat(stratum), "")
-    )), size = 3) +
-  scale_x_discrete(
-    limits = c("Source", "Group", "Term"),
-    labels = c("Source", "Group", "term"), expand = c(.05, .05)) +
-  labs(title = NULL, y = NULL, x = NULL) +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.title.x = element_blank(),
-    axis.text.x = element_text(size = 10),
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    plot.margin = margin(5, 5, 5, 5), # This is consistent with p2
-    panel.grid = element_blank()
-    ) +
-  guides(fill = "none")
+# Add a new categorical column
+get_category <- function(cat) {
+  if (grepl("BP", cat)) return("BP")
+  if (grepl("MF", cat)) return("MF")
+  if (grepl("CC", cat)) return("CC")
+  if (grepl("KEGG", cat)) return("KEGG")
+  return(NA)
+}
+data$MainCategory <- sapply(data$Category, get_category)
 
-p1
+# Remove SMART and NA
+data2 <- data %>%
+  filter(!grepl("SMART", Category)) %>%
+  filter(!is.na(MainCategory))
+
+# Sort each category and take the top 10
+topN <- function(data, n=10) {
+  data %>%
+  arrange(desc(Count), PValue) %>%
+  head(n)
+}
+result <- data2 %>%
+  group_by(MainCategory) %>%
+  group_modify(~topN(.x, 10)) %>%
+  ungroup()
+
+# KEGG pathway annotation
+result <- result %>%
+  mutate(
+    Source = ifelse(MainCategory == "KEGG", "KEGG", "GO"),
+    KEGG_Group = case_when(
+      MainCategory == "KEGG" & str_detect(Term,"Neuro|synapse|neurodegeneration|Alzheimer|Parkinson|Prion") ~ "Nervous system",
+      MainCategory == "KEGG" & str_detect(Term, "Cytokine|inflammatory") ~ "Immune system",
+      MainCategory == "KEGG" & str_detect(Term, "Lipid|atherosclerosis") ~ "Lipid metabolism",
+      MainCategory == "KEGG" ~ "Other KEGG",
+      TRUE ~ NA_character_
+      ),
+    GO_Group = ifelse(MainCategory != "KEGG", MainCategory, NA)
+    )
+alluvial_data <- result %>%
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `y`: Maps `1` to the y aesthetic
+- `fill`: Maps `Group` to the fill aesthetic
+- `x`: Maps `min` to the x aesthetic
+- `size`: Maps `Count` to the size aesthetic
+- `alpha`: Controls transparency (0 = fully transparent, 1 = opaque)
+- `width`: Controls element width
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- Include appropriate statistical thresholds (e.g., FDR < 0.05, |log2FC| > 1) in the visualization
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/SankeyBubblePlot.html

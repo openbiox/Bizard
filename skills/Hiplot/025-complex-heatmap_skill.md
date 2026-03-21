@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+A multi-omics plugins to draw heatmap, meta annotation, and mutations.
 
 ## Required R Packages
 - ComplexHeatmap
@@ -20,111 +19,67 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
-# Complex Heatmap
-params <- list()
-for (i in names(col_meta)) {
-  if (i != "Meta2") {
-    params[[i]] <- data[, i]
-  }
-}
-params2 <- list(
-  Meta2 = meta_mat2,
-  gap = 0,
-  border = TRUE,
-  show_annotation_name = TRUE,
-  col = col_meta,
-  na_col = "#FFFFFF",
-  show_legend = FALSE,
-  annotation_legend_param = list(direction = "horizontal")
-)
-for (i in names(params2)) {
-  params[[i]] <- params2[[i]]
-}
-ha <- do.call(HeatmapAnnotation, params)
-hlist <- Heatmap(heat_mat,
-      col = hiplotlib::col_fun_cont(heat_mat, cols = color_key),
-      name = "Expression",
-      gap = 0,
-      clustering_distance_columns = "euclidean",
-      clustering_distance_rows = "euclidean",
-      clustering_method_columns = "ward.D2",
-      show_row_dend = TRUE, show_column_dend = TRUE,
-      show_row_names = FALSE,
-      row_title_gp = gpar(col = "#FFFFFF00"),
-      cluster_rows = TRUE,
-      cluster_columns = TRUE,
-      bottom_annotation = ha,
-      show_heatmap_legend = TRUE,
-      heatmap_legend_param = list(direction = "horizontal")
-    )
-p1 <- as.ggplot(
-  function() {
-    draw(hlist, annotation_legend_side = "right", heatmap_legend_side = "top")
-  }
-)
-idx <- sort(rowSums(!is.na(mut_mat) & mut_mat != "0" & mut_mat != ""), decreasing = TRUE)
-mut_mat <- mut_mat[names(idx),]
+# Load packages
+library(ComplexHeatmap)
+library(circlize)
+library(cowplot)
+library(data.table)
+library(ggplotify)
+library(hiplotlib)
 
-p2 <- as.ggplot(
-  function() {
-    params <- list(
-      mut_mat,
-      get_type = function(x) strsplit(x, "/")[[1]],
-      alter_fun = hiplotlib::alter_fun, col = cols, row_order = 1:nrow(mut_mat),
-      show_column_names = TRUE,
-      show_pct = TRUE,
-      right_annotation = NULL,
-      top_annotation = NULL,
-      border = TRUE,
-      heatmap_legend_param = list(direction = "horizontal"),
-      show_heatmap_legend = FALSE)
-      params$column_order <- unlist(column_order(hlist))
-      draw(do.call(oncoPrint, params), annotation_legend_side = "bottom", heatmap_legend_side = "bottom")
-    }
-  )
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/complex-heatmap/data.json")$exampleData[[1]]$textarea[[1]])
+data <- as.data.frame(data)
+data2 <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/complex-heatmap/data.json")$exampleData[[1]]$textarea[[2]])
+data2 <- as.data.frame(data2)
 
-p3 <- as.ggplot(function() {
-    legend_tmp <- list()
-    for (i in names(col_meta_pre)) {
-      if (is.function(col_meta_pre[[i]])) {
-        legend_tmp[[i]] <- Legend(
-          col_fun = col_meta_pre[[i]],
-          title = i, direction = "horizontal"
-        )
-      } else if (identical(col_meta_pre[[i]], c("#f4f4f4", "#5a5a5a"))) {
-        legend_tmp[[i]] <- Legend(
-          at = unique(data[, i]), title = i,
-          direction = "horizontal",
-          labels = c("No", "Yes"),
-          legend_gp = gpar(fill = col_meta_pre[[i]])
-        )
-      } else {
-         legend_tmp[[i]] <- Legend(
-          at = unique(data[, i]), title = i,
-          direction = "horizontal",
-          legend_gp = gpar(fill = col_meta_pre[[i]])
-        )
-      }
-    }
-    ref_mut <- unique(unlist(str_split(mut_mat, "/")))
-    ref_mut <- ref_mut[ref_mut != "" & ref_mut != "NANA"]
-    ref_mut <- ref_mut[!is.na(ref_mut)]
-    lgd_mut <- Legend(
-      at = ref_mut, title = "Mutations",
-      direction = "horizontal",
-      legend_gp = gpar(fill = cols[ref_mut])
+# convert data structure
+keep_vars_ref <- ls() 
+row.names(data) <- data[, 1]
+data <- data[, -1]
+axis_raw <- c("KRAS","GBP4")
+exp_start_col <- which(colnames(data) == axis_raw[2])
+mut_start_col <- which(colnames(data) == axis_raw[1])
+heat_mat <- as.matrix(t(data[, exp_start_col:ncol(data)]))
+mut_mat <- as.matrix(t(data[, mut_start_col:(exp_start_col - 1)]))
+mut_mat[is.na(mut_mat)] <- ""
+
+color_key <- c("#196ABD", "#3399FF", "#3399FF", "#f4f4f4", "#f4f4f4", "#f4f4f4", "#FF3333", "#FF3333", "#C20B01")
+
+cols <- c()
+for (i in 1:nrow(data2)) {
+  cols[data2[i,1]] <- data2[i,2]
+}
+col_meta <- list()
+col_meta_pre <- list()
+items <- c()
+for (i in 1:(mut_start_col - 1)) {
+  ref <- unique(data[, i])
+  ref <- ref[!is.na(ref) & ref != ""]
+  if (any(is.numeric(ref)) & length(ref) > 2) {
+    col_meta_pre[[colnames(data)[i]]] <- hiplotlib::col_fun_cont(data[,i])
+  } else if (length(ref) == 2 & any(is.numeric(ref))) {
+    col_meta_pre[[colnames(data)[i]]] <- c("#f4f4f4", "#5a5a5a")
+    items <- c(items, ref)
+  } else if (length(ref) == 2 & any(is.character(ref))) {
+    col_meta_pre[[colnames(data)[i]]] <- c("#196ABD", "#C20B01")
+    items <- c(items, unique(data[, i]))
+  } else if (length(unique(data[, i])) > 2) {
+    col_meta_pre[[colnames(data)[i]]] <- distinctColorPalette(
+      length(unique(data[, i]))
     )
-    legend_tmp[[length(legend_tmp) + 1]] <- lgd_mut
-    legend_tmp$direction <- "horizontal"
-    legend_tmp$max_width <- unit(14, "cm")
-    legend_tmp$column_gap <- unit(5, "mm")
-    legend_tmp$row_gap <- unit(0.5, "cm")
-    draw(do.call(packLegend, legend_tmp))
-  })
-rel_height <- as.numeric(str_split("4, 2, 2", ", |,| |;")[[1]])
-p <- plot_grid(p1, p2, p3, ncol = 1, rel_heights = rel_height)
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `width`: Controls element width
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/025-complex-heatmap.html

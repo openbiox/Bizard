@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+The complex interaction is visualized in the form of chord graph.
 
 ## Required R Packages
 - circlize
@@ -15,6 +14,26 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(circlize)
+library(data.table)
+library(ggplotify)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/chord/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# convert data structure
+row.names(data) <- data[, 1]
+data <- data[, -1]
+data <- as.matrix(data)
+
+# View data
+head(data)
+
+# Create visualization
 # Chord Plot
 Palette <- c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF","#F39B7FFF",
              "#8491B4FF","#91D1C2FF","#DC0000FF","#7E6148FF","#B09C85FF")
@@ -39,6 +58,14 @@ p <- as.ggplot(function() {
 
 p
 ```
+
+## Key Parameters
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/020-chord.html

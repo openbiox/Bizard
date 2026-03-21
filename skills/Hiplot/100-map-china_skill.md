@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Create a China Map using R with the Hiplot platform's approach. Suitable for biomedical data visualization with publication-quality output.
 
 ## Required R Packages
 - RColorBrewer
@@ -15,6 +14,25 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(RColorBrewer)
+library(data.table)
+library(ggplot2)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/map-china/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+dt_map <- readRDS(url("https://download.hiplot.cn/ui/basic/map-china/china.rds"))
+
+# Convert data structure
+dt_map$Value <- data$value[match(dt_map$FCNAME, data$name)]
+
+# View data
+head(data)
+
+# Create visualization
 # China Map
 p <- ggplot(dt_map, aes(x = long, y = lat, group = group, fill = Value)) +
   labs(fill = "Value") +
@@ -30,6 +48,18 @@ p <- ggplot(dt_map, aes(x = long, y = lat, group = group, fill = Value)) +
 
 p
 ```
+
+## Key Parameters
+- `x`: Maps `long` to the x aesthetic
+- `y`: Maps `lat` to the y aesthetic
+- `group`: Maps `group` to the group aesthetic
+- `fill`: Maps `Value` to the fill aesthetic
+- `theme`: Plot theme; tutorial uses `theme_minimal()`
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/100-map-china.html

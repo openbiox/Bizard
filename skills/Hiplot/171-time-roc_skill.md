@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Receiver Operating Characteristic (ROC) analysis with time records in survival analysis.
 
 ## Required R Packages
 - data.table
@@ -17,39 +16,71 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
-# Time ROC
-col <- c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF","#F39B7FFF")
-p <- ggplot(mroc, aes(x = FPF, y = TPF, label = cut, color = time)) +
-  plotROC::geom_roc(labels = FALSE, stat = "identity", n.cuts = 0) +
-  geom_abline(slope = 1, intercept = 0, color = "red", linetype = 2) +
-  labs(title = "ROC Dependence Time", x = "False positive rate",
-       y = "True positive rate", 
-       color = paste("Time", "(", "Year", ")")) +
-  theme_bw() +
-  theme(text = element_text(family = "Arial"),
-        plot.title = element_text(size = 12, hjust = 0.5),
-        axis.title = element_text(size = 10),
-        legend.position = "right",
-        legend.direction = "vertical",
-        legend.title = element_text(size = 10),
-        legend.text = element_text(size = 10)) +
-  scale_color_manual(values = col)
+# Load packages
+library(data.table)
+library(ggplot2)
+library(grid)
+library(jsonlite)
+library(plotROC)
+library(survivalROC)
 
-auc <- levels(factor(mroc$AUC))
-for (i in 1:length(auc)) {
-  p <- p + annotate("text",
-    x = 0.75,
-    y = 0.05 + 0.05 * i, ## 注释text的位置
-    col = col[i],
-    label = paste(
-      paste(paste(mtime[i], "Year", sep = " "), " = "),
-      round(as.numeric(auc[i]), 2)
+# Prepare data
+# Load data
+data1 <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/time-roc/data.json")$exampleData$textarea[[1]])
+data1 <- as.data.frame(data1)
+data2 <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/time-roc/data.json")$exampleData$textarea[[2]])
+data2 <- as.data.frame(data2)
+
+# convert data structure
+surv_table <- data1
+colnames(surv_table) <- c("surv", "cens", "risk")
+mtime <- as.data.frame(data2)[, 1]
+sroc <- lapply(mtime, function(t) {
+  stroc <- survivalROC(
+    Stime = surv_table$surv,
+    status = surv_table$cens,
+    marker = surv_table$risk,
+    predict.time = t,
+    method = "KM"
+  )
+  data.frame(
+    TPF = stroc[["TP"]],
+    FPF = stroc[["FP"]],
+    cut = stroc[["cut.values"]],
+    time = rep(
+      stroc[["predict.time"]],
+      length(stroc[["TP"]])
+    ),
+    AUC = rep(
+      stroc$AUC,
+      length(stroc$FP)
     )
   )
-}
+})
+mroc <- do.call(rbind, sroc)
+mroc$time <- factor(mroc$time)
 
-p
+# View data
+head(data1)
+head(data2)
+
+# Create visualization
+# Time ROC
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `x`: Maps `FPF` to the x aesthetic
+- `y`: Maps `TPF` to the y aesthetic
+- `color`: Maps `time` to the color aesthetic
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+- `theme`: Plot theme; tutorial uses `theme_bw()`
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/171-time-roc.html

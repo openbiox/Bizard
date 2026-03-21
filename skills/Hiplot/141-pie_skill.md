@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+The pie chart is a statistical chart that shows the proportion of each part by dividing a circle into sections.
 
 ## Required R Packages
 - data.table
@@ -15,6 +14,30 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pie/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+
+# Convert data structure
+colnames(data) <- c("Group", "Value")
+data <- data %>%
+  arrange(desc(Group)) %>%
+  mutate(prop = Value / sum(data$Value) * 100) %>%
+  mutate(ypos = Value / length(unique(Group)) +
+           c(0, cumsum(Value)[-length(Value)]) + 5)
+
+# View data
+head(data)
+
+# Create visualization
 # Pie
 p <- ggplot(data, aes(x = "", y = Value, fill = Group)) +
   geom_col(width = 1) +
@@ -41,13 +64,21 @@ p <- ggplot(data, aes(x = "", y = Value, fill = Group)) +
     panel.grid = element_blank(),
     axis.ticks = element_blank(),
     plot.title = element_text(size = 14, face = "bold",
-                              hjust = 0.5, vjust = -1),
-    legend.position = "none"
-  )
-    
-  
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `y`: Maps `ypos` to the y aesthetic
+- `fill`: Maps `Group` to the fill aesthetic
+- `width`: Controls element width
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+- `theme`: Plot theme; tutorial uses `theme_minimal()`
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/141-pie.html

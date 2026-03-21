@@ -13,6 +13,32 @@ A volcano plot displays statistical significance (-log10 p-value) versus fold-ch
 
 ## Minimal Reproducible Code
 ```python
+# Load packages
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+
+# Prepare data
+np.random.seed(42)
+n_genes = 5000
+df = pd.DataFrame({
+    'gene': [f'Gene{i+1}' for i in range(n_genes)],
+    'log2FC': np.random.normal(0, 1.5, n_genes),
+    'pvalue': np.random.uniform(1e-10, 1, n_genes)
+})
+df['neg_log10p'] = -np.log10(df['pvalue'])
+
+fc_thresh = 1.0
+p_thresh = 0.05
+
+conditions = [
+    (df['log2FC'] > fc_thresh) & (df['pvalue'] < p_thresh),
+    (df['log2FC'] < -fc_thresh) & (df['pvalue'] < p_thresh),
+]
+choices = ['Up', 'Down']
+df['regulation'] = np.select(conditions, choices, default='NS')
+
+# Create visualization
 colors = {'Up': '#e63946', 'Down': '#457b9d', 'NS': '#cccccc'}
 fig, ax = plt.subplots(figsize=(8, 6))
 for reg, color in colors.items():
@@ -30,6 +56,16 @@ ax.spines[['top', 'right']].set_visible(False)
 plt.tight_layout()
 plt.show()
 ```
+
+## Key Parameters
+- `figsize`: Figure dimensions as (width, height) in inches
+- `alpha`: Transparency level (0–1)
+- `annot`: Whether to annotate cells with values (True/False)
+
+## Tips
+- The tutorial includes a 'Enhanced Volcano with Significance Regions' section with advanced styling options
+- Call `plt.tight_layout()` to prevent label overlap
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Python/VolcanoPlot.html

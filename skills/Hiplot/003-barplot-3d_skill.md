@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+3D bar charts are used to provide a 3D look and feel for the data. The third dimension is often used for aesthetic reasons, but it does not improve data reading. Still intended to show comparisons between discrete categories.
 
 ## Required R Packages
 - data.table
@@ -15,6 +14,32 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggplotify)
+library(jsonlite)
+library(plot3D)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/barplot-3d/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# convert data vector to a matrix
+mat <- matrix(rep(1, nrow(data)), nrow = length(unique(data[, 2])))
+rownames(mat) <- unique(data[, 2])
+colnames(mat) <- unique(data[, 3])
+for (i in 1:nrow(mat)) {
+  for (j in seq_len(ncol(mat))) {
+    mat[i, j] <- data[, 1][data[, 2] == rownames(mat)[i] &
+      data[, 3] == colnames(mat)[j]]
+  }
+}
+
+# View data
+mat
+
+# Create visualization
 # 3D Barplot
 p <- as.ggplot(function() {
   hist3D(
@@ -39,13 +64,17 @@ p <- as.ggplot(function() {
   # Use text3D to label y axis
   text3D(
     x = rep(1, ncol(mat)), y = seq_len(ncol(mat)), z = rep(0, ncol(mat)),
-    labels = colnames(mat), bty = "g",
-    add = TRUE, adj = 1, cex = 0.8
-  )
-})
-
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `alpha`: Controls transparency (0 = fully transparent, 1 = opaque)
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/003-barplot-3d.html

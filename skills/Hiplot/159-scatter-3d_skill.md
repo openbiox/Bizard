@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+3D scatter plot is to apply a number of quantitative variables to different coaxes in space and combine different variables into coordinates in space, so as to clearly explain the interaction between the three quantitative variables.
 
 ## Required R Packages
 - data.table
@@ -15,6 +14,27 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggplotify)
+library(jsonlite)
+library(plot3D)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/scatter-3d/data.json")$exampleData[[1]]$textarea[[1]])
+data <- as.data.frame(data)
+
+# Convert data structure
+col_idx <- which(colnames(data) == "group")
+data[, col_idx] <- as.factor(data[, col_idx])
+shapes <- 19
+shape_idx <- ""
+
+# View data
+head(data)
+
+# Create visualization
 # 3D-Scatter
 p <- as.ggplot(function() {
   plot3d <- scatter3D(data[, 1], data[, 2], data[, 3],
@@ -36,6 +56,15 @@ p <- as.ggplot(function() {
 
 p
 ```
+
+## Key Parameters
+- `alpha`: Controls transparency (0 = fully transparent, 1 = opaque)
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/159-scatter-3d.html

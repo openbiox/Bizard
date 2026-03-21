@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Connected scatterplot
 
 ## Required R Packages
 - data.table
@@ -16,6 +15,22 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/connected-scatterplot/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# View data
+head(data)
+
+# Create visualization
 # Connected Scatterplot
 connected_scatterplot <- function(data, x, y, label, label_ratio, line_color, arrow_size, label_size) {
 
@@ -50,22 +65,19 @@ p <- connected_scatterplot(
   label = "year",
   label_ratio = 0.5,
   line_color = "#1A237E",
-  arrow_size = 2,
-  label_size = 2.5
-) +
-  theme_bw() +
-  theme(text = element_text(family = "Arial"),
-        plot.title = element_text(size = 12,hjust = 0.5),
-        axis.title = element_text(size = 12),
-        axis.text = element_text(size = 10),
-        axis.text.x = element_text(angle = 0, hjust = 0.5,vjust = 1),
-        legend.position = "right",
-        legend.direction = "vertical",
-        legend.title = element_text(size = 10),
-        legend.text = element_text(size = 10))
-
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `x`: Maps `x` to the x aesthetic
+- `y`: Maps `y` to the y aesthetic
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `theme`: Plot theme; tutorial uses `theme_bw()`
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/026-connected-scatterplot.html

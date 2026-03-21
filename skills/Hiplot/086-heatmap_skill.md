@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Heat map is an intuitive and visual method for analyzing the distribution of experimental data, which can be used for quality control of experimental data and visualization display of difference data, as well as clustering of data and samples to observe sample quality.
 
 ## Required R Packages
 - ComplexHeatmap
@@ -15,57 +14,66 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(ComplexHeatmap)
+library(data.table)
+library(genefilter)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data_count <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/heatmap/data.json")$exampleData[[1]]$textarea[[1]])
+data_count <- as.data.frame(data_count)
+data_sample <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/heatmap/data.json")$exampleData[[1]]$textarea[[2]])
+data_sample <- as.data.frame(data_sample)
+data_gene <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/heatmap/data.json")$exampleData[[1]]$textarea[[3]])
+data_gene <- as.data.frame(data_gene)
+
+# Convert data structure
+data_count <- data_count[!is.na(data_count[, 1]), ]
+idx <- duplicated(data_count[, 1])
+data_count[idx, 1] <- paste0(data_count[idx, 1], "--dup-", cumsum(idx)[idx])
+for (i in 2:ncol(data_count)) {
+  data_count[, i] <- as.numeric(data_count[, i])
+}
+data <- as.matrix(data_count[, -1])
+rownames(data) <- data_count[, 1]
+
+## Add annotation information to samples
+sample.info <- data_sample[-1]
+row.names(sample.info) <- data_sample[, 1]
+sample_info_reorder <- as.data.frame(sample.info[match(
+  colnames(data), rownames(sample.info)
+  ), ])
+colnames(sample_info_reorder) <- colnames(sample.info)
+rownames(sample_info_reorder) <- colnames(data)
+
+## Add annotation information to genes
+gene_info <- data_gene[-1]
+rownames(gene_info) <- data_gene[, 1]
+gene_info_reorder <- as.data.frame(gene_info[match(
+  rownames(data), rownames(gene_info)
+  ), ])
+colnames(gene_info_reorder) <- colnames(gene_info)
+rownames(gene_info_reorder) <- rownames(data)
+
+# View data
+head(data)
+
+# Create visualization
 # Heatmap
 ## Set annotation_col and annotation_row to add annotations to samples and genes respectively
 top_var <- 100
-top_var_genes <- rownames(data)[head(
-  order(genefilter::rowVars(data), decreasing = TRUE),
-  nrow(data) * top_var / 100
-)]
-## Set annotation_colors
-col <- colorRampPalette(c("#0060BF","#FFFFFF","#CA1111"))(50)
-annotation_colors <- list()
-for(i in colnames(sample_info_reorder)) {
-  if (is.numeric(sample_info_reorder[,i])) {
-    annotation_colors[[i]] <- col
-  } else {
-    ref <- c("#323232","#1B6393")
-    annotation_colors[[i]] <- ref
-    names(annotation_colors[[i]]) <- unique(sample_info_reorder[,i])
-  }
-}
-for(i in colnames(gene_info_reorder)) {
-  if (is.numeric(gene_info_reorder[,i])) {
-    annotation_colors[[i]] <- col
-  } else {
-    ref <- c("#323232","#1B6393")
-    annotation_colors[[i]] <- ref
-    names(annotation_colors[[i]]) <- unique(gene_info_reorder[,i])
-  }
-}
-
-p <- 
-  ComplexHeatmap::pheatmap(
-    data[row.names(data) %in% top_var_genes,],
-    color = col, 
-    border_color = NA,
-    fontsize_row = 6, fontsize_col = 6,
-    main = "Heatmap Plot",
-    cluster_rows = T, cluster_cols = T,
-    scale = "none",
-    clustering_method = "ward.D2",
-    clustering_distance_cols = "euclidean",
-    clustering_distance_rows = "euclidean",
-    fontfamily = "Arial",
-    display_numbers = F,
-    number_color = "black",
-    annotation_col = sample_info_reorder,
-    annotation_row = gene_info_reorder,
-    annotation_colors = annotation_colors
-  )
-
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/086-heatmap.html

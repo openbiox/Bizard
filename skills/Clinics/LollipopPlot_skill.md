@@ -4,7 +4,7 @@
 Clinics
 
 ## When to Use
-Visualize lollipop plot data in a biomedical context.
+Create a Lollipop Plot visualization in R for biomedical data analysis and research publications.
 
 ## Required R Packages
 - dplyr
@@ -14,6 +14,19 @@ Visualize lollipop plot data in a biomedical context.
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+
+# Prepare data
+# Loading data
+data <- read.csv('https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/lollipop_1.csv', row.names = 1) # Correlation analysis data reading
+# View the dataset
+head(data)
+
+# Create visualization
 # Basic Lollipop Plot
 # Convert correlation coefficients and p-values to categorical variables
 data$pvalue_group <- cut(data$pvalue,
@@ -52,6 +65,22 @@ p = ggplot(data,
         panel.grid = element_line(linetype = "dotted",color='grey')) 
 p
 ```
+
+## Key Parameters
+- `x`: Maps `0` to the x aesthetic
+- `y`: Maps `cell` to the y aesthetic
+- `color`: Maps `pvalue_group` to the color aesthetic
+- `size`: Maps `cor_group_size` to the size aesthetic
+- `width`: Controls element width
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+- `theme`: Plot theme; tutorial uses `theme_bw()`
+
+## Tips
+- The tutorial includes a '3. Beautify Plot' section with advanced styling options
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- Follow CONSORT or STROBE guidelines for clinical data visualization where applicable
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Clinics/LollipopPlot.html

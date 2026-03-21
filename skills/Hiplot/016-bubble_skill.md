@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+The bubble chart is a statistical chart that shows the third variable by the size of the bubble on the basis of the scatter chart, so that the three variables can be compared and analyzed simultaneously.
 
 ## Required R Packages
 - data.table
@@ -15,6 +14,27 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggplot2)
+library(jsonlite)
+library(stringr)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/bubble/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# convert data structure
+data[, 1] <- str_to_sentence(str_remove(data[, 1], pattern = "\\w+:\\d+\\W"))
+topnum <- 7
+data <- data[1:topnum, ]
+data[, 1] <- factor(data[, 1], level = rev(unique(data[, 1])))
+
+# View data
+head(data)
+
+# Create visualization
 # Bubble
 p <- ggplot(data, aes(Ratio, Term)) +
   geom_point(aes(size = Count, colour = -log10(PValue))) +
@@ -37,6 +57,17 @@ p <- ggplot(data, aes(Ratio, Term)) +
 
 p
 ```
+
+## Key Parameters
+- `size`: Maps `Count` to the size aesthetic
+- `width`: Controls element width
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `theme`: Plot theme; tutorial uses `theme_bw()`
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/016-bubble.html

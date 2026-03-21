@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Create a Visdat using R with the Hiplot platform's approach. Suitable for biomedical data visualization with publication-quality output.
 
 ## Required R Packages
 - data.table
@@ -17,6 +16,23 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(jsonlite)
+library(patchwork)
+library(visdat)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/visdat/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# View data
+head(data)
+
+# Create visualization
 # Visdat
 add_palette <- function (p) {
   ## add color palette
@@ -44,6 +60,15 @@ plot_annotation(tag_levels = 'A')", pstr)))
 
 p
 ```
+
+## Key Parameters
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/182-visdat.html

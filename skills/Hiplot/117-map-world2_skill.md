@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Create a World Map 2 using R with the Hiplot platform's approach. Suitable for biomedical data visualization with publication-quality output.
 
 ## Required R Packages
 - RColorBrewer
@@ -15,6 +14,25 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(RColorBrewer)
+library(data.table)
+library(ggplot2)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/map-world2/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+dt_map <- readRDS(url("https://download.hiplot.cn/ui/basic/map-world/world.rds"))
+
+# Convert data structure
+dt_map$Value <- data$death_rate[match(dt_map$ENG_NAME, data$region)]
+
+# View data
+head(data)
+
+# Create visualization
 # World Map 2
 p <- ggplot(dt_map) +
   geom_polygon(aes(x = long, y = lat, group = group, fill = Value),
@@ -46,10 +64,22 @@ p <- ggplot(dt_map) +
         panel.background = element_rect(fill = "#FFFFFF", color = NA),
         legend.background = element_rect(fill = "#FFFFFF", color = NA),
         plot.margin = unit(c(1.5, 1.5, 1.5, 1.5), "cm")) +
-  labs(x = NULL, y = NULL, title = "World Map")
-
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `x`: Maps `long` to the x aesthetic
+- `y`: Maps `lat` to the y aesthetic
+- `group`: Maps `group` to the group aesthetic
+- `fill`: Maps `Value` to the fill aesthetic
+- `alpha`: Controls transparency (0 = fully transparent, 1 = opaque)
+- `width`: Controls element width
+- `position`: Position adjustment (identity, dodge, stack, fill)
+
+## Tips
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/117-map-world2.html

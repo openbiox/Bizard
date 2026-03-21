@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+PCAtools can reduce the dimensionality of data through principal component analysis, and view principal component related features at a two-dimensional level
 
 ## Required R Packages
 - PCAtools
@@ -16,6 +15,25 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(PCAtools)
+library(cowplot)
+library(data.table)
+library(ggplotify)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pcatools/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+data2 <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pcatools/data.json")$exampleData$textarea[[2]])
+data2 <- as.data.frame(data2)
+
+# View data
+head(data[,1:5])
+head(data2[,1:5])
+
+# Create visualization
 # PCAtools
 ## Define the plot function
 call_pcatools <- function(datTable, sampleInfo,
@@ -47,165 +65,17 @@ call_pcatools <- function(datTable, sampleInfo,
     axisLabSize = 14, titleLabSize = 20,
     colBar = screeplotColBar,
     gridlines.major = FALSE, gridlines.minor = FALSE,
-    returnPlot = TRUE
-  )
-
-  params_pairsplot <- list(
-    data3,
-    components = getComponents(data3, c(1:pairsplotComponents)),
-    triangle = TRUE, trianglelabSize = 12,
-    hline = 0, vline = 0,
-    pointSize = 0.8, gridlines.major = FALSE, gridlines.minor = FALSE,
-    title = "", plotaxes = FALSE,
-    margingaps = unit(c(0.01, 0.01, 0.01, 0.01), "cm"),
-    returnPlot = TRUE,
-    colkey = c("#00468BFF","#ED0000FF"),
-    legendPosition = "none"
-  )
-  params_biplot <- list(data3,
-    showLoadings = TRUE,
-    lengthLoadingsArrowsFactor = 1.5,
-    sizeLoadingsNames = 4,
-    colLoadingsNames = "red4",
-    # other parameters
-    lab = NULL,
-    hline = 0, vline = c(-25, 0, 25),
-    vlineType = c("dotdash", "solid", "dashed"),
-    gridlines.major = FALSE, gridlines.minor = FALSE,
-    pointSize = 5,
-    legendLabSize = 16, legendIconSize = 8.0,
-    drawConnectors = FALSE,
-    title = "PCA bi-plot",
-    subtitle = "PC1 versus PC2",
-    caption = "27 PCs ≈ 80%",
-    returnPlot = TRUE,
-    legendPosition = "bottom"
-  )
-  if (!is.null(biplotShapeBy) && biplotShapeBy != "") {
-    params_biplot$shape <- biplotShapeBy
-    params_pairsplot$shape <- biplotShapeBy
-    t <- params_biplot[[1]]$metadata[,biplotShapeBy]
-    params_biplot[[1]]$metadata[,biplotShapeBy] <- factor(t,
-      levels = t[!duplicated(t)]
-    )
-    params_pairsplot[[1]]$metadata[,biplotShapeBy] <- factor(t,
-      levels = t[!duplicated(t)]
-    )
-  }
-  if (!is.null(biplotColBy) && biplotColBy != "") {
-    params_pairsplot$colby <- biplotColBy
-    params_pairsplot$colkey <- c("#00468BFF","#ED0000FF")
-    params_biplot$colby <- biplotColBy
-    params_biplot$colkey <- c("#00468BFF","#ED0000FF")
-    t1 <- params_biplot[[1]]$metadata[,biplotColBy]
-    params_biplot[[1]]$metadata[,biplotColBy] <- factor(t1,
-      levels = t1[!duplicated(t1)]
-    )
-    params_pairsplot[[1]]$metadata[,biplotColBy] <- factor(t1,
-      levels = t1[!duplicated(t1)]
-    )
-  }
-
-  p2 <- do.call(PCAtools::pairsplot, params_pairsplot)
-  p3 <- do.call(PCAtools::biplot, params_biplot)
-
-  p4 <- PCAtools::plotloadings(
-    data3,
-    rangeRetain = 0.01, labSize = 4,
-    components = getComponents(data3, c(1:plotloadingsComponents)),
-    title = "Loadings plot", axisLabSize = 12,
-    subtitle = "PC1, PC2, PC3, PC4, PC5",
-    caption = "Top 1% variables",
-    gridlines.major = FALSE, gridlines.minor = FALSE,
-    shape = 24, shapeSizeRange = c(4, 8),
-    col = c(plotloadingsLowCol, plotloadingsMidCol, plotloadingsHighCol),
-    legendPosition = "none",
-    drawConnectors = FALSE,
-    returnPlot = TRUE
-  )
-
-  if (length(eigencorplotMetavars) > 0 && all(eigencorplotMetavars != "")) {
-    metavars <- eigencorplotMetavars
-  } else {
-    metavars <- colnames(sampleInfo)[2:ncol(sampleInfo)]
-  }
-  if (length(metavars) == 1 && metavars != colnames(sampleInfo)[1]) {
-    metavars <- c(colnames(sampleInfo)[1], metavars)
-  } else if (length(metavars) == 1 && metavars == colnames(sampleInfo)[1]) {
-    stop('eigencorplotMetavars need >= 2 feature')
-  }
-
-  p5 <- PCAtools::eigencorplot(
-    data3,
-    components = getComponents(data3, 1:eigencorplotComponents),
-    metavars = metavars,
-    cexCorval = 1.0,
-    fontCorval = 2,
-    posLab = "all",
-    rotLabX = 45,
-    scale = TRUE,
-    main = "PC clinical correlates",
-    cexMain = 1.5,
-    plotRsquared = FALSE,
-    corFUN = "pearson",
-    corUSE = "na.or.complete",
-    signifSymbols = c("****", "***", "**", "*", ""),
-    signifCutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
-    returnPlot = TRUE
-  )
-
-  p6 <- plot_grid(
-    p1, p2, p3,
-    ncol = 3,
-    labels = c("A", "B  Pairs plot", "C"),
-    label_fontfamily = "Arial",
-    label_fontface = "bold",
-    label_size = 22,
-    align = "h",
-    rel_widths = c(1.10, 0.80, 1.10)
-  )
-
-  p7 <- plot_grid(
-    p4,
-    as.grob(p5),
-    ncol = 2,
-    labels = c("D", "E"),
-    label_fontfamily = "Arial",
-    label_fontface = "bold",
-    label_size = 22,
-    align = "h",
-    rel_widths = c(0.8, 1.2)
-  )
-
-  p <- plot_grid(
-    p6, p7,
-    ncol = 1,
-    rel_heights = c(1.1, 0.9)
-  )
-
-  return(p)
-}
-
-## plot
-p <- call_pcatools(
-  datTable = data,
-  sampleInfo = data2,
-  biplotColBy = "ER",
-  biplotShapeBy = "Grade",
-  eigencorplotMetavars = colnames(data2)[-1],
-  screeplotComponents = 30,
-  pairsplotComponents = 3,
-  plotloadingsComponents = 5,
-  eigencorplotComponents = 10,
-  top_var = 90,
-  screeplotColBar = "#0085FF",
-  plotloadingsLowCol = "#0085FF",
-  plotloadingsMidCol = "#FFFFFF",
-  plotloadingsHighCol = "#FF0000"
-)
-
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `width`: Controls element width
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/136-pcatools.html

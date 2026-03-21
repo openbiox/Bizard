@@ -4,7 +4,7 @@
 Clinics
 
 ## When to Use
-Visualize meta-analysis forest plot data in a biomedical context.
+Create a Meta-Analysis Forest Plot visualization in R for biomedical data analysis and research publications.
 
 ## Required R Packages
 - dplyr
@@ -17,6 +17,36 @@ Visualize meta-analysis forest plot data in a biomedical context.
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(dplyr)
+library(forestplot)
+library(ggplot2)
+library(grid)
+library(meta)
+library(metafor)
+
+# Prepare data
+# Generate simulated data
+set.seed(2023)
+n_studies <- 15
+meta_data <- tibble(
+  `Study Name` = paste("Study", LETTERS[1:n_studies]),
+  `Odds Ratio` = exp(rnorm(n_studies, mean = 0.2, sd = 0.4)),
+  `Lower 95% CI` = exp(rnorm(n_studies, mean = 0.1, sd = 0.35)),
+  `Upper 95% CI` = exp(rnorm(n_studies, mean = 0.3, sd = 0.45)),
+  `Weight (%)` = runif(n_studies, 0.5, 3),
+  `Treatment Group` = sample(c("DrugA", "DrugB"), n_studies, replace = TRUE)
+) %>% 
+  mutate(
+    across(c(`Odds Ratio`, `Lower 95% CI`, `Upper 95% CI`), ~round(., 2)),
+    `Weight (%)` = round(`Weight (%)`/sum(`Weight (%)`)*100, 1),
+    `Study Name` = factor(`Study Name`, levels = rev(`Study Name`))
+  ) 
+
+# View the final merged dataset
+head(meta_data)
+
+# Create visualization
 # Basic forest plot
 p <-
   ggplot(meta_data, aes(x = `Odds Ratio`, y = `Study Name`)) +
@@ -37,10 +67,21 @@ p <-
     panel.grid.minor.x = element_blank(),
     plot.title = element_text(face = "bold", hjust = 0.5),
     plot.subtitle = element_text(hjust = 0.5, color = "grey50"),
-    legend.position = "bottom"
-  )
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `y`: Maps `Study_Name` to the y aesthetic
+- `x`: Maps `log_OR` to the x aesthetic
+- `size`: Maps `Sample_Size` to the size aesthetic
+- `fill`: Maps `Effect_Type` to the fill aesthetic
+- `width`: Controls element width
+- `position`: Position adjustment (identity, dodge, stack, fill)
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- Follow CONSORT or STROBE guidelines for clinical data visualization where applicable
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Clinics/MetaForestPlot.html

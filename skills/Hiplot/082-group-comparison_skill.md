@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Group-comparison Heatmap provides a way to compare multiple variables across multiple (>2) groups and visualize the result with heatmap.
 
 ## Required R Packages
 - data.table
@@ -14,6 +13,20 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(jsonlite)
+library(sigminer)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/group-comparison/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# View data
+head(data)
+
+# Create visualization
 # Define plot functions
 unlist_and_covert <- function(x, recursive = FALSE) {
   if (!is.null(x)) {
@@ -50,29 +63,16 @@ plotentry <- function(data,
     p <- show_group_enrichment(rv,
       scales = scales, add_text_annotation = add_text_annotation,
       fill_by_p_value = fill_by_p_value, use_fdr = use_fdr, cut_p_value = cut_p_value,
-      cluster_row = cluster_row
-    )
-  }
-  return(p)
-}
-
-# plot
-p <- plotentry(
-  data = data,
-  grp_vars = "g1",
-  enrich_vars = c("e1", "e2"),
-  cross = T,
-  add_text_annotation = T,
-  fill_by_p_value = T,
-  use_fdr = T,
-  cut_p_value = F,
-  cluster_row = F,
-  co_method = "t.test",
-  scales = "free"
-)
-
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/082-group-comparison.html

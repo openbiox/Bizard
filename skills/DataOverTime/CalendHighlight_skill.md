@@ -11,6 +11,18 @@ Date highlighting marks are mainly used to display changes in data within certai
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(calendR)
+
+# Prepare data
+# Construct data
+set.seed(1)
+data <- rnorm(365)
+
+# View data
+head(data)
+
+# Create visualization
 # Chinese Calendar
 p <- calendR(
 	year = 2025,
@@ -49,8 +61,17 @@ p <- calendR(
 	pdf = FALSE
 )
 
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- Highlight key time points or events with vertical reference lines or annotations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/DataOverTime/CalendHighlight.html

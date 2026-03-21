@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Simplified variables correlation heatmap
 
 ## Required R Packages
 - data.table
@@ -15,6 +14,21 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggplot2)
+library(jsonlite)
+library(sigminer)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/cor-heatmap-simple/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# View data
+head(data)
+
+# Create visualization
 # Simplified Correlation Heatmap
 p <- show_cor(
   data = data,
@@ -42,6 +56,17 @@ p <- show_cor(
 
 p
 ```
+
+## Key Parameters
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `theme`: Plot theme; tutorial uses `theme_bw()`
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/029-cor-heatmap-simple.html

@@ -4,7 +4,7 @@
 Distribution
 
 ## When to Use
-Visualize break plot data in a biomedical context.
+Create a Break Plot visualization in R for biomedical data analysis and research publications.
 
 ## Required R Packages
 - RColorBrewer
@@ -16,6 +16,35 @@ Visualize break plot data in a biomedical context.
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(RColorBrewer)
+library(dplyr)
+library(ggbreak)
+library(ggplot2)
+library(ggpubr)
+library(rstatix)
+
+# Prepare data
+# Data Preparation
+df <- ToothGrowth %>%
+  group_by(supp, dose) %>%
+  summarise(
+    mean_len = mean(len),
+    sd_len = sd(len),
+    n = n(),
+    se_len = sd_len/sqrt(n),
+    .groups = 'drop')
+
+
+# Statistical tests (key repair points)
+stat.test <- ToothGrowth %>%
+  group_by(dose) %>%
+  t_test(len ~ supp) %>%
+  add_xy_position(x = "dose", dodge = 0.8)
+
+head(df)
+
+# Create visualization
 # Basic BarPlot
 p1 <- ggplot(df, aes(x=dose, y=mean_len, fill=supp)) +
   geom_col(position=position_dodge(0.4), width=0.2) +
@@ -28,6 +57,22 @@ p1 <- ggplot(df, aes(x=dose, y=mean_len, fill=supp)) +
 
 p1
 ```
+
+## Key Parameters
+- `x`: Maps `dose` to the x aesthetic
+- `y`: Maps `len` to the y aesthetic
+- `fill`: Maps `supp` to the fill aesthetic
+- `color`: Maps `supp` to the color aesthetic
+- `alpha`: Controls transparency (0 = fully transparent, 1 = opaque)
+- `width`: Controls element width
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+
+## Tips
+- The tutorial includes a '4. More advanced charts' section with advanced styling options
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- Consider adding `geom_jitter()` or raw data points alongside distribution plots for small sample sizes
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Distribution/BreakPlot.html

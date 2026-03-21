@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Linear regression is a regression method for linear modeling of the relationship between independent variables and dependent variables.If there is only one independent variable, it is called simple regression, and if there is more than one independent variable, it is called multiple regression.
 
 ## Required R Packages
 - data.table
@@ -15,6 +14,24 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggplot2)
+library(ggrepel)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/line-regression/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# Convert data structure
+data$group <- factor(data$group, levels = unique(data$group))
+
+# View data
+head(data)
+
+# Create visualization
 # Line Regression
 ## Defining the equation
 equation <- function(x, add_p = FALSE) {
@@ -47,33 +64,20 @@ p <- ggplot(data, aes(x = value1, y = value2, colour = group)) +
         axis.title = element_text(size = 12),
         axis.text = element_text(size = 10),
         axis.text.x = element_text(angle = 0, hjust = 0.5,vjust = 1),
-        legend.position = "right",
-        legend.direction = "vertical",
-        legend.title = element_text(size = 10),
-        legend.text = element_text(size = 10))
-  
-## Add annotations for each group using ggrepel
-repels <- rep("", nrow(data))
-for (g in unique(data$group)) {
-  fit <- lm(value2 ~ value1, data = data[data$group == g, ])
-  v <- max(data[data$group == g, "value2"])
-  repels[which(data$value2 == v)[1]] <- equation(fit, add_p = F)
-}
-p <- p + geom_text_repel(
-  data = data,
-  label = repels,
-  size = 4,
-  force = 5,
-  label.padding = 5,
-  na.rm = TRUE,
-  min.segment.length = 100,
-  show.legend = FALSE,
-  nudge_x = 0,
-  nudge_y = 0
-  )
-
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `x`: Maps `value1` to the x aesthetic
+- `y`: Maps `value2` to the y aesthetic
+- `colour`: Maps `group` to the colour aesthetic
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `theme`: Plot theme; tutorial uses `theme_bw()`
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/094-line-regression.html

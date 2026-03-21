@@ -12,6 +12,23 @@ A scatter plot displays values for two continuous variables as a collection of p
 
 ## Minimal Reproducible Code
 ```julia
+# Load packages
+using CairoMakie
+using DataFrames
+
+# Prepare data
+Random.seed!(42)
+n = 150
+species = repeat(["setosa", "versicolor", "virginica"], inner=50)
+sepal_length = [randn(50) .* 0.35 .+ 5.0;
+                randn(50) .* 0.52 .+ 5.9;
+                randn(50) .* 0.64 .+ 6.6]
+sepal_width = [randn(50) .* 0.38 .+ 3.4;
+               randn(50) .* 0.31 .+ 2.8;
+               randn(50) .* 0.32 .+ 3.0]
+iris_df = DataFrame(species=species, sepal_length=sepal_length, sepal_width=sepal_width)
+
+# Create visualization
 fig = Figure(size=(700, 500))
 ax = Axis(fig[1,1], xlabel="Sepal Length (cm)", ylabel="Sepal Width (cm)",
           title="Iris Scatter Plot")
@@ -24,6 +41,18 @@ end
 axislegend(ax, position=:rt)
 fig
 ```
+
+## Key Parameters
+- `colormap`: Color scheme for the plot (e.g., :viridis, :RdBu)
+- `markersize`: Size of scatter plot markers
+- `alpha`: Transparency level (0–1)
+- `color`: Color of plot elements
+- `linewidth`: Width of lines in the plot
+
+## Tips
+- Save figures with `save("plot.png", fig)` or `save("plot.pdf", fig)`
+- Adjust figure resolution with `Figure(size=(800, 600), figure_padding=20)`
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Julia/ScatterPlot.html

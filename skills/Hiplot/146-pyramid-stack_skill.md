@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+The pyramid stack is a pyramid-like figure that distributes data on both sides of a central axis.
 
 ## Required R Packages
 - data.table
@@ -16,6 +15,26 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pyramid-stack/data.json")$exampleData[[1]]$textarea[[1]])
+data <- as.data.frame(data)
+
+# Convert data structure
+data[,3] <- factor(data[,3], levels = unique(data[,3]))
+data[,1] <- factor(data[,1], levels = unique(data[,1]))
+
+# View data
+head(data)
+
+# Create visualization
 # Pyramid Stack
 p <- ggplot(data = data, aes(x = age, y = pop, fill = year)) +
   geom_bar(data = data %>% filter(gender == "female") %>% arrange(rev(year)),
@@ -42,6 +61,18 @@ p <- ggplot(data = data, aes(x = age, y = pop, fill = year)) +
 
 p
 ```
+
+## Key Parameters
+- `x`: Maps `age` to the x aesthetic
+- `y`: Maps `pop` to the y aesthetic
+- `fill`: Maps `year` to the fill aesthetic
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+
+## Tips
+- Use `coord_flip()` for horizontal orientation when labels are long
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/146-pyramid-stack.html

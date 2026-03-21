@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+The half violin plot is a statistical graph used to display the distribution and probability density of data by replacing the left part with the data frequency count graph on the basis of keeping the right part of violin graph.
 
 ## Required R Packages
 - data.table
@@ -17,6 +16,27 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(ggthemes)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/half-violin/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# Convert data structure
+colnames(data) <- c("Value", "Group")
+data[, 2] <- factor(data[, 2], levels = unique(data[, 2]))
+
+# View data
+head(data)
+
+# Create visualization
 # Half Violin
 geom_flat_violin <- function(
   mapping = NULL, data = NULL, stat = "ydensity", position = "dodge", 
@@ -46,55 +66,22 @@ geom_flat_violin_proto <-
               dplyr::mutate(.data = ., ymin = min(y), ymax = max(y), xmin = x,
                             xmax = x + width / 2)
           },
-          
-          draw_group = function(data, panel_scales, coord) {
-            data <- base::transform(data, xminv = x, 
-                                    xmaxv = x + violinwidth * (xmax - x))
-            
-            newdata <- base::rbind(
-              dplyr::arrange(.data = base::transform(data, x = xminv), y),
-              dplyr::arrange(.data = base::transform(data, x = xmaxv), -y))
-            
-            newdata <- rbind(newdata, newdata[1, ])
-            
-            ggplot2:::ggname("geom_flat_violin",
-                             GeomPolygon$draw_panel(newdata, panel_scales, coord))
-          },
-          
-          draw_key = draw_key_polygon,
-          
-          default_aes = ggplot2::aes(weight = 1, colour = "grey20", fill = "white",
-                                     size = 0.5, alpha = NA, linetype = "solid"),
-          required_aes = c("x", "y")
-        )
-
-p <- ggplot(data = data, aes(Group, Value, fill = Group)) +
-  geom_flat_violin(alpha = 1, scale = "count", trim = FALSE) +
-  geom_boxplot(width = 0.05, fill = "white", alpha = 1, 
-               outlier.colour = NA, position = position_nudge(0.05)) +
-  stat_summary(fun = mean, geom = "point", fill = "white", shape = 21, size = 2,
-               position = position_nudge(0.05)) +
-  geom_dotplot(alpha = 1, binaxis = "y", dotsize = 0.5, stackdir = "down", 
-               binwidth = 0.1, position = position_nudge(-0.025)) +
-  theme(legend.position = "none") +
-  xlab(colnames(data)[2]) +
-  ylab(colnames(data)[1]) +
-  guides(fill = F) +
-  ggtitle("Half Violin Plot") +
-  scale_fill_manual(values = c("#e04d39","#5bbad6","#1e9f86")) +
-  theme_stata() +
-  theme(text = element_text(family = "Arial"),
-        plot.title = element_text(size = 12,hjust = 0.5),
-        axis.title = element_text(size = 12),
-        axis.text = element_text(size = 10),
-        axis.text.x = element_text(angle = 0, hjust = 0.5,vjust = 1),
-        legend.position = "right",
-        legend.direction = "vertical",
-        legend.title = element_text(size = 10),
-        legend.text = element_text(size = 10))
-
-p
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `size`: Maps `0` to the size aesthetic
+- `alpha`: Maps `NA` to the alpha aesthetic
+- `fill`: Maps `Group` to the fill aesthetic
+- `width`: Controls element width
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+- `theme`: Plot theme; tutorial uses `theme_stata()`
+
+## Tips
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/085-half-violin.html

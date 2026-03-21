@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+The dual Y-axis graph can put two groups of data with larger orders of magnitude in the same graph for display.
 
 ## Required R Packages
 - data.table
@@ -14,6 +13,20 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggplot2)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/dual-y-axis/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# View data
+head(data)
+
+# Create visualization
 # Dual Y Axis Chart
 p <- ggplot(data, aes(x = x)) +
   geom_line(aes(y = data[, 2]), size = 1, color = "#D72C15") +
@@ -35,6 +48,17 @@ p <- ggplot(data, aes(x = x)) +
 
 p
 ```
+
+## Key Parameters
+- `x`: Maps `x` to the x aesthetic
+- `y`: Maps `data` to the y aesthetic
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `theme`: Plot theme; tutorial uses `theme_bw()`
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/047-dual-y-axis.html

@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Principal component analysis (PCA) is a data processing method with "dimension reduction" as the core, replacing multi-index data with a few comprehensive indicators (PCA), and restoring the most essential characteristics of data.
 
 ## Required R Packages
 - data.table
@@ -16,44 +15,72 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
-# PCA
-p <- ggplot(pca_data, aes(x = PC1, y = PC2, color = colorBy)) +
-  geom_point(size = 4, alpha = 0.8) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray70") +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "gray70") +
-  stat_ellipse(level = 0.95, show.legend = FALSE) +
-  ggtitle(conf$general$title) +
-  labs(
-    x = paste0("PC1 (", variance_explained[1], "%)"),
-    y = paste0("PC2 (", variance_explained[2], "%)"),
-    color = axis[1]
-  ) +
-  
-  # Custom color scheme
-  scale_color_brewer(palette = conf$general$palette) +
-  
-  # Add sample labels
-  geom_text(aes(label = sample), 
-            hjust = 0.5, vjust = -1, size = 3.5, show.legend = FALSE) +
-  
-  # Theme settings
-  theme_bw(base_size = 12) +
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
-    axis.title = element_text(size = 14, face = "bold"),
-    axis.text = element_text(size = 12),
-    legend.title = element_text(size = 12, face = "bold"),
-    legend.text = element_text(size = 11),
-    legend.position = "right",
-    panel.grid.major = element_line(color = "grey90", linewidth = 0.3),
-    panel.grid.minor = element_blank(),
-    panel.border = element_rect(fill = NA, color = "grey50", linewidth = 0.5),
-    aspect.ratio = 1
-  )
+# Load packages
+library(data.table)
+library(ggplot2)
+library(ggpubr)
+library(gmodels)
+library(jsonlite)
 
-# Display plot
-p
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pca/data.json")$exampleData[[1]]$textarea[[1]])
+data <- as.data.frame(data)
+group <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/pca/data.json")$exampleData[[1]]$textarea[[2]])
+group <- as.data.frame(group)
+
+# Convert data structure
+rownames(data) <- data[, 1]
+data <- as.matrix(data[, -1])
+pca_info <- fast.prcomp(data)
+## Create configuration
+conf <- list(
+  dataArg = list(
+    list(list(value = "group")),  # Color by group
+    list(list(value = ""))         # No shape group
+  ),
+  general = list(
+    title = "Principal Component Analysis",
+    palette = "Set1"
+  )
+)
+## Perform PCA - Note: data must be transposed because PCA analyzes samples (columns)
+pca_info <- prcomp(t(data), scale. = TRUE)
+## Prepare plot data
+axis <- sapply(conf$dataArg[[1]], function(x) x$value)
+## Process color grouping
+if (is.null(axis[1]) || axis[1] == "") {
+  colorBy <- rep('ALL', ncol(data))
+} else {
+  ## Ensure sample order matches
+  colorBy <- group[match(colnames(data), group$sample), axis[1]]
+}
+colorBy <- factor(colorBy, levels = unique(colorBy))
+## Create PCA data frame
+pca_data <- data.frame(
+  sample = rownames(pca_info$x),
+  PC1 = pca_info$x[, 1],
+  PC2 = pca_info$x[, 2],
+  colorBy = colorBy
+)
+## Calculate explained variance
+variance_explained <- round(pca_info$sdev^2 / sum(pca_info$sdev^2) * 100, 1)
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `x`: Maps `PC1` to the x aesthetic
+- `y`: Maps `PC2` to the y aesthetic
+- `color`: Maps `colorBy` to the color aesthetic
+- `alpha`: Controls transparency (0 = fully transparent, 1 = opaque)
+- `width`: Controls element width
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/187-pca.html

@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Dumbbell Chart can display the data change.
 
 ## Required R Packages
 - data.table
@@ -15,6 +14,21 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggalt)
+library(ggplot2)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/dumbbell/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# View data
+head(data)
+
+# Create visualization
 # Dumbbell Chart
 colors <- c("#3B4992FF","#EE0000FF")
 p <- ggplot(data, aes(y = reorder(country, y1952), x = y1952, xend = y2007)) +
@@ -35,6 +49,16 @@ p <- ggplot(data, aes(y = reorder(country, y1952), x = y1952, xend = y2007)) +
 
 p
 ```
+
+## Key Parameters
+- `y`: Maps `reorder` to the y aesthetic
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `theme`: Plot theme; tutorial uses `theme_minimal()`
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/048-dumbbell.html

@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Create a Interval Area Chart using R with the Hiplot platform's approach. Suitable for biomedical data visualization with publication-quality output.
 
 ## Required R Packages
 - data.table
@@ -14,6 +13,23 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggplot2)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/interval-area-chart/data.json")$exampleData$textarea[[1]])
+data <- as.data.frame(data)
+
+# Convert data structure
+data[["month"]] <- factor(data[["month"]], levels = data[["month"]])
+
+# View data
+head(data)
+
+# Create visualization
 # Interval Area Chart
 p <- ggplot(data, aes(x = month, group = 1)) +
   geom_line(aes(y = max_temperature), size = 1.2, color = "#EA3323", 
@@ -37,6 +53,18 @@ p <- ggplot(data, aes(x = month, group = 1)) +
 
 p
 ```
+
+## Key Parameters
+- `x`: Maps `month` to the x aesthetic
+- `group`: Maps `1` to the group aesthetic
+- `y`: Maps `mean` to the y aesthetic
+- `alpha`: Controls transparency (0 = fully transparent, 1 = opaque)
+- `theme`: Plot theme; tutorial uses `theme_bw()`
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/089-interval-area-chart.html

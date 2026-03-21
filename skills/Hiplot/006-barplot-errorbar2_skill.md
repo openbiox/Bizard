@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Bar plot with error-lines and groups.
 
 ## Required R Packages
 - data.table
@@ -16,6 +15,25 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(data.table)
+library(ggplot2)
+library(ggpubr)
+library(grafify)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/barplot-errorbar2/data.json")$exampleData[[1]]$textarea[[1]])
+data <- as.data.frame(data)
+
+# convert data structure
+data[, 2] <- factor(data[, 2], levels = unique(data[, 2]))
+
+# View data
+head(data)
+
+# Create visualization
 # Barplot (errorbar2)
 p <- plot_scatterbar_sd(
   data, ycol = get(colnames(data)[1]), xcol = get(colnames(data)[2]),
@@ -40,6 +58,18 @@ p <- plot_scatterbar_sd(
 
 p
 ```
+
+## Key Parameters
+- `fill`: Maps `data` to the fill aesthetic
+- `alpha`: Controls transparency (0 = fully transparent, 1 = opaque)
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `stat`: Statistical transformation to use
+- `theme`: Plot theme; tutorial uses `theme_classic2()`
+
+## Tips
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/006-barplot-errorbar2.html

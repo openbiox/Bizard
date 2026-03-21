@@ -11,6 +11,18 @@ The visualization of Genome-Wide Association Study (GWAS) results mainly include
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(CMplot)
+
+# Prepare data
+# Example data
+data(pig60K)
+data <- pig60K
+
+# Data preview
+head(data, 5)
+
+# Create visualization
 # SNP screening genome circular map
 CMplot(
   data,
@@ -28,6 +40,15 @@ CMplot(
   mar = c(0,0,0,0)
 )
 ```
+
+## Key Parameters
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Adjust text size with `theme(text = element_text(size = 14))` for presentations
+- Include appropriate statistical thresholds (e.g., FDR < 0.05, |log2FC| > 1) in the visualization
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/GwasSnpPlot.html

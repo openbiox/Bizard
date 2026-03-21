@@ -4,8 +4,7 @@
 Hiplot
 
 ## When to Use
-::: callout-note
-**Hiplot website**
+Display a matrix of plots for viewing correlation relationship and distributions of multiple variables.
 
 ## Required R Packages
 - GGally
@@ -14,6 +13,20 @@ Hiplot
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(GGally)
+library(data.table)
+library(jsonlite)
+
+# Prepare data
+# Load data
+data <- data.table::fread(jsonlite::read_json("https://hiplot.cn/ui/basic/easy-pairs/data.json")$exampleData[[1]]$textarea[[1]])
+data <- as.data.frame(data)
+
+# View data
+head(data)
+
+# Create visualization
 # Easy Pairs
 p <- ggpairs(data, columns = c("total_bill", "time", "tip"),
              mapping = aes_string(color = "gender")) +
@@ -32,6 +45,17 @@ p <- ggpairs(data, columns = c("total_bill", "time", "tip"),
 
 p
 ```
+
+## Key Parameters
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `theme`: Plot theme; tutorial uses `theme_bw()`
+- `fill`: Maps a variable to fill color for group comparison
+- `color`: Maps a variable to outline/point color
+
+## Tips
+- Use `theme_minimal()` or `theme_bw()` for clean, publication-ready plots
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- See the full tutorial for additional customization options and advanced examples
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/049-easy-pairs.html

@@ -15,6 +15,46 @@ The Text-Overlaid Enrichment Barplot is a visualization tool designed for the hi
 
 ## Minimal Reproducible Code
 ```r
+# Load packages
+library(clusterProfiler)
+library(ggprism)
+library(gground)
+library(org.Hs.eg.db)
+library(tidyverse)
+
+# Prepare data
+# 1. Read Data
+raw_data <- read_tsv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/DAVID.txt")
+
+# 2. Data Cleaning
+# Convert DAVID format to the standard format required for plotting
+raw_data <- raw_data %>%
+  # 2.1 Extract Category Labels
+  mutate(Category = case_when(
+    grepl("BP_DIRECT", Category) ~ "BP",
+    grepl("CC_DIRECT", Category) ~ "CC",
+    grepl("MF_DIRECT", Category) ~ "MF",
+    grepl("KEGG_PATHWAY", Category) ~ "KEGG",
+    TRUE ~ "Other"
+  )) %>%
+  # Keep only GO and KEGG results
+  filter(Category %in% c("BP", "CC", "MF", "KEGG")) %>%
+  
+  # 2.2 Clean Pathway Names (Remove IDs, e.g., "GO:001~Name" -> "Name")
+  mutate(Description = sub("^.*~|.*:", "", Term)) %>%
+  
+  # 2.3 Rename Columns (Unified variable names for plotting code)
+  # FDR -> p.adjust (Significance)
+  # Genes -> geneID (Gene List)
+  rename(
+    p.adjust = FDR,
+    geneID = Genes
+  ) %>%
+  
+  # 2.4 Format Gene Lists (Replace commas with slashes)
+  mutate(geneID = gsub(", ", "/", geneID))
+
+# Create visualization
 # Define color palette
 pal <- c('#eaa052', '#b74147', '#90ad5b', '#23929c')
 
@@ -25,56 +65,23 @@ pal <- c('#eaa052', '#b74147', '#90ad5b', '#23929c')
 # Adjust position parameters for left blocks in the simplified version
 rect.data.simple <- rect.data %>%
   mutate(
-    xmin = -1.5 * width,
-    xmax = -0.5 * width
-  )
-
-p1 <- ggplot(use_pathway, aes(-log10(p.adjust), y = index, fill = Category)) +
-  # 1. Rounded Bar Chart Body
-  geom_round_col(aes(y = Description), width = 0.6, alpha = 0.8) +
-  
-  # 2. Pathway Name Text
-  geom_text(aes(x = 0.05, label = Description), hjust = 0, size = 4) +
-  
-  # 3. Left Category Blocks
-  geom_round_rect(
-    aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, fill = Category),
-    data = rect.data.simple,
-    radius = unit(2, 'mm'),
-    inherit.aes = FALSE
-  ) +
-  
-  # 4. Left Category Text
-  geom_text(
-    aes(x = (xmin + xmax) / 2, y = (ymin + ymax) / 2, label = Category),
-    data = rect.data.simple,
-    size = 3,
-    inherit.aes = FALSE
-  ) +
-  
-  # 5. Bottom Decorative Line
-  geom_segment(
-    aes(x = 0, y = 0, xend = xaxis_max, yend = 0),
-    linewidth = 1,
-    inherit.aes = FALSE
-  ) +
-  
-  # 6. Style Adjustments
-  labs(y = NULL, x = "-log10(p.adjust)") +
-  scale_fill_manual(name = 'Category', values = pal) +
-  scale_x_continuous(breaks = seq(0, xaxis_max, 2), expand = expansion(c(0, 0.1))) +
-  theme_prism() +
-  theme(
-    axis.text.y = element_blank(),
-    axis.line.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    axis.line.x = element_blank(), # Hide default X-axis line, keeping only the one drawn by geom_segment
-    legend.title = element_text(),
-    legend.position = "right" 
-  )
-
-p1
+# ... (see full tutorial for more)
 ```
+
+## Key Parameters
+- `y`: Maps `Description` to the y aesthetic
+- `x`: Maps `0` to the x aesthetic
+- `fill`: Maps `Category` to the fill aesthetic
+- `colour`: Maps `Category` to the colour aesthetic
+- `alpha`: Controls transparency (0 = fully transparent, 1 = opaque)
+- `width`: Controls element width
+- `position`: Position adjustment (identity, dodge, stack, fill)
+- `theme`: Plot theme; tutorial uses `theme_prism()`
+
+## Tips
+- The tutorial includes a '2. Advanced Plotting (Detailed Version)' section with advanced styling options
+- Customize color scales with `scale_fill_manual()` or `scale_color_brewer()`
+- Include appropriate statistical thresholds (e.g., FDR < 0.05, |log2FC| > 1) in the visualization
 
 ## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/TextEnrichmentBarPlot.html
