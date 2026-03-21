@@ -3,10 +3,10 @@
 ## Category
 Ranking
 
-## When to use
+## When to Use
 A bar plot is a graph that uses the height or length of the bars to represent the amount of data.
 
-## Required R packages
+## Required R Packages
 - cowplot
 - dplyr
 - forcats
@@ -19,7 +19,7 @@ A bar plot is a graph that uses the height or length of the bars to represent th
 - rstatix
 - tidyr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic bar plot
 p <- ggplot(data_tcga_mean, aes(x=gene, y=expression)) + 
@@ -28,5 +28,5 @@ p <- ggplot(data_tcga_mean, aes(x=gene, y=expression)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Ranking/BarPlot.html

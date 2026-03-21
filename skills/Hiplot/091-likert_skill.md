@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplotify
 - jsonlite
 - likert
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Likert Plot
 pobj <- likert(data)
@@ -24,5 +24,5 @@ p <- as.ggplot(plot(pobj, type = "bar",
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/091-likert.html

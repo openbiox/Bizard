@@ -3,17 +3,17 @@
 ## Category
 Correlation
 
-## When to use
+## When to Use
 Visualize pca plot data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - FactoMineR
 - dplyr
 - factoextra
 - ggfortify
 - ggplot2
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 fviz_eig(iris.pca, 
          addlabels = TRUE, 
@@ -23,5 +23,5 @@ fviz_eig(iris.pca,
          ylab = "Percentage of variance explained")
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Correlation/PCAplot.html

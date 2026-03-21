@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - DescTools
 - data.table
 - ggplotify
 - jsonlite
 - vcd
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Mosaic Ratio Plot
 p <- as.ggplot(function() {
@@ -25,5 +25,5 @@ p <- as.ggplot(function() {
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/123-mosaic.html

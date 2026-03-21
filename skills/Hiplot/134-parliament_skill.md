@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - ggpol
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Parliament
 p <- ggplot(data) +
@@ -30,5 +30,5 @@ p <- ggplot(data) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/134-parliament.html

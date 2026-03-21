@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - ggthemes
 - jsonlite
 - reshape2
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Multiple Line
 p <- ggplot(data = data_melt, aes(x = age, y = value, group = variable,
@@ -38,5 +38,5 @@ p <- ggplot(data = data_melt, aes(x = age, y = value, group = variable,
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/009-barplot-line-multiple.html

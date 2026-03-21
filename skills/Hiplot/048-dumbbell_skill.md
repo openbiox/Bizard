@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggalt
 - ggplot2
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Dumbbell Chart
 colors <- c("#3B4992FF","#EE0000FF")
@@ -36,5 +36,5 @@ p <- ggplot(data, aes(y = reorder(country, y1952), x = y1952, xend = y2007)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/048-dumbbell.html

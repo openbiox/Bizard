@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - grafify
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Line (Color Dot)
 p <- plot_befafter_colours(
@@ -36,5 +36,5 @@ p <- plot_befafter_colours(
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/092-line-color-dot.html

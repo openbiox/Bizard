@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggpubr
 - jsonlite
 - umap
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # umap
 p <- ggscatter(data = umap_data, x = "UMAP_1", y = "UMAP_2", size = 2, 
@@ -34,5 +34,5 @@ p <- ggscatter(data = umap_data, x = "UMAP_1", y = "UMAP_2", size = 2,
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/176-umap.html

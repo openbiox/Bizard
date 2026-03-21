@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - RColorBrewer
 - data.table
 - ggplot2
 - ggrepel
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Gene Ranking Dotplot
 p <- 
@@ -43,5 +43,5 @@ p <-
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/061-gene-rank.html

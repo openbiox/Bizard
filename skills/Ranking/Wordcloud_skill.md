@@ -3,10 +3,10 @@
 ## Category
 Ranking
 
-## When to use
+## When to Use
 A word cloud is a visual representation of text words, which allows you to clearly see the keywords (high-frequency words) in a large amount of text data.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - htmlwidgets
 - jiebaR
@@ -15,12 +15,12 @@ A word cloud is a visual representation of text words, which allows you to clear
 - webshot2
 - wordcloud2
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic Plotting
 BasicPlot <- wordcloud2(data = words_seg, size = 1)
 BasicPlot
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Ranking/Wordcloud.html

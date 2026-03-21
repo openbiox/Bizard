@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - ggthemes
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Histogram
 p <- ggplot(data, aes(x=Value, fill=Group2)) +
@@ -34,5 +34,5 @@ p <- ggplot(data, aes(x=Value, fill=Group2)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/088-histogram.html

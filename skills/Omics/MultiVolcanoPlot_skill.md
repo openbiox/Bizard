@@ -3,14 +3,14 @@
 ## Category
 Omics
 
-## When to use
+## When to Use
 Multiple Volcano Plot is a graph used for differential expression analysis of high-throughput data (such as transcriptomes and proteomes). Compared with the traditional volcano plot, the multi-group volcano plot can display the results of multiple groups at the same time, making it easier to compare the consistency or specificity of differential features horizontally.
 
-## Required R packages
+## Required R Packages
 - corrplot
 - scRNAtoolVis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic Multiple Volcano Plot
 p <- jjVolcano(
@@ -28,5 +28,5 @@ p <- jjVolcano(
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/MultiVolcanoPlot.html

@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - ComplexHeatmap
 - VennDiagram
 - data.table
@@ -15,7 +15,7 @@ Hiplot
 - ggplotify
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Upset Plot
 p <- as.ggplot(function(){
@@ -64,5 +64,5 @@ p <- p + ggtitle("Upset Plot") +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/177-upset-plot.html

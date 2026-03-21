@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - dplyr
 - ggplot2
@@ -15,7 +15,7 @@ Hiplot
 - scales
 - tidyr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Percentsge Stacked Bar Chart
 p <- ggplot(data_long, aes(x = percent, y = days, fill = kinds)) +
@@ -31,5 +31,5 @@ p <- ggplot(data_long, aes(x = percent, y = days, fill = kinds)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/167-stacked-percentage-bar-chart.html

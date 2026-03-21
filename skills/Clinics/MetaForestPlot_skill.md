@@ -3,10 +3,10 @@
 ## Category
 Clinics
 
-## When to use
+## When to Use
 Visualize meta-analysis forest plot data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - forestplot
 - ggplot2
@@ -15,7 +15,7 @@ Visualize meta-analysis forest plot data in a biomedical context.
 - metafor
 - tidyr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic forest plot
 p <-
@@ -42,5 +42,5 @@ p <-
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Clinics/MetaForestPlot.html

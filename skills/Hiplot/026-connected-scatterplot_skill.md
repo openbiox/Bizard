@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - dplyr
 - ggplot2
 - ggrepel
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Connected Scatterplot
 connected_scatterplot <- function(data, x, y, label, label_ratio, line_color, arrow_size, label_size) {
@@ -67,5 +67,5 @@ p <- connected_scatterplot(
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/026-connected-scatterplot.html

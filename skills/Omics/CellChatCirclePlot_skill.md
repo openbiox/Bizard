@@ -3,10 +3,10 @@
 ## Category
 Omics
 
-## When to use
+## When to Use
 The Cell-Cell Communication Circle Plot (细胞-细胞通讯网络圈图) is a specialized visualization for depicting intercellular signaling interactions inferred from single-cell RNA sequencing (scRNA-seq) data. Using the **CellChat** R package, this plot presents a circular network where nodes represent cell populations (cell types or clusters) and directed edges indicate the strength and direction of ligand-receptor communication signals between them.
 
-## Required R packages
+## Required R Packages
 - BiocManager
 - CellChat
 - Seurat
@@ -15,7 +15,7 @@ The Cell-Cell Communication Circle Plot (细胞-细胞通讯网络圈图) is a s
 - igraph
 - remotes
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 par(mfrow = c(1, 2), xpd = TRUE)
 
@@ -40,5 +40,5 @@ netVisual_circle(
 par(mfrow = c(1, 1))
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/CellChatCirclePlot.html

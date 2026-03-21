@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - GOplot
 - data.table
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # GOBar Plot
 p <- GOBar(data, display = "multiple", order.by.zscore = T,
@@ -24,5 +24,5 @@ p <- GOBar(data, display = "multiple", order.by.zscore = T,
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/077-gobar.html

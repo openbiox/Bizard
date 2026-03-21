@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - GGally
 - data.table
 - ggthemes
@@ -15,7 +15,7 @@ Hiplot
 - jsonlite
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Parallel Coordinate
 p <- ggparcoord(data, columns = 2:(ncol(data) - 1), groupColumn = ncol(data),
@@ -38,5 +38,5 @@ p <- ggparcoord(data, columns = 2:(ncol(data) - 1), groupColumn = ncol(data),
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/132-parallel-coordinate.html

@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - jsonlite
 - stringr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Barplot Gradient
 p <- ggplot(data, aes(x = Term, y = Count, fill = -log10(PValue))) +
@@ -37,5 +37,5 @@ p <- ggplot(data, aes(x = Term, y = Count, fill = -log10(PValue))) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/008-barplot-gradient.html

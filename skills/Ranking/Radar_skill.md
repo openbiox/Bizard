@@ -3,13 +3,13 @@
 ## Category
 Ranking
 
-## When to use
+## When to Use
 A radar chart, spider chart, or web chart is a two-dimensional chart type used to plot a series of values over one or more quantitative variables. The fmsb library is an excellent tool for building this type of chart in R.
 
-## Required R packages
+## Required R Packages
 - fmsb
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Data collation
 iris_setosa <- iris[c(1:50),]
@@ -20,5 +20,5 @@ par(mar = c(1, 1, 1, 1))
 radarchart(iris_setosa_radar)
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Ranking/Radar.html

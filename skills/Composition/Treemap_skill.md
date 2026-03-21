@@ -3,16 +3,16 @@
 ## Category
 Composition
 
-## When to use
+## When to Use
 A treemap, also known as a rectangular tree structure diagram, is composed of multiple nested rectangles of varying areas. The sum of the areas of all rectangles represents the overall data. The area of each smaller rectangle represents the proportion of each sub-item; the larger the rectangle's area, the larger the proportion of that sub-item within the whole.
 
-## Required R packages
+## Required R Packages
 - DOSE
 - palmerpenguins
 - tidyverse
 - treemap
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 treemap(data_USArrests, # data
         index = "State", # Categorical variables
@@ -28,5 +28,5 @@ treemap(data_USArrests, # data
         fontface.labels = 2) # Tag fonts: 1, 2, 3, 4 represent normal, bold, italic, and bold italic fonts, respectively.
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Composition/Treemap.html

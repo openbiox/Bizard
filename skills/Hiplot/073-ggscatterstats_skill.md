@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggstatsplot
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Scatterstats
 p <- ggscatterstats(
@@ -22,5 +22,5 @@ p <- ggscatterstats(
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/073-ggscatterstats.html

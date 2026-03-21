@@ -3,20 +3,20 @@
 ## Category
 Ranking
 
-## When to use
+## When to Use
 Tables are both a visual communication mode and a means of organizing and collating data.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - gt
 - gtExtras
 - readr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # You can draw the graph by calling the gt() function.
 gt(data)
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Ranking/Table.html

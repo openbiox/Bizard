@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - jsonlite
 - stringr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Bubble
 p <- ggplot(data, aes(Ratio, Term)) +
@@ -38,5 +38,5 @@ p <- ggplot(data, aes(Ratio, Term)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/016-bubble.html

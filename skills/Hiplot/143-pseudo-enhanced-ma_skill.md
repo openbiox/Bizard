@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - EnhancedVolcano
 - data.table
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # EnhancedMA
 p <- EnhancedVolcano(
@@ -39,5 +39,5 @@ p <- EnhancedVolcano(
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/143-pseudo-enhanced-ma.html

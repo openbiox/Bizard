@@ -3,13 +3,13 @@
 ## Category
 Omics
 
-## When to use
+## When to Use
 The visualization of Genome-Wide Association Study (GWAS) results mainly includes SNP circular plots displayed by chromosome positions, SNP density plots, Manhattan plots for significance screening, QQ plots comparing the distribution of observed p-values with expected p-values, etc., which are used to screen candidate variant genes at the genome-wide level.
 
-## Required R packages
+## Required R Packages
 - CMplot
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # SNP screening genome circular map
 CMplot(
@@ -29,5 +29,5 @@ CMplot(
 )
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/GwasSnpPlot.html

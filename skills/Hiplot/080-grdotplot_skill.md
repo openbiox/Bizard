@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - jsonlite
 - sigminer
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Group Rank Dotplot
 p <- show_group_distribution(data, gvar = "gvar",  dvar = "dvar", 
@@ -22,5 +22,5 @@ p <- show_group_distribution(data, gvar = "gvar",  dvar = "dvar",
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/080-grdotplot.html

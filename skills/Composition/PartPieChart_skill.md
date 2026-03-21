@@ -3,10 +3,10 @@
 ## Category
 Composition
 
-## When to use
+## When to Use
 Visualize part highlights the pie chart data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - ggforce
 - ggplot2
@@ -14,7 +14,7 @@ Visualize part highlights the pie chart data in a biomedical context.
 - patchwork
 - plotrix
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic pie chart
 mycols <- c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF")
@@ -29,5 +29,5 @@ p <-
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Composition/PartPieChart.html

@@ -3,15 +3,15 @@
 ## Category
 Python
 
-## When to use
+## When to Use
 A volcano plot displays statistical significance (-log10 p-value) versus fold-change (log2 FC) for thousands of features simultaneously. In biomedical research, volcano plots are the standard visualization for differential gene expression results from RNA-seq, proteomics, and metabolomics. Python's `matplotlib` provides full control over customizing these publication-ready plots.
 
-## Required Python packages
+## Required Python Packages
 - matplotlib
 - numpy
 - pandas
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```python
 colors = {'Up': '#e63946', 'Down': '#457b9d', 'NS': '#cccccc'}
 fig, ax = plt.subplots(figsize=(8, 6))
@@ -31,5 +31,5 @@ plt.tight_layout()
 plt.show()
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Python/VolcanoPlot.html

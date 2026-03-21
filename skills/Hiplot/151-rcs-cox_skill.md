@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - jsonlite
@@ -15,7 +15,7 @@ Hiplot
 - stringr
 - survival
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # RCS-COX
 p <- ggplot() +
@@ -40,5 +40,5 @@ p <- ggplot() +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/151-rcs-cox.html

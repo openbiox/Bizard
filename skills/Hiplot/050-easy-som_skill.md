@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - jsonlite
 - kohonen
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Easy SOM
 p <- function () {
@@ -49,5 +49,5 @@ p <- function () {
 p()
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/050-easy-som.html

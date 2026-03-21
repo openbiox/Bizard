@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - curl
 - data.table
 - ggwordcloud
 - jsonlite
 - png
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # ggwordcloud
 p <- ggplot(data, aes(label = word, size = freq, color = col)) +
@@ -28,5 +28,5 @@ p <- ggplot(data, aes(label = word, size = freq, color = col)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/076-ggwordcloud.html

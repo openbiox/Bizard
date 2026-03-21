@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - dplyr
 - ggplot2
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Pie
 p <- ggplot(data, aes(x = "", y = Value, fill = Group)) +
@@ -49,5 +49,5 @@ p <- ggplot(data, aes(x = "", y = Value, fill = Group)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/141-pie.html

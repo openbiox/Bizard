@@ -3,17 +3,17 @@
 ## Category
 Composition
 
-## When to use
+## When to Use
 A dendrogram is a graphical representation of hierarchical relationships between objects. It is widely used in cluster analysis, especially hierarchical clustering, to visualize the similarity or distance between data points.
 
-## Required R packages
+## Required R Packages
 - collapsibleTree
 - dendextend
 - ggraph
 - igraph
 - tidyverse
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 ggraph(mygraph_unique, layout = 'dendrogram', circular = FALSE) + 
   geom_edge_diagonal() +
@@ -21,5 +21,5 @@ ggraph(mygraph_unique, layout = 'dendrogram', circular = FALSE) +
   theme_void()
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Composition/Dendrogram.html

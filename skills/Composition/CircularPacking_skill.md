@@ -3,10 +3,10 @@
 ## Category
 Composition
 
-## When to use
+## When to Use
 Circular Packing can be viewed as a special type of classification tree diagram, which is particularly suitable for displaying classification data with hierarchical relationships.
 
-## Required R packages
+## Required R Packages
 - circlepackeR
 - cowplot
 - data.tree
@@ -22,7 +22,7 @@ Circular Packing can be viewed as a special type of classification tree diagram,
 - tidyverse
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 ## color
 data_BP1 <- data_BP
@@ -55,5 +55,5 @@ p <- ggplot() +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Composition/CircularPacking.html

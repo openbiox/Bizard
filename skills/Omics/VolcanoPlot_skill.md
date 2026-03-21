@@ -3,15 +3,15 @@
 ## Category
 Omics
 
-## When to use
+## When to Use
 The volcano plot is used to compare the two groups and obtain the up-regulation/down-regulation between the two groups. The screening basis is the p value and FC value, which are converted to -logP value and log2(FC) value. The imported data can be the OTU table or ASV table of the microbiome, the table of transcriptome gene expression, or the features table of metabolomics and other multi-omics data.
 
-## Required R packages
+## Required R Packages
 - ggrepel
 - readxl
 - tidyverse
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic volcano plot
 p <- 
@@ -36,5 +36,5 @@ p <-
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/VolcanoPlot.html

@@ -3,10 +3,10 @@
 ## Category
 Distribution
 
-## When to use
+## When to Use
 A violin plot combines elements of a density plot and a box plot to visualize data distribution. It displays key statistical information, including the median, quartiles, minimum, and maximum values. Violin plots are particularly useful for comparing distributions across different groups, offering a more intuitive representation than traditional box plots by revealing the shape of the data distribution.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - forcats
 - gghalves
@@ -19,7 +19,7 @@ A violin plot combines elements of a density plot and a box plot to visualize da
 - tidyr
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic Violin Plot
 p <- ggplot(data, aes(x=name, y=value, fill=name)) + 
@@ -28,5 +28,5 @@ p <- ggplot(data, aes(x=name, y=value, fill=name)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Distribution/ViolinPlot.html

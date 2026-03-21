@@ -3,14 +3,14 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - openair
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Taylor Diagram
 TaylorDiagram(mod.dat, obs = "obs", mod = "mod", group = "model",
@@ -18,5 +18,5 @@ TaylorDiagram(mod.dat, obs = "obs", mod = "mod", group = "model",
               cols = c("#00468BFF","#8e6097","#BFACF0FF"))
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/170-taylor-diagram.html

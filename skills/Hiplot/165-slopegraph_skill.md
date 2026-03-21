@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - CGPfunctions
 - data.table
 - ggplot2
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Slopegraph
 p <- newggslopegraph(data, year, lifeExp, country) +
@@ -27,5 +27,5 @@ p <- newggslopegraph(data, year, lifeExp, country) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/165-slopegraph.html

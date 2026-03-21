@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - cowplot
 - data.table
 - ggisoband
@@ -15,7 +15,7 @@ Hiplot
 - jsonlite
 - reshape2
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Contour (Matrix)
 complex_general_theme <- 
@@ -52,5 +52,5 @@ p2 <- ggplot(data3d, aes(x, y, z = z)) +
 plot_grid(p1, p2, labels = c("A", "B"), label_size = 12)
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/027-contour-matrix.html

@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggbeeswarm
 - ggthemes
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Beeswarm
 p <- ggplot(data, aes(Group, y, color = Group)) +
@@ -35,5 +35,5 @@ p <- ggplot(data, aes(Group, y, color = Group)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/012-beeswarm.html

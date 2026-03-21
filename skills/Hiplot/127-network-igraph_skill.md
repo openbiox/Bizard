@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - RColorBrewer
 - data.table
 - ggplotify
@@ -15,7 +15,7 @@ Hiplot
 - jsonlite
 - stringr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Network (igraph)
 raw <- par()
@@ -72,5 +72,5 @@ p <- as.ggplot(function () {
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/127-network-igraph.html

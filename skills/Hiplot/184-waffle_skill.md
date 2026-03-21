@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - jsonlite
 - waffle
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Waffle Plot
 p <- waffle(parts, rows = 8, size = 1, legend_pos = "right") +
@@ -31,5 +31,5 @@ p <- waffle(parts, rows = 8, size = 1, legend_pos = "right") +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/184-waffle.html

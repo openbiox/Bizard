@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggalt
 - ggplot2
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Group Dumbbell
 p <- ggplot(data = data, aes(x = y1952, xend = y2007, y = country, color = group)) +
@@ -23,5 +23,5 @@ p <- ggplot(data = data, aes(x = y1952, xend = y2007, y = country, color = group
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/083-group-dumbbell.html

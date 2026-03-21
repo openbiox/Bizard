@@ -3,10 +3,10 @@
 ## Category
 Ranking
 
-## When to use
+## When to Use
 A lollipop plot is a variation of a bar chart and a scatter plot. It consists of a line segment and a point, which can clearly display data while reducing the amount of graphics. At the same time, the lollipop plot can help align values with categories and is very suitable for comparing the differences between values of multiple categories.
 
-## Required R packages
+## Required R Packages
 - cowplot
 - ggalt
 - ggplot2
@@ -16,7 +16,7 @@ A lollipop plot is a variation of a bar chart and a scatter plot. It consists of
 - rstatix
 - tidyr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # `TCGA` data
 p <- ggplot(data_tcga, aes(x=gene, y=expression)) +
@@ -27,5 +27,5 @@ p <- ggplot(data_tcga, aes(x=gene, y=expression)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Ranking/Lollipop.html

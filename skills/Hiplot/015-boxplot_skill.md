@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggpubr
 - ggthemes
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Boxplot
 p <- ggboxplot(data, x = "Group1", y = "Value", notch = F, facet.by = "Group2",
@@ -37,5 +37,5 @@ p <- ggboxplot(data, x = "Group1", y = "Value", notch = F, facet.by = "Group2",
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/015-boxplot.html

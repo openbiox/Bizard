@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Circular Pie Chart
 p <- ggplot(data, aes(x = draw_class, y = values, fill = labels)) +
@@ -40,5 +40,5 @@ p <- ggplot(data, aes(x = draw_class, y = values, fill = labels)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/024-circular-pie-chart.html

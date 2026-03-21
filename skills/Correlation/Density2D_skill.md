@@ -3,10 +3,10 @@
 ## Category
 Correlation
 
-## When to use
+## When to Use
 A 2D density plot shows the distribution of a combination of two numerical variables, using color gradients (or contour lines) to indicate the number of observations within an area. This can be used to identify trends in a dataset and analyze relationships between two variables. Scatter plots can be difficult to interpret when displaying large datasets because the points overlap and cannot be individually distinguished. In these cases, a two-dimensional density plot is useful.
 
-## Required R packages
+## Required R Packages
 - MASS
 - RColorBrewer
 - ggplot2
@@ -15,7 +15,7 @@ A 2D density plot shows the distribution of a combination of two numerical varia
 - patchwork
 - plotly
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # 2D Histogram
 p <- ggplot(data_tcga, aes(x = TP53, y = MDM2)) +
@@ -26,5 +26,5 @@ p <- ggplot(data_tcga, aes(x = TP53, y = MDM2)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Correlation/Density2D.html

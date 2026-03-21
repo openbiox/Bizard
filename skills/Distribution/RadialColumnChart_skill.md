@@ -3,16 +3,16 @@
 ## Category
 Distribution
 
-## When to use
+## When to Use
 Visualize radial column chart data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - ggforce
 - ggplot2
 - scales
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic histogram
 p1 <- ggplot(df, aes(x = factor(id), y = value)) +
@@ -24,5 +24,5 @@ p1 <- ggplot(df, aes(x = factor(id), y = value)) +
 p1
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Distribution/RadialColumnChart.html

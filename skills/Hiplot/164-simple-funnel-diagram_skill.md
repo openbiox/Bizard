@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - echarts4r
 - jsonlite
 - magrittr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Simple Funnel Diagram
 p <- data %>%
@@ -25,5 +25,5 @@ p <- data %>%
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/164-simple-funnel-diagram.html

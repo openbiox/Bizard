@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggcharts
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Diverging Scale Barplot
 fill_colors <- c("#C20B01", "#196ABD")
@@ -28,5 +28,5 @@ p <- diverging_bar_chart(data = data, x = x, y = y, bar_colors = fill_colors,
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/043-diverging-scale.html

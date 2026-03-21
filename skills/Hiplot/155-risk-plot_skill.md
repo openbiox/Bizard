@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - cowplot
 - cutoff
 - data.table
@@ -16,7 +16,7 @@ Hiplot
 - jsonlite
 - survminer
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Risk Factor Analysis
 ## Figure A
@@ -100,5 +100,5 @@ p <- plot_grid(fA, fB, middle, fC, ncol = 1, rel_heights = c(0.1, 0.1, 0.01, 0.1
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/155-risk-plot.html

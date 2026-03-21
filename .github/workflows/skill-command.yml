@@ -1,0 +1,111 @@
+name: Handle /skill PR Comment Command
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Triggered when someone posts a /skill comment on a PR.
+# This workflow performs NO checkout and NO code execution – it only:
+#   1. Adds a reaction to acknowledge the command
+#   2. Verifies the commenter has write / maintain / admin access
+#   3. Dispatches generate-skills.yml (workflow_dispatch) with the PR context
+#
+# Usage in a PR comment:
+#   /skill                          → regenerate skills for all changed QMD files
+#   /skill Omics/VolcanoPlot.qmd    → regenerate skill for one specific file
+#   /skill File1.qmd File2.qmd      → regenerate skills for multiple files
+#   /skill --offline                → use offline mode (no LLM API)
+# ──────────────────────────────────────────────────────────────────────────────
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  dispatch-skill:
+    # Only run on PR comments that start with /skill
+    if: |
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/skill')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Add 👀 reaction to acknowledge command
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner:      context.repo.owner,
+              repo:       context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content:    'eyes',
+            });
+
+      - name: Check commenter permissions and dispatch skill generation
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commenter = context.payload.comment.user.login;
+
+            // ── Permission check ──────────────────────────────────────────────
+            let hasPermission = false;
+            try {
+              const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner:    context.repo.owner,
+                repo:     context.repo.repo,
+                username: commenter,
+              });
+              hasPermission = ['admin', 'write', 'maintain'].includes(perm.permission);
+            } catch (_) {
+              hasPermission = false;
+            }
+
+            if (!hasPermission) {
+              await github.rest.reactions.createForIssueComment({
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
+                comment_id: context.payload.comment.id,
+                content:    '-1',
+              });
+              await github.rest.issues.createComment({
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
+                issue_number: context.issue.number,
+                body:         `@${commenter} Sorry, only repository collaborators with write access can trigger the skill generation workflow.`,
+              });
+              core.setFailed('Insufficient permissions');
+              return;
+            }
+
+            // ── Parse arguments ───────────────────────────────────────────────
+            const parts = context.payload.comment.body.trim().split(/\s+/).slice(1);
+            const offline = parts.includes('--offline') ? 'true' : 'false';
+            const files = parts
+              .filter(p => (p.endsWith('.qmd') || p.endsWith('.Qmd')) && !p.endsWith('.zh.qmd'))
+              .join(' ');
+
+            // ── Dispatch the skill generation workflow ────────────────────────
+            const defaultBranch = context.payload.repository.default_branch;
+            await github.rest.actions.createWorkflowDispatch({
+              owner:       context.repo.owner,
+              repo:        context.repo.repo,
+              workflow_id: 'generate-skills.yml',
+              ref:         defaultBranch,
+              inputs: {
+                pr_number: String(context.issue.number),
+                files:     files || '',
+                offline:   offline,
+              },
+            });
+
+            // ── Post acknowledgement comment ──────────────────────────────────
+            const runsUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/generate-skills.yml`;
+            const filesMsg = files
+              ? `\n\n**Target files:** \`${files.replace(/ /g, '`, `')}\``
+              : '';
+            const modeMsg = offline === 'true' ? ' (offline mode)' : '';
+            await github.rest.issues.createComment({
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              issue_number: context.issue.number,
+              body:         `🤖 Skill generation workflow dispatched by @${commenter}${modeMsg}.${filesMsg}\n\n[View recent workflow runs](${runsUrl})`,
+            });

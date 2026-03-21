@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - dplyr
 - ggplot2
@@ -15,7 +15,7 @@ Hiplot
 - patchwork
 - visdat
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Visdat
 add_palette <- function (p) {
@@ -45,5 +45,5 @@ plot_annotation(tag_levels = 'A')", pstr)))
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/182-visdat.html

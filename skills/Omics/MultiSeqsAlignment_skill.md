@@ -3,13 +3,13 @@
 ## Category
 Omics
 
-## When to use
+## When to Use
 Multiple Sequence Alignment (MSA) is a fundamental and crucial technique in bioinformatics. It is used to align three or more biological sequences (DNA, RNA, or proteins) based on their evolutionary or structural similarities, so that homologous sites (i.e., sites derived from a common ancestor) are aligned as much as possible.
 
-## Required R packages
+## Required R Packages
 - ggmsa
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Multiple sequence alignment of proteins
 p <- ggmsa(
@@ -26,5 +26,5 @@ p <- ggmsa(
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/MultiSeqsAlignment.html

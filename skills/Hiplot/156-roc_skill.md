@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplotify
 - jsonlite
 - pROC
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # ROC
 col <- c("#00468BFF","#ED0000FF","#42B540FF")
@@ -46,5 +46,5 @@ p <- as.ggplot(function() {
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/156-roc.html

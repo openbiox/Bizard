@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - grafify
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # QQ Plot
 p <- plot_qqline(data = data, ycol = Cytokine, group = Genotype,
@@ -34,5 +34,5 @@ p <- plot_qqline(data = data, ycol = Cytokine, group = Genotype,
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/148-qqplot.html

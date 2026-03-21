@@ -3,10 +3,10 @@
 ## Category
 Distribution
 
-## When to use
+## When to Use
 Visualize break plot data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - RColorBrewer
 - dplyr
 - ggbreak
@@ -14,7 +14,7 @@ Visualize break plot data in a biomedical context.
 - ggpubr
 - rstatix
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic BarPlot
 p1 <- ggplot(df, aes(x=dose, y=mean_len, fill=supp)) +
@@ -29,5 +29,5 @@ p1 <- ggplot(df, aes(x=dose, y=mean_len, fill=supp)) +
 p1
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Distribution/BreakPlot.html

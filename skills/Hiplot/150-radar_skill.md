@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - dplyr
 - ggplot2
@@ -16,7 +16,7 @@ Hiplot
 - scales
 - tibble
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Radar
 p <- ggradar(data_radar, gridline.max.linetype = 1, group.point.size = 4,
@@ -40,5 +40,5 @@ p <- ggradar(data_radar, gridline.max.linetype = 1, group.point.size = 4,
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/150-radar.html

@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplotify
 - jsonlite
 - plotrix
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Fan Plot
 p <- as.ggplot(function() {
@@ -24,5 +24,5 @@ p <- as.ggplot(function() {
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/054-fan.html

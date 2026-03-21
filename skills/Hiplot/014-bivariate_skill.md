@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - GGally
 - data.table
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Bivariate Chart
 p <- ggbivariate(data, outcome = "smoker", 
@@ -33,5 +33,5 @@ p <- ggbivariate(data, outcome = "smoker",
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/014-bivariate.html

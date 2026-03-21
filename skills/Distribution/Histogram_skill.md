@@ -3,10 +3,10 @@
 ## Category
 Distribution
 
-## When to use
+## When to Use
 A histogram uses rectangular bars to represent the frequency of data within specific intervals, where the total area of the bars corresponds to the total frequency. It is primarily used to visualize the distribution of continuous variables.
 
-## Required R packages
+## Required R Packages
 - cowplot
 - ggExtra
 - ggplot2
@@ -16,7 +16,7 @@ A histogram uses rectangular bars to represent the frequency of data within spec
 - tidyverse
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic Histogram
 p1 <- ggplot(data1, aes(x = expression)) +
@@ -26,5 +26,5 @@ p1 <- ggplot(data1, aes(x = expression)) +
 p1
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Distribution/Histogram.html

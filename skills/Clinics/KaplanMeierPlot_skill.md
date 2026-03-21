@@ -3,10 +3,10 @@
 ## Category
 Clinics
 
-## When to use
+## When to Use
 Visualize kaplan meier plot data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - ggplot2
 - patchwork
@@ -15,7 +15,7 @@ Visualize kaplan meier plot data in a biomedical context.
 - tidyr
 - zoo
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic survival curve
 p1 <- ggplot(surv_curve, aes(x = time, y = surv, color = strata)) +
@@ -25,5 +25,5 @@ p1 <- ggplot(surv_curve, aes(x = time, y = surv, color = strata)) +
 p1
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Clinics/KaplanMeierPlot.html

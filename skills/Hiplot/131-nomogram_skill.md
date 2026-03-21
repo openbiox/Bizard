@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplotify
 - jsonlite
 - rms
 - survival
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Nomogram
 p <- as.ggplot(function() {
@@ -25,5 +25,5 @@ p <- as.ggplot(function() {
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/131-nomogram.html

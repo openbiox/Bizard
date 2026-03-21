@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - dplyr
 - ggplot2
@@ -15,7 +15,7 @@ Hiplot
 - stringr
 - tidyr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Pie Matrix
 p <- df %>% as.table() %>%
@@ -43,5 +43,5 @@ p <- df %>% as.table() %>%
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/140-pie-matrix.html

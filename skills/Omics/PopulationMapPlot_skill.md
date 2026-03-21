@@ -3,10 +3,10 @@
 ## Category
 Omics
 
-## When to use
+## When to Use
 Visualize population map plot data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - doParallel
 - dplyr
 - ggfx
@@ -20,7 +20,7 @@ Visualize population map plot data in a biomedical context.
 - sf
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic map of global disease incidence distribution
 p1 <- ggplot(data = world) +
@@ -32,5 +32,5 @@ p1 <- ggplot(data = world) +
 p1
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/PopulationMapPlot.html

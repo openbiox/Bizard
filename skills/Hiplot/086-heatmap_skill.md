@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - ComplexHeatmap
 - data.table
 - genefilter
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Heatmap
 ## Set annotation_col and annotation_row to add annotations to samples and genes respectively
@@ -67,5 +67,5 @@ p <-
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/086-heatmap.html

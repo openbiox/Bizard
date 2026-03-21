@@ -3,10 +3,10 @@
 ## Category
 Correlation
 
-## When to use
+## When to Use
 A heatmap is a powerful visualization tool that represents matrix values through color gradients. It is widely used to illustrate gene expression differences across sample groups, variations in compound concentrations, and pairwise sample similarities. More broadly, any tabular dataset can be structured into a heatmap to enhance interpretability.
 
-## Required R packages
+## Required R Packages
 - ComplexHeatmap
 - RColorBrewer
 - circlize
@@ -27,10 +27,10 @@ A heatmap is a powerful visualization tool that represents matrix values through
 - tidyverse
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 heatmap(mtcars_matrix)
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Correlation/Heatmap.html

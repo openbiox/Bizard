@@ -3,16 +3,16 @@
 ## Category
 Omics
 
-## When to use
+## When to Use
 Visualize sankey bubble plot data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - ggalluvial
 - patchwork
 - readr
 - tidyverse
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Sankey diagram (the Term column does not display labels)
 
@@ -70,5 +70,5 @@ p1 <- ggplot(
 p1
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/SankeyBubblePlot.html

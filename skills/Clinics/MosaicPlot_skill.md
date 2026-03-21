@@ -3,10 +3,10 @@
 ## Category
 Clinics
 
-## When to use
+## When to Use
 Visualize mosaic plot data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - ggplot2
 - plyr
@@ -15,7 +15,7 @@ Visualize mosaic plot data in a biomedical context.
 - vcd
 - wesanderson
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic Plot
 p <- ggplot() +
@@ -33,5 +33,5 @@ p <- ggplot() +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Clinics/MosaicPlot.html

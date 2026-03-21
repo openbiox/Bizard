@@ -3,10 +3,10 @@
 ## Category
 Composition
 
-## When to use
+## When to Use
 Grouped bar charts, or clustered bar charts, extend the functionality of univariate or single-category bar charts to multivariate bar charts. In these charts, bars are grouped according to their categories, and colors represent distinguishing factors for other categorical variables. The bars are positioned to cater to a group or primary group, with colors representing secondary categories. Grouped bar charts are particularly suitable for displaying the distribution of multiple groups of categ...
 
-## Required R packages
+## Required R Packages
 - RColorBrewer
 - dplyr
 - ggplot2
@@ -16,7 +16,7 @@ Grouped bar charts, or clustered bar charts, extend the functionality of univari
 - tidyr
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Grouped bar chart
 p <- ggplot(iris_means_long, aes(fill = Species, y = Value, x = Measurement)) + 
@@ -29,5 +29,5 @@ p <- ggplot(iris_means_long, aes(fill = Species, y = Value, x = Measurement)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Composition/GroupedBarplot.html

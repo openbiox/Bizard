@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - cowplot
 - data.table
 - dplyr
@@ -15,7 +15,7 @@ Hiplot
 - ggplot2
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # GGPIE
 plist <- list()
@@ -32,5 +32,5 @@ for (j in unique(data[, axis[2]])) {
 plot_grid(plotlist = plist, ncol = 3)
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/068-ggpie.html

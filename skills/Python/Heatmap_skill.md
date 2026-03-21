@@ -3,17 +3,17 @@
 ## Category
 Python
 
-## When to use
+## When to Use
 A heatmap is a data visualization technique that uses color to represent values in a matrix. In biomedical research, heatmaps are essential for visualizing gene expression profiles, correlation matrices, methylation data, and drug response panels. Python's `seaborn` and `matplotlib` libraries offer powerful heatmap capabilities with built-in clustering support.
 
-## Required Python packages
+## Required Python Packages
 - matplotlib
 - numpy
 - pandas
 - scipy
 - seaborn
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```python
 fig, ax = plt.subplots(figsize=(10, 8))
 sns.heatmap(expr_df, cmap='RdBu_r', center=0, xticklabels=True,
@@ -25,5 +25,5 @@ plt.tight_layout()
 plt.show()
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Python/Heatmap.html

@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - apyramid
 - data.table
 - ggplot2
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Pyramid Chart 2
 p <- age_pyramid(data, "age_group", split_by = "Gender") + 
@@ -34,5 +34,5 @@ p <- age_pyramid(data, "age_group", split_by = "Gender") +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/145-pyramid-chart2.html

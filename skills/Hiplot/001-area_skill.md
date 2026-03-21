@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - ggthemes
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Area Plot
 p <- ggplot(data, aes(x = xaxis.value, y = yaxis.value, fill = group)) +
@@ -36,5 +36,5 @@ p <- ggplot(data, aes(x = xaxis.value, y = yaxis.value, fill = group)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/001-area.html

@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggalluvial
 - ggplot2
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Sankey
 p <- ggplot(data_rename, aes(y = value, axis1 = axis1, axis2 = axis2)) +
@@ -43,5 +43,5 @@ p <- ggplot(data_rename, aes(y = value, axis1 = axis1, axis2 = axis2)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/158-sankey.html

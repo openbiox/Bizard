@@ -3,14 +3,14 @@
 ## Category
 Correlation
 
-## When to use
+## When to Use
 Visualize biplot data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - ggbiplot
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 iris.gg <-
   ggbiplot(iris.pca, obs.scale = 1, var.scale = 1,
@@ -27,5 +27,5 @@ iris.gg <-
 iris.gg
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Correlation/Biplot.html

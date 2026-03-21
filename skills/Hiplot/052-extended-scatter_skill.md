@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggExtra
 - ggplot2
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Extended Scatter
 p <- ggplot(data, aes(x = wt, y = mpg, color = cyl, size = cyl)) +
@@ -28,5 +28,5 @@ p <- ggMarginal(
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/052-extended-scatter.html

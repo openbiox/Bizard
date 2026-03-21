@@ -3,10 +3,10 @@
 ## Category
 Correlation
 
-## When to use
+## When to Use
 Visualize complexheatmap data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - ComplexHeatmap
 - circlize
 - dendextend
@@ -14,11 +14,11 @@ Visualize complexheatmap data in a biomedical context.
 - pheatmap
 - tidyr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Continuous variables
 Heatmap(data_TCGA , name = "Methylation")
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Correlation/ComplexHeatmap.html

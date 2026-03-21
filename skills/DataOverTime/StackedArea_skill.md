@@ -3,10 +3,10 @@
 ## Category
 DataOverTime
 
-## When to use
+## When to Use
 Stacked area charts are similar to basic area charts, except that each dataset in the chart starts from the previous dataset and is used to show the trend line of how the size of each value changes over time or category, demonstrating the relationship between the part and the whole.
 
-## Required R packages
+## Required R Packages
 - babynames
 - dplyr
 - ggplot2
@@ -15,7 +15,7 @@ Stacked area charts are similar to basic area charts, except that each dataset i
 - tidyverse
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic stacked area diagram----
 options(scipen = 20) # Do not use scientific notation
@@ -27,5 +27,5 @@ p <- ggplot(data_WorldPhones, aes(x=year, y=Phones, fill=area)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/DataOverTime/StackedArea.html

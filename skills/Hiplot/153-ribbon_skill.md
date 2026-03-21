@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - ggthemes
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Ribbon
 p <- ggplot(data, aes(xvalue, yvalue, fill = group)) +
@@ -40,5 +40,5 @@ p <- ggplot(data, aes(xvalue, yvalue, fill = group)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/153-ribbon.html

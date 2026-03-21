@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - broom
 - data.table
 - ggdist
@@ -16,7 +16,7 @@ Hiplot
 - modelr
 - tidyr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Dist Plot
 p <- ggplot(data3, aes_(y = as.name(colnames(data[1])))) +
@@ -42,5 +42,5 @@ p <- ggplot(data3, aes_(y = as.name(colnames(data[1])))) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/066-ggdist.html

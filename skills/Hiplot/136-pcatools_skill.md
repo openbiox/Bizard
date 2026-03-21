@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - PCAtools
 - cowplot
 - data.table
 - ggplotify
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # PCAtools
 ## Define the plot function
@@ -207,5 +207,5 @@ p <- call_pcatools(
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/136-pcatools.html

@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - dplyr
 - ggplot2
 - ggthemes
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Pyramid Stack
 p <- ggplot(data = data, aes(x = age, y = pop, fill = year)) +
@@ -43,5 +43,5 @@ p <- ggplot(data = data, aes(x = age, y = pop, fill = year)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/146-pyramid-stack.html

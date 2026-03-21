@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Interval Bar Chart
 p <- ggplot(data, aes(x = month, y = max_temperature)) +
@@ -27,5 +27,5 @@ p <- ggplot(data, aes(x = month, y = max_temperature)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/090-interval-bar-chart.html

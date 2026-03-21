@@ -3,15 +3,15 @@
 ## Category
 Omics
 
-## When to use
+## When to Use
 In biology, especially in molecular biology research, analyzing the expression and regulation patterns of genes has always been a research focus. In this process, it is inevitable that there will be a need to draw the structure of a gene or the upstream and downstream relationships. Therefore, this tutorial will summarize some common gene structure drawing methods based on the R package gggenes.
 
-## Required R packages
+## Required R Packages
 - gggenes
 - ggtree
 - tidyverse
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Plotting the relative positions of a series of genes
 ggplot(example_genes, aes(xmin = start, xmax = end, y = molecule)) +
@@ -19,5 +19,5 @@ ggplot(example_genes, aes(xmin = start, xmax = end, y = molecule)) +
     facet_wrap(~ molecule, scales = "free", ncol = 1)  # gggenes is usually used with the facet_wrap function for faceting. It should be noted that if the drawing interface is too small, an error message will be displayed: "Viewport has zero dimension(s)". Just enlarge the drawing window or set a larger interface.
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/GeneStructurePlot.html

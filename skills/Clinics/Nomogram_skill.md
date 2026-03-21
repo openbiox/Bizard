@@ -3,16 +3,16 @@
 ## Category
 Clinics
 
-## When to use
+## When to Use
 Simply put, a nomogram graphically displays the results of logistic regression or Cox regression. It uses the regression coefficient of each independent variable to develop a scoring criteria, assigning a score to each independent variable value. A total score is then calculated for each patient, and a conversion function is used to convert this score into the probability of a specific outcome for that patient.
 
-## Required R packages
+## Required R Packages
 - readr
 - regplot
 - rms
 - survival
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic Nomogram
 dd=datadist(LIHC)
@@ -23,5 +23,5 @@ nom <- nomogram(f1, fun=plogis, lp=F, funlabel="Risk")
 plot(nom)
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Clinics/Nomogram.html

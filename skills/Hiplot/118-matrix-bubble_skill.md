@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggalluvial
 - ggplot2
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Matrix Bubble
 p <- ggplot(data = data, aes(x = x, y = y, size = value, color = y)) +
@@ -37,5 +37,5 @@ p <- ggplot(data = data, aes(x = x, y = y, size = value, color = y)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/118-matrix-bubble.html

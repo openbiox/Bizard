@@ -3,14 +3,14 @@
 ## Category
 Correlation
 
-## When to use
+## When to Use
 A ternary chart is a type of chart used to display the proportional relationship between three variables. These three variables typically represent a certain component (such as chemical composition, species ratio, nutritional structure, etc.), and their sum is a constant, with the most common being 1 or 100%. A ternary chart uses an equilateral triangle to represent the proportional relationship between these three variables, with each point's position reflecting the relative proportion of th...
 
-## Required R packages
+## Required R Packages
 - ggtern
 - ggthemes
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic Ternary Chart
 p1_1 <- ggtern(data=data, aes(x=CK, y=NPK, z=NPKM)) +
@@ -19,5 +19,5 @@ p1_1 <- ggtern(data=data, aes(x=CK, y=NPK, z=NPKM)) +
 p1_1
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Correlation/TernaryPlot.html

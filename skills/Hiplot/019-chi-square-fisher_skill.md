@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - aplot
 - data.table
 - ggplot2
 - jsonlite
 - visdat
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Chi-square-fisher Test
 p1 <- vis_value(final["statistic"]) + 
@@ -27,5 +27,5 @@ p <- p1+p2
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/019-chi-square-fisher.html

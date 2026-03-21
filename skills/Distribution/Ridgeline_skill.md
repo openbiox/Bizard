@@ -3,10 +3,10 @@
 ## Category
 Distribution
 
-## When to use
+## When to Use
 A ridgeline plot, also known as a joyplot, visualizes the distribution of multiple numeric variables across different categories. This method is useful for comparing density distributions while preserving an overall view of trends and variations.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - ggplot2
 - ggridges
@@ -14,7 +14,7 @@ A ridgeline plot, also known as a joyplot, visualizes the distribution of multip
 - readr
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic Ridgeline plot
 p1_1 <- ggplot(iris, aes(x = Sepal.Length, y = Species, fill = Species)) +
@@ -25,5 +25,5 @@ p1_1 <- ggplot(iris, aes(x = Sepal.Length, y = Species, fill = Species)) +
 p1_1
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Distribution/Ridgeline.html

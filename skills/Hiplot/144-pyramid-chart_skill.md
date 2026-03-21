@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggcharts
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Pyramid Chart
 p <- pyramid_chart(data = data, x = age, y = pop, group = sex, 
@@ -30,5 +30,5 @@ p <- pyramid_chart(data = data, x = age, y = pop, group = sex,
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/144-pyramid-chart.html

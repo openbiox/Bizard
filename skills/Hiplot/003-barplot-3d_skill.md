@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplotify
 - jsonlite
 - plot3D
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # 3D Barplot
 p <- as.ggplot(function() {
@@ -47,5 +47,5 @@ p <- as.ggplot(function() {
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/003-barplot-3d.html

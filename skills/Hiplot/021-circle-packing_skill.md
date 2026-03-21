@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - jsonlite
 - packcircles
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Circle Packing
 p <- ggplot() +
@@ -30,5 +30,5 @@ p <- ggplot() +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/021-circle-packing.html

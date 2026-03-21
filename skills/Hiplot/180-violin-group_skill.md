@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggpubr
 - ggthemes
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Violin Group
 p <- ggviolin(data, x = "Group1", y = "Value", color = "Group2", add = "dotplot",
@@ -38,5 +38,5 @@ p <- ggviolin(data, x = "Group1", y = "Value", color = "Group2", add = "dotplot"
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/180-violin-group.html

@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplotify
 - jsonlite
 - survival
 - survminer
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Survival Analysis
 p <- ggsurvplot(
@@ -31,5 +31,5 @@ p <- ggsurvplot(
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/169-survival.html

@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - Rmisc
 - data.table
 - ggplot2
 - ggpubr
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Barplot (errorbar)
 p <- ggplot(data_sd, aes(x = data_sd[, 1], y = data_sd[, 3], fill = data_sd[, 1])) +
@@ -45,5 +45,5 @@ p <- ggplot(data_sd, aes(x = data_sd[, 1], y = data_sd[, 3], fill = data_sd[, 1]
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/005-barplot-errorbar.html

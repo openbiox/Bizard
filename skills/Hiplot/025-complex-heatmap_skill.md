@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - ComplexHeatmap
 - circlize
 - cowplot
@@ -18,7 +18,7 @@ Hiplot
 - randomcoloR
 - stringr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Complex Heatmap
 params <- list()
@@ -126,5 +126,5 @@ p <- plot_grid(p1, p2, p3, ncol = 1, rel_heights = rel_height)
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/025-complex-heatmap.html

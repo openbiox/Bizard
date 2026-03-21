@@ -3,10 +3,10 @@
 ## Category
 Animation
 
-## When to use
+## When to Use
 Visualize animation data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - Cairo
 - babynames
 - dplyr
@@ -18,7 +18,7 @@ Visualize animation data in a biomedical context.
 - tidyr
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Scattered bubble animation----
 p <- ggplot(data_gapminder, aes(gdpPercap, lifeExp, size = pop, color = continent)) +
@@ -33,5 +33,5 @@ p <- ggplot(data_gapminder, aes(gdpPercap, lifeExp, size = pop, color = continen
 animate(p, renderer = gifski_renderer())
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Animation/Animation.html

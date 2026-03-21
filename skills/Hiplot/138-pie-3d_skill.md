@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplotify
 - jsonlite
 - plotrix
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # 3D Pie
 pie3D(data$Value, radius = 0.8, height = 0.05, theta = 0.8,
@@ -24,5 +24,5 @@ pie3D(data$Value, radius = 0.8, height = 0.05, theta = 0.8,
       col = c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF"))
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/138-pie-3d.html

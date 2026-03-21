@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - jsonlite
 - scatterpie
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Scatterpie
 p <- ggplot() +
@@ -33,5 +33,5 @@ p <- ggplot() +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/163-scatterpie.html

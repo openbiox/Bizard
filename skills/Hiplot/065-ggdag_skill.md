@@ -3,14 +3,14 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - ggdag
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Directed Acyclic Graphs
 p <- ggdag(tidy_ggdag) +
@@ -19,5 +19,5 @@ p <- ggdag(tidy_ggdag) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/065-ggdag.html

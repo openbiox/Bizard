@@ -3,10 +3,10 @@
 ## Category
 DataOverTime
 
-## When to use
+## When to Use
 An area chart is a line chart in which the area below the line is filled with color. It is mainly used to display values at continuous intervals or over a time span.
 
-## Required R packages
+## Required R Packages
 - dygraphs
 - ggpattern
 - hrbrthemes
@@ -14,7 +14,7 @@ An area chart is a line chart in which the area below the line is filled with co
 - viridis
 - xts
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic area plot
 p <- ggplot(monthly_death_counts, aes(x = month, y = deaths)) +
@@ -26,5 +26,5 @@ p <- ggplot(monthly_death_counts, aes(x = month, y = deaths)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/DataOverTime/AreaChart.html

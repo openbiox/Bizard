@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - BiocManager
 - data.table
 - destiny
@@ -17,7 +17,7 @@ Hiplot
 - scatterplot3d
 - smoother
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # 2D Diffusion Map
 p <- ggscatter(data = dm_data,  x = "DC1", y = "DC2", color = "colorBy",
@@ -39,5 +39,5 @@ p <- ggscatter(data = dm_data,  x = "DC1", y = "DC2", color = "colorBy",
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/042-diffusion-map.html

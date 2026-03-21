@@ -3,10 +3,10 @@
 ## Category
 Distribution
 
-## When to use
+## When to Use
 A beeswarm plot disperses data points slightly to prevent overlap, making distribution density and trends clearer. It is especially useful for visualizing categorical data in small datasets. This section presents examples using R and the `beeswarm` and `ggbeeswarm` packages.
 
-## Required R packages
+## Required R Packages
 - beeswarm
 - ggbeeswarm
 - ggsignif
@@ -14,10 +14,10 @@ A beeswarm plot disperses data points slightly to prevent overlap, making distri
 - readr
 - tidyverse
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 p1 <- beeswarm(iris$Sepal.Length)
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Distribution/Beeswarm.html

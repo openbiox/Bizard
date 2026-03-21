@@ -3,10 +3,10 @@
 ## Category
 Proportion
 
-## When to use
+## When to Use
 Chord diagrams can use connecting lines or bars to represent the relationships between different objects. The connections in a chord diagram directly show the relationships between different objects; the width of the connection is proportional to the strength of the relationship, and the color of the connection can represent another mapping of the relationship, such as the type of relationship. The size of the sectors in the diagram represents the measurement of the objects.
 
-## Required R packages
+## Required R Packages
 - chorddiag
 - circlize
 - dplyr
@@ -19,7 +19,7 @@ Chord diagrams can use connecting lines or bars to represent the relationships b
 - tidyverse
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Initialize the circular plot
 circos.clear()
@@ -48,5 +48,5 @@ circos.text(x = 17, y = 20, labels = "PTEN & AKT1",
 circos.clear()
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Proportion/ChordDiagram.html

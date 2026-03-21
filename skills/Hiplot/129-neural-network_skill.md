@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - NeuralNetTools
 - data.table
 - jsonlite
 - nnet
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Neural Network
 mod <- nnet(Y1 ~ X1 + X2 + X3, data = neuraldat, size = 10,
@@ -24,5 +24,5 @@ par(mar = numeric(4))
 plotnet(mod)
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/129-neural-network.html

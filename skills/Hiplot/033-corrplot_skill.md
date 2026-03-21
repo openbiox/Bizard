@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - corrplot
 - data.table
 - ggcorrplot
 - ggplotify
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Corrplot
 p <- as.ggplot(function(){
@@ -43,5 +43,5 @@ p <- as.ggplot(function(){
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/033-corrplot.html

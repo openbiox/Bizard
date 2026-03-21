@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - grid
@@ -15,7 +15,7 @@ Hiplot
 - plotROC
 - survivalROC
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Time ROC
 col <- c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF","#F39B7FFF")
@@ -51,5 +51,5 @@ for (i in 1:length(auc)) {
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/171-time-roc.html

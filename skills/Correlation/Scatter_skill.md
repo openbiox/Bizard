@@ -3,10 +3,10 @@
 ## Category
 Correlation
 
-## When to use
+## When to Use
 A scatter plot is a basic visualization chart used to represent the general trend of the dependent variable changing with the independent variable.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - geomtextpath
 - ggExtra
@@ -15,7 +15,7 @@ A scatter plot is a basic visualization chart used to represent the general tren
 - ggpubr
 - plotly
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic plotting
 p <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length)) +
@@ -24,5 +24,5 @@ p <- ggplot(data, aes(x = Sepal.Width, y = Sepal.Length)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Correlation/Scatter.html

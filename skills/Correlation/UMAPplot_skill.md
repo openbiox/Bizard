@@ -3,10 +3,10 @@
 ## Category
 Correlation
 
-## When to use
+## When to Use
 Visualize umap plot data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - RColorBrewer
 - Seurat
 - SeuratData
@@ -16,7 +16,7 @@ Visualize umap plot data in a biomedical context.
 - patchwork
 - umap
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 set.seed(123)
 wdbc_umap <- umap(features, 
@@ -35,5 +35,5 @@ ggplot(data.frame(wdbc_umap$layout, Diagnosis = diagnosis),
   scale_color_manual(values = c("benign" = "#1b9e77", "malignant" = "#d95f02"))
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Correlation/UMAPplot.html

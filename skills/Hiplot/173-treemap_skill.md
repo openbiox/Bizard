@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - jsonlite
 - treemap
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Treemap
 treemap(data, index = colnames(data)[1], vSize = colnames(data)[2],
@@ -25,5 +25,5 @@ treemap(data, index = colnames(data)[1], vSize = colnames(data)[2],
         aspRatio = 6 / 6)
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/173-treemap.html

@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - Rtsne
 - data.table
 - ggpubr
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # tsne
 p <- ggscatter(data = tsne_data, x = "tSNE_1", y = "tSNE_2", size = 2, 
@@ -34,5 +34,5 @@ p <- ggscatter(data = tsne_data, x = "tSNE_1", y = "tSNE_2", size = 2,
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/175-tsne.html

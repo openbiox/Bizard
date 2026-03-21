@@ -3,17 +3,17 @@
 ## Category
 Omics
 
-## When to use
+## When to Use
 The Text-Overlaid Enrichment Barplot is a visualization tool designed for the high-density display of functional enrichment analysis results (e.g., GO, KEGG). It typically maps enrichment significance (adjusted p-value) to the length of rounded bars and utilizes the internal space of the graphics to directly overlay annotations of pathway names and core gene lists. Additionally, it uses colored blocks and bubbles on the left side to distinguish functional categories and gene counts.
 
-## Required R packages
+## Required R Packages
 - clusterProfiler
 - ggprism
 - gground
 - org.Hs.eg.db
 - tidyverse
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Define color palette
 pal <- c('#eaa052', '#b74147', '#90ad5b', '#23929c')
@@ -76,5 +76,5 @@ p1 <- ggplot(use_pathway, aes(-log10(p.adjust), y = index, fill = Category)) +
 p1
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/TextEnrichmentBarPlot.html

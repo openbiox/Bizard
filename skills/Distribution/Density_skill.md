@@ -3,10 +3,10 @@
 ## Category
 Distribution
 
-## When to use
+## When to Use
 A density plot represents the distribution of a numerical variable using kernel density estimation to display the probability density function. It is a smoothed version of a histogram, sharing the same concept but providing a clearer representation of the overall trend and shape of the data.
 
-## Required R packages
+## Required R Packages
 - cowplot
 - dplyr
 - geomtextpath
@@ -19,7 +19,7 @@ A density plot represents the distribution of a numerical variable using kernel 
 - tidyr
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic Density Plot 
 p1 <- ggplot(data1, aes(x = expression)) +   
@@ -31,5 +31,5 @@ p1 <- ggplot(data1, aes(x = expression)) +
 p1
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Distribution/Density.html

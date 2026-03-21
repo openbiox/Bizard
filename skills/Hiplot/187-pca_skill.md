@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - ggpubr
 - gmodels
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # PCA
 p <- ggplot(pca_data, aes(x = PC1, y = PC2, color = colorBy)) +
@@ -55,5 +55,5 @@ p <- ggplot(pca_data, aes(x = PC1, y = PC2, color = colorBy)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/187-pca.html

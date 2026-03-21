@@ -3,16 +3,16 @@
 ## Category
 Clinics
 
-## When to use
+## When to Use
 Visualize lollipop plot data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - ggplot2
 - ggpubr
 - patchwork
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic Lollipop Plot
 # Convert correlation coefficients and p-values to categorical variables
@@ -53,5 +53,5 @@ p = ggplot(data,
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Clinics/LollipopPlot.html

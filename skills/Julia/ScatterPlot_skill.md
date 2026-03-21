@@ -3,14 +3,14 @@
 ## Category
 Julia
 
-## When to use
+## When to Use
 A scatter plot displays values for two continuous variables as a collection of points. Julia's `CairoMakie` package (part of the Makie.jl ecosystem) provides high-performance, GPU-accelerated plotting capabilities ideal for large biomedical datasets. Makie offers publication-quality rendering with a composable, declarative API.
 
-## Required Julia packages
+## Required Julia Packages
 - CairoMakie
 - DataFrames
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```julia
 fig = Figure(size=(700, 500))
 ax = Axis(fig[1,1], xlabel="Sepal Length (cm)", ylabel="Sepal Width (cm)",
@@ -25,5 +25,5 @@ axislegend(ax, position=:rt)
 fig
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Julia/ScatterPlot.html

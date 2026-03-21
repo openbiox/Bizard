@@ -3,14 +3,14 @@
 ## Category
 Omics
 
-## When to use
+## When to Use
 Visualize kegg pathway plot data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - dbplyr
 - pathview
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 p1 <- pathview(gene.data = gse16873.d[, 1], # Input gene matrix
                pathway.id = "04110", # Pathway ID
@@ -22,5 +22,5 @@ p1 <- pathview(gene.data = gse16873.d[, 1], # Input gene matrix
 p1
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Omics/KeggPathwayPlot.html

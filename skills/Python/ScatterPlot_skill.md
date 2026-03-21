@@ -3,17 +3,17 @@
 ## Category
 Python
 
-## When to use
+## When to Use
 A scatter plot displays values for two continuous variables as a collection of points. In biomedical research, scatter plots are widely used for visualizing correlations between gene expression levels, comparing biomarkers, and exploring relationships in multi-omics datasets. Python's `matplotlib` and `seaborn` libraries provide flexible and publication-quality scatter plot capabilities.
 
-## Required Python packages
+## Required Python Packages
 - matplotlib
 - numpy
 - pandas
 - scipy
 - seaborn
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```python
 fig, ax = plt.subplots(figsize=(8, 6))
 for species in iris['species'].unique():
@@ -29,5 +29,5 @@ plt.tight_layout()
 plt.show()
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Python/ScatterPlot.html

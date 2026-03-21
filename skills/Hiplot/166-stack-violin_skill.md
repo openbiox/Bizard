@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - Seurat
 - ggplot2
 - limma
 - readr
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Stack Violin
 ## Define the plot function
@@ -93,5 +93,5 @@ p <- stacked_vln_plot(pbmc, c("ACTG1","ARF1","ALDOA","ARHGDIA","ACTB"), pt.size 
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/166-stack-violin.html

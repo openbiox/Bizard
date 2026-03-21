@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - cowplot
 - data.table
 - ggplot2
 - ggstatsplot
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Piestats Group
 g <- unique(data[,axis[2]])
@@ -37,5 +37,5 @@ for (i in 1:length(g)) {
 plot_grid(plotlist = plist, ncol = 3)
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/069-ggpiestats-group.html

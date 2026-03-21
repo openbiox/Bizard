@@ -3,10 +3,10 @@
 ## Category
 Animation
 
-## When to use
+## When to Use
 Interactive charts allow users to perform actions: zoom, hover the mouse over markers for tooltips, select variables to display, and so on. R provides a set of packages called HTML widgets: these allow you to build interactive data visualizations directly from R.
 
-## Required R packages
+## Required R Packages
 - chorddiag
 - d3heatmap
 - dygraphs
@@ -20,7 +20,7 @@ Interactive charts allow users to perform actions: zoom, hover the mouse over ma
 - webshot
 - xts
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 plot1 <- gapminder %>%
   filter(year==1977) %>%
@@ -30,5 +30,5 @@ plot1 <- gapminder %>%
 ggplotly(plot1)
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Animation/Interactivity.html

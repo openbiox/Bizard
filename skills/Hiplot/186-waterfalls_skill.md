@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - jsonlite
 - waterfalls
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Waterfalls
 p <- waterfall(data, rect_text_labels = data$value, rect_text_size = 1,
@@ -33,5 +33,5 @@ p <- waterfall(data, rect_text_labels = data$value, rect_text_size = 1,
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/186-waterfalls.html

@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggplot2
 - ggridges
 - ggthemes
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Ridge
 p <- ggplot(data, aes(x = value, y = group, fill = group, col = group)) +
@@ -41,5 +41,5 @@ p <- ggplot(data, aes(x = value, y = group, fill = group, col = group)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/154-ridge.html

@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - FactoMineR
 - data.table
 - factoextra
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # PCA2
 p <- fviz_pca_ind(pca_data, geom.ind = "point", pointsize = 6, addEllipses = TRUE,
@@ -35,5 +35,5 @@ p <- fviz_pca_ind(pca_data, geom.ind = "point", pointsize = 6, addEllipses = TRU
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/135-pca2.html

@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - GGally
 - data.table
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Easy Pairs
 p <- ggpairs(data, columns = c("total_bill", "time", "tip"),
@@ -33,5 +33,5 @@ p <- ggpairs(data, columns = c("total_bill", "time", "tip"),
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/049-easy-pairs.html

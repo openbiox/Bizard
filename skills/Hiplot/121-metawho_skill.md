@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - cowplot
 - data.table
 - jsonlite
 - metawho
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Meta-Subgroup Analysis
 p1 <- deft_show(res, element = "all")
@@ -23,5 +23,5 @@ p <- plot_grid(p1, p2, nrow = 2)
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/121-metawho.html

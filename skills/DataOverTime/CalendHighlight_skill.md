@@ -3,13 +3,13 @@
 ## Category
 DataOverTime
 
-## When to use
+## When to Use
 Date highlighting marks are mainly used to display changes in data within certain specific date ranges in time series data, and can be used for an overview of activity frequencies and marking of special dates.
 
-## Required R packages
+## Required R Packages
 - calendR
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Chinese Calendar
 p <- calendR(
@@ -52,5 +52,5 @@ p <- calendR(
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/DataOverTime/CalendHighlight.html

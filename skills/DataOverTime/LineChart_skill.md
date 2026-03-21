@@ -3,10 +3,10 @@
 ## Category
 DataOverTime
 
-## When to use
+## When to Use
 Drawing line segments in various charts is common, and this module will draw all kinds of line segments that may be used.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - gghighlight
 - ggplot2
@@ -14,7 +14,7 @@ Drawing line segments in various charts is common, and this module will draw all
 - patchwork
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic Plotting
 p <- ggplot(data, aes(x = Sepal.Length, y = Sepal.Width)) +
@@ -23,5 +23,5 @@ p <- ggplot(data, aes(x = Sepal.Length, y = Sepal.Width)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/DataOverTime/LineChart.html

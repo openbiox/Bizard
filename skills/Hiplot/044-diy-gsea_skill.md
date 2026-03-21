@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - clusterProfiler
 - data.table
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # DIY GSEA
 y <- clusterProfiler::GSEA(geneList, TERM2GENE = term, pvalueCutoff = 1)
@@ -29,5 +29,5 @@ p <- gseaplot(
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/044-diy-gsea.html

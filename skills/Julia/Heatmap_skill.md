@@ -3,13 +3,13 @@
 ## Category
 Julia
 
-## When to use
+## When to Use
 A heatmap visualizes matrix data using color gradients. Julia's `CairoMakie` provides high-performance heatmap rendering suitable for large gene expression matrices and multi-omics data. The Makie ecosystem supports annotations, clustering, and complex layouts for publication-quality figures.
 
-## Required Julia packages
+## Required Julia Packages
 - CairoMakie
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```julia
 fig = Figure(size=(700, 600))
 ax = Axis(fig[1,1], xlabel="Samples", ylabel="Genes",
@@ -22,5 +22,5 @@ Colorbar(fig[1,2], hm, label="Expression (z-score)")
 fig
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Julia/Heatmap.html

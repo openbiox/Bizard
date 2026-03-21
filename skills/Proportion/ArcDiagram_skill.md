@@ -3,10 +3,10 @@
 ## Category
 Proportion
 
-## When to use
+## When to Use
 The arc diagram is a diagram connected by arcs, showing the relationships between nodes.
 
-## Required R packages
+## Required R Packages
 - colormap
 - ggraph
 - igraph
@@ -14,7 +14,7 @@ The arc diagram is a diagram connected by arcs, showing the relationships betwee
 - tidyverse
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic arc diagram
 mygraph <- graph_from_data_frame(links, vertices = nodes) # Generate graph structure
@@ -32,5 +32,5 @@ p <- ggraph(mygraph, layout = "linear") +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Proportion/ArcDiagram.html

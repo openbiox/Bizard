@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - ggpubr
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Dotchart
 p <- ggdotchart(data, x = "Name", y = "Value", group = "Group", color = "Group",
@@ -36,5 +36,5 @@ p <- ggdotchart(data, x = "Name", y = "Value", group = "Group", color = "Group",
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/046-dotchart.html

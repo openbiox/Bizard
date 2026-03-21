@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - jsonlite
 - streamgraph
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Streamgraph
 p <- streamgraph(data, key = "key", value = "value", date = "date",
@@ -23,5 +23,5 @@ p <- streamgraph(data, key = "key", value = "value", date = "date",
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/168-streamgraph.html

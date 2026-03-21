@@ -3,14 +3,14 @@
 ## Category
 Proportion
 
-## When to use
+## When to Use
 Visualize hierarchical edge bundling data in a biomedical context.
 
-## Required R packages
+## Required R Packages
 - (see tutorial)
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 (See full tutorial for code)
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Proportion/EdgeBundling.html

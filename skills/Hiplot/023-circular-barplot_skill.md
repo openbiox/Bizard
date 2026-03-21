@@ -3,17 +3,17 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - dplyr
 - ggplot2
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Circular Barplot
 p <- ggplot(data, aes(x=as.factor(id), y=value, fill=group)) +
@@ -40,5 +40,5 @@ p <- ggplot(data, aes(x=as.factor(id), y=value, fill=group)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/023-circular-barplot.html

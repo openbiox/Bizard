@@ -3,17 +3,17 @@
 ## Category
 Clinics
 
-## When to use
+## When to Use
 The regression analysis table is used to display the results of the regression model. It provides statistical information about the variables in the model and helps explain the relationship between the variables.
 
-## Required R packages
+## Required R Packages
 - broom.helpers
 - datawizard
 - dplyr
 - gtsummary
 - survival
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Basic regression analysis table
 t1 <- coxph(Surv(time, status) ~ albumin + sex + age,
@@ -24,5 +24,5 @@ t1 <- coxph(Surv(time, status) ~ albumin + sex + age,
 t1
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Clinics/RegressionTable.html

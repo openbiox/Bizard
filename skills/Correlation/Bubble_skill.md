@@ -3,17 +3,17 @@
 ## Category
 Correlation
 
-## When to use
+## When to Use
 A bubble plot is a scatter plot in which a third numeric variable is mapped to the size of the circles. This article shows several ways to build bubble charts using R.
 
-## Required R packages
+## Required R Packages
 - dplyr
 - gapminder
 - ggplot2
 - hrbrthemes
 - viridis
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Taking iris data as an example
 p <- ggplot(iris, aes(x=Sepal.Length, y=Sepal.Width, size = Species)) +
@@ -22,5 +22,5 @@ p <- ggplot(iris, aes(x=Sepal.Length, y=Sepal.Width, size = Species)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Correlation/Bubble.html

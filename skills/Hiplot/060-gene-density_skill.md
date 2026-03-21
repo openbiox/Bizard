@@ -3,11 +3,11 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - ComplexHeatmap
 - RColorBrewer
 - circlize
@@ -17,7 +17,7 @@ Hiplot
 - jsonlite
 - tidyverse
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Set the palettes
 palettes <- c("#B2182B","#EF8A62","#FDDBC7","#D1E5F0","#67A9CF","#2166AC")
@@ -59,5 +59,5 @@ p <- as.ggplot(function() {
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/060-gene-density.html

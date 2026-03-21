@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - cowplot
 - data.table
 - ggplotify
 - jsonlite
 - patchwork
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Pie Group
 col <- c("#E64B35FF","#4DBBD5FF","#00A087FF","#3C5488FF","#F39B7FFF","#8491B4FF",
@@ -41,5 +41,5 @@ for (i in 1:length(unique(data[,"mpaa"]))) {
 plot_grid(plotlist = plist, ncol = 2)
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/139-pie-group.html

@@ -3,18 +3,18 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - cowplot
 - data.table
 - ggplot2
 - ggstatsplot
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Barstats
 g <- unique(data[,axis[3]])
@@ -31,5 +31,5 @@ p <- plot_grid(plotlist = plist, ncol = 1)
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/063-ggbarstats.html

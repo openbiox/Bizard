@@ -3,16 +3,16 @@
 ## Category
 Hiplot
 
-## When to use
+## When to Use
 ::: callout-note
 **Hiplot website**
 
-## Required R packages
+## Required R Packages
 - data.table
 - fishplot
 - jsonlite
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 ## Create a fish object
 fish = createFishObject(as.matrix(data[,4:7]), parents=data$parents, 
@@ -26,5 +26,5 @@ fishPlot(fish,shape="spline", title.btm="Sample1", title = "Fishplot",
          vlab=c("Day 0","Day 30","Day 75","Day 150"))
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Hiplot/055-fishplot.html

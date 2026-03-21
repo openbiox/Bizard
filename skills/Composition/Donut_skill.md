@@ -3,13 +3,13 @@
 ## Category
 Composition
 
-## When to use
+## When to Use
 A donut chart is a circular plot divided into sectors, each sector representing a part of the whole. It is very similar to a pie chart and can be constructed in ggplot2 and basic R.
 
-## Required R packages
+## Required R Packages
 - ggplot2
 
-## Minimal reproducible code
+## Minimal Reproducible Code
 ```r
 # Data Preparation
 counts <- table(TCGA_cli_df$T)
@@ -30,5 +30,5 @@ p <- ggplot(counts, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=T)) +
 p
 ```
 
-## Full tutorial
+## Full Tutorial
 https://openbiox.github.io/Bizard/Composition/Donut.html
