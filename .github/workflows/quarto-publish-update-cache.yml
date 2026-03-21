@@ -48,15 +48,32 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
 
-      - name: Scan .qmd for dependencies and update
-        run: Rscript update-dependencies.R
+      # ── Python Setup ─────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
 
-      - name: Commit the updated DESCRIPTION
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      - name: Scan .qmd for dependencies and update
+        run: |
+          Rscript update-dependencies.R
+          python manage-dependencies.py --update
+
+      - name: Commit the updated dependency files
         if: github.event_name != 'pull_request'
         run: |
           git config --local user.name "$GITHUB_ACTOR"
           git config --local user.email "$GITHUB_ACTOR@users.noreply.github.com"
-          git commit DESCRIPTION -m 'chore: Update dependencies' || echo "No changes to commit"
+          git add DESCRIPTION requirements.txt
+          git commit -m 'chore: Update dependencies' || echo "No changes to commit"
           git push origin || echo "No changes to commit"
 
       - uses: r-lib/actions/setup-r-dependencies@v2

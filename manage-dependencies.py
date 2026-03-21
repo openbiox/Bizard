@@ -23,6 +23,9 @@ PYTHON_IMPORT_TO_PIP = {
     'Bio': 'biopython', 'mpl_toolkits': 'matplotlib',
 }
 
+# Runtime dependencies required by Quarto for Python execution (not imported in code)
+PYTHON_RUNTIME_DEPS = ['jupyter']
+
 PYTHON_STDLIB = {
     'os', 'sys', 're', 'math', 'json', 'csv', 'io', 'pathlib',
     'collections', 'itertools', 'functools', 'typing', 'abc',
@@ -77,7 +80,7 @@ def scan_julia_packages(content):
 
 def scan_all_qmd(root='.'):
     root = Path(root)
-    python_pkgs = set()
+    python_pkgs = set(PYTHON_RUNTIME_DEPS)
     julia_pkgs = set()
 
     for qmd in sorted(root.rglob('*.qmd')):
