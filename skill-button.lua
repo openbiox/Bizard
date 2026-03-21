@@ -53,11 +53,18 @@ function Pandoc(doc)
     });
     var el = document.getElementById('tutorial-skill-content');
     if(match && el){
-      el.textContent = '# Skill: '+match.name+' ('+(match.language||'R')+')\n\n'
+      var preview = '# Skill: '+match.name+' ('+(match.language||'R')+')\n\n'
         +'## Category\n'+match.category+'\n\n'
-        +'## When to use\n'+match.use_when+'\n\n'
-        +'## Required packages\n'+(match.packages.length?match.packages.map(function(p){return '- '+p}).join('\n'):'(see tutorial)')+'\n\n'
-        +'## Full tutorial\n'+match.tutorial_url;
+        +'## When to Use\n'+match.use_when+'\n\n'
+        +'## Required Packages\n'+(match.packages.length?match.packages.map(function(p){return '- '+p}).join('\n'):'(see tutorial)')+'\n\n'
+        +'## Full Tutorial\n'+match.tutorial_url;
+      el.textContent = preview;
+      if(match.skill_file){
+        var skillUrl = (window.location.pathname.split('/').length > 3 ? '../../' : '../') + match.skill_file;
+        fetch(skillUrl).then(function(r){return r.ok?r.text():null}).catch(function(){return null}).then(function(text){
+          if(text) el.textContent = text;
+        });
+      }
     } else if(el) {
       el.textContent='Skill not yet generated. Run generate_skills.py to create it.';
     }
