@@ -85,19 +85,31 @@ jobs:
       - name: Cache Julia packages
         uses: actions/cache@v4
         with:
-          path: ~/.julia
-          key: julia-packages-${{ runner.os }}-${{ hashFiles('Julia/*.qmd') }}
+          path: |
+            ~/.julia
+            ~/.local/share/quarto/julia
+          key: julia-packages-${{ runner.os }}-${{ hashFiles('Julia/Project.toml') }}
           restore-keys: |
             julia-packages-${{ runner.os }}-
 
       - name: Install Julia packages
         run: |
-          julia -e '
+          # Pre-create the Quarto-managed QuartoNotebookRunner environment so that
+          # Quarto's ensureQuartoNotebookRunnerEnvironment succeeds at render time.
+          JULIA_VERSION=$(julia -e 'print(VERSION.major, ".", VERSION.minor)')
+          QUARTO_JULIA_ENV="${HOME}/.local/share/quarto/julia/environments/v${JULIA_VERSION}"
+          mkdir -p "${QUARTO_JULIA_ENV}"
+          julia --project="${QUARTO_JULIA_ENV}" -e '
             using Pkg
-            Pkg.update()
-            Pkg.add(["CairoMakie", "DataFrames", "Statistics", "QuartoNotebookRunner"])
-            # Precompile to speed up rendering
-            using CairoMakie, DataFrames, Statistics, QuartoNotebookRunner
+            Pkg.add("QuartoNotebookRunner")
+            Pkg.instantiate()
+            using QuartoNotebookRunner
+          '
+          # Pre-instantiate the tutorial project environment (Julia/Project.toml)
+          julia --project=Julia -e '
+            using Pkg
+            Pkg.instantiate()
+            using CairoMakie, DataFrames, Statistics
           '
 
       # ── Dependency Scanning ──────────────────────────────────
