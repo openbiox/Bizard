@@ -85,33 +85,59 @@ jobs:
       - name: Cache Julia packages
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.julia
-            ~/.local/share/quarto/julia
+          path: ~/.julia
           key: julia-packages-${{ runner.os }}-${{ hashFiles('Julia/Project.toml') }}
           restore-keys: |
             julia-packages-${{ runner.os }}-
 
       - name: Install Julia packages
         run: |
-          # Pre-create the Quarto-managed QuartoNotebookRunner environment so that
-          # Quarto's ensureQuartoNotebookRunnerEnvironment succeeds at render time.
-          JULIA_VERSION=$(julia -e 'print(VERSION.major, ".", VERSION.minor)')
-          QUARTO_JULIA_ENV="${HOME}/.local/share/quarto/julia/environments/v${JULIA_VERSION}"
-          mkdir -p "${QUARTO_JULIA_ENV}"
-          julia --project="${QUARTO_JULIA_ENV}" -e '
-            using Pkg
-            Pkg.add("QuartoNotebookRunner")
-            Pkg.instantiate()
-            using QuartoNotebookRunner
-          '
-          # Pre-instantiate the tutorial project environment (Julia/Project.toml)
-          # Pkg.resolve() ensures the manifest is consistent before instantiation.
+          # Find the QuartoNotebookRunner version required by this Quarto installation.
+          # Quarto bundles its own julia-engine Project.toml that pins an exact QNR version.
+          JULIA_ENGINE_PROJ=$(find /opt/quarto -name "Project.toml" -path "*/julia-engine/*" 2>/dev/null | head -1)
+          QNR_VERSION=""
+          if [ -n "$JULIA_ENGINE_PROJ" ]; then
+            QNR_VERSION=$(grep -oP 'QuartoNotebookRunner = "=([^"]+)"' "$JULIA_ENGINE_PROJ" \
+              | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' || true)
+            echo "Quarto requires QuartoNotebookRunner=${QNR_VERSION} (from ${JULIA_ENGINE_PROJ})"
+          fi
+
+          # Create a dedicated QNR environment.  Setting QUARTO_JULIA_PROJECT to this
+          # path tells Quarto to skip ensureQuartoNotebookRunnerEnvironment (which calls
+          # Pkg.update() and needs network at render time) and simply verify QNR loads.
+          QNR_ENV="${HOME}/.julia/environments/quarto-julia-env"
+          mkdir -p "${QNR_ENV}"
+
+          if [ -n "$QNR_VERSION" ]; then
+            julia --project="${QNR_ENV}" -e "
+              using Pkg
+              Pkg.add(name=\"QuartoNotebookRunner\", version=\"${QNR_VERSION}\")
+              Pkg.instantiate()
+              using QuartoNotebookRunner
+              println(\"QuartoNotebookRunner \$(pkgversion(QuartoNotebookRunner)) ready\")
+            "
+          else
+            julia --project="${QNR_ENV}" -e '
+              using Pkg
+              Pkg.add("QuartoNotebookRunner")
+              Pkg.instantiate()
+              using QuartoNotebookRunner
+              println("QuartoNotebookRunner $(pkgversion(QuartoNotebookRunner)) ready")
+            '
+          fi
+
+          # Export so the render step can pick it up.
+          echo "QUARTO_JULIA_PROJECT=${QNR_ENV}" >> "$GITHUB_ENV"
+
+          # Pre-instantiate the tutorial project environment (Julia/Project.toml).
+          # QNR workers use JULIA_PROJECT=@. and cd into the notebook directory,
+          # so they automatically pick up Julia/Project.toml for CairoMakie etc.
           julia --project=Julia -e '
             using Pkg
             Pkg.resolve()
             Pkg.instantiate()
             using CairoMakie, DataFrames, Statistics
+            println("Tutorial packages ready")
           '
 
       # ── Dependency Scanning ──────────────────────────────────
@@ -150,6 +176,7 @@ jobs:
           TMP: ${{ env.TMP_DIR }}
           TEMP: ${{ env.TMP_DIR }}
           R_COMPILE_PKGS: 0
+          QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
         run: Rscript -e 'babelquarto::render_website()'
 
       # ── Deploy ───────────────────────────────────────────────
