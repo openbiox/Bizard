@@ -6,6 +6,7 @@ Scans all .qmd tutorial files and:
   - Detects Python packages (import/from statements in {python} blocks)
   - Detects Julia packages (using/import statements in {julia} blocks)
   - Updates requirements.txt for Python
+  - Updates Julia/Project.toml for Julia
   - Reports all discovered dependencies
 
 Usage:
@@ -93,6 +94,58 @@ def scan_all_qmd(root='.'):
     return sorted(python_pkgs), sorted(julia_pkgs)
 
 
+# Known Julia package UUIDs for Project.toml generation
+JULIA_PACKAGE_UUIDS = {
+    'CairoMakie': '13f3f980-e62b-5c42-98c6-ff1f3baf88f0',
+    'DataFrames': 'a93c6f00-e57d-5684-b7b6-d8193f3e46c0',
+    'Statistics': '10745b16-79ce-11e8-11f9-7d13ad32a3b2',
+    'Random': '9a3f8284-a2c9-5f02-9a11-845980a1fd5c',
+    'Makie': 'ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a',
+    'GLMakie': 'e9467ef8-e4e7-5192-8a1a-b1aee30e663a',
+    'WGLMakie': '276b4fcb-3e11-5398-bf8b-a0c2d153d008',
+    'Plots': '91a5bcdd-55d7-5caf-9e0b-520d859cae80',
+    'StatsPlots': 'f3b207a7-027a-5e70-b257-86293d7955fd',
+    'CSV': '336ed68f-0bac-5ca0-87d4-7b16caf5d00b',
+    'DataFramesMeta': '1313f7d8-7da2-5740-9ea0-a2ca25f37964',
+    'Colors': '5ae59095-9a9b-59fe-a467-6f913c188581',
+    'ColorSchemes': '35d6a980-a343-548e-a6ea-1d62b119f2f4',
+    'StatsBase': '2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91',
+    'Distributions': '31c24e10-a181-5473-b8eb-7969acd0382f',
+    'KernelDensity': '5ab0869b-81aa-558d-bb23-730f6a60dcf1',
+    'AlgebraOfGraphics': 'cbdf2221-f076-402e-a563-3d30da359d67',
+}
+
+
+def update_julia_project_toml(packages, filepath='Julia/Project.toml'):
+    """Update Julia/Project.toml with discovered packages."""
+    path = Path(filepath)
+    existing = {}
+
+    if path.exists():
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if '=' in line and not line.startswith('['):
+                parts = line.split('=', 1)
+                pkg_name = parts[0].strip()
+                uuid = parts[1].strip().strip('"')
+                existing[pkg_name] = uuid
+
+    new_packages = []
+    for pkg in packages:
+        if pkg not in existing and pkg in JULIA_PACKAGE_UUIDS:
+            existing[pkg] = JULIA_PACKAGE_UUIDS[pkg]
+            new_packages.append(pkg)
+
+    if new_packages:
+        lines = ['[deps]']
+        for name in sorted(existing):
+            lines.append(f'{name} = "{existing[name]}"')
+        lines.append('')
+        path.write_text('\n'.join(lines))
+
+    return new_packages
+
+
 def update_requirements_txt(packages, filepath='requirements.txt'):
     path = Path(filepath)
     existing = set()
@@ -145,6 +198,12 @@ def main():
             print(f"\nAdded to requirements.txt: {', '.join(new_py)}")
         else:
             print("\nrequirements.txt is up to date")
+
+        new_jl = update_julia_project_toml(julia_pkgs)
+        if new_jl:
+            print(f"Added to Julia/Project.toml: {', '.join(new_jl)}")
+        else:
+            print("Julia/Project.toml is up to date")
 
 
 if __name__ == '__main__':
