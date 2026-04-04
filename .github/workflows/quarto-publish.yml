@@ -1,27 +1,59 @@
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║  Github Page – Optimized Build & Deploy                             ║
+# ║                                                                      ║
+# ║  Key optimizations over the original workflow:                       ║
+# ║  1. FREEZE CACHE FIX: Uses actions/cache/restore + save separately  ║
+# ║     with always-save (even on failure) so incremental progress is    ║
+# ║     never lost. Cache key is per-commit-SHA, restored via prefix.    ║
+# ║  2. CHANGED-FILE DETECTION: Detects which QMDs changed and only     ║
+# ║     pre-renders those files, enabling fail-fast (catch errors in     ║
+# ║     ~2 min instead of ~90 min).                                      ║
+# ║  3. CONDITIONAL JULIA SETUP: Skips the ~9 min Julia installation    ║
+# ║     when freeze already covers Julia files and none changed.         ║
+# ║  4. SMART CONCURRENCY: Groups by PR number or branch so updated     ║
+# ║     pushes cancel stale in-progress builds.                          ║
+# ║  5. RESOURCE CONSERVATION: Failed builds still save their freeze    ║
+# ║     progress, so the next run picks up where it left off.            ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+
 on:
   push:
     branches: [main, master]
     paths-ignore:
       - '*.md'
       - 'LICENSE'
+      - 'skills/**'
+      - 'scripts/**'
+      - '.github/scripts/**'
+      - '.github/workflows/auto-translate.yml'
+      - '.github/workflows/compress-images.yml'
+      - '.github/workflows/generate-skills.yml'
+      - '.github/workflows/skill-command.yml'
+      - '.github/workflows/translate-command.yml'
   pull_request:
     branches: [main, master]
     paths-ignore:
       - '*.md'
   workflow_dispatch:
+    inputs:
+      force_full_rebuild:
+        description: 'Force full rebuild (delete freeze cache and re-execute all files)'
+        type: boolean
+        default: false
 
 name: Github Page
 
 env:
-  isExtPR: ${{ github.event.pull_request.head.repo.fork == true }}
   RUST_BACKTRACE: 1
 
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    # Group by PR number for PRs, by branch ref for pushes.
+    # New pushes/commits cancel the previous in-progress build in the same group.
     concurrency:
-      group: quarto-publish-${{ github.event_name != 'pull_request' || github.run_id }}
+      group: quarto-build-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -36,6 +68,95 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ── Detect changed files ─────────────────────────────────
+      # Determines which QMDs changed so we can:
+      #  (a) pre-render only those files (fail-fast)
+      #  (b) skip Julia/Python setup when unnecessary
+      - name: Detect changed QMD files
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            BASE_SHA="${{ github.event.before }}"
+          else
+            BASE_SHA=""
+          fi
+
+          # Handle first push, force push, or manual dispatch
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed_qmds=" >> "$GITHUB_OUTPUT"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "need_julia=true" >> "$GITHUB_OUTPUT"
+            echo "need_python=true" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ No base SHA available – treating as full build"
+            exit 0
+          fi
+
+          CHANGED_QMDS=$(git diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD -- '*.qmd' 2>/dev/null | tr '\n' ' ' || echo "")
+          echo "changed_qmds=$CHANGED_QMDS" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$CHANGED_QMDS" ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          JULIA_CHANGED=$(echo "$CHANGED_QMDS" | grep -c 'Julia/' || true)
+          PYTHON_CHANGED=$(echo "$CHANGED_QMDS" | grep -c 'Python/' || true)
+          echo "need_julia=$( [ "$JULIA_CHANGED" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          echo "need_python=$( [ "$PYTHON_CHANGED" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+
+          echo "📋 Changed QMDs: ${CHANGED_QMDS:-none}"
+          echo "   Julia changes: $JULIA_CHANGED | Python changes: $PYTHON_CHANGED"
+
+      # ── Restore freeze cache (CRITICAL for performance) ──────
+      # The freeze cache stores pre-computed outputs for all QMD files.
+      # With a warm cache, babelquarto skips code execution for unchanged
+      # files, reducing render time from ~90 min to ~5-15 min.
+      #
+      # Key strategy:
+      #   - Primary key includes commit SHA (unique per commit)
+      #   - restore-keys prefix ensures we always get the latest cache
+      #   - A separate save step (with if: always()) preserves progress
+      #     even when the build fails partway through
+      - name: Restore freeze cache
+        id: freeze-restore
+        if: inputs.force_full_rebuild != true
+        uses: actions/cache/restore@v4
+        with:
+          path: _freeze
+          key: freeze-${{ runner.os }}-${{ github.sha }}-${{ github.run_attempt }}
+          restore-keys: |
+            freeze-${{ runner.os }}-${{ github.sha }}-
+            freeze-${{ runner.os }}-
+
+      - name: Clear freeze for forced full rebuild
+        if: inputs.force_full_rebuild == true
+        run: rm -rf _freeze
+
+      - name: Report freeze cache status
+        id: freeze-check
+        run: |
+          if [ -d "_freeze" ]; then
+            FREEZE_COUNT=$(find _freeze -name "*.json" -type f 2>/dev/null | wc -l)
+            echo "✅ Freeze cache available: $FREEZE_COUNT frozen output(s)"
+            echo "has_freeze=true" >> "$GITHUB_OUTPUT"
+
+            # Check per-language coverage
+            JULIA_FROZEN=$(find _freeze -path "*/Julia/*" -name "*.json" 2>/dev/null | wc -l)
+            PYTHON_FROZEN=$(find _freeze -path "*/Python/*" -name "*.json" 2>/dev/null | wc -l)
+            echo "julia_frozen=$JULIA_FROZEN" >> "$GITHUB_OUTPUT"
+            echo "python_frozen=$PYTHON_FROZEN" >> "$GITHUB_OUTPUT"
+            echo "   Julia frozen: $JULIA_FROZEN | Python frozen: $PYTHON_FROZEN"
+          else
+            echo "⚠️ No freeze cache – full execution required"
+            echo "has_freeze=false" >> "$GITHUB_OUTPUT"
+            echo "julia_frozen=0" >> "$GITHUB_OUTPUT"
+            echo "python_frozen=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Quarto Setup ────────────────────────────────────────
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         env:
@@ -76,13 +197,22 @@ jobs:
             pip install -r requirements.txt
           fi
 
-      # ── Julia Setup ──────────────────────────────────────────
+      # ── Julia Setup (conditional) ────────────────────────────
+      # Julia setup takes ~9 min. Skip it when:
+      #  - No Julia QMDs changed AND freeze already covers Julia files
+      # Always install when: Julia files changed, no freeze, or force rebuild.
       - name: Set up Julia
+        id: setup-julia
+        if: >-
+          steps.changes.outputs.need_julia == 'true' ||
+          steps.freeze-check.outputs.julia_frozen == '0' ||
+          inputs.force_full_rebuild == true
         uses: julia-actions/setup-julia@v2
         with:
           version: '1'
 
       - name: Cache Julia packages
+        if: steps.setup-julia.outcome == 'success'
         uses: actions/cache@v4
         with:
           path: ~/.julia
@@ -91,9 +221,9 @@ jobs:
             julia-packages-${{ runner.os }}-
 
       - name: Install Julia packages
+        if: steps.setup-julia.outcome == 'success'
         run: |
           # Find the QuartoNotebookRunner version required by this Quarto installation.
-          # Quarto bundles its own julia-engine Project.toml that pins an exact QNR version.
           JULIA_ENGINE_PROJ=$(find /opt/quarto -name "Project.toml" -path "*/julia-engine/*" 2>/dev/null | head -1)
           QNR_VERSION=""
           if [ -n "$JULIA_ENGINE_PROJ" ]; then
@@ -102,9 +232,7 @@ jobs:
             echo "Quarto requires QuartoNotebookRunner=${QNR_VERSION} (from ${JULIA_ENGINE_PROJ})"
           fi
 
-          # Create a dedicated QNR environment.  Setting QUARTO_JULIA_PROJECT to this
-          # path tells Quarto to skip ensureQuartoNotebookRunnerEnvironment (which calls
-          # Pkg.update() and needs network at render time) and simply verify QNR loads.
+          # Create a dedicated QNR environment.
           QNR_ENV="${HOME}/.julia/environments/quarto-julia-env"
           mkdir -p "${QNR_ENV}"
 
@@ -126,12 +254,9 @@ jobs:
             '
           fi
 
-          # Export so the render step can pick it up.
           echo "QUARTO_JULIA_PROJECT=${QNR_ENV}" >> "$GITHUB_ENV"
 
-          # Pre-instantiate the tutorial project environment (Julia/Project.toml).
-          # QNR workers use JULIA_PROJECT=@. and cd into the notebook directory,
-          # so they automatically pick up Julia/Project.toml for CairoMakie etc.
+          # Pre-instantiate the tutorial project environment.
           julia --project=Julia -e '
             using Pkg
             Pkg.resolve()
@@ -153,16 +278,7 @@ jobs:
           git config --local user.email "$GITHUB_ACTOR@users.noreply.github.com"
           git add DESCRIPTION requirements.txt Julia/Project.toml
           git commit -m 'chore: update dependencies' || echo "No changes to commit"
-          git push origin || echo "No changes to commit"
-
-      # ── Freeze Cache ─────────────────────────────────────────
-      - name: Cache freeze directory
-        uses: actions/cache@v4
-        with:
-          path: _freeze
-          key: freeze-${{ runner.os }}-${{ hashFiles('**/*.qmd') }}
-          restore-keys: |
-            freeze-${{ runner.os }}-
+          git push origin || echo "No changes to push"
 
       # ── Render ───────────────────────────────────────────────
       - name: Create temporary directory
@@ -170,18 +286,11 @@ jobs:
           sudo mkdir -p ${{ env.TMP_DIR }}
           sudo chown -R $USER:$USER ${{ env.TMP_DIR }}
 
-      # Pre-render Julia notebooks BEFORE the R-heavy main render.
-      #
-      # Root cause of "SyntaxError: Unexpected end of JSON input":
-      #   babelquarto::render_website() loads R + hundreds of packages (~1.5 GB).
-      #   When the QNR Malt worker then loads CairoMakie (~1-2 GB peak), total RAM
-      #   exceeds the runner limit and the OOM killer kills the QNR server process,
-      #   leaving the TCP connection abruptly closed with no JSON response.
-      #
-      # Fix: render Julia notebooks in a dedicated step where no R process is running
-      #   (~2.5 GB peak total). execute: freeze: auto in _quarto.yml makes babelquarto
-      #   reuse the cached outputs instead of re-executing Julia code.
+      # Pre-render Julia notebooks BEFORE the R-heavy main render to avoid OOM.
+      # babelquarto loads R + hundreds of packages (~1.5 GB); adding CairoMakie
+      # (~1-2 GB peak) would exceed the runner's RAM limit.
       - name: Pre-render Julia notebooks
+        if: steps.setup-julia.outcome == 'success'
         env:
           QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
           TMPDIR: ${{ env.TMP_DIR }}
@@ -199,7 +308,6 @@ jobs:
               failed=1
             fi
           done
-          # Print QNR server log for diagnostics regardless of outcome
           julia_log="${HOME}/.cache/quarto/julia/julia_server_log.txt"
           if [ -f "$julia_log" ]; then
             echo ""
@@ -210,6 +318,43 @@ jobs:
           [ $failed -eq 0 ] || exit 1
           echo "All Julia notebooks pre-rendered. Freeze cache populated."
 
+      # Pre-render ONLY the changed QMD files for early failure detection.
+      # If a changed file has a syntax error or broken dependency, this step
+      # fails in ~2 min instead of waiting ~90 min for the full site render.
+      # Successfully rendered files populate the freeze cache for the next step.
+      - name: Pre-render changed QMD files (fail-fast)
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          CHANGED_QMDS: ${{ steps.changes.outputs.changed_qmds }}
+          TMPDIR: ${{ env.TMP_DIR }}
+          TMP: ${{ env.TMP_DIR }}
+          TEMP: ${{ env.TMP_DIR }}
+          QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
+        run: |
+          echo "Pre-rendering changed files for early failure detection..."
+          for qmd in $CHANGED_QMDS; do
+            # Julia files are pre-rendered separately (OOM prevention)
+            if [[ "$qmd" == Julia/* ]]; then continue; fi
+            if [ ! -f "$qmd" ]; then continue; fi
+
+            echo "  → $qmd"
+            quarto render "$qmd" 2>&1 || { echo "❌ FAILED: $qmd"; exit 1; }
+            echo "  ✓ OK: $qmd"
+
+            # Also render the bilingual counterpart so freeze covers both
+            if [[ "$qmd" == *.zh.qmd ]]; then
+              counterpart="${qmd%.zh.qmd}.qmd"
+            else
+              counterpart="${qmd%.qmd}.zh.qmd"
+            fi
+            if [ -f "$counterpart" ] && ! echo "$CHANGED_QMDS" | grep -qF "$counterpart"; then
+              echo "  → $counterpart (bilingual counterpart)"
+              quarto render "$counterpart" 2>&1 || { echo "❌ FAILED: $counterpart"; exit 1; }
+              echo "  ✓ OK: $counterpart"
+            fi
+          done
+          echo "✅ All changed files pre-rendered successfully."
+
       - name: Render website with Babelquarto
         env:
           TMPDIR: ${{ env.TMP_DIR }}
@@ -219,23 +364,23 @@ jobs:
           QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
         run: Rscript -e 'babelquarto::render_website()'
 
+      # ── Save freeze cache (ALWAYS – even on failure) ─────────
+      # This is the key to reducing wasted work across consecutive
+      # failed builds. Even if the render fails on file #400,
+      # files #1-#399 have their freeze saved for the next run.
+      - name: Save freeze cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: _freeze
+          key: freeze-${{ runner.os }}-${{ github.sha }}-${{ github.run_attempt }}
+
       # ── Deploy ───────────────────────────────────────────────
       - name: Upload Quarto artifacts
-        if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: "_site"
-
-      - name: Commit updated _freeze
-        if: github.event_name != 'pull_request'
-        run: |
-          if [ -d "_freeze" ] && [ -n "$(ls -A _freeze)" ]; then
-            git add -A _freeze
-            git commit -m 'chore: update frozen contents' || echo "No changes to commit"
-            git push origin || echo "No changes to push"
-          else
-            echo "_freeze is empty or missing, skipping"
-          fi
 
       - name: Deploy to GitHub Pages
         if: github.event_name != 'pull_request'

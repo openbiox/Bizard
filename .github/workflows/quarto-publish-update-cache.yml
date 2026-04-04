@@ -1,40 +1,81 @@
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║  Nightly / Manual Full Render and Freeze Cache Update               ║
+# ║                                                                      ║
+# ║  Purpose: Ensure the freeze cache is comprehensive and up-to-date.  ║
+# ║  - Restores existing freeze cache (no longer deletes it)            ║
+# ║  - Renders the full site (freeze: auto skips unchanged files)       ║
+# ║  - Adds Julia support (was missing)                                  ║
+# ║  - Saves updated freeze cache (even on failure)                      ║
+# ║  - Optional: force full rebuild via manual dispatch                  ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+
 on:
-  # to be able to trigger a manual build
   workflow_dispatch:
+    inputs:
+      force_full_rebuild:
+        description: 'Force full rebuild (delete freeze cache and re-execute all files)'
+        type: boolean
+        default: false
   schedule:
-    # run every day at 11 PM
+    # Run every day at 11 PM UTC
     - cron: '0 23 * * *'
 
 name: Render and Deploy Website and Update Freeze Cache
 
-# https://github.com/r-lib/actions/tree/v2/examples#render-rmarkdown
-# https://github.com/quarto-dev/quarto-actions
-
 env:
-  isExtPR: ${{ github.event.pull_request.head.repo.fork == true }}
   RUST_BACKTRACE: 1
 
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
-    # Only restrict concurrency for non-PR jobs
+    timeout-minutes: 150
+    # Share concurrency group with the main workflow to prevent simultaneous builds
     concurrency:
-      group: quarto-publish-${{ github.event_name != 'pull_request' || github.run_id }}
+      group: quarto-build-Github Page-refs/heads/main
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       TMP_DIR: /mnt/TMP
     permissions:
       contents: write
+      pages: write
+      id-token: write
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Clean Freeze Cache
+      # ── Restore freeze cache ─────────────────────────────────
+      # Unlike the old workflow that always deleted _freeze, we now
+      # restore it so unchanged files don't need re-execution.
+      # A nightly build with a warm cache completes in minutes.
+      - name: Restore freeze cache
+        id: freeze-restore
+        if: inputs.force_full_rebuild != true
+        uses: actions/cache/restore@v4
+        with:
+          path: _freeze
+          key: freeze-nightly-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            freeze-nightly-${{ runner.os }}-
+            freeze-${{ runner.os }}-
+
+      - name: Clear freeze for forced full rebuild
+        if: inputs.force_full_rebuild == true
         run: |
           rm -rf _freeze
+          echo "🗑️ Freeze cache cleared – full rebuild will execute all files"
 
+      - name: Report freeze cache status
+        run: |
+          if [ -d "_freeze" ]; then
+            FREEZE_COUNT=$(find _freeze -name "*.json" -type f 2>/dev/null | wc -l)
+            echo "✅ Freeze cache available: $FREEZE_COUNT frozen output(s)"
+          else
+            echo "⚠️ No freeze cache – full execution required"
+          fi
+
+      # ── Quarto Setup ────────────────────────────────────────
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         env:
@@ -42,9 +83,22 @@ jobs:
         with:
           tinytex: true
 
+      # ── R Setup ──────────────────────────────────────────────
       - uses: r-lib/actions/setup-r@v2
         with:
           use-public-rspm: true
+
+      - name: Cache R packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/renv
+            ~/.cache/R/renv
+            /usr/local/lib/R/site-library
+            ~/R
+          key: r-packages-${{ runner.os }}-${{ hashFiles('DESCRIPTION') }}
+          restore-keys: |
+            r-packages-${{ runner.os }}-
 
       - uses: r-lib/actions/setup-r-dependencies@v2
 
@@ -62,75 +116,150 @@ jobs:
             pip install -r requirements.txt
           fi
 
-      - name: Scan .qmd for dependencies and update
+      # ── Julia Setup ──────────────────────────────────────────
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+
+      - name: Cache Julia packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.julia
+          key: julia-packages-${{ runner.os }}-${{ hashFiles('Julia/Project.toml') }}
+          restore-keys: |
+            julia-packages-${{ runner.os }}-
+
+      - name: Install Julia packages
+        run: |
+          JULIA_ENGINE_PROJ=$(find /opt/quarto -name "Project.toml" -path "*/julia-engine/*" 2>/dev/null | head -1)
+          QNR_VERSION=""
+          if [ -n "$JULIA_ENGINE_PROJ" ]; then
+            QNR_VERSION=$(grep -oP 'QuartoNotebookRunner = "=([^"]+)"' "$JULIA_ENGINE_PROJ" \
+              | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' || true)
+            echo "Quarto requires QuartoNotebookRunner=${QNR_VERSION}"
+          fi
+
+          QNR_ENV="${HOME}/.julia/environments/quarto-julia-env"
+          mkdir -p "${QNR_ENV}"
+
+          if [ -n "$QNR_VERSION" ]; then
+            julia --project="${QNR_ENV}" -e "
+              using Pkg
+              Pkg.add(name=\"QuartoNotebookRunner\", version=\"${QNR_VERSION}\")
+              Pkg.instantiate()
+              using QuartoNotebookRunner
+              println(\"QuartoNotebookRunner \$(pkgversion(QuartoNotebookRunner)) ready\")
+            "
+          else
+            julia --project="${QNR_ENV}" -e '
+              using Pkg
+              Pkg.add("QuartoNotebookRunner")
+              Pkg.instantiate()
+              using QuartoNotebookRunner
+              println("QuartoNotebookRunner $(pkgversion(QuartoNotebookRunner)) ready")
+            '
+          fi
+
+          echo "QUARTO_JULIA_PROJECT=${QNR_ENV}" >> "$GITHUB_ENV"
+
+          julia --project=Julia -e '
+            using Pkg
+            Pkg.resolve()
+            Pkg.instantiate()
+            using CairoMakie, DataFrames, Statistics
+            println("Tutorial packages ready")
+          '
+
+      # ── Dependency Scanning ──────────────────────────────────
+      - name: Scan and update dependencies
         run: |
           Rscript update-dependencies.R
           python manage-dependencies.py --update
 
-      - name: Commit the updated dependency files
-        if: github.event_name != 'pull_request'
+      - name: Commit updated dependency files
         run: |
           git config --local user.name "$GITHUB_ACTOR"
           git config --local user.email "$GITHUB_ACTOR@users.noreply.github.com"
-          git add DESCRIPTION requirements.txt
-          git commit -m 'chore: Update dependencies' || echo "No changes to commit"
-          git push origin || echo "No changes to commit"
+          git add DESCRIPTION requirements.txt Julia/Project.toml
+          git commit -m 'chore: update dependencies' || echo "No changes to commit"
+          git push origin || echo "No changes to push"
 
-      - uses: r-lib/actions/setup-r-dependencies@v2
-
-    #  - name: Render Quarto Project
-    #    uses: quarto-dev/quarto-actions/render@v2
-    #    env:
-    #      QUARTO_PROFILE: preview
-
-      - name: Create temporary directory at /mnt/TMP
+      # ── Render ───────────────────────────────────────────────
+      - name: Create temporary directory
         run: |
           sudo mkdir -p ${{ env.TMP_DIR }}
           sudo chown -R $USER:$USER ${{ env.TMP_DIR }}
-          echo "Created ${{ env.TMP_DIR }} directory"
 
       - name: Check disk usage before rendering
         run: |
           echo "=== Initial Disk Usage ==="
           df -h
-          echo ""
-          echo "=== Working Directory ==="
-          pwd
+
+      # Pre-render Julia notebooks to avoid OOM during the R-heavy main render
+      - name: Pre-render Julia notebooks
+        env:
+          QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
+          TMPDIR: ${{ env.TMP_DIR }}
+          TMP: ${{ env.TMP_DIR }}
+          TEMP: ${{ env.TMP_DIR }}
+        run: |
+          echo "Pre-rendering Julia tutorials..."
+          failed=0
+          for qmd in Julia/*.qmd; do
+            echo "  → $qmd"
+            if quarto render "$qmd" 2>&1; then
+              echo "  ✓ OK: $qmd"
+            else
+              echo "  ✗ Failed: $qmd"
+              failed=1
+            fi
+          done
+          julia_log="${HOME}/.cache/quarto/julia/julia_server_log.txt"
+          if [ -f "$julia_log" ]; then
+            echo "=== QNR server log ==="
+            tail -50 "$julia_log"
+            echo "======================"
+          fi
+          [ $failed -eq 0 ] || exit 1
 
       - name: Render website with Babelquarto
         env:
           TMPDIR: ${{ env.TMP_DIR }}
           TMP: ${{ env.TMP_DIR }}
           TEMP: ${{ env.TMP_DIR }}
+          R_COMPILE_PKGS: 0
+          QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
         run: Rscript -e 'babelquarto::render_website()'
 
       - name: Check disk usage after rendering
         run: |
           echo "=== Final Disk Usage ==="
           df -h
-          echo ""
-          echo "=== Working Directory ==="
-          pwd
 
+      # ── Save freeze cache (ALWAYS – even on failure) ─────────
+      - name: Save freeze cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: _freeze
+          key: freeze-nightly-${{ runner.os }}-${{ github.sha }}-${{ github.run_attempt }}
+
+      # Also save under the shared prefix so the main workflow can use it
+      - name: Save freeze cache (shared key)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: _freeze
+          key: freeze-${{ runner.os }}-nightly-${{ github.run_id }}
+
+      # ── Deploy ───────────────────────────────────────────────
       - name: Upload Quarto artifacts
-        if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: "_site"
 
-      - name: Commit the updated _freeze
-        if: github.event_name != 'pull_request'
-        run: |
-          if [ -d "_freeze" ] && [ -n "$(ls -A _freeze)" ]; then
-            git add -A _freeze
-            git commit -m 'chore: update frozen contents' || echo "No changes to commit"
-            git push origin || echo "No changes to push"
-          else
-            echo "_freeze is empty or missing, skipping"
-          fi
-
       - name: Deploy to GitHub Pages
-        if: github.event_name != 'pull_request'
         uses: quarto-dev/quarto-actions/publish@v2
         with:
           target: gh-pages
@@ -142,7 +271,6 @@ jobs:
         if: always()
         run: |
           TMP_PATH="${{ env.TMP_DIR }}"
-          # Validate path is non-empty, matches expected pattern, and directory exists
           if [ -n "$TMP_PATH" ] && [[ "$TMP_PATH" =~ ^/mnt/TMP ]] && [ -d "$TMP_PATH" ]; then
             sudo rm -rf "$TMP_PATH"
             echo "Removed $TMP_PATH directory"
