@@ -170,6 +170,46 @@ jobs:
           sudo mkdir -p ${{ env.TMP_DIR }}
           sudo chown -R $USER:$USER ${{ env.TMP_DIR }}
 
+      # Pre-render Julia notebooks BEFORE the R-heavy main render.
+      #
+      # Root cause of "SyntaxError: Unexpected end of JSON input":
+      #   babelquarto::render_website() loads R + hundreds of packages (~1.5 GB).
+      #   When the QNR Malt worker then loads CairoMakie (~1-2 GB peak), total RAM
+      #   exceeds the runner limit and the OOM killer kills the QNR server process,
+      #   leaving the TCP connection abruptly closed with no JSON response.
+      #
+      # Fix: render Julia notebooks in a dedicated step where no R process is running
+      #   (~2.5 GB peak total). execute: freeze: auto in _quarto.yml makes babelquarto
+      #   reuse the cached outputs instead of re-executing Julia code.
+      - name: Pre-render Julia notebooks
+        env:
+          QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
+          TMPDIR: ${{ env.TMP_DIR }}
+          TMP: ${{ env.TMP_DIR }}
+          TEMP: ${{ env.TMP_DIR }}
+        run: |
+          echo "Pre-rendering Julia tutorials (no R process = lower peak memory)..."
+          failed=0
+          for qmd in Julia/*.qmd; do
+            echo "  → $qmd"
+            if quarto render "$qmd" 2>&1; then
+              echo "  ✓ OK: $qmd"
+            else
+              echo "  ✗ Failed: $qmd"
+              failed=1
+            fi
+          done
+          # Print QNR server log for diagnostics regardless of outcome
+          julia_log="${HOME}/.cache/quarto/julia/julia_server_log.txt"
+          if [ -f "$julia_log" ]; then
+            echo ""
+            echo "=== QNR server log ==="
+            tail -50 "$julia_log"
+            echo "======================"
+          fi
+          [ $failed -eq 0 ] || exit 1
+          echo "All Julia notebooks pre-rendered. Freeze cache populated."
+
       - name: Render website with Babelquarto
         env:
           TMPDIR: ${{ env.TMP_DIR }}
