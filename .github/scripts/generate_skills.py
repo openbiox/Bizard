@@ -229,8 +229,6 @@ def qmd_to_skill_offline(filepath: Path, base_url: str = DEFAULT_BASE_URL) -> Di
 
     title = parse_yaml_field(yaml_text, "title") or filepath.stem
     title = title.strip('"\'')
-    # Strip any trailing language tag already present in the title (e.g. "(Python)", "(Julia)", "(R)")
-    title = re.sub(r'\s*\((R|Python|Julia)\)\s*$', '', title, flags=re.IGNORECASE).strip()
 
     language = detect_language(content)
     lang_display = LANG_DISPLAY.get(language, language.capitalize())
@@ -272,8 +270,12 @@ def qmd_to_skill_offline(filepath: Path, base_url: str = DEFAULT_BASE_URL) -> Di
     tips = _generate_tips(content, language, category, headings, all_blocks)
     tips_text = "\n".join(f"- {t}" for t in tips)
 
+    # Build the skill title: strip any existing language tag from the QMD title to avoid
+    # duplication (e.g., QMD title "Scatter Plot (Python)" + "(Python)" = "Scatter Plot (Python) (Python)")
+    skill_title = re.sub(r'\s*\((R|Python|Julia)\)\s*$', '', title, flags=re.IGNORECASE).strip()
+
     skill_text = (
-        f"# Skill: {title} ({lang_display})\n\n"
+        f"# Skill: {skill_title} ({lang_display})\n\n"
         f"## Category\n{category}\n\n"
         f"## When to Use\n{use_when}\n\n"
         f"## Required {lang_display} Packages\n{pkg_list}\n\n"
@@ -335,7 +337,7 @@ def _build_combined_code(content: str, language: str, packages: List[str]) -> st
         if 'Random.' in all_code and 'Random' not in packages:
             using_lines.append("using Random")
         if using_lines:
-            parts.append("# Load packages\n" + "\n".join(sorted(using_lines)))
+            parts.append("# Load packages\n" + "\n".join(using_lines))
 
     # Find and add data preparation block
     for opts, code in blocks:
@@ -564,8 +566,6 @@ class SkillGenerator:
 
         title = parse_yaml_field(yaml_text, "title") or filepath.stem
         title = title.strip('"\'')
-        # Strip any trailing language tag already present in the title
-        title = re.sub(r'\s*\((R|Python|Julia)\)\s*$', '', title, flags=re.IGNORECASE).strip()
 
         language = detect_language(content)
         lang_display = LANG_DISPLAY.get(language, language.capitalize())
@@ -574,6 +574,10 @@ class SkillGenerator:
 
         rel_html = str(filepath.with_suffix(".html")).lstrip("./")
         tutorial_url = base_url.rstrip("/") + "/" + rel_html
+
+        # Strip language tag from title for the skill header to avoid duplication
+        # (e.g., "Scatter Plot (Python)" becomes "Scatter Plot" before "(Python)" is appended)
+        skill_title = re.sub(r'\s*\((R|Python|Julia)\)\s*$', '', title, flags=re.IGNORECASE).strip()
 
         system_prompt = f"""You are an expert at creating AI skill documents for biomedical visualization tutorials.
 
@@ -594,7 +598,7 @@ Important rules:
         user_prompt = f"""Convert this Bizard QMD tutorial into a skill document.
 
 **Tutorial metadata:**
-- Title: {title}
+- Title: {skill_title}
 - Language: {lang_display}
 - Category: {category}
 - Packages detected: {', '.join(packages) if packages else 'none detected'}
