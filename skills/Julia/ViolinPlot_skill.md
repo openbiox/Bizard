@@ -1,4 +1,4 @@
-# Skill: Violin Plot (Julia) (Julia)
+# Skill: Violin Plot (Julia)
 
 ## Category
 Julia
@@ -15,6 +15,7 @@ A violin plot combines box plot statistics with kernel density estimation to sho
 # Load packages
 using CairoMakie
 using DataFrames
+using Random
 
 # Prepare data
 Random.seed!(42)
@@ -39,7 +40,11 @@ fig
 
 ## Key Parameters
 - `markersize`: Size of scatter plot markers
-- `color`: Color of plot elements
+- `color`: Color of plot elements (e.g., :steelblue or (:red, 0.5) for alpha)
+- `side`: Side of violin to draw (:left, :right, or both)
+- `width`: Width of violin or box plot elements
+- `size`: Figure size as (width, height) in pixels
+- `alpha`: Transparency via color tuple syntax: color=(:steelblue, 0.7)
 
 ## Tips
 - Save figures with `save("plot.png", fig)` or `save("plot.pdf", fig)`

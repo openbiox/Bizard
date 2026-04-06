@@ -1,4 +1,4 @@
-# Skill: Heatmap (Python) (Python)
+# Skill: Heatmap (Python)
 
 ## Category
 Python

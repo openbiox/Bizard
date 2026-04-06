@@ -1,4 +1,4 @@
-# Skill: Scatter Plot (Julia) (Julia)
+# Skill: Scatter Plot (Julia)
 
 ## Category
 Julia
@@ -15,6 +15,7 @@ A scatter plot displays values for two continuous variables as a collection of p
 # Load packages
 using CairoMakie
 using DataFrames
+using Random
 
 # Prepare data
 Random.seed!(42)
@@ -45,9 +46,11 @@ fig
 ## Key Parameters
 - `colormap`: Color scheme for the plot (e.g., :viridis, :RdBu)
 - `markersize`: Size of scatter plot markers
-- `alpha`: Transparency level (0–1)
-- `color`: Color of plot elements
+- `color`: Color of plot elements (e.g., :steelblue or (:red, 0.5) for alpha)
 - `linewidth`: Width of lines in the plot
+- `alpha`: Transparency level (0–1) via color tuple (color, alpha)
+- `width`: Width of violin or box plot elements
+- `size`: Figure size as (width, height) in pixels
 
 ## Tips
 - Save figures with `save("plot.png", fig)` or `save("plot.pdf", fig)`

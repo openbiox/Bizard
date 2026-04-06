@@ -1,4 +1,4 @@
-# Skill: Volcano Plot (Python) (Python)
+# Skill: Volcano Plot (Python)
 
 ## Category
 Python

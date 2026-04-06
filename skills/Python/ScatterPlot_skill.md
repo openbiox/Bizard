@@ -1,4 +1,4 @@
-# Skill: Scatter Plot (Python) (Python)
+# Skill: Scatter Plot (Python)
 
 ## Category
 Python

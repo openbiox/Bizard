@@ -1,4 +1,4 @@
-# Skill: Violin Plot (Python) (Python)
+# Skill: Violin Plot (Python)
 
 ## Category
 Python

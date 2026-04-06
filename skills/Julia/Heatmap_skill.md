@@ -1,4 +1,4 @@
-# Skill: Heatmap (Julia) (Julia)
+# Skill: Heatmap (Julia)
 
 ## Category
 Julia
@@ -13,6 +13,7 @@ A heatmap visualizes matrix data using color gradients. Julia's `CairoMakie` pro
 ```julia
 # Load packages
 using CairoMakie
+using Random
 
 # Prepare data
 Random.seed!(42)
@@ -38,8 +39,10 @@ fig
 
 ## Key Parameters
 - `colormap`: Color scheme for the plot (e.g., :viridis, :RdBu)
-- `color`: Color of plot elements
+- `color`: Color of plot elements (e.g., :steelblue or (:red, 0.5) for alpha)
 - `colorrange`: Range for color mapping as (min, max) tuple
+- `size`: Figure size as (width, height) in pixels
+- `alpha`: Transparency via color tuple syntax: color=(:steelblue, 0.7)
 
 ## Tips
 - Save figures with `save("plot.png", fig)` or `save("plot.pdf", fig)`
