@@ -4,7 +4,7 @@
 
 | File | Purpose |
 |------|---------|
-| `skill.md` | The AI skill instruction document — load this into your AI assistant |
+| `SKILL.md` | The AI skill instruction document — load this into your AI assistant |
 | `gallery_data.csv` | 793 visualization examples with image URLs, tutorial links, descriptions, and categories |
 | `gallery_data_zh.csv` | Chinese version of the gallery data |
 | `README.md` | This file |
@@ -14,25 +14,25 @@
 ### ChatGPT / GPT-4
 
 1. Go to **Settings → Personalization → Custom Instructions** (or create a GPT)
-2. Paste the contents of `skill.md` into the system prompt / instructions
+2. Paste the contents of `SKILL.md` into the system prompt / instructions
 3. Upload `gallery_data.csv` as a knowledge file
 4. Ask: *"I want to compare gene expression across cancer subtypes"*
 
 ### Claude
 
 1. Start a new project or conversation
-2. Upload `skill.md` and `gallery_data.csv` as project files
+2. Upload `SKILL.md` and `gallery_data.csv` as project files
 3. Ask: *"Help me create a volcano plot for my differential expression results"*
 
 ### GitHub Copilot Chat
 
-1. Add `skill.md` and `gallery_data.csv` to your workspace
-2. Reference them with `#file:skill.md` in Copilot Chat
+1. Add `SKILL.md` and `gallery_data.csv` to your workspace
+2. Reference them with `#file:SKILL.md` in Copilot Chat
 3. Ask: *"Based on the Bizard skill, suggest a visualization for my survival data"*
 
 ### Local LLMs (Ollama, LM Studio, etc.)
 
-1. Load `skill.md` as part of your system prompt
+1. Load `SKILL.md` as part of your system prompt
 2. Provide `gallery_data.csv` as context when asking visualization questions
 3. The skill will guide the model to recommend appropriate chart types and code
 

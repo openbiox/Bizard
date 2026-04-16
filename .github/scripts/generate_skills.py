@@ -836,9 +836,9 @@ def main():
             json.dump(updated_full, fh, ensure_ascii=False, indent=2)
         print(f"Full skills JSON written to {full_file} ({len(updated_full)} entries)")
 
-    # Generate unified skill.md from the full index
+    # Generate unified SKILL.md from the full index
     generate_unified_skill(index_file, Path("files/gallery_data.csv"),
-                           Path("skill.md"))
+                           Path("SKILL.md"))
 
     # Summary
     langs: Dict[str, int] = {}
@@ -854,7 +854,7 @@ def main():
         sys.exit(1)
 
 
-# ── Unified skill.md generation ─────────────────────────────────────
+# ── Unified SKILL.md generation ─────────────────────────────────────
 
 # Category short descriptions used in the skill document
 CAT_SHORT = {
@@ -890,7 +890,7 @@ CAT_ORDER = [
 
 def generate_unified_skill(index_path: Path, gallery_csv: Path,
                            output_path: Path) -> None:
-    """Generate the unified ``skill.md`` — an AI skill instruction document.
+    """Generate the unified ``SKILL.md`` — an AI skill instruction document.
 
     Unlike the old catalog format, this produces a system-prompt-style document
     that instructs AI assistants *how* to use the Bizard gallery data to help
@@ -899,12 +899,12 @@ def generate_unified_skill(index_path: Path, gallery_csv: Path,
     import csv as _csv
 
     if not index_path.exists():
-        print(f"  ⚠ Skipping unified skill.md: {index_path} not found")
+        print(f"  ⚠ Skipping unified SKILL.md: {index_path} not found")
         return
 
     all_skills = json.loads(index_path.read_text(encoding="utf-8"))
     if not all_skills:
-        print("  ⚠ Skipping unified skill.md: index is empty")
+        print("  ⚠ Skipping unified SKILL.md: index is empty")
         return
 
     # Gallery row count
@@ -926,6 +926,67 @@ def generate_unified_skill(index_path: Path, gallery_csv: Path,
         )
 
     L = []  # shorthand for lines
+    # ── YAML frontmatter ────────────────────────────────────────────
+    L.append("---")
+    L.append("name: Bizard — Biomedical Visualization Atlas")
+    L.append("description: >")
+    L.append(
+        "  Use this skill whenever the user asks about data visualization, "
+        "R plotting,"
+    )
+    L.append(
+        "  R绘图, 可视化, biomedical charts, scientific figures, or "
+        "bioinformatics plots."
+    )
+    L.append(
+        "  Trigger keywords include: visualization, visualize, plot, chart, "
+        "figure,"
+    )
+    L.append(
+        "  graph, R visualization, R plotting, ggplot, ggplot2, R绘图, 可视化,"
+    )
+    L.append(
+        "  biomedical visualization, bioinformatics visualization, omics plot,"
+    )
+    L.append(
+        "  genomics plot, clinical chart, gene expression plot, volcano plot, "
+        "heatmap,"
+    )
+    L.append(
+        "  scatter plot, bar chart, box plot, violin plot, survival curve,"
+    )
+    L.append(
+        "  Kaplan-Meier, PCA, UMAP, enrichment plot, pathway plot, Manhattan "
+        "plot,"
+    )
+    L.append(
+        "  Circos, lollipop plot, ridge plot, density plot, Sankey diagram, "
+        "forest"
+    )
+    L.append(
+        "  plot, nomogram, treemap, waffle chart, bubble chart, network plot."
+    )
+    L.append(
+        f"  Covers R (ggplot2, ComplexHeatmap, ggsurvfit, etc.), Python "
+        "(matplotlib,"
+    )
+    L.append(
+        "  seaborn, plotnine), and Julia (CairoMakie) with "
+        f"{len(all_skills)} reproducible tutorials"
+    )
+    L.append(
+        f"  and {gallery_count} curated figure examples from real biomedical "
+        "research."
+    )
+    L.append("license: CC-BY-NC")
+    L.append("metadata:")
+    L.append(
+        "    skill-author: Bizard Collaboration Group, Luo Lab, and Wang Lab"
+    )
+    L.append("    website: https://openbiox.github.io/Bizard/")
+    L.append("    repository: https://github.com/openbiox/Bizard")
+    L.append("---")
+    L.append("")
     # ── Title & role ────────────────────────────────────────────────
     L.append("# Bizard — Biomedical Visualization Atlas AI Skill")
     L.append("")
@@ -1212,7 +1273,7 @@ def generate_unified_skill(index_path: Path, gallery_csv: Path,
     )
 
     output_path.write_text("\n".join(L) + "\n", encoding="utf-8")
-    print(f"Unified skill.md written to {output_path} ({len(L)} lines)")
+    print(f"Unified SKILL.md written to {output_path} ({len(L)} lines)")
 
 
 if __name__ == "__main__":
