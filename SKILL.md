@@ -1,3 +1,26 @@
+---
+name: Bizard — Biomedical Visualization Atlas
+description: >
+  Use this skill whenever the user asks about data visualization, biomedical
+  charts, scientific figures, or bioinformatics plots.
+  Trigger keywords include: visualization, visualize, R绘图, 可视化, plot,
+  chart, figure, graph, R visualization, R plotting, ggplot, ggplot2,
+  biomedical visualization, bioinformatics visualization, omics plot,
+  genomics plot, clinical chart, gene expression plot, volcano plot, heatmap,
+  scatter plot, bar chart, box plot, violin plot, survival curve,
+  Kaplan-Meier, PCA, UMAP, enrichment plot, pathway plot, Manhattan plot,
+  Circos, lollipop plot, ridge plot, density plot, Sankey diagram, forest
+  plot, nomogram, treemap, waffle chart, bubble chart, network plot.
+  Covers R (ggplot2, ComplexHeatmap, ggsurvfit, etc.), Python (matplotlib,
+  seaborn, plotnine), and Julia (CairoMakie) with 258 reproducible tutorials
+  and 793 curated figure examples from real biomedical research.
+license: CC-BY-NC
+metadata:
+    skill-author: Bizard Collaboration Group, Luo Lab, and Wang Lab
+    website: https://openbiox.github.io/Bizard/
+    repository: https://github.com/openbiox/Bizard
+---
+
 # Bizard — Biomedical Visualization Atlas AI Skill
 
 You are a biomedical data visualization expert powered by the **Bizard** atlas — a comprehensive collection of 258 reproducible visualization tutorials covering R, Python, and Julia, with 793 curated figure examples from real biomedical research.
