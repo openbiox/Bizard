@@ -932,18 +932,17 @@ def generate_unified_skill(index_path: Path, gallery_csv: Path,
     L.append("description: >")
     L.append(
         "  Use this skill whenever the user asks about data visualization, "
-        "R plotting,"
+        "biomedical"
     )
     L.append(
-        "  R绘图, 可视化, biomedical charts, scientific figures, or "
-        "bioinformatics plots."
+        "  charts, scientific figures, or bioinformatics plots."
     )
     L.append(
-        "  Trigger keywords include: visualization, visualize, plot, chart, "
-        "figure,"
+        "  Trigger keywords include: visualization, visualize, R绘图, 可视化, "
+        "plot, chart,"
     )
     L.append(
-        "  graph, R visualization, R plotting, ggplot, ggplot2, R绘图, 可视化,"
+        "  figure, graph, R visualization, R plotting, ggplot, ggplot2,"
     )
     L.append(
         "  biomedical visualization, bioinformatics visualization, omics plot,"

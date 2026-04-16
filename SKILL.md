@@ -1,10 +1,10 @@
 ---
 name: Bizard — Biomedical Visualization Atlas
 description: >
-  Use this skill whenever the user asks about data visualization, R plotting,
-  R绘图, 可视化, biomedical charts, scientific figures, or bioinformatics plots.
-  Trigger keywords include: visualization, visualize, plot, chart, figure,
-  graph, R visualization, R plotting, ggplot, ggplot2, R绘图, 可视化,
+  Use this skill whenever the user asks about data visualization, biomedical
+  charts, scientific figures, or bioinformatics plots.
+  Trigger keywords include: visualization, visualize, R绘图, 可视化, plot,
+  chart, figure, graph, R visualization, R plotting, ggplot, ggplot2,
   biomedical visualization, bioinformatics visualization, omics plot,
   genomics plot, clinical chart, gene expression plot, volcano plot, heatmap,
   scatter plot, bar chart, box plot, violin plot, survival curve,
