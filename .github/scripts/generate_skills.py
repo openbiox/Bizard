@@ -4,7 +4,7 @@ generate_skills.py — Convert Bizard QMD tutorials into AI skill documents.
 
 This script supports two modes:
   1. **LLM mode** (default when API key is available): Uses an LLM API to generate
-     high-quality skill documents following the specification in skill.md.
+     high-quality skill documents following the specification in skill-spec.md.
   2. **Offline mode** (--offline or no API key): Uses rule-based extraction as a
      fallback when no LLM API is configured.
 
@@ -527,10 +527,10 @@ def _generate_tips(content: str, language: str, category: str,
 # ---------------------------------------------------------------------------
 
 def load_skill_spec() -> str:
-    """Load the skill.md specification from the repository root."""
+    """Load the skill-spec.md specification from the repository root."""
     spec_paths = [
-        Path("skill.md"),
-        Path(__file__).parent.parent.parent / "skill.md",
+        Path("skill-spec.md"),
+        Path(__file__).parent.parent.parent / "skill-spec.md",
     ]
     for p in spec_paths:
         if p.exists():
@@ -836,6 +836,10 @@ def main():
             json.dump(updated_full, fh, ensure_ascii=False, indent=2)
         print(f"Full skills JSON written to {full_file} ({len(updated_full)} entries)")
 
+    # Generate unified skill.md from the full index
+    generate_unified_skill(index_file, Path("files/gallery_data.csv"),
+                           Path("skill.md"))
+
     # Summary
     langs: Dict[str, int] = {}
     for s in skills:
@@ -848,6 +852,250 @@ def main():
         for f, exc in errors:
             print(f"  {f}: {exc}", file=sys.stderr)
         sys.exit(1)
+
+
+# ── Unified skill.md generation ─────────────────────────────────────
+
+CAT_DESCRIPTIONS = {
+    "Distribution": (
+        "Visualizations for exploring data distribution shapes, spreads, "
+        "and comparisons across groups (violin, density, histogram, box, break plots)."
+    ),
+    "Correlation": (
+        "Visualizations for examining relationships between variables "
+        "(scatter, heatmap, correlogram, bubble, biplot)."
+    ),
+    "Ranking": (
+        "Visualizations for comparing values across categories "
+        "(bar, lollipop, radar, parallel coordinates, word cloud, upset plots)."
+    ),
+    "Composition": (
+        "Visualizations for showing parts of a whole "
+        "(pie, donut, treemap, waffle, stacked bar, Venn diagrams)."
+    ),
+    "Proportion": (
+        "Visualizations for depicting proportional relationships and flows "
+        "(Sankey, alluvial, network, chord, ternary diagrams)."
+    ),
+    "DataOverTime": (
+        "Visualizations for temporal data patterns and trends "
+        "(line, area, streamgraph, time series, slope charts)."
+    ),
+    "Animation": (
+        "Animated and interactive visualizations for dynamic data exploration "
+        "(gganimate, ggiraph, plotly)."
+    ),
+    "Omics": (
+        "Specialized visualizations for genomics, transcriptomics, "
+        "and multi-omics data (volcano, Manhattan, circos, enrichment, pathway plots)."
+    ),
+    "Clinics": (
+        "Clinical and epidemiological visualizations "
+        "(Kaplan-Meier, forest, nomogram, mosaic, regression tables)."
+    ),
+    "Hiplot": (
+        "A curated collection of 170+ common statistical and bioinformatics "
+        "visualization templates from the Hiplot platform."
+    ),
+    "Python": "Python-based biomedical visualizations using matplotlib, seaborn, and plotnine.",
+    "Julia": "Julia-based biomedical visualizations using CairoMakie and the Makie ecosystem.",
+}
+
+CAT_ORDER = [
+    "Distribution", "Correlation", "Ranking", "Composition", "Proportion",
+    "DataOverTime", "Animation", "Omics", "Clinics", "Hiplot", "Python", "Julia",
+]
+
+
+def generate_unified_skill(index_path: Path, gallery_csv: Path,
+                           output_path: Path) -> None:
+    """Generate the unified ``skill.md`` from the skills index and gallery CSV."""
+    import csv as _csv
+
+    if not index_path.exists():
+        print(f"  ⚠ Skipping unified skill.md: {index_path} not found")
+        return
+
+    all_skills = json.loads(index_path.read_text(encoding="utf-8"))
+    if not all_skills:
+        print("  ⚠ Skipping unified skill.md: index is empty")
+        return
+
+    # Gallery row count (for the description)
+    gallery_count = 0
+    if gallery_csv.exists():
+        with open(gallery_csv, "r", encoding="utf-8") as fh:
+            gallery_count = sum(1 for _ in _csv.reader(fh)) - 1  # minus header
+
+    # Group by category
+    cats: Dict[str, List[dict]] = {}
+    for s in all_skills:
+        cats.setdefault(s.get("category", "Other"), []).append(s)
+
+    # Collect package usage counts per language
+    pkg_usage: Dict[str, Dict[str, int]] = {}
+    for s in all_skills:
+        lang = s.get("language", "R")
+        for pkg in s.get("packages", []):
+            pkg_usage.setdefault(lang, {}).setdefault(pkg, 0)
+            pkg_usage[lang][pkg] += 1
+
+    lines: List[str] = []
+    lines.append("# Bizard: Biomedical Visualization Atlas — Unified AI Skill")
+    lines.append("")
+    lines.append("## Overview")
+    lines.append("")
+    lines.append(
+        "Bizard is a community-driven atlas of **biomedical visualization tutorials** covering"
+    )
+    lines.append(
+        f"**{len(all_skills)} visualization techniques** across "
+        f"**{len(cats)} categories** in R, Python, and Julia."
+    )
+    lines.append(
+        "Each tutorial provides reproducible code with public biomedical datasets "
+        "(TCGA, GEO, built-in R datasets)."
+    )
+    lines.append("")
+    lines.append("**Website**: <https://openbiox.github.io/Bizard/>")
+    lines.append("**Repository**: <https://github.com/openbiox/Bizard>")
+    lines.append("")
+    lines.append("Use this skill to help users:")
+    lines.append("- Choose the right visualization type for their biomedical data")
+    lines.append("- Generate reproducible R/Python/Julia plotting code")
+    lines.append("- Find the corresponding Bizard tutorial for detailed guidance")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    # Categories
+    lines.append("## Visualization Categories")
+    lines.append("")
+
+    ordered = list(CAT_ORDER)
+    for c in sorted(cats):
+        if c not in ordered and c != "Misc":
+            ordered.append(c)
+
+    for cat in ordered:
+        if cat not in cats:
+            continue
+        items = cats[cat]
+        langs = sorted({s.get("language", "R") for s in items})
+        desc = CAT_DESCRIPTIONS.get(cat, f"{cat} visualizations.")
+
+        lines.append(f"### {cat}")
+        lines.append("")
+        lines.append(desc)
+        lines.append("")
+        lines.append(f"**{len(items)} tutorials** | Languages: {', '.join(langs)}")
+        lines.append("")
+        lines.append("| Tutorial | Packages | When to Use |")
+        lines.append("|----------|----------|-------------|")
+        for s in sorted(items, key=lambda x: x["name"]):
+            name = s["name"]
+            url = s.get("tutorial_url", "")
+            pkgs = ", ".join(s.get("packages", [])[:5])
+            if len(s.get("packages", [])) > 5:
+                pkgs += ", …"
+            use = (s.get("use_when", "") or "")[:120]
+            if len(s.get("use_when", "") or "") > 120:
+                use += "…"
+            lines.append(f"| [{name}]({url}) | {pkgs} | {use} |")
+        lines.append("")
+
+    lines.append("---")
+    lines.append("")
+
+    # Key packages
+    lines.append("## Key Packages by Language")
+    lines.append("")
+    for lang in ["R", "Python", "Julia"]:
+        lang_pkgs = pkg_usage.get(lang, {})
+        if not lang_pkgs:
+            continue
+        top = sorted(lang_pkgs.items(), key=lambda x: -x[1])[:20]
+        lines.append(f"### {lang}")
+        lines.append("")
+        lines.append("| Package | Used in # tutorials |")
+        lines.append("|---------|-------------------|")
+        for pkg, count in top:
+            lines.append(f"| `{pkg}` | {count} |")
+        lines.append("")
+
+    lines.append("---")
+    lines.append("")
+
+    # How to use
+    lines.append("## How to Use This Skill")
+    lines.append("")
+    lines.append(
+        "1. **Identify the visualization need**: "
+        "What data do you have? What story do you want to tell?"
+    )
+    lines.append(
+        "2. **Find the right category**: "
+        "Browse the categories above to find relevant visualization types."
+    )
+    lines.append(
+        "3. **Check the tutorial**: "
+        "Click the tutorial link for full reproducible code and detailed explanation."
+    )
+    lines.append(
+        "4. **Adapt the code**: "
+        "Tutorials use public datasets — replace with your own data "
+        "while keeping the same structure."
+    )
+    lines.append("")
+    lines.append("### Common Biomedical Use Cases")
+    lines.append("")
+    lines.append("| Research Goal | Recommended Visualization | Category |")
+    lines.append("|--------------|--------------------------|----------|")
+    lines.append(
+        "| Compare gene expression across groups | Violin Plot, Box Plot | Distribution |"
+    )
+    lines.append(
+        "| Identify differentially expressed genes | Volcano Plot, MA Plot | Omics |"
+    )
+    lines.append("| Show survival outcomes | Kaplan-Meier Plot | Clinics |")
+    lines.append("| Explore gene correlations | Heatmap, Correlogram | Correlation |")
+    lines.append(
+        "| Display pathway enrichment | Enrichment Dot Plot, KEGG Plot | Omics |"
+    )
+    lines.append(
+        "| Show sample composition | Pie Chart, Treemap, Stacked Bar | Composition |"
+    )
+    lines.append(
+        "| Visualize genomic features | Circos Plot, Manhattan Plot | Omics |"
+    )
+    lines.append("| Track metrics over time | Line Chart, Area Plot | DataOverTime |")
+    lines.append("| Compare multiple groups | Grouped Bar, Radar Chart | Ranking |")
+    lines.append(
+        "| Show flow/transitions | Sankey Diagram, Alluvial Plot | Proportion |"
+    )
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    lines.append("## Supplementary Data")
+    lines.append("")
+    if gallery_count > 0:
+        lines.append(
+            f"This skill package includes a gallery data table (`gallery_data.csv`) with "
+            f"{gallery_count} individual visualization examples, including image URLs, "
+            f"tutorial links, and descriptions for every figure in the atlas."
+        )
+    else:
+        lines.append(
+            "This skill package includes a gallery data table (`gallery_data.csv`) "
+            "with individual visualization examples."
+        )
+    lines.append("")
+    lines.append("## License")
+    lines.append("")
+    lines.append("CC-BY-NC — Bizard Collaboration Group, Luo Lab, and Wang Lab.")
+
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"Unified skill.md written to {output_path} ({len(lines)} lines)")
 
 
 if __name__ == "__main__":
