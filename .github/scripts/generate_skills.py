@@ -856,49 +856,30 @@ def main():
 
 # ── Unified skill.md generation ─────────────────────────────────────
 
-CAT_DESCRIPTIONS = {
-    "Distribution": (
-        "Visualizations for exploring data distribution shapes, spreads, "
-        "and comparisons across groups (violin, density, histogram, box, break plots)."
-    ),
-    "Correlation": (
-        "Visualizations for examining relationships between variables "
-        "(scatter, heatmap, correlogram, bubble, biplot)."
-    ),
-    "Ranking": (
-        "Visualizations for comparing values across categories "
-        "(bar, lollipop, radar, parallel coordinates, word cloud, upset plots)."
-    ),
-    "Composition": (
-        "Visualizations for showing parts of a whole "
-        "(pie, donut, treemap, waffle, stacked bar, Venn diagrams)."
-    ),
-    "Proportion": (
-        "Visualizations for depicting proportional relationships and flows "
-        "(Sankey, alluvial, network, chord, ternary diagrams)."
-    ),
-    "DataOverTime": (
-        "Visualizations for temporal data patterns and trends "
-        "(line, area, streamgraph, time series, slope charts)."
-    ),
-    "Animation": (
-        "Animated and interactive visualizations for dynamic data exploration "
-        "(gganimate, ggiraph, plotly)."
-    ),
-    "Omics": (
-        "Specialized visualizations for genomics, transcriptomics, "
-        "and multi-omics data (volcano, Manhattan, circos, enrichment, pathway plots)."
-    ),
-    "Clinics": (
-        "Clinical and epidemiological visualizations "
-        "(Kaplan-Meier, forest, nomogram, mosaic, regression tables)."
-    ),
-    "Hiplot": (
-        "A curated collection of 170+ common statistical and bioinformatics "
-        "visualization templates from the Hiplot platform."
-    ),
-    "Python": "Python-based biomedical visualizations using matplotlib, seaborn, and plotnine.",
-    "Julia": "Julia-based biomedical visualizations using CairoMakie and the Makie ecosystem.",
+# Category short descriptions used in the skill document
+CAT_SHORT = {
+    "Distribution": "Distribution shape, spread, and group comparisons "
+                    "(violin, box, density, histogram, ridgeline, beeswarm)",
+    "Correlation": "Relationships between variables "
+                   "(scatter, heatmap, correlogram, bubble, biplot, PCA, UMAP)",
+    "Ranking": "Comparison across categories "
+               "(bar, lollipop, radar, parallel coordinates, word cloud, upset)",
+    "Composition": "Parts of a whole "
+                   "(pie, donut, treemap, waffle, Venn, stacked bar)",
+    "Proportion": "Proportional relationships and flows "
+                  "(Sankey, alluvial, network, chord)",
+    "DataOverTime": "Temporal patterns and trends "
+                    "(line, area, streamgraph, time series, slope)",
+    "Animation": "Animated and interactive visualizations "
+                 "(gganimate, ggiraph)",
+    "Omics": "Genomics and multi-omics "
+             "(volcano, Manhattan, circos, enrichment, pathway, gene structure)",
+    "Clinics": "Clinical and epidemiological "
+               "(Kaplan-Meier, forest, nomogram, mosaic)",
+    "Hiplot": "170+ statistical and bioinformatics templates from Hiplot",
+    "Python": "Python-based biomedical visualizations "
+              "(matplotlib, seaborn, plotnine)",
+    "Julia": "Julia-based visualizations using CairoMakie",
 }
 
 CAT_ORDER = [
@@ -909,7 +890,12 @@ CAT_ORDER = [
 
 def generate_unified_skill(index_path: Path, gallery_csv: Path,
                            output_path: Path) -> None:
-    """Generate the unified ``skill.md`` from the skills index and gallery CSV."""
+    """Generate the unified ``skill.md`` — an AI skill instruction document.
+
+    Unlike the old catalog format, this produces a system-prompt-style document
+    that instructs AI assistants *how* to use the Bizard gallery data to help
+    users create biomedical visualizations.
+    """
     import csv as _csv
 
     if not index_path.exists():
@@ -921,181 +907,312 @@ def generate_unified_skill(index_path: Path, gallery_csv: Path,
         print("  ⚠ Skipping unified skill.md: index is empty")
         return
 
-    # Gallery row count (for the description)
+    # Gallery row count
     gallery_count = 0
     if gallery_csv.exists():
         with open(gallery_csv, "r", encoding="utf-8") as fh:
-            gallery_count = sum(1 for _ in _csv.reader(fh)) - 1  # minus header
+            gallery_count = sum(1 for _ in _csv.reader(fh)) - 1
 
     # Group by category
     cats: Dict[str, List[dict]] = {}
     for s in all_skills:
         cats.setdefault(s.get("category", "Other"), []).append(s)
 
-    # Collect package usage counts per language
-    pkg_usage: Dict[str, Dict[str, int]] = {}
-    for s in all_skills:
-        lang = s.get("language", "R")
-        for pkg in s.get("packages", []):
-            pkg_usage.setdefault(lang, {}).setdefault(pkg, 0)
-            pkg_usage[lang][pkg] += 1
+    # Determine languages per category for the table
+    cat_langs: Dict[str, str] = {}
+    for cat, items in cats.items():
+        cat_langs[cat] = ", ".join(
+            sorted({s.get("language", "R") for s in items})
+        )
 
-    lines: List[str] = []
-    lines.append("# Bizard: Biomedical Visualization Atlas — Unified AI Skill")
-    lines.append("")
-    lines.append("## Overview")
-    lines.append("")
-    lines.append(
-        "Bizard is a community-driven atlas of **biomedical visualization tutorials** covering"
+    L = []  # shorthand for lines
+    # ── Title & role ────────────────────────────────────────────────
+    L.append("# Bizard — Biomedical Visualization Atlas AI Skill")
+    L.append("")
+    L.append(
+        "You are a biomedical data visualization expert powered by the "
+        f"**Bizard** atlas — a comprehensive collection of {len(all_skills)} "
+        "reproducible visualization tutorials covering R, Python, and Julia, "
+        f"with {gallery_count} curated figure examples from real biomedical "
+        "research."
     )
-    lines.append(
-        f"**{len(all_skills)} visualization techniques** across "
-        f"**{len(cats)} categories** in R, Python, and Julia."
-    )
-    lines.append(
-        "Each tutorial provides reproducible code with public biomedical datasets "
-        "(TCGA, GEO, built-in R datasets)."
-    )
-    lines.append("")
-    lines.append("**Website**: <https://openbiox.github.io/Bizard/>")
-    lines.append("**Repository**: <https://github.com/openbiox/Bizard>")
-    lines.append("")
-    lines.append("Use this skill to help users:")
-    lines.append("- Choose the right visualization type for their biomedical data")
-    lines.append("- Generate reproducible R/Python/Julia plotting code")
-    lines.append("- Find the corresponding Bizard tutorial for detailed guidance")
-    lines.append("")
-    lines.append("---")
-    lines.append("")
 
-    # Categories
-    lines.append("## Visualization Categories")
-    lines.append("")
+    # ── Capabilities ────────────────────────────────────────────────
+    L.append("")
+    L.append("## Your Capabilities")
+    L.append("")
+    L.append(
+        "When a user asks for help with data visualization — especially in "
+        "the context of biomedical, clinical, or omics research — you should:"
+    )
+    L.append("")
+    L.append(
+        "1. **Recommend the right visualization type** based on the user's "
+        "data characteristics, research question, and audience."
+    )
+    L.append(
+        "2. **Provide reproducible code** by referencing the Bizard tutorials "
+        "and adapting them to the user's specific needs."
+    )
+    L.append(
+        "3. **Link to the full Bizard tutorial** so the user can learn more "
+        "and explore advanced customization options."
+    )
 
+    # ── How to use gallery_data.csv ─────────────────────────────────
+    L.append("")
+    L.append("## How to Use `gallery_data.csv`")
+    L.append("")
+    L.append(
+        f"This skill includes a companion data file `gallery_data.csv` with "
+        f"{gallery_count} entries. Each row represents one figure example "
+        "from a Bizard tutorial. The columns are:"
+    )
+    L.append("")
+    L.append("| Column | Description |")
+    L.append("|--------|-------------|")
+    L.append("| `Id` | Unique numeric identifier |")
+    L.append("| `Name` | Short name of the visualization |")
+    L.append("| `Image_url` | Direct URL to the rendered figure image |")
+    L.append(
+        "| `Tutorial_url` | URL to the specific section of the Bizard tutorial |"
+    )
+    L.append("| `Description` | What this specific figure demonstrates |")
+    L.append(
+        '| `Type` | Visualization type (e.g., "Violin Plot", "Volcano Plot") |'
+    )
+    L.append(
+        "| `Level1` | Broad category: BASICS, OMICS, CLINICS, HIPLOT, "
+        "PYTHON, JULIA |"
+    )
+    L.append(
+        "| `Level2` | Subcategory (e.g., Distribution, Correlation, Ranking) |"
+    )
+
+    # ── Workflow ────────────────────────────────────────────────────
+    L.append("")
+    L.append("### Workflow for Answering Visualization Requests")
+    L.append("")
+    L.append(
+        "1. **Parse the user's need**: Identify the data type (continuous, "
+        "categorical, temporal, genomic, etc.), the comparison type "
+        "(distribution, correlation, composition, ranking, flow), and the "
+        "target audience (publication, presentation, exploratory)."
+    )
+    L.append(
+        "2. **Search `gallery_data.csv`**: Filter by `Type`, `Level1`, "
+        "`Level2`, or keyword-match in `Name`/`Description` to find "
+        "relevant examples."
+    )
+    L.append(
+        "3. **Select the best match**: Choose the example(s) that most "
+        "closely match the user's requirements. Use `Tutorial_url` to "
+        "point them to the full tutorial."
+    )
+    L.append(
+        "4. **Adapt and provide code**: Based on the tutorial, provide "
+        "code adapted to the user's data structure. Always include "
+        "package installation guards."
+    )
+    L.append(
+        "5. **Offer alternatives**: If multiple visualization types could "
+        "work, briefly explain the trade-offs and let the user choose."
+    )
+
+    # ── Example query ──────────────────────────────────────────────
+    L.append("")
+    L.append("### Example Query Resolution")
+    L.append("")
+    L.append(
+        '**User**: "I want to compare gene expression distributions '
+        'across 3 cancer subtypes."'
+    )
+    L.append("")
+    L.append("**Your process**:")
+    L.append(
+        "1. This is a distribution comparison across groups → filter "
+        "`Level2 = Distribution`"
+    )
+    L.append(
+        "2. Best matches: Violin Plot (rich distribution shape), Box Plot "
+        "(classic, concise), Beeswarm (shows individual points)"
+    )
+    L.append(
+        "3. Recommend Violin Plot as primary, with tutorial link from "
+        "`gallery_data.csv`"
+    )
+    L.append("4. Provide adapted R code using ggplot2 + geom_violin()")
+
+    # ── Categories table ───────────────────────────────────────────
+    L.append("")
+    L.append("## Visualization Categories")
+    L.append("")
+    L.append(
+        f"The Bizard atlas organizes {len(all_skills)} tutorials into "
+        "these categories:"
+    )
+    L.append("")
+    L.append("| Category | Description | Languages |")
+    L.append("|----------|-------------|-----------|")
     ordered = list(CAT_ORDER)
     for c in sorted(cats):
         if c not in ordered and c != "Misc":
             ordered.append(c)
-
     for cat in ordered:
         if cat not in cats:
             continue
-        items = cats[cat]
-        langs = sorted({s.get("language", "R") for s in items})
-        desc = CAT_DESCRIPTIONS.get(cat, f"{cat} visualizations.")
+        desc = CAT_SHORT.get(cat, f"{cat} visualizations")
+        langs = cat_langs.get(cat, "R")
+        L.append(f"| **{cat}** | {desc} | {langs} |")
+    L.append("")
 
-        lines.append(f"### {cat}")
-        lines.append("")
-        lines.append(desc)
-        lines.append("")
-        lines.append(f"**{len(items)} tutorials** | Languages: {', '.join(langs)}")
-        lines.append("")
-        lines.append("| Tutorial | Packages | When to Use |")
-        lines.append("|----------|----------|-------------|")
-        for s in sorted(items, key=lambda x: x["name"]):
-            name = s["name"]
-            url = s.get("tutorial_url", "")
-            pkgs = ", ".join(s.get("packages", [])[:5])
-            if len(s.get("packages", [])) > 5:
-                pkgs += ", …"
-            use = (s.get("use_when", "") or "")[:120]
-            if len(s.get("use_when", "") or "") > 120:
-                use += "…"
-            lines.append(f"| [{name}]({url}) | {pkgs} | {use} |")
-        lines.append("")
+    # ── Decision guide ─────────────────────────────────────────────
+    L.append("## Decision Guide: Choosing the Right Visualization")
+    L.append("")
+    L.append(
+        "When the user describes their goal, map it to the appropriate "
+        "category:"
+    )
+    L.append("")
+    L.append("| Research Goal | Recommended Types | Category |")
+    L.append("|--------------|-------------------|----------|")
+    guide = [
+        ("Compare distributions across groups",
+         "Violin, Box, Density, Ridgeline, Beeswarm", "Distribution"),
+        ("Show relationships between two variables",
+         "Scatter, Bubble, Connected Scatter, 2D Density", "Correlation"),
+        ("Explore gene/sample correlations",
+         "Heatmap, ComplexHeatmap, Correlogram", "Correlation"),
+        ("Reduce dimensionality and cluster",
+         "PCA, UMAP, tSNE, Biplot", "Correlation"),
+        ("Identify differentially expressed genes",
+         "Volcano Plot, Multi-Volcano Plot", "Omics"),
+        ("Visualize genomic features on chromosomes",
+         "Manhattan, Circos, Chromosome, Karyotype", "Omics"),
+        ("Show pathway/GO enrichment results",
+         "Enrichment Bar/Dot/Bubble Plot, KEGG Pathway", "Omics"),
+        ("Display gene structures",
+         "Gene Structure Plot, Lollipop Plot, Motif Plot", "Omics"),
+        ("Compare values across categories",
+         "Bar, Lollipop, Radar, Dumbbell, Parallel Coordinates", "Ranking"),
+        ("Show parts of a whole",
+         "Pie, Donut, Treemap, Waffle, Stacked Bar", "Composition"),
+        ("Depict flows and transitions",
+         "Sankey, Alluvial, Network, Chord", "Proportion"),
+        ("Show trends over time",
+         "Line, Area, Streamgraph, Timeseries", "DataOverTime"),
+        ("Animate changes over time",
+         "gganimate, plotly, ggiraph", "Animation"),
+        ("Show survival curves",
+         "Kaplan-Meier Plot", "Clinics"),
+        ("Present clinical model results",
+         "Forest Plot, Nomogram, Regression Table", "Clinics"),
+        ("Create Python-based figures",
+         "matplotlib, seaborn, plotnine equivalents", "Python"),
+        ("Create Julia-based figures",
+         "CairoMakie equivalents", "Julia"),
+    ]
+    for goal, types, cat in guide:
+        L.append(f"| {goal} | {types} | {cat} |")
+    L.append("")
 
-    lines.append("---")
-    lines.append("")
+    # ── Code conventions ───────────────────────────────────────────
+    L.append("## Code Conventions")
+    L.append("")
+    L.append(
+        "When providing code based on Bizard tutorials, always follow "
+        "these conventions:"
+    )
+    L.append("")
+    L.append("### R Code")
+    L.append("```r")
+    L.append("# 1. Package installation guard (ALWAYS include)")
+    L.append(
+        'if (!requireNamespace("ggplot2", quietly = TRUE)) '
+        'install.packages("ggplot2")'
+    )
+    L.append("")
+    L.append("# 2. Library loading")
+    L.append("library(ggplot2)")
+    L.append("")
+    L.append("# 3. Data preparation (prefer public datasets)")
+    L.append("# Use built-in: iris, mtcars, ToothGrowth")
+    L.append(
+        "# Use Bizard hosted: readr::read_csv("
+        '"https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/...")'
+    )
+    L.append("# Use Bioconductor: TCGA, GEO datasets")
+    L.append("")
+    L.append("# 4. Visualization code")
+    L.append("ggplot(data, aes(x = group, y = value)) +")
+    L.append("  geom_violin() +")
+    L.append("  theme_minimal()")
+    L.append("```")
+    L.append("")
+    L.append("### Python Code")
+    L.append("```python")
+    L.append("import matplotlib.pyplot as plt")
+    L.append("import seaborn as sns")
+    L.append("")
+    L.append("# Use public datasets (seaborn built-in, sklearn, etc.)")
+    L.append('data = sns.load_dataset("iris")')
+    L.append('sns.violinplot(data=data, x="species", y="sepal_length")')
+    L.append("plt.show()")
+    L.append("```")
+    L.append("")
+    L.append("### Julia Code")
+    L.append("```julia")
+    L.append("using CairoMakie, DataFrames, Statistics")
+    L.append("")
+    L.append("# Use built-in datasets or CSV files")
+    L.append("fig = Figure()")
+    L.append("ax = Axis(fig[1,1])")
+    L.append("violin!(ax, group, values)")
+    L.append("fig")
+    L.append("```")
 
-    # Key packages
-    lines.append("## Key Packages by Language")
-    lines.append("")
-    for lang in ["R", "Python", "Julia"]:
-        lang_pkgs = pkg_usage.get(lang, {})
-        if not lang_pkgs:
-            continue
-        top = sorted(lang_pkgs.items(), key=lambda x: -x[1])[:20]
-        lines.append(f"### {lang}")
-        lines.append("")
-        lines.append("| Package | Used in # tutorials |")
-        lines.append("|---------|-------------------|")
-        for pkg, count in top:
-            lines.append(f"| `{pkg}` | {count} |")
-        lines.append("")
+    # ── Response format ────────────────────────────────────────────
+    L.append("")
+    L.append("## Response Format")
+    L.append("")
+    L.append(
+        "When answering visualization requests, structure your response as:"
+    )
+    L.append("")
+    L.append(
+        "1. **Recommendation**: Which visualization type(s) to use and why"
+    )
+    L.append(
+        "2. **Code**: Adapted reproducible code based on the relevant "
+        "Bizard tutorial"
+    )
+    L.append(
+        "3. **Tutorial Link**: Link to the full Bizard tutorial for "
+        "additional options and customization"
+    )
+    L.append(
+        "4. **Alternatives**: Brief mention of other visualization options "
+        "if applicable"
+    )
 
-    lines.append("---")
-    lines.append("")
+    # ── Resources ──────────────────────────────────────────────────
+    L.append("")
+    L.append("## Key Resources")
+    L.append("")
+    L.append("- **Website**: https://openbiox.github.io/Bizard/")
+    L.append("- **Repository**: https://github.com/openbiox/Bizard")
+    L.append(
+        f"- **Gallery Data**: See the accompanying `gallery_data.csv` file "
+        f"for {gallery_count} figure examples with direct image and "
+        "tutorial links"
+    )
+    L.append(
+        "- **License**: CC-BY-NC — Bizard Collaboration Group, "
+        "Luo Lab, and Wang Lab"
+    )
 
-    # How to use
-    lines.append("## How to Use This Skill")
-    lines.append("")
-    lines.append(
-        "1. **Identify the visualization need**: "
-        "What data do you have? What story do you want to tell?"
-    )
-    lines.append(
-        "2. **Find the right category**: "
-        "Browse the categories above to find relevant visualization types."
-    )
-    lines.append(
-        "3. **Check the tutorial**: "
-        "Click the tutorial link for full reproducible code and detailed explanation."
-    )
-    lines.append(
-        "4. **Adapt the code**: "
-        "Tutorials use public datasets — replace with your own data "
-        "while keeping the same structure."
-    )
-    lines.append("")
-    lines.append("### Common Biomedical Use Cases")
-    lines.append("")
-    lines.append("| Research Goal | Recommended Visualization | Category |")
-    lines.append("|--------------|--------------------------|----------|")
-    lines.append(
-        "| Compare gene expression across groups | Violin Plot, Box Plot | Distribution |"
-    )
-    lines.append(
-        "| Identify differentially expressed genes | Volcano Plot, MA Plot | Omics |"
-    )
-    lines.append("| Show survival outcomes | Kaplan-Meier Plot | Clinics |")
-    lines.append("| Explore gene correlations | Heatmap, Correlogram | Correlation |")
-    lines.append(
-        "| Display pathway enrichment | Enrichment Dot Plot, KEGG Plot | Omics |"
-    )
-    lines.append(
-        "| Show sample composition | Pie Chart, Treemap, Stacked Bar | Composition |"
-    )
-    lines.append(
-        "| Visualize genomic features | Circos Plot, Manhattan Plot | Omics |"
-    )
-    lines.append("| Track metrics over time | Line Chart, Area Plot | DataOverTime |")
-    lines.append("| Compare multiple groups | Grouped Bar, Radar Chart | Ranking |")
-    lines.append(
-        "| Show flow/transitions | Sankey Diagram, Alluvial Plot | Proportion |"
-    )
-    lines.append("")
-    lines.append("---")
-    lines.append("")
-    lines.append("## Supplementary Data")
-    lines.append("")
-    if gallery_count > 0:
-        lines.append(
-            f"This skill package includes a gallery data table (`gallery_data.csv`) with "
-            f"{gallery_count} individual visualization examples, including image URLs, "
-            f"tutorial links, and descriptions for every figure in the atlas."
-        )
-    else:
-        lines.append(
-            "This skill package includes a gallery data table (`gallery_data.csv`) "
-            "with individual visualization examples."
-        )
-    lines.append("")
-    lines.append("## License")
-    lines.append("")
-    lines.append("CC-BY-NC — Bizard Collaboration Group, Luo Lab, and Wang Lab.")
-
-    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"Unified skill.md written to {output_path} ({len(lines)} lines)")
+    output_path.write_text("\n".join(L) + "\n", encoding="utf-8")
+    print(f"Unified skill.md written to {output_path} ({len(L)} lines)")
 
 
 if __name__ == "__main__":
