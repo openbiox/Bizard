@@ -2,9 +2,11 @@
 # ║  Github Page – Optimized Build & Deploy                             ║
 # ║                                                                      ║
 # ║  Key optimizations over the original workflow:                       ║
-# ║  1. FREEZE CACHE FIX: Uses actions/cache/restore + save separately  ║
-# ║     with always-save (even on failure) so incremental progress is    ║
-# ║     never lost. Cache key is per-commit-SHA, restored via prefix.    ║
+# ║  1. FREEZE CACHE FIX: babelquarto renders in a temp dir and only    ║
+# ║     copies _site back – the _freeze it creates is discarded. We     ║
+# ║     pre-render all non-frozen files first so that workspace _freeze  ║
+# ║     is fully populated before babelquarto copies it to its temp dir. ║
+# ║     This turns a ~90 min render into ~20 min on subsequent runs.    ║
 # ║  2. CHANGED-FILE DETECTION: Detects which QMDs changed and only     ║
 # ║     pre-renders those files, enabling fail-fast (catch errors in     ║
 # ║     ~2 min instead of ~90 min).                                      ║
@@ -49,7 +51,7 @@ env:
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     # Group by PR number for PRs, by branch ref for pushes.
     # New pushes/commits cancel the previous in-progress build in the same group.
     concurrency:
@@ -111,9 +113,11 @@ jobs:
           echo "   Julia changes: $JULIA_CHANGED | Python changes: $PYTHON_CHANGED"
 
       # ── Restore freeze cache (CRITICAL for performance) ──────
-      # The freeze cache stores pre-computed outputs for all QMD files.
-      # With a warm cache, babelquarto skips code execution for unchanged
-      # files, reducing render time from ~90 min to ~5-15 min.
+      # The freeze cache stores pre-computed knitr outputs for all QMD files.
+      # It is populated by the "Pre-render all non-frozen QMD files" step
+      # (which writes directly to the workspace _freeze directory), NOT by
+      # babelquarto itself (babelquarto renders in a temp dir and never
+      # syncs _freeze back to the workspace).
       #
       # Key strategy:
       #   - Primary key includes commit SHA (unique per commit)
@@ -363,6 +367,72 @@ jobs:
             fi
           done
           echo "✅ All changed files pre-rendered successfully."
+
+      # ── Pre-render ALL non-frozen files (freeze-cache fix) ─────
+      # ROOT CAUSE: babelquarto::render_website() renders in a temp dir
+      # (withr::local_tempdir()), creates _freeze there, copies only _site
+      # back to the workspace, and then deletes the temp dir. The workspace
+      # _freeze is never updated, so the save step finds only the few
+      # entries from the changed-file pre-render step above (e.g. 6 Julia
+      # entries), not the 500+ entries from the full render.
+      #
+      # FIX: pre-render every non-frozen .qmd file here (workspace _freeze
+      # gets populated), then babelquarto copies the full _freeze into its
+      # temp dir and uses it – skipping all code execution and only running
+      # pandoc, cutting the render from ~90 min down to ~20 min.
+      #
+      # Timing estimates:
+      #   First run (cold cache):  pre-render all ~60–80 min +
+      #                            babelquarto (pandoc only) ~20 min +
+      #                            setup ~15 min  ≈ 95–115 min total
+      #   Subsequent runs (warm):  pre-render 0 files + babelquarto ~20 min
+      #                            + setup ~15 min  ≈ 35 min total
+      # Timeout is 180 min to give first-run cold-cache builds a safe margin.
+      - name: Pre-render all non-frozen QMD files
+        env:
+          TMPDIR: ${{ env.TMP_DIR }}
+          TMP: ${{ env.TMP_DIR }}
+          TEMP: ${{ env.TMP_DIR }}
+          QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
+        run: |
+          echo "Pre-rendering non-frozen QMD files to populate workspace _freeze..."
+          RENDERED=0
+          SKIPPED=0
+          FAILED=0
+
+          while IFS= read -r -d '' qmd; do
+            rel="${qmd#./}"
+
+            # Julia files are handled by the dedicated Julia pre-render step
+            [[ "$rel" == Julia/* ]] && { SKIPPED=$((SKIPPED+1)); continue; }
+
+            # If a _freeze entry already exists for this file, skip it.
+            # Quarto mirrors the source path: _freeze/<path-without-ext>/
+            freeze_dir="_freeze/${rel%.qmd}"
+            if [ -d "$freeze_dir" ]; then
+              SKIPPED=$((SKIPPED+1))
+              continue
+            fi
+
+            echo "  → $rel"
+            if quarto render "$qmd" 2>&1; then
+              RENDERED=$((RENDERED+1))
+            else
+              echo "  ⚠️ Warning: failed to render $rel (non-fatal)"
+              FAILED=$((FAILED+1))
+            fi
+          done < <(find . -name "*.qmd" \
+                       -not -path "./_freeze/*" \
+                       -not -path "./_site/*" \
+                       -not -path "./.quarto/*" \
+                       -print0 | sort -z)
+
+          echo ""
+          echo "📊 Pre-render summary: $RENDERED rendered, $SKIPPED skipped (frozen/Julia), $FAILED failed"
+          [ $FAILED -gt 0 ] && echo "::warning::$FAILED QMD file(s) failed to pre-render"
+          # Count JSON outputs for a richer diagnostic (one per frozen code chunk)
+          TOTAL_FROZEN=$(find _freeze -name "*.json" -type f 2>/dev/null | wc -l)
+          echo "❄️  Freeze cache now has $TOTAL_FROZEN frozen output(s) (JSON entries)"
 
       - name: Render website with Babelquarto
         env:
