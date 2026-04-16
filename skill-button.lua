@@ -35,8 +35,8 @@ function Pandoc(doc)
   var parts = window.location.pathname.replace(/\/+$/, '').split('/');
   // parts: ['', 'Bizard', 'Category', 'Page.html'] or ['', 'Bizard', 'zh', 'Category', 'Page.html']
   // We need to go up from the page to the site root (where bizard-skill.zip lives).
-  // Count path segments after the site root.
-  var segmentsAfterRoot = parts.length - 2; // minus '' and site-root
+  // Count directory segments between site-root and the file (exclude '' + site-root + filename).
+  var segmentsAfterRoot = Math.max(0, parts.length - 3); // minus '', site-root, and filename
   var prefix = '';
   for (var i = 0; i < segmentsAfterRoot; i++) prefix += '../';
   if (!prefix) prefix = './';
