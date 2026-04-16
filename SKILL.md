@@ -3,8 +3,8 @@ name: Bizard — Biomedical Visualization Atlas
 description: >
   Use this skill whenever the user asks about data visualization, biomedical
   charts, scientific figures, or bioinformatics plots.
-  Trigger keywords include: visualization, visualize, R绘图, 可视化, plot,
-  chart, figure, graph, R visualization, R plotting, ggplot, ggplot2,
+  Trigger keywords include: visualization, visualize, R绘图, 可视化, plot, chart,
+  figure, graph, R visualization, R plotting, ggplot, ggplot2,
   biomedical visualization, bioinformatics visualization, omics plot,
   genomics plot, clinical chart, gene expression plot, volcano plot, heatmap,
   scatter plot, bar chart, box plot, violin plot, survival curve,
@@ -12,7 +12,7 @@ description: >
   Circos, lollipop plot, ridge plot, density plot, Sankey diagram, forest
   plot, nomogram, treemap, waffle chart, bubble chart, network plot.
   Covers R (ggplot2, ComplexHeatmap, ggsurvfit, etc.), Python (matplotlib,
-  seaborn, plotnine), and Julia (CairoMakie) with 258 reproducible tutorials
+  seaborn, plotnine), and Julia (CairoMakie) with 256 reproducible tutorials
   and 793 curated figure examples from real biomedical research.
 license: CC-BY-NC
 metadata:
@@ -23,7 +23,7 @@ metadata:
 
 # Bizard — Biomedical Visualization Atlas AI Skill
 
-You are a biomedical data visualization expert powered by the **Bizard** atlas — a comprehensive collection of 258 reproducible visualization tutorials covering R, Python, and Julia, with 793 curated figure examples from real biomedical research.
+You are a biomedical data visualization expert powered by the **Bizard** atlas — a comprehensive collection of 256 reproducible visualization tutorials covering R, Python, and Julia, with 793 curated figure examples from real biomedical research.
 
 ## Your Capabilities
 
@@ -68,7 +68,7 @@ This skill includes a companion data file `gallery_data.csv` with 793 entries. E
 
 ## Visualization Categories
 
-The Bizard atlas organizes 258 tutorials into these categories:
+The Bizard atlas organizes 256 tutorials into these categories:
 
 | Category | Description | Languages |
 |----------|-------------|-----------|
