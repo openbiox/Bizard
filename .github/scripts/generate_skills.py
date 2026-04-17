@@ -294,7 +294,6 @@ def qmd_to_skill_offline(filepath: Path, base_url: str = DEFAULT_BASE_URL) -> Di
         "tutorial_url": tutorial_url,
         "skill": skill_text,
         "source_file": str(filepath),
-        "skill_file": f"skills/{category}/{filepath.stem}_skill.md",
     }
 
 
@@ -641,7 +640,6 @@ Important rules:
             "tutorial_url": tutorial_url,
             "skill": skill_text,
             "source_file": str(filepath),
-            "skill_file": f"skills/{category}/{filepath.stem}_skill.md",
         }
 
 
