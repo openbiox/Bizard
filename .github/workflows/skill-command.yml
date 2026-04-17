@@ -8,9 +8,7 @@ name: Handle /skill PR Comment Command
 #   3. Dispatches generate-skills.yml (workflow_dispatch) with the PR context
 #
 # Usage in a PR comment:
-#   /skill                          → regenerate skills for all changed QMD files
-#   /skill Omics/VolcanoPlot.qmd    → regenerate skill for one specific file
-#   /skill File1.qmd File2.qmd      → regenerate skills for multiple files
+#   /skill                          → regenerate SKILL.md from all QMD tutorials
 #   /skill --offline                → use offline mode (no LLM API)
 # ──────────────────────────────────────────────────────────────────────────────
 on:
@@ -79,9 +77,6 @@ jobs:
             // ── Parse arguments ───────────────────────────────────────────────
             const parts = context.payload.comment.body.trim().split(/\s+/).slice(1);
             const offline = parts.includes('--offline') ? 'true' : 'false';
-            const files = parts
-              .filter(p => (p.endsWith('.qmd') || p.endsWith('.Qmd')) && !p.endsWith('.zh.qmd'))
-              .join(' ');
 
             // ── Dispatch the skill generation workflow ────────────────────────
             const defaultBranch = context.payload.repository.default_branch;
@@ -92,20 +87,16 @@ jobs:
               ref:         defaultBranch,
               inputs: {
                 pr_number: String(context.issue.number),
-                files:     files || '',
                 offline:   offline,
               },
             });
 
             // ── Post acknowledgement comment ──────────────────────────────────
             const runsUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/generate-skills.yml`;
-            const filesMsg = files
-              ? `\n\n**Target files:** \`${files.replace(/ /g, '`, `')}\``
-              : '';
             const modeMsg = offline === 'true' ? ' (offline mode)' : '';
             await github.rest.issues.createComment({
               owner:        context.repo.owner,
               repo:         context.repo.repo,
               issue_number: context.issue.number,
-              body:         `🤖 Skill generation workflow dispatched by @${commenter}${modeMsg}.${filesMsg}\n\n[View recent workflow runs](${runsUrl})`,
+              body:         `🤖 Skill generation workflow dispatched by @${commenter}${modeMsg}.\n\n[View recent workflow runs](${runsUrl})`,
             });

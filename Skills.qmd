@@ -63,177 +63,20 @@ The ZIP contains:
 
 ---
 
-## Browse Skills by Category {#browse}
-
-Use the search box, language filter, or click a category to browse all available visualization skills.
-
-```{=html}
-<div id="skills-browser" style="margin-bottom:2rem;">
-  <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;">
-    <input id="skill-search" type="text" placeholder="Search skills…" oninput="filterSkills()"
-      style="flex:1;min-width:200px;padding:.5rem .8rem;font-size:.95rem;border:1px solid #ccc;border-radius:6px;font-family:inherit;">
-    <div id="lang-filters" style="display:flex;gap:.3rem;flex-wrap:wrap;"></div>
-    <div id="cat-filters" style="display:flex;gap:.3rem;flex-wrap:wrap;"></div>
-  </div>
-  <div id="skills-count" style="font-size:.85rem;color:#666;margin-bottom:.5rem;"></div>
-  <div id="skills-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.8rem;"></div>
-
-  <div id="skill-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;overflow-y:auto;padding:2rem 1rem;">
-    <div style="max-width:720px;margin:auto;background:#fff;border-radius:10px;padding:1.8rem 2rem;position:relative;">
-      <button onclick="document.getElementById('skill-modal').style.display='none'"
-        style="position:absolute;top:1rem;right:1rem;background:#f0f0f0;border:none;border-radius:4px;padding:.3rem .7rem;cursor:pointer;font-size:1rem;">✕</button>
-      <h3 id="modal-title" style="margin-top:0;"></h3>
-      <div style="margin-bottom:.6rem;">
-        <span id="modal-category" style="font-size:.8rem;padding:.2rem .6rem;border-radius:12px;color:#fff;font-weight:600;"></span>
-        <span id="modal-lang" style="font-size:.8rem;padding:.2rem .6rem;border-radius:12px;color:#fff;font-weight:600;margin-left:.3rem;"></span>
-      </div>
-      <pre id="modal-content" style="background:#f7f7f7;padding:1rem;border-radius:6px;font-size:.82rem;overflow-x:auto;white-space:pre-wrap;max-height:55vh;overflow-y:auto;"></pre>
-      <div style="margin-top:1rem;display:flex;gap:.6rem;flex-wrap:wrap;">
-        <button onclick="copySkill()" style="background:#3a86ff;color:#fff;border:none;padding:.5rem 1.1rem;border-radius:6px;cursor:pointer;font-weight:600;">📋 Copy Skill</button>
-        <a id="modal-tutorial-link" href="#" target="_blank" style="background:#06d6a0;color:#fff;border:none;padding:.5rem 1.1rem;border-radius:6px;cursor:pointer;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;">📖 Open Tutorial</a>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-let ALL_SKILLS = [];
-let activeCat = 'All';
-let activeLang = 'All';
-const CAT_COLORS = {
-  Distribution:"#4361ee",Correlation:"#7209b7",Ranking:"#f72585",
-  Composition:"#4cc9f0",Proportion:"#560bad",DataOverTime:"#3a0ca3",
-  Animation:"#4895ef",Omics:"#e63946",Clinics:"#2a9d8f",Hiplot:"#e9c46a",
-  Python:"#3776AB",Julia:"#9558B2",Misc:"#999"
-};
-const LANG_COLORS = {R:"#276BBE",Python:"#3776AB",Julia:"#9558B2"};
-
-fetch('skills/index.json')
-  .then(r => r.ok ? r.json() : [])
-  .catch(() => [])
-  .then(data => { ALL_SKILLS = data; renderAll(); });
-
-function renderAll() {
-  // Language filters
-  const langs = [...new Set(ALL_SKILLS.map(s => s.language || 'R'))].sort();
-  const langDiv = document.getElementById('lang-filters');
-  langDiv.innerHTML = '<button onclick="setLang(\'All\')" class="lang-btn active" style="padding:.3rem .7rem;border:1px solid #ccc;border-radius:15px;background:#333;color:#fff;cursor:pointer;font-size:.8rem;">All Languages</button>';
-  langs.forEach(l => {
-    langDiv.innerHTML += `<button onclick="setLang('${l}')" class="lang-btn" style="padding:.3rem .7rem;border:1px solid ${LANG_COLORS[l]||'#999'};border-radius:15px;background:transparent;color:${LANG_COLORS[l]||'#999'};cursor:pointer;font-size:.8rem;">${l}</button>`;
-  });
-
-  // Category filters
-  const cats = [...new Set(ALL_SKILLS.map(s => s.category))].sort();
-  const catDiv = document.getElementById('cat-filters');
-  catDiv.innerHTML = '<button onclick="setCat(\'All\')" class="cat-btn active" style="padding:.3rem .7rem;border:1px solid #ccc;border-radius:15px;background:#333;color:#fff;cursor:pointer;font-size:.8rem;">All</button>';
-  cats.forEach(c => {
-    catDiv.innerHTML += `<button onclick="setCat('${c}')" class="cat-btn" style="padding:.3rem .7rem;border:1px solid ${CAT_COLORS[c]||'#999'};border-radius:15px;background:transparent;color:${CAT_COLORS[c]||'#999'};cursor:pointer;font-size:.8rem;">${c}</button>`;
-  });
-
-  filterSkills();
-}
-
-function setLang(l) {
-  activeLang = l;
-  document.querySelectorAll('.lang-btn').forEach(b => {
-    b.style.background = b.textContent.trim() === (l==='All'?'All Languages':l) ? '#333' : 'transparent';
-    b.style.color = b.textContent.trim() === (l==='All'?'All Languages':l) ? '#fff' : (LANG_COLORS[b.textContent.trim()]||'#999');
-  });
-  filterSkills();
-}
-
-function setCat(c) {
-  activeCat = c;
-  document.querySelectorAll('.cat-btn').forEach(b => {
-    b.style.background = b.textContent === (c==='All'?'All':c) ? '#333' : 'transparent';
-    b.style.color = b.textContent === (c==='All'?'All':c) ? '#fff' : (CAT_COLORS[b.textContent]||'#999');
-  });
-  filterSkills();
-}
-
-function filterSkills() {
-  const q = (document.getElementById('skill-search').value || '').toLowerCase();
-  const filtered = ALL_SKILLS.filter(s => {
-    if (activeCat !== 'All' && s.category !== activeCat) return false;
-    if (activeLang !== 'All' && (s.language||'R') !== activeLang) return false;
-    if (q && !s.name.toLowerCase().includes(q) && !s.category.toLowerCase().includes(q) && !(s.use_when||'').toLowerCase().includes(q)) return false;
-    return true;
-  });
-
-  document.getElementById('skills-count').textContent = `Showing ${filtered.length} of ${ALL_SKILLS.length} skills`;
-
-  const grid = document.getElementById('skills-grid');
-  grid.innerHTML = filtered.map((s, i) => `
-    <div onclick="showSkill(${ALL_SKILLS.indexOf(s)})" style="border:1px solid #e0e0e0;border-radius:8px;padding:1rem;cursor:pointer;transition:box-shadow .2s;border-left:4px solid ${CAT_COLORS[s.category]||'#999'}"
-      onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,.12)'" onmouseout="this.style.boxShadow='none'">
-      <div style="font-weight:600;font-size:.95rem;margin-bottom:.3rem;">${s.name}</div>
-      <div style="display:flex;gap:.3rem;margin-bottom:.4rem;">
-        <span style="font-size:.7rem;padding:.15rem .5rem;border-radius:10px;background:${CAT_COLORS[s.category]||'#999'};color:#fff;">${s.category}</span>
-        <span style="font-size:.7rem;padding:.15rem .5rem;border-radius:10px;background:${LANG_COLORS[s.language||'R']||'#999'};color:#fff;">${s.language||'R'}</span>
-      </div>
-      <div style="font-size:.8rem;color:#666;line-height:1.3;">${(s.use_when||'').substring(0,100)}${(s.use_when||'').length>100?'…':''}</div>
-    </div>
-  `).join('');
-}
-
-function showSkill(idx) {
-  const s = ALL_SKILLS[idx];
-  document.getElementById('modal-title').textContent = s.name;
-  const catSpan = document.getElementById('modal-category');
-  catSpan.textContent = s.category;
-  catSpan.style.background = CAT_COLORS[s.category] || '#999';
-  const langSpan = document.getElementById('modal-lang');
-  langSpan.textContent = s.language || 'R';
-  langSpan.style.background = LANG_COLORS[s.language||'R'] || '#999';
-  document.getElementById('modal-tutorial-link').href = s.tutorial_url;
-  document.getElementById('skill-modal').style.display = 'block';
-
-  // Show quick preview first, then try loading the full skill file
-  const preview = `# Skill: ${s.name} (${s.language||'R'})\n\n## Category\n${s.category}\n\n## When to Use\n${s.use_when}\n\n## Required Packages\n${s.packages.length ? s.packages.map(p=>'- '+p).join('\n') : '(see tutorial)'}\n\n## Full Tutorial\n${s.tutorial_url}`;
-  document.getElementById('modal-content').textContent = preview;
-
-  // Try to load the full skill markdown file
-  if (s.skill_file) {
-    fetch(s.skill_file)
-      .then(r => r.ok ? r.text() : null)
-      .catch(() => null)
-      .then(text => {
-        if (text) document.getElementById('modal-content').textContent = text;
-      });
-  }
-}
-
-function copySkill() {
-  const text = document.getElementById('modal-content').textContent;
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = event.target;
-    btn.textContent = '✅ Copied!';
-    setTimeout(() => btn.textContent = '📋 Copy Skill', 2000);
-  });
-}
-</script>
-```
-
----
-
 ## Download Resources
 
 - **[Download Skill ZIP](bizard-skill.zip)** — Complete unified skill package
-- **[`skills/index.json`](skills/index.json)** — Lightweight JSON index (names, categories, packages, URLs)
-- **[`skills/bizard_skills.json`](skills/bizard_skills.json)** — Full skill documents with embedded code
 
 ## Regenerating Skills
 
-Skills are **automatically regenerated** when tutorials are updated on the main branch. To regenerate manually:
+`SKILL.md` is **automatically regenerated** when tutorials are updated on the main branch. To regenerate manually:
 
 ```bash
 # LLM mode (requires API key in environment)
-python .github/scripts/generate_skills.py --format both --verbose
+python .github/scripts/generate_skills.py --verbose
 
 # Offline mode (rule-based extraction)
-python .github/scripts/generate_skills.py --offline --format both --verbose
+python .github/scripts/generate_skills.py --offline --verbose
 ```
-
-The unified `skill.md` is automatically rebuilt from the skills index every time skills are generated.
 
 See the [Skill Generation Specification](https://github.com/openbiox/Bizard/blob/main/skill-spec.md) for the full technical specification.

@@ -687,28 +687,18 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--input", default=".", help="Input QMD file or directory")
-    parser.add_argument("--output", default="skills", help="Output directory")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
-    parser.add_argument("--format", choices=["markdown", "json", "both"],
-                        default="both")
     parser.add_argument("--offline", action="store_true",
                         help="Use offline rule-based extraction (no LLM)")
     parser.add_argument("--files", nargs="*",
                         help="Specific QMD files to process")
     parser.add_argument("--changed-files",
-                        help="Space-separated list of changed QMD files")
+                        help="Space-separated list of changed QMD files (ignored; always processes all)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
-    output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     # Determine which files to process
-    if args.changed_files:
-        qmd_files = [Path(f.strip()) for f in args.changed_files.split()
-                     if f.strip().endswith(".qmd")
-                     and not f.strip().endswith(".zh.qmd")]
-    elif args.files:
+    if args.files:
         qmd_files = [Path(f) for f in args.files
                      if f.endswith(".qmd") and not f.endswith(".zh.qmd")]
     else:
@@ -755,89 +745,8 @@ def main():
             errors.append((f, exc))
             print(f"  ✗ {f}: {exc}", file=sys.stderr)
 
-    write_json = args.format in ("json", "both")
-    write_markdown = args.format in ("markdown", "both")
-
-    # Write individual skill Markdown files
-    if write_markdown:
-        for skill in skills:
-            cat_dir = output_dir / skill["category"]
-            cat_dir.mkdir(parents=True, exist_ok=True)
-            stem = Path(skill["source_file"]).stem
-            out_file = cat_dir / f"{stem}_skill.md"
-            out_file.write_text(skill["skill"], encoding="utf-8")
-        print(f"\nWrote {len(skills)} skill file(s) to {output_dir}/")
-
-    # Build or update index
-    # In full mode (no specific files), replace entirely; in incremental mode, merge
-    incremental = bool(args.changed_files or args.files)
-    index_file = output_dir / "index.json"
-
-    if incremental and index_file.exists():
-        # Load existing index and merge with new skills
-        try:
-            existing_index = json.loads(index_file.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            existing_index = []
-
-        new_entries = {s["source_file"]: {k: v for k, v in s.items() if k != "skill"}
-                       for s in skills}
-
-        updated_index = []
-        seen = set()
-        for entry in existing_index:
-            src = entry.get("source_file", "")
-            if src in new_entries:
-                updated_index.append(new_entries[src])
-                seen.add(src)
-            else:
-                updated_index.append(entry)
-        for src, entry in new_entries.items():
-            if src not in seen:
-                updated_index.append(entry)
-    else:
-        # Full replacement
-        updated_index = [{k: v for k, v in s.items() if k != "skill"}
-                         for s in skills]
-
-    with open(index_file, "w", encoding="utf-8") as fh:
-        json.dump(updated_index, fh, ensure_ascii=False, indent=2)
-    print(f"Index written to {index_file} ({len(updated_index)} entries)")
-
-    # Write full skills JSON
-    if write_json:
-        full_file = output_dir / "bizard_skills.json"
-
-        if incremental and full_file.exists():
-            # Merge with existing full JSON
-            try:
-                existing_full = json.loads(full_file.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                existing_full = []
-
-            new_full = {s["source_file"]: s for s in skills}
-            updated_full = []
-            seen_full = set()
-            for entry in existing_full:
-                src = entry.get("source_file", "")
-                if src in new_full:
-                    updated_full.append(new_full[src])
-                    seen_full.add(src)
-                else:
-                    updated_full.append(entry)
-            for src, entry in new_full.items():
-                if src not in seen_full:
-                    updated_full.append(entry)
-        else:
-            # Full replacement
-            updated_full = list(skills)
-
-        with open(full_file, "w", encoding="utf-8") as fh:
-            json.dump(updated_full, fh, ensure_ascii=False, indent=2)
-        print(f"Full skills JSON written to {full_file} ({len(updated_full)} entries)")
-
-    # Generate unified SKILL.md from the full index
-    generate_unified_skill(index_file, Path("files/gallery_data.csv"),
+    # Generate unified SKILL.md directly from in-memory skills list
+    generate_unified_skill(skills, Path("files/gallery_data.csv"),
                            Path("SKILL.md"))
 
     # Summary
@@ -888,7 +797,7 @@ CAT_ORDER = [
 ]
 
 
-def generate_unified_skill(index_path: Path, gallery_csv: Path,
+def generate_unified_skill(all_skills: List[dict], gallery_csv: Path,
                            output_path: Path) -> None:
     """Generate the unified ``SKILL.md`` — an AI skill instruction document.
 
@@ -898,13 +807,8 @@ def generate_unified_skill(index_path: Path, gallery_csv: Path,
     """
     import csv as _csv
 
-    if not index_path.exists():
-        print(f"  ⚠ Skipping unified SKILL.md: {index_path} not found")
-        return
-
-    all_skills = json.loads(index_path.read_text(encoding="utf-8"))
     if not all_skills:
-        print("  ⚠ Skipping unified SKILL.md: index is empty")
+        print("  ⚠ Skipping unified SKILL.md: no skills provided")
         return
 
     # Gallery row count
