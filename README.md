@@ -35,6 +35,10 @@ Bizard brings together powerful visualization tools, curated code, and collabora
 
 -   **Future Vision**: Committed to expanding international collaborations and delivering innovative, refined solutions to address the growing complexity of biomedical data visualization and analysis.
 
+## Bizard AI Skills
+
+Download the Bizard (A Biomedical Visualization Atlas) unified skill for your AI assistant: [Download AI Skill zip](https://openbiox.github.io/Bizard/bizard-skill.zip).
+
 ## Citation
 
 If you use Bizard in your research, please cite our paper:

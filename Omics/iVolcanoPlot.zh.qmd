@@ -1,0 +1,321 @@
+---
+title: "交互式火山图"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang);"
+  - "**[贡献]** [刘婉仪](https://github.com/queque461)。"
+---
+
+交互式火山图（Interactive Volcano Plot）是一种用于高通量数据（如转录组、蛋白组）差异表达分析的可视化图形。它在传统火山图的基础上，支持鼠标悬停查看基因信息、点击跳转外部数据库，并提供更灵活的阈值设定与配色方案，帮助研究者更高效地筛选和解读差异分析结果。
+
+## 示例
+
+![](../images/Omics/iVolcanoPlot_demo.png){fig-alt="iVolcanoPlot DEMO" fig-align="center" width="60%"}
+
+本图为静态预览。
+
+这幅火山图以 log2FC 值为横轴，-log10(P) 值为纵轴。灰色散点表示不显著的基因，浅蓝与浅红为满足常规阈值（`pval_cutoff`、`logFC_cutoff`）的基因，深蓝与深红则为同时满足严格阈值（`pval_cutoff2`、`logFC_cutoff2`）的基因，该配色由 FigureYa 主题自动应用。鼠标悬停于任意散点可显示基因名、log2(FC) 和 P.val 值，点击基因可跳转至 GeneCards 网站。图中默认标注了上、下调最显著的各 10 个基因。
+
+## 环境配置
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ivolcano`、`fanyi`、`clusterProfiler`、`org.Hs.eg.db`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装包
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("ivolcano", quietly = TRUE)) {
+  install.packages("ivolcano")
+}
+if (!requireNamespace("fanyi", quietly = TRUE)) {
+  remotes::install_github("YuLab-SMU/fanyi")
+}
+if (!requireNamespace("clusterProfiler", quietly = TRUE)) {
+  install.packages("clusterProfiler")
+}
+if (!requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
+  BiocManager::install("org.Hs.eg.db")
+}
+
+# 加载包
+library(ggplot2)
+library(ivolcano)
+library(fanyi)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+使用 `ivolcano` 包内置的 `easy_input_limma.rds` 数据，该数据来源于人类气道上皮细胞 airway 数据集的差异分析结果。
+
+```{r load data, message=FALSE}
+# 读取数据
+f1 <- system.file("extdata/easy_input_limma.rds", package = "ivolcano")
+df_limma <- readRDS(f1)
+# 查看数据集
+head(df_limma)
+```
+
+**注意：** 输入数据框至少需要包含三列：差异倍数、显著性 P 值和基因名，列名可通过对应参数自由指定。
+
+## 可视化
+
+### 1. 基础绘图
+
+可以使用 `ivolcano` 函数直接绘制交互式火山图。默认输出交互式 HTML 图，设置 `interactive = FALSE` 即可获得静态 ggplot 图形。
+
+```{r}
+#| label: fig-1.1BasicPlot
+#| fig-cap: "基础交互式火山图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+# 基础交互式火山图
+p <- ivolcano(df_limma,
+         logFC_col = "logFC",
+         pval_col  = "P.Value",
+         gene_col  = "X")
+
+p
+```
+
+Figure 1 绘制最基础的交互式火山图，使用默认参数绘制。鼠标悬停可查看基因信息。
+
+::: callout-tip
+**关键参数：**
+
+- `pval_cutoff`/`logFC_cutoff`：常规显著性阈值，低于此阈值的基因被归为不显著。
+- `pval_cutoff2`/`logFC_cutoff2`：更严格的阈值，满足该条件的基因将被赋予更深颜色，分成两个层级并自动应用 FigureYa 的绿-灰-红配色，若未设置则不会分层。
+- `top_n`：标注上、下调最显著的各 n 个基因，默认值为 10。
+:::
+
+```{r}
+#| label: fig-1.2FigureYa
+#| fig-cap: "双层阈值与 FigureYa 主题配色"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+# 双层阈值 + FigureYa 配色
+p <- ivolcano(df_limma,
+         logFC_col    = "logFC",
+         pval_col     = "P.Value",
+         gene_col     = "X",
+         pval_cutoff  = 0.05,
+         pval_cutoff2 = 0.01,
+         logFC_cutoff  = 1,
+         logFC_cutoff2 = 2,
+         top_n = 5)
+
+p
+```
+
+::: callout-tip
+**关键参数：**
+
+- `size_by`：将散点大小映射到统计量或数据列，增强图形层次感，可选 `"none"`（默认）、`"negLogP"`、`"absLogFC"` 或数据框中的任意列名。
+- `point_size`：仅在 `size_by = "manual"` 时生效，分别设置不显著（base）、一般显著（medium）和高显著（large）点的尺寸。
+:::
+
+```{r}
+#| label: fig-1.3size_by
+#| fig-cap: "按 -log10(P) 值映射点大小"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+# 按 negLogP 映射点大小
+p <- ivolcano(df_limma,
+         logFC_col  = "logFC",
+         pval_col   = "P.Value",
+         gene_col   = "X",
+         size_by    = "negLogP")
+
+p
+```
+
+```{r}
+#| label: fig-1.4sizeManual
+#| fig-cap: "手动分层指定点大小（base=2, medium=4, large=6）"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+# 手动按显著性层级指定点大小
+p <- ivolcano(df_limma,
+         logFC_col    = "logFC",
+         pval_col     = "P.Value",
+         gene_col     = "X",
+         pval_cutoff  = 0.05,
+         pval_cutoff2 = 0.01,
+         logFC_cutoff  = 1,
+         logFC_cutoff2 = 2,
+         size_by = "manual",
+         point_size = list(base = 2, medium = 4, large = 6))
+
+p
+```
+
+::: callout-tip
+**关键参数：**
+
+- `filter`：可以以字符串形式直接筛选要标注的基因，例如 `X %in% genes` 可标注指定基因集。一旦指定 `filter`，`top_n` 参数将自动失效。
+:::
+
+```{r}
+#| label: fig-1.5filter
+#| fig-cap: "标注极端差异基因（logFC > 8）"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+# 标注 logFC > 8 的基因
+p <- ivolcano(df_limma,
+         logFC_col   = "logFC",
+         pval_col    = "P.Value",
+         gene_col    = "X",
+         pval_cutoff  = 0.05,
+         logFC_cutoff  = 1,
+         filter = "logFC > 8")
+
+p
+```
+
+### 2. 点击跳转与丰富信息卡
+
+使用 `ivolcano` 函数中的 `onclick_fun` 参数可以接收一个函数，定义点击散点后的行为。其内置函数可直接跳转至常用基因数据库。
+
+```{r}
+#| label: fig-2.1Onclick_fun
+#| fig-cap: "点击基因跳转 NCBI"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+# 点击基因跳转 NCBI
+p <- ivolcano(df_limma,
+         logFC_col   = "logFC",
+         pval_col    = "P.Value",
+         gene_col    = "X",
+         onclick_fun = onclick_ncbi)
+
+p
+```
+
+Figure 6 中点击任意基因即可打开其 NCBI 页面。
+
+::: callout-tip
+**关键参数：**
+
+- `onclick_fun`：内置跳转函数包括 `onclick_genecards`、`onclick_ncbi`、`onclick_ensembl`、`onclick_pubmed` 等。
+- `onclick_fanyi`：由 fanyi 包提供，可根据基因信息数据框创建自定义点击展示函数。
+:::
+
+```{r}
+#| label: fig-2.2Fanyi
+#| fig-cap: "点击前50显著基因显示注释信息卡片"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+# 准备基因摘要数据
+df_limma$entrez <- mapIds(org.Hs.eg.db, keys = df_limma$X,
+                    column = "ENTREZID", keytype = "SYMBOL",
+                    multiVals = "first")
+top_eg <- df_limma$entrez[order(df_limma$P.Value)][1:50]
+gs <- gene_summary(top_eg)
+
+# 定义点击函数：展示 description（基因全称）和 summary（摘要）
+onclick_fun <- onclick_fanyi(gs, c("description", "summary"))
+
+p <- ivolcano(df_limma,
+              logFC_col   = "logFC",
+              pval_col    = "P.Value",
+              gene_col    = "X",
+              onclick_fun = onclick_fun)
+
+p
+```
+
+### 3. 通路与火山图联动
+
+`pathway_volcano` 函数可将富集分析的点阵图与火山图并行显示，点击通路即可在右侧火山图中高亮该通路内的基因。
+
+```{r}
+#| label: fig-3.1PathwayVolcano
+#| fig-cap: "通路点图与火山图联动"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+# 准备 airway 差异分析数据并做 GO 富集分析
+f2 <- system.file("extdata/airway.rds", package = "ivolcano")
+df_airway <- readRDS(f2)
+sig_genes <- df_airway$symbol[df_airway$padj < 0.01 & abs(df_airway$log2FoldChange) > 2]
+sig_genes <- sig_genes[!is.na(sig_genes)]
+entrez <- na.omit(mapIds(org.Hs.eg.db, sig_genes, "ENTREZID", "SYMBOL", multiVals = "first"))
+
+ego <- enrichGO(gene = as.character(entrez), OrgDb = org.Hs.eg.db, ont = "BP",
+                pAdjustMethod = "BH", pvalueCutoff = 0.01, qvalueCutoff = 0.05)
+ego <- setReadable(ego, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
+
+# 构建交互式点图与火山图，并组合联动
+p_dot <- idotplot(ego, showCategory = 8) +
+  theme(axis.text.y = element_text(size = 6),
+        legend.position = "none") +
+  scale_y_discrete(labels = function(x) strtrim(x, 30))
+p_vol <- ivolcano(df_airway, logFC_col = "log2FoldChange", pval_col = "padj",
+                  gene_col = "symbol", title = "Volcano Plot", interactive = TRUE)
+pathway_volcano(p_dot, p_vol, widths = c(1, 1))
+```
+
+Figure 8 展示了通路点图与火山图的联动效果。点击左侧通路即可在右侧火山图中高亮该通路内的基因，其余基因自动变为灰色。
+
+::: callout-tip
+**注意：**
+
+- `idotplot`：生成左侧的点图（气泡图），展示前 8 条显著富集的 GO 通路。
+- `ivolcano`：生成右侧的火山图，基因名（`gene_col = "symbol"`）需与富集结果中的基因 SYMBOL 一致，以确保联动高亮正常工作。
+- `pathway_volcano`：将两幅图组合，`widths` 参数可调整左右两图的相对宽度。
+:::
+
+## 应用场景
+
+::: {#fig-iVolcanoApplications}
+![](../images/Omics/iVolcanoPlot_fig8.png){fig-alt="通路与火山图联动应用" fig-align="center" width="60%"}
+
+通路与火山图联动应用
+:::
+
+Figure 9 展示了 `pathway_volcano` 联动功能在多组学整合分析中的应用。当筛选出大量差异基因后，可先通过富集分析锁定关键通路，再在火山图中直观查看这些通路中基因的具体表达变化方向与显著性，快速筛选候选标志物。
+
+## 参考文献
+
+1.  Guangchuang Yu, et al. (2024). ivolcano: Interactive Volcano Plots. R package version 0.99.0.
+2. [ivolcano的FigureYa主题](https://mp.weixin.qq.com/s/x24vW4cCLLDWulgkZ2F8Sw)
