@@ -175,19 +175,25 @@ jobs:
         with:
           use-public-rspm: true
 
+      # R_LIBS_USER is set by setup-r@v2 to /home/runner/work/_temp/Library.
+      # Cache that path so pak skips downloading packages on cache hits.
       - name: Cache R packages
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.local/share/renv
-            ~/.cache/R/renv
-            /usr/local/lib/R/site-library
-            ~/R
+          path: ${{ env.R_LIBS_USER }}
           key: r-packages-${{ runner.os }}-${{ hashFiles('DESCRIPTION') }}
           restore-keys: |
             r-packages-${{ runner.os }}-
 
+      # PKG_SYSREQS=false prevents pak from calling `add-apt-repository ppa:xtradeb/apps`
+      # which queries the Launchpad API and causes 504 timeout errors (14+ min hang).
+      # RSPM binary packages already work with system libs pre-installed on Ubuntu 24.04 runners.
+      # cache=false avoids double-caching (we use the step above instead).
       - uses: r-lib/actions/setup-r-dependencies@v2
+        env:
+          PKG_SYSREQS: 'false'
+        with:
+          cache: false
 
       # ── Python Setup ─────────────────────────────────────────
       - name: Set up Python
