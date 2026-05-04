@@ -20,6 +20,17 @@ library(htmltools)
 data <- read.csv("files/gallery_data_zh.csv")
 ```
 
+## 🎯 智能图表推荐
+
+描述您的可视化目标，系统将推荐最适合的图表：
+
+<div id="recommender-widget" class="recommender-container">
+  <textarea id="recommender-input" rows="3" placeholder="例如：我想比较不同实验组之间的基因表达差异..." style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit;"></textarea>
+  <br>
+  <button id="recommender-btn" onclick="recommendChartsZh()" style="margin-top: 8px; padding: 8px 16px; background: #007899; color: white; border: none; border-radius: 4px; cursor: pointer;">推荐图表</button>
+  <div id="recommender-results" style="margin-top: 16px;"></div>
+</div>
+
 ## 基础
 
 ### 分布图
@@ -612,6 +623,133 @@ function hideModal() {
   var modal = document.getElementById("modal");
   modal.style.display = "none";
 }
+
+// Smart Recommender Functions (Chinese)
+let keywordsDataZh = null;
+
+async function loadKeywordsZh() {
+  if (!keywordsDataZh) {
+    const response = await fetch('files/recommender_keywords_zh.json');
+    keywordsDataZh = await response.json();
+  }
+  return keywordsDataZh;
+}
+
+function tokenizeZh(text) {
+  // For Chinese, we need to handle both Chinese characters and English words
+  // Split by spaces, punctuation, and also extract Chinese character sequences
+  const chineseTokens = text.match(/[\u4e00-\u9fa5]+/g) || [];
+  const englishTokens = text.toLowerCase().split(/[\s,.!?;:'"()\[\]]+/).filter(t => t.length > 0 && !/[\u4e00-\u9fa5]/.test(t));
+  return [...chineseTokens, ...englishTokens];
+}
+
+function expandSynonymsZh(tokens, synonyms) {
+  const expanded = new Set(tokens);
+  tokens.forEach(token => {
+    // Check if token is a synonym key (Chinese or English)
+    if (synonyms[token]) {
+      synonyms[token].forEach(syn => expanded.add(syn));
+    }
+    // Check if any synonym values contain the token
+    Object.keys(synonyms).forEach(key => {
+      if (synonyms[key].includes(token) || key === token) {
+        expanded.add(key);
+        synonyms[key].forEach(syn => expanded.add(syn));
+      }
+    });
+  });
+  return Array.from(expanded);
+}
+
+function matchIntentsZh(tokens, intentKeywords) {
+  const matched = [];
+  Object.keys(intentKeywords).forEach(intent => {
+    const keywords = intentKeywords[intent];
+    if (keywords.some(kw => tokens.includes(kw))) {
+      matched.push(intent);
+    }
+  });
+  return matched;
+}
+
+function calculateScoreZh(tokens, intents, text, chart) {
+  let score = 0;
+
+  // Base keyword match
+  tokens.forEach(token => {
+    if (text.includes(token)) score += 1;
+  });
+
+  // Intent match bonus
+  intents.forEach(intent => {
+    score += 2;
+  });
+
+  // Type exact match bonus
+  if (tokens.some(t => chart.Type.includes(t))) score += 3;
+
+  return score;
+}
+
+async function recommendChartsZh() {
+  const input = document.getElementById('recommender-input').value.trim();
+  if (!input) {
+    document.getElementById('recommender-results').innerHTML = '<p style="color: #666;">请输入您的可视化目标描述。</p>';
+    return;
+  }
+
+  // Load keywords
+  const keywords = await loadKeywordsZh();
+
+  // Get chart data from Chinese CSV
+  const csvResponse = await fetch('files/gallery_data_zh.csv');
+  const csvText = await csvResponse.text();
+  const chartData = parseCSV(csvText);
+
+  // Tokenize and expand
+  const tokens = tokenizeZh(input);
+  const expandedTokens = expandSynonymsZh(tokens, keywords.synonyms);
+  const matchedIntents = matchIntentsZh(expandedTokens, keywords.intentKeywords);
+
+  // Score each chart
+  const results = chartData.map(chart => {
+    const searchableText = `${chart.Name} ${chart.Description} ${chart.Type} ${chart.Level1} ${chart.Level2}`;
+    const score = calculateScoreZh(expandedTokens, matchedIntents, searchableText, chart);
+    return { chart, score, matchedKeywords: expandedTokens.filter(t => searchableText.includes(t)) };
+  }).filter(r => r.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  // Display results
+  const resultsDiv = document.getElementById('recommender-results');
+  if (results.length === 0) {
+    resultsDiv.innerHTML = '<p style="color: #666;">未找到匹配的图表。请尝试其他关键词。</p>';
+    return;
+  }
+
+  resultsDiv.innerHTML = `<p style="font-weight: 600;">匹配结果 (${results.length})：</p>` +
+    results.map(r => `
+      <div class="recommender-card" style="display: flex; align-items: center; margin: 8px 0; padding: 12px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fafafa;">
+        <img src="${r.chart.Image_url}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; margin-right: 12px;" onclick="showModal(this)">
+        <div style="flex: 1;">
+          <a href="${r.chart.Tutorial_url}" target="_blank" style="color: #007899; font-weight: 600; text-decoration: none;">${r.chart.Name}</a>
+          <p style="margin: 4px 0 0 0; color: #666; font-size: 0.9em;">${r.chart.Description}</p>
+          <p style="margin: 4px 0 0 0; color: #888; font-size: 0.8em;">匹配关键词: ${r.matchedKeywords.slice(0, 5).join(', ')}</p>
+        </div>
+      </div>
+    `).join('');
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',');
+  return lines.slice(1).map(line => {
+    const values = line.split(',');
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = values[i] || '');
+    return obj;
+  });
+}
 ```
 
 ```{css, echo=FALSE}
@@ -776,6 +914,20 @@ function hideModal() {
   max-height: 90%;
   margin: auto;
   margin-top: 5%;
+}
+
+/* Smart Recommender Styles */
+.recommender-container {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #f9f9f9;
+}
+
+.recommender-card:hover {
+  background: #f0f0f0;
+  border-color: #007899;
 }
 ```
 
