@@ -2,9 +2,20 @@
 title: Graph Gallery
 ---
 
-👋 **Bizard** is a comprehensive repository of advanced visualization codes tailored for biomedical research. It currently includes approximately 750 graphics across more than 65 chart types. Below is the gallery for all graphics. 
+👋 **Bizard** is a comprehensive repository of advanced visualization codes tailored for biomedical research. It currently includes approximately 750 graphics across more than 65 chart types. Below is the gallery for all graphics.
 
 Each graph is a row in the table. You can click on the graph to zoom in for a preview. Clicking on the blue title of a graph will take you to the corresponding graphic tutorial page. The table's Search box provides graph search function.
+
+## 🎯 Smart Graph Recommender
+
+Describe your visualization goal, and we'll recommend the best matching charts:
+
+<div id="recommender-widget" class="recommender-container">
+  <textarea id="recommender-input" rows="3" placeholder="e.g., I want to compare gene expression between different cancer types..." style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit;"></textarea>
+  <br>
+  <button id="recommender-btn" onclick="recommendChartsEn()" style="margin-top: 8px; padding: 8px 16px; background: #007899; color: white; border: none; border-radius: 4px; cursor: pointer;">Recommend Charts</button>
+  <div id="recommender-results" style="margin-top: 16px;"></div>
+</div>
 
 ```{r}
 #| echo: false
@@ -612,6 +623,132 @@ function hideModal() {
   var modal = document.getElementById("modal");
   modal.style.display = "none";
 }
+
+// Smart Recommender Functions
+let keywordsDataEn = null;
+
+async function loadKeywordsEn() {
+  if (!keywordsDataEn) {
+    const response = await fetch('files/recommender_keywords.json');
+    keywordsDataEn = await response.json();
+  }
+  return keywordsDataEn;
+}
+
+function tokenize(text) {
+  // Split by spaces and punctuation, filter empty
+  return text.toLowerCase().split(/[\s,.!?;:'"()\[\]]+/).filter(t => t.length > 0);
+}
+
+function expandSynonyms(tokens, synonyms) {
+  const expanded = new Set(tokens);
+  tokens.forEach(token => {
+    // Check if token is a synonym key
+    if (synonyms[token]) {
+      synonyms[token].forEach(syn => expanded.add(syn.toLowerCase()));
+    }
+    // Check if any synonym values contain the token
+    Object.keys(synonyms).forEach(key => {
+      if (synonyms[key].includes(token) || key === token) {
+        expanded.add(key.toLowerCase());
+        synonyms[key].forEach(syn => expanded.add(syn.toLowerCase()));
+      }
+    });
+  });
+  return Array.from(expanded);
+}
+
+function matchIntents(tokens, intentKeywords) {
+  const matched = [];
+  Object.keys(intentKeywords).forEach(intent => {
+    const keywords = intentKeywords[intent];
+    if (keywords.some(kw => tokens.includes(kw.toLowerCase()))) {
+      matched.push(intent);
+    }
+  });
+  return matched;
+}
+
+function calculateScore(tokens, intents, text, chart) {
+  let score = 0;
+  const textLower = text.toLowerCase();
+
+  // Base keyword match
+  tokens.forEach(token => {
+    if (textLower.includes(token)) score += 1;
+  });
+
+  // Intent match bonus (each matched intent adds points)
+  intents.forEach(intent => {
+    score += 2;
+  });
+
+  // Type exact match bonus
+  if (tokens.some(t => chart.Type.toLowerCase().includes(t))) score += 3;
+
+  return score;
+}
+
+async function recommendChartsEn() {
+  const input = document.getElementById('recommender-input').value.trim();
+  if (!input) {
+    document.getElementById('recommender-results').innerHTML = '<p style="color: #666;">Please enter a description of your visualization goal.</p>';
+    return;
+  }
+
+  // Load keywords
+  const keywords = await loadKeywordsEn();
+
+  // Get chart data from existing CSV (already loaded in R chunk)
+  // We need to fetch the CSV again for JS access
+  const csvResponse = await fetch('files/gallery_data.csv');
+  const csvText = await csvResponse.text();
+  const chartData = parseCSV(csvText);
+
+  // Tokenize and expand
+  const tokens = tokenize(input);
+  const expandedTokens = expandSynonyms(tokens, keywords.synonyms);
+  const matchedIntents = matchIntents(expandedTokens, keywords.intentKeywords);
+
+  // Score each chart
+  const results = chartData.map(chart => {
+    const searchableText = `${chart.Name} ${chart.Description} ${chart.Type} ${chart.Level1} ${chart.Level2}`;
+    const score = calculateScore(expandedTokens, matchedIntents, searchableText, chart);
+    return { chart, score, matchedKeywords: expandedTokens.filter(t => searchableText.toLowerCase().includes(t)) };
+  }).filter(r => r.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  // Display results
+  const resultsDiv = document.getElementById('recommender-results');
+  if (results.length === 0) {
+    resultsDiv.innerHTML = '<p style="color: #666;">No matching charts found. Try different keywords.</p>';
+    return;
+  }
+
+  resultsDiv.innerHTML = `<p style="font-weight: 600;">Matching Results (${results.length}):</p>` +
+    results.map(r => `
+      <div class="recommender-card" style="display: flex; align-items: center; margin: 8px 0; padding: 12px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fafafa;">
+        <img src="${r.chart.Image_url}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; margin-right: 12px;" onclick="showModal(this)">
+        <div style="flex: 1;">
+          <a href="${r.chart.Tutorial_url}" target="_blank" style="color: #007899; font-weight: 600; text-decoration: none;">${r.chart.Name}</a>
+          <p style="margin: 4px 0 0 0; color: #666; font-size: 0.9em;">${r.chart.Description}</p>
+          <p style="margin: 4px 0 0 0; color: #888; font-size: 0.8em;">Matched: ${r.matchedKeywords.slice(0, 5).join(', ')}</p>
+        </div>
+      </div>
+    `).join('');
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',');
+  return lines.slice(1).map(line => {
+    const values = line.split(',');
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = values[i] || '');
+    return obj;
+  });
+}
 ```
 
 ```{css, echo=FALSE}
@@ -776,5 +913,19 @@ function hideModal() {
   max-height: 90%;
   margin: auto;
   margin-top: 5%;
+}
+
+/* Smart Recommender Styles */
+.recommender-container {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #f9f9f9;
+}
+
+.recommender-card:hover {
+  background: #f0f0f0;
+  border-color: #007899;
 }
 ```
