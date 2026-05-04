@@ -624,8 +624,9 @@ function hideModal() {
   modal.style.display = "none";
 }
 
-// Smart Recommender Functions (Chinese)
+// Smart Recommender Functions (Chinese + English bilingual support)
 let keywordsDataZh = null;
+let keywordsDataEn = null;
 
 // XSS prevention: sanitize user-generated content
 function sanitizeZh(str) {
@@ -641,9 +642,18 @@ function sanitizeZh(str) {
 async function loadKeywordsZh() {
   if (!keywordsDataZh) {
     try {
-      const response = await fetch('files/recommender_keywords_zh.json');
-      if (!response.ok) throw new Error('加载关键词失败');
-      keywordsDataZh = await response.json();
+      // Load both Chinese and English dictionaries for bilingual support
+      const responseZh = await fetch('files/recommender_keywords_zh.json');
+      const responseEn = await fetch('files/recommender_keywords.json');
+      if (!responseZh.ok || !responseEn.ok) throw new Error('加载关键词失败');
+      const dataZh = await responseZh.json();
+      const dataEn = await responseEn.json();
+
+      // Merge both dictionaries
+      keywordsDataZh = {
+        synonyms: { ...dataZh.synonyms, ...dataEn.synonyms },
+        intentKeywords: { ...dataZh.intentKeywords, ...dataEn.intentKeywords }
+      };
     } catch (e) {
       console.error('Error loading keywords:', e);
       return null;
@@ -653,8 +663,7 @@ async function loadKeywordsZh() {
 }
 
 function tokenizeZh(text) {
-  // For Chinese, we need to handle both Chinese characters and English words
-  // Split by spaces, punctuation, and also extract Chinese character sequences
+  // Bilingual tokenization: handle both Chinese characters and English words
   const chineseTokens = text.match(/[\u4e00-\u9fa5]+/g) || [];
   const englishTokens = text.toLowerCase().split(/[\s,.!?;:'"()\[\]]+/).filter(t => t.length > 0 && !/[\u4e00-\u9fa5]/.test(t));
   return [...chineseTokens, ...englishTokens];

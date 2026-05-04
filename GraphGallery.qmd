@@ -624,7 +624,7 @@ function hideModal() {
   modal.style.display = "none";
 }
 
-// Smart Recommender Functions
+// Smart Recommender Functions (English + Chinese bilingual support)
 let keywordsDataEn = null;
 
 // XSS sanitization helper
@@ -638,11 +638,20 @@ function sanitize(str) {
 async function loadKeywordsEn() {
   if (!keywordsDataEn) {
     try {
-      const response = await fetch('files/recommender_keywords.json');
-      if (!response.ok) {
-        throw new Error(`Failed to load keywords: ${response.status}`);
+      // Load both English and Chinese dictionaries for bilingual support
+      const responseEn = await fetch('files/recommender_keywords.json');
+      const responseZh = await fetch('files/recommender_keywords_zh.json');
+      if (!responseEn.ok || !responseZh.ok) {
+        throw new Error(`Failed to load keywords`);
       }
-      keywordsDataEn = await response.json();
+      const dataEn = await responseEn.json();
+      const dataZh = await responseZh.json();
+
+      // Merge both dictionaries
+      keywordsDataEn = {
+        synonyms: { ...dataEn.synonyms, ...dataZh.synonyms },
+        intentKeywords: { ...dataEn.intentKeywords, ...dataZh.intentKeywords }
+      };
     } catch (error) {
       console.error('Error loading keywords:', error);
       throw error;
@@ -652,22 +661,35 @@ async function loadKeywordsEn() {
 }
 
 function tokenize(text) {
-  // Split by spaces and punctuation, filter empty
-  return text.toLowerCase().split(/[\s,.!?;:'"()\[\]]+/).filter(t => t.length > 0);
+  // Bilingual tokenization: handle both English words and Chinese characters
+  const englishTokens = text.toLowerCase().split(/[\s,.!?;:'"()\[\]]+/).filter(t => t.length > 0 && !/[\u4e00-\u9fa5]/.test(t));
+  const chineseTokens = text.match(/[\u4e00-\u9fa5]+/g) || [];
+  return [...englishTokens, ...chineseTokens];
 }
 
 function expandSynonyms(tokens, synonyms) {
   const expanded = new Set(tokens);
   tokens.forEach(token => {
-    // Check if token is a synonym key
-    if (synonyms[token]) {
-      synonyms[token].forEach(syn => expanded.add(syn.toLowerCase()));
+    const tokenLower = token.toLowerCase();
+    const isChinese = /[\u4e00-\u9fa5]/.test(token);
+
+    // Check if token is a synonym key (handle both English and Chinese)
+    if (synonyms[token] || synonyms[tokenLower]) {
+      const syns = synonyms[token] || synonyms[tokenLower];
+      syns.forEach(syn => {
+        expanded.add(syn);
+        if (!/[\u4e00-\u9fa5]/.test(syn)) expanded.add(syn.toLowerCase());
+      });
     }
     // Check if any synonym values contain the token
     Object.keys(synonyms).forEach(key => {
-      if (synonyms[key].includes(token) || key === token) {
-        expanded.add(key.toLowerCase());
-        synonyms[key].forEach(syn => expanded.add(syn.toLowerCase()));
+      const synValues = synonyms[key];
+      if (synValues.includes(token) || synValues.includes(tokenLower) || key === token || key === tokenLower) {
+        expanded.add(key);
+        synValues.forEach(syn => {
+          expanded.add(syn);
+          if (!/[\u4e00-\u9fa5]/.test(syn)) expanded.add(syn.toLowerCase());
+        });
       }
     });
   });
@@ -687,11 +709,10 @@ function matchIntents(tokens, intentKeywords) {
 
 function calculateScore(tokens, intents, text, chart) {
   let score = 0;
-  const textLower = text.toLowerCase();
 
-  // Base keyword match
+  // Base keyword match (handle both Chinese and English)
   tokens.forEach(token => {
-    if (textLower.includes(token)) score += 1;
+    if (text.includes(token) || text.toLowerCase().includes(token.toLowerCase())) score += 1;
   });
 
   // Intent match bonus (each matched intent adds points)
@@ -700,7 +721,7 @@ function calculateScore(tokens, intents, text, chart) {
   });
 
   // Type exact match bonus
-  if (tokens.some(t => chart.Type.toLowerCase().includes(t))) score += 3;
+  if (tokens.some(t => chart.Type.includes(t) || chart.Type.toLowerCase().includes(t.toLowerCase()))) score += 3;
 
   return score;
 }
