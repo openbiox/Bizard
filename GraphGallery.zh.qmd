@@ -627,10 +627,27 @@ function hideModal() {
 // Smart Recommender Functions (Chinese)
 let keywordsDataZh = null;
 
+// XSS prevention: sanitize user-generated content
+function sanitizeZh(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 async function loadKeywordsZh() {
   if (!keywordsDataZh) {
-    const response = await fetch('files/recommender_keywords_zh.json');
-    keywordsDataZh = await response.json();
+    try {
+      const response = await fetch('files/recommender_keywords_zh.json');
+      if (!response.ok) throw new Error('加载关键词失败');
+      keywordsDataZh = await response.json();
+    } catch (e) {
+      console.error('Error loading keywords:', e);
+      return null;
+    }
   }
   return keywordsDataZh;
 }
@@ -698,46 +715,66 @@ async function recommendChartsZh() {
     return;
   }
 
-  // Load keywords
-  const keywords = await loadKeywordsZh();
+  // Show loading indicator
+  const btn = document.getElementById('recommender-btn');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '搜索中...';
 
-  // Get chart data from Chinese CSV
-  const csvResponse = await fetch('files/gallery_data_zh.csv');
-  const csvText = await csvResponse.text();
-  const chartData = parseCSV(csvText);
+  try {
+    // Load keywords
+    const keywords = await loadKeywordsZh();
+    if (!keywords) {
+      document.getElementById('recommender-results').innerHTML = '<p style="color: #cc0000;">加载关键词失败，请稍后重试。</p>';
+      return;
+    }
 
-  // Tokenize and expand
-  const tokens = tokenizeZh(input);
-  const expandedTokens = expandSynonymsZh(tokens, keywords.synonyms);
-  const matchedIntents = matchIntentsZh(expandedTokens, keywords.intentKeywords);
+    // Get chart data from Chinese CSV
+    const csvResponse = await fetch('files/gallery_data_zh.csv');
+    if (!csvResponse.ok) throw new Error('加载图表数据失败');
+    const csvText = await csvResponse.text();
+    const chartData = parseCSV(csvText);
 
-  // Score each chart
-  const results = chartData.map(chart => {
-    const searchableText = `${chart.Name} ${chart.Description} ${chart.Type} ${chart.Level1} ${chart.Level2}`;
-    const score = calculateScoreZh(expandedTokens, matchedIntents, searchableText, chart);
-    return { chart, score, matchedKeywords: expandedTokens.filter(t => searchableText.includes(t)) };
-  }).filter(r => r.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+    // Tokenize and expand
+    const tokens = tokenizeZh(input);
+    const expandedTokens = expandSynonymsZh(tokens, keywords.synonyms);
+    const matchedIntents = matchIntentsZh(expandedTokens, keywords.intentKeywords);
 
-  // Display results
-  const resultsDiv = document.getElementById('recommender-results');
-  if (results.length === 0) {
-    resultsDiv.innerHTML = '<p style="color: #666;">未找到匹配的图表。请尝试其他关键词。</p>';
-    return;
-  }
+    // Score each chart
+    const results = chartData.map(chart => {
+      const searchableText = `${chart.Name} ${chart.Description} ${chart.Type} ${chart.Level1} ${chart.Level2}`;
+      const score = calculateScoreZh(expandedTokens, matchedIntents, searchableText, chart);
+      return { chart, score, matchedKeywords: expandedTokens.filter(t => searchableText.includes(t)) };
+    }).filter(r => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
 
-  resultsDiv.innerHTML = `<p style="font-weight: 600;">匹配结果 (${results.length})：</p>` +
-    results.map(r => `
-      <div class="recommender-card" style="display: flex; align-items: center; margin: 8px 0; padding: 12px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fafafa;">
-        <img src="${r.chart.Image_url}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; margin-right: 12px;" onclick="showModal(this)">
-        <div style="flex: 1;">
-          <a href="${r.chart.Tutorial_url}" target="_blank" style="color: #007899; font-weight: 600; text-decoration: none;">${r.chart.Name}</a>
-          <p style="margin: 4px 0 0 0; color: #666; font-size: 0.9em;">${r.chart.Description}</p>
-          <p style="margin: 4px 0 0 0; color: #888; font-size: 0.8em;">匹配关键词: ${r.matchedKeywords.slice(0, 5).join(', ')}</p>
+    // Display results
+    const resultsDiv = document.getElementById('recommender-results');
+    if (results.length === 0) {
+      resultsDiv.innerHTML = '<p style="color: #666;">未找到匹配的图表。请尝试其他关键词。</p>';
+      return;
+    }
+
+    resultsDiv.innerHTML = `<p style="font-weight: 600;">匹配结果 (${results.length})：</p>` +
+      results.map(r => `
+        <div class="recommender-card" style="display: flex; align-items: center; margin: 8px 0; padding: 12px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fafafa;">
+          <img src="${sanitizeZh(r.chart.Image_url)}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; margin-right: 12px;" onclick="showModal(this)">
+          <div style="flex: 1;">
+            <a href="${sanitizeZh(r.chart.Tutorial_url)}" target="_blank" style="color: #007899; font-weight: 600; text-decoration: none;">${sanitizeZh(r.chart.Name)}</a>
+            <p style="margin: 4px 0 0 0; color: #666; font-size: 0.9em;">${sanitizeZh(r.chart.Description)}</p>
+            <p style="margin: 4px 0 0 0; color: #888; font-size: 0.8em;">匹配关键词: ${r.matchedKeywords.slice(0, 5).map(k => sanitizeZh(k)).join(', ')}</p>
+          </div>
         </div>
-      </div>
-    `).join('');
+      `).join('');
+  } catch (e) {
+    console.error('Error in recommendChartsZh:', e);
+    document.getElementById('recommender-results').innerHTML = '<p style="color: #cc0000;">搜索时发生错误，请稍后重试。</p>';
+  } finally {
+    // Restore button state
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
 }
 
 function parseCSV(text) {
