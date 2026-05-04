@@ -667,6 +667,35 @@ function tokenize(text) {
   return [...englishTokens, ...chineseTokens];
 }
 
+function extractKeywords(text, synonyms) {
+  // Scan the text for all known keywords (handles Chinese without tokenization)
+  const found = new Set();
+  const textLower = text.toLowerCase();
+
+  // Check all synonym keys and their values
+  Object.keys(synonyms).forEach(key => {
+    // Check if key appears in text
+    if (text.includes(key) || textLower.includes(key.toLowerCase())) {
+      found.add(key);
+      synonyms[key].forEach(syn => found.add(syn));
+    }
+    // Check if any synonym value appears in text
+    synonyms[key].forEach(syn => {
+      if (text.includes(syn) || textLower.includes(syn.toLowerCase())) {
+        found.add(syn);
+        found.add(key);
+        synonyms[key].forEach(s => found.add(s));
+      }
+    });
+  });
+
+  // Also add English tokens for mixed input
+  const tokens = tokenize(text);
+  tokens.forEach(t => found.add(t));
+
+  return Array.from(found);
+}
+
 function expandSynonyms(tokens, synonyms) {
   const expanded = new Set(tokens);
   tokens.forEach(token => {
@@ -755,16 +784,16 @@ async function recommendChartsEn() {
     const csvText = await csvResponse.text();
     const chartData = parseCSV(csvText);
 
-    // Tokenize and expand
-    const tokens = tokenize(input);
-    const expandedTokens = expandSynonyms(tokens, keywords.synonyms);
+    // Extract keywords from input using new scanning method
+    const extractedKeywords = extractKeywords(input, keywords.synonyms);
+    const expandedTokens = expandSynonyms(extractedKeywords, keywords.synonyms);
     const matchedIntents = matchIntents(expandedTokens, keywords.intentKeywords);
 
     // Score each chart
     const results = chartData.map(chart => {
       const searchableText = `${chart.Name} ${chart.Description} ${chart.Type} ${chart.Level1} ${chart.Level2}`;
       const score = calculateScore(expandedTokens, matchedIntents, searchableText, chart);
-      return { chart, score, matchedKeywords: expandedTokens.filter(t => searchableText.toLowerCase().includes(t)) };
+      return { chart, score, matchedKeywords: expandedTokens.filter(t => searchableText.includes(t) || searchableText.toLowerCase().includes(t.toLowerCase())) };
     }).filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);

@@ -664,19 +664,48 @@ async function loadKeywordsZh() {
 
 function tokenizeZh(text) {
   // Bilingual tokenization: handle both Chinese characters and English words
-  const chineseTokens = text.match(/[\u4e00-\u9fa5]+/g) || [];
   const englishTokens = text.toLowerCase().split(/[\s,.!?;:'"()\[\]]+/).filter(t => t.length > 0 && !/[\u4e00-\u9fa5]/.test(t));
-  return [...chineseTokens, ...englishTokens];
+  // For Chinese, we use character-by-character scanning plus common phrases
+  const chineseTokens = text.match(/[\u4e00-\u9fa5]+/g) || [];
+  return [...englishTokens, ...chineseTokens];
+}
+
+function extractKeywordsZh(text, synonyms) {
+  // Instead of tokenizing, we scan the text for all known keywords
+  const found = new Set();
+  const textLower = text.toLowerCase();
+
+  // Check all synonym keys and their values
+  Object.keys(synonyms).forEach(key => {
+    // Check if key appears in text
+    if (text.includes(key) || textLower.includes(key.toLowerCase())) {
+      found.add(key);
+      synonyms[key].forEach(syn => found.add(syn));
+    }
+    // Check if any synonym value appears in text
+    synonyms[key].forEach(syn => {
+      if (text.includes(syn) || textLower.includes(syn.toLowerCase())) {
+        found.add(syn);
+        found.add(key);
+        synonyms[key].forEach(s => found.add(s));
+      }
+    });
+  });
+
+  // Also add English tokens for mixed input
+  const tokens = tokenizeZh(text);
+  tokens.forEach(t => found.add(t));
+
+  return Array.from(found);
 }
 
 function expandSynonymsZh(tokens, synonyms) {
+  // This function now receives pre-extracted keywords, just expand them
   const expanded = new Set(tokens);
   tokens.forEach(token => {
-    // Check if token is a synonym key (Chinese or English)
     if (synonyms[token]) {
       synonyms[token].forEach(syn => expanded.add(syn));
     }
-    // Check if any synonym values contain the token
     Object.keys(synonyms).forEach(key => {
       if (synonyms[key].includes(token) || key === token) {
         expanded.add(key);
@@ -701,7 +730,7 @@ function matchIntentsZh(tokens, intentKeywords) {
 function calculateScoreZh(tokens, intents, text, chart) {
   let score = 0;
 
-  // Base keyword match
+  // Base keyword match - check if any token appears in chart data
   tokens.forEach(token => {
     if (text.includes(token)) score += 1;
   });
@@ -744,9 +773,9 @@ async function recommendChartsZh() {
     const csvText = await csvResponse.text();
     const chartData = parseCSV(csvText);
 
-    // Tokenize and expand
-    const tokens = tokenizeZh(input);
-    const expandedTokens = expandSynonymsZh(tokens, keywords.synonyms);
+    // Extract keywords from input using new scanning method
+    const extractedKeywords = extractKeywordsZh(input, keywords.synonyms);
+    const expandedTokens = expandSynonymsZh(extractedKeywords, keywords.synonyms);
     const matchedIntents = matchIntentsZh(expandedTokens, keywords.intentKeywords);
 
     // Score each chart
