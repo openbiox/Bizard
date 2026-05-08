@@ -3,8 +3,10 @@
 # ║                                                                      ║
 # ║  Purpose: Ensure the freeze cache is comprehensive and up-to-date.  ║
 # ║  - Restores existing freeze cache (no longer deletes it)            ║
-# ║  - Renders the full site (freeze: auto skips unchanged files)       ║
-# ║  - Adds Julia support (was missing)                                  ║
+# ║  - Pre-renders ALL non-frozen QMD files (populates workspace        ║
+# ║    _freeze BEFORE babelquarto runs, so the saved cache is full)     ║
+# ║  - Renders the full site via babelquarto (pandoc-only, fast)        ║
+# ║  - Adds Julia support                                                ║
 # ║  - Saves updated freeze cache (even on failure)                      ║
 # ║  - Optional: force full rebuild via manual dispatch                  ║
 # ╚══════════════════════════════════════════════════════════════════════╝
@@ -28,10 +30,14 @@ env:
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
-    # Share concurrency group with the main workflow to prevent simultaneous builds
+    timeout-minutes: 240
+    # Use a dedicated concurrency group so nightly builds do NOT share the
+    # same group as the main "Github Page" push workflow.  The main workflow
+    # has cancel-in-progress: true; if they shared a group, every push to
+    # main would cancel any in-progress nightly build before it could save
+    # the freeze cache.
     concurrency:
-      group: quarto-build-Github Page-refs/heads/main
+      group: quarto-build-nightly-cache-update
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       TMP_DIR: /mnt/TMP
@@ -46,18 +52,18 @@ jobs:
           fetch-depth: 0
 
       # ── Restore freeze cache ─────────────────────────────────
-      # Unlike the old workflow that always deleted _freeze, we now
-      # restore it so unchanged files don't need re-execution.
-      # A nightly build with a warm cache completes in minutes.
+      # Restore the latest available freeze cache.  The primary key uses the
+      # same prefix as the main workflow ("freeze-<OS>-") so both workflows
+      # share the same cache pool.
       - name: Restore freeze cache
         id: freeze-restore
         if: inputs.force_full_rebuild != true
         uses: actions/cache/restore@v4
         with:
           path: _freeze
-          key: freeze-nightly-${{ runner.os }}-${{ github.sha }}
+          key: freeze-${{ runner.os }}-nightly-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            freeze-nightly-${{ runner.os }}-
+            freeze-${{ runner.os }}-nightly-
             freeze-${{ runner.os }}-
 
       - name: Clear freeze for forced full rebuild
@@ -234,6 +240,66 @@ jobs:
           fi
           [ $failed -eq 0 ] || exit 1
 
+      # ── Pre-render ALL non-frozen R QMD files ────────────────
+      # ROOT CAUSE FIX: babelquarto::render_website() renders in a temp dir,
+      # creates _freeze there, copies only _site back, then deletes the temp
+      # dir.  The workspace _freeze is NEVER updated by babelquarto, so the
+      # "Save freeze cache" step below would save a nearly-empty directory –
+      # making the cache useless for the next run.
+      #
+      # FIX: pre-render every non-frozen .qmd here so the WORKSPACE _freeze
+      # is fully populated BEFORE babelquarto runs.  babelquarto copies the
+      # workspace _freeze into its temp dir and skips code execution (pandoc
+      # only), cutting babelquarto from ~90 min down to ~20 min.
+      # The saved cache will now contain all frozen outputs (~500+ JSON files).
+      #
+      # Timing:
+      #   Cold cache (first run):  pre-render ~60-80 min + babelquarto ~20 min
+      #   Warm cache (subsequent): pre-render 0 files  + babelquarto ~20 min
+      - name: Pre-render all non-frozen QMD files
+        env:
+          TMPDIR: ${{ env.TMP_DIR }}
+          TMP: ${{ env.TMP_DIR }}
+          TEMP: ${{ env.TMP_DIR }}
+          QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
+        run: |
+          echo "Pre-rendering non-frozen QMD files to populate workspace _freeze..."
+          RENDERED=0
+          SKIPPED=0
+          FAILED=0
+
+          while IFS= read -r -d '' qmd; do
+            rel="${qmd#./}"
+
+            # Julia files are handled by the dedicated Julia pre-render step above
+            [[ "$rel" == Julia/* ]] && { SKIPPED=$((SKIPPED+1)); continue; }
+
+            # Skip if a _freeze entry already exists for this file
+            freeze_dir="_freeze/${rel%.qmd}"
+            if [ -d "$freeze_dir" ]; then
+              SKIPPED=$((SKIPPED+1))
+              continue
+            fi
+
+            echo "  → $rel"
+            if quarto render "$qmd" 2>&1; then
+              RENDERED=$((RENDERED+1))
+            else
+              echo "  ⚠️ Warning: failed to render $rel (non-fatal)"
+              FAILED=$((FAILED+1))
+            fi
+          done < <(find . -name "*.qmd" \
+                       -not -path "./_freeze/*" \
+                       -not -path "./_site/*" \
+                       -not -path "./.quarto/*" \
+                       -print0 | sort -z)
+
+          echo ""
+          echo "📊 Pre-render summary: $RENDERED rendered, $SKIPPED skipped (frozen/Julia), $FAILED failed"
+          [ $FAILED -gt 0 ] && echo "::warning::$FAILED QMD file(s) failed to pre-render"
+          TOTAL_FROZEN=$(find _freeze -name "*.json" -type f 2>/dev/null | wc -l)
+          echo "❄️  Freeze cache now has $TOTAL_FROZEN frozen output(s) (JSON entries)"
+
       # ── Generate skill ZIP ───────────────────────────────────
       # Must run BEFORE babelquarto so the zip exists at project root when
       # babelquarto copies the project to its temp dir for rendering.
@@ -264,14 +330,24 @@ jobs:
           df -h
 
       # ── Save freeze cache (ALWAYS – even on failure) ─────────
+      # Use the same "freeze-<OS>-" prefix as the main workflow so that the
+      # main workflow's restore-keys can find this nightly-built cache.
+      # The weekly date in the key limits cache growth to ~7 entries (GitHub
+      # evicts cache entries unused for more than 7 days).  The run_attempt
+      # suffix makes each attempt within a week a distinct immutable entry.
+      - name: Get weekly date for cache key
+        id: date
+        run: echo "week=$(date -u +'%Y-W%V')" >> "$GITHUB_OUTPUT"
+
       - name: Save freeze cache
         if: always()
         uses: actions/cache/save@v4
         with:
           path: _freeze
-          key: freeze-nightly-${{ runner.os }}-${{ github.sha }}-${{ github.run_attempt }}
+          key: freeze-${{ runner.os }}-nightly-${{ steps.date.outputs.week }}-${{ github.run_attempt }}
 
-      # Also save under the shared prefix so the main workflow can use it
+      # Also save under the shared prefix so both the main workflow and the
+      # next nightly run can restore from it via the "freeze-<OS>-" prefix.
       - name: Save freeze cache (shared key)
         if: always()
         uses: actions/cache/save@v4
