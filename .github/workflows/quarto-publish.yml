@@ -440,6 +440,23 @@ jobs:
           TOTAL_FROZEN=$(find _freeze -name "*.json" -type f 2>/dev/null | wc -l)
           echo "❄️  Freeze cache now has $TOTAL_FROZEN frozen output(s) (JSON entries)"
 
+      # ── Generate skill ZIP ───────────────────────────────────
+      # Must run BEFORE babelquarto so the zip exists at project root when
+      # babelquarto copies the project to its temp dir for rendering.
+      # Quarto then copies it to _site/ via the resources entry in _quarto.yml,
+      # ensuring quarto publish gh-pages reliably includes it.
+      - name: Generate unified skill ZIP package
+        run: |
+          # Stage files with correct names inside the zip
+          SKILL_TMP=$(mktemp -d)
+          cp SKILL.md "${SKILL_TMP}/SKILL.md"
+          cp files/gallery_data.csv "${SKILL_TMP}/gallery_data.csv"
+          cp files/gallery_data_zh.csv "${SKILL_TMP}/gallery_data_zh.csv"
+          cp files/bizard-skill-readme.md "${SKILL_TMP}/README.md"
+          (cd "${SKILL_TMP}" && zip -r - SKILL.md gallery_data.csv gallery_data_zh.csv README.md) > bizard-skill.zip
+          rm -rf "${SKILL_TMP}"
+          echo "✅ Created bizard-skill.zip at project root ($(du -h bizard-skill.zip | cut -f1))"
+
       - name: Render website with Babelquarto
         env:
           TMPDIR: ${{ env.TMP_DIR }}
@@ -448,19 +465,6 @@ jobs:
           R_COMPILE_PKGS: 0
           QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
         run: Rscript -e 'babelquarto::render_website()'
-
-      - name: Generate unified skill ZIP package
-        run: |
-          mkdir -p _site/
-          # Stage files with correct names for the zip
-          SKILL_TMP=$(mktemp -d)
-          cp SKILL.md "${SKILL_TMP}/SKILL.md"
-          cp files/gallery_data.csv "${SKILL_TMP}/gallery_data.csv"
-          cp files/gallery_data_zh.csv "${SKILL_TMP}/gallery_data_zh.csv"
-          cp files/bizard-skill-readme.md "${SKILL_TMP}/README.md"
-          (cd "${SKILL_TMP}" && zip -r - SKILL.md gallery_data.csv gallery_data_zh.csv README.md) > _site/bizard-skill.zip
-          rm -rf "${SKILL_TMP}"
-          echo "✅ Created _site/bizard-skill.zip ($(du -h _site/bizard-skill.zip | cut -f1))"
 
       # ── Save freeze cache (ALWAYS – even on failure) ─────────
       # This is the key to reducing wasted work across consecutive
