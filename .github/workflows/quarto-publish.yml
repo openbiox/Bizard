@@ -467,6 +467,46 @@ jobs:
           QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
         run: Rscript -e 'babelquarto::render_website()'
 
+      # ── Fix zh page figure files ──────────────────────────────
+      # ROOT CAUSE: babelquarto renames <name>.zh.qmd → <name>.qmd before
+      # rendering the zh pass, but the frozen chunk HTML still references
+      # <name>.zh_files/figure-html/ (the path from when the file was named
+      # <name>.zh.qmd).  The actual figure PNGs are never placed at that path
+      # because code is not re-executed (freeze is used).  The English figures
+      # live at _site/<category>/<name>_files/ and are identical (zh .qmd
+      # files share the same code blocks as their English counterparts).
+      # FIX: after babelquarto finishes, copy the English <name>_files/ tree
+      # into _site/zh/<category>/<name>.zh_files/ for every zh HTML page
+      # that references a missing *.zh_files/ directory.
+      - name: Fix zh page figure files
+        run: |
+          echo "Copying figure files into zh output directories..."
+          COPIED=0
+          while IFS= read -r -d '' zh_html; do
+            zh_dir=$(dirname "$zh_html")
+            name=$(basename "$zh_html" .html)
+
+            # Relative path from _site/zh (may be empty for root-level pages)
+            rel="${zh_dir#_site/zh}"
+            rel="${rel#/}"
+
+            # Corresponding English _files directory
+            if [ -z "$rel" ]; then
+              eng_files="_site/${name}_files"
+            else
+              eng_files="_site/${rel}/${name}_files"
+            fi
+
+            zh_files="${zh_dir}/${name}.zh_files"
+
+            if [ -d "$eng_files" ] && [ ! -d "$zh_files" ]; then
+              cp -r "$eng_files" "$zh_files"
+              echo "  ✓ Copied: $eng_files → $zh_files"
+              COPIED=$((COPIED+1))
+            fi
+          done < <(find _site/zh -name "*.html" -print0)
+          echo "✅ Done: copied figure files for ${COPIED} zh pages"
+
       # ── Save freeze cache (ALWAYS – even on failure) ─────────
       # This is the key to reducing wasted work across consecutive
       # failed builds. Even if the render fails on file #400,
