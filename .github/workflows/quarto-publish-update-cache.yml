@@ -324,6 +324,38 @@ jobs:
           QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
         run: Rscript -e 'babelquarto::render_website()'
 
+      # ── Fix zh page figure files ──────────────────────────────
+      # See quarto-publish.yml for full explanation.  Short version: the
+      # frozen chunk HTML in *.zh.qmd freeze entries references
+      # <name>.zh_files/figure-html/ but babelquarto never places the actual
+      # PNG files there.  Copy the identical English figures over.
+      - name: Fix zh page figure files
+        run: |
+          echo "Copying figure files into zh output directories..."
+          COPIED=0
+          while IFS= read -r -d '' zh_html; do
+            zh_dir=$(dirname "$zh_html")
+            name=$(basename "$zh_html" .html)
+
+            rel="${zh_dir#_site/zh}"
+            rel="${rel#/}"
+
+            if [ -z "$rel" ]; then
+              eng_files="_site/${name}_files"
+            else
+              eng_files="_site/${rel}/${name}_files"
+            fi
+
+            zh_files="${zh_dir}/${name}.zh_files"
+
+            if [ -d "$eng_files" ] && [ ! -d "$zh_files" ]; then
+              cp -r "$eng_files" "$zh_files"
+              echo "  ✓ Copied: $eng_files → $zh_files"
+              COPIED=$((COPIED+1))
+            fi
+          done < <(find _site/zh -name "*.html" -print0)
+          echo "✅ Done: copied figure files for ${COPIED} zh pages"
+
       - name: Check disk usage after rendering
         run: |
           echo "=== Final Disk Usage ==="
