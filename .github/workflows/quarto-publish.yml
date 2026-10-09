@@ -526,20 +526,27 @@ jobs:
           key: freeze-${{ runner.os }}-${{ github.sha }}-${{ github.run_attempt }}
 
       # ── Deploy ───────────────────────────────────────────────
+      # Official actions/deploy-pages flow: package _site as the
+      # github-pages artifact, then deploy it straight to the
+      # github-pages environment.  This replaces quarto publish --target
+      # gh-pages, which pushed the entire site to the gh-pages branch on
+      # every deploy (~493 MB per push, the main driver of repository
+      # growth tracked in issue #306).
       - name: Upload Quarto artifacts
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: "_site"
 
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v6
+
       - name: Deploy to GitHub Pages
         if: github.event_name != 'pull_request'
-        uses: quarto-dev/quarto-actions/publish@v2
+        uses: actions/deploy-pages@v5
         with:
-          target: gh-pages
-          render: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          artifact_name: github-pages
 
       - name: Cleanup temporary directory
         if: always()
