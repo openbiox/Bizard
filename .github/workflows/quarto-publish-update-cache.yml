@@ -314,37 +314,15 @@ jobs:
           QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
         run: Rscript -e 'babelquarto::render_website()'
 
-      # ── Fix zh page figure files ──────────────────────────────
+      # ── Share English figures with zh pages ───────────────────
       # See quarto-publish.yml for full explanation.  Short version: the
       # frozen chunk HTML in *.zh.qmd freeze entries references
       # <name>.zh_files/figure-html/ but babelquarto never places the actual
-      # PNG files there.  Copy the identical English figures over.
-      - name: Fix zh page figure files
-        run: |
-          echo "Copying figure files into zh output directories..."
-          COPIED=0
-          while IFS= read -r -d '' zh_html; do
-            zh_dir=$(dirname "$zh_html")
-            name=$(basename "$zh_html" .html)
-
-            rel="${zh_dir#_site/zh}"
-            rel="${rel#/}"
-
-            if [ -z "$rel" ]; then
-              eng_files="_site/${name}_files"
-            else
-              eng_files="_site/${rel}/${name}_files"
-            fi
-
-            zh_files="${zh_dir}/${name}.zh_files"
-
-            if [ -d "$eng_files" ] && [ ! -d "$zh_files" ]; then
-              cp -r "$eng_files" "$zh_files"
-              echo "  ✓ Copied: $eng_files → $zh_files"
-              COPIED=$((COPIED+1))
-            fi
-          done < <(find _site/zh -name "*.html" -print0)
-          echo "✅ Done: copied figure files for ${COPIED} zh pages"
+      # PNG files there.  Rewrite the references to the identical English
+      # figures instead of copying them (copying duplicated every figure
+      # byte in the deployed artifact, ~80 MB).
+      - name: Point zh figure references at shared English figures
+        run: python3 .github/scripts/rewrite-zh-figure-refs.py _site
 
       - name: Check disk usage after rendering
         run: |
@@ -384,6 +362,12 @@ jobs:
       # gh-pages, which pushed the entire site to the gh-pages branch on
       # every deploy (~493 MB per push, the main driver of repository
       # growth tracked in issue #306).
+      - name: Drop source maps from deploy artifact
+        run: |
+          MAP_SIZE=$(find _site -name "*.map" -exec du -ck {} + | tail -1 | cut -f1)
+          find _site -name "*.map" -delete
+          echo "Removed ${MAP_SIZE} kB of .map files from the deploy artifact"
+
       - name: Upload Quarto artifacts
         uses: actions/upload-pages-artifact@v5
         with:

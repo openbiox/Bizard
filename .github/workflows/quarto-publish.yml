@@ -462,7 +462,7 @@ jobs:
           QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
         run: Rscript -e 'babelquarto::render_website()'
 
-      # ── Fix zh page figure files ──────────────────────────────
+      # ── Share English figures with zh pages ───────────────────
       # ROOT CAUSE: babelquarto renames <name>.zh.qmd → <name>.qmd before
       # rendering the zh pass, but the frozen chunk HTML still references
       # <name>.zh_files/figure-html/ (the path from when the file was named
@@ -470,37 +470,13 @@ jobs:
       # because code is not re-executed (freeze is used).  The English figures
       # live at _site/<category>/<name>_files/ and are identical (zh .qmd
       # files share the same code blocks as their English counterparts).
-      # FIX: after babelquarto finishes, copy the English <name>_files/ tree
-      # into _site/zh/<category>/<name>.zh_files/ for every zh HTML page
-      # that references a missing *.zh_files/ directory.
-      - name: Fix zh page figure files
-        run: |
-          echo "Copying figure files into zh output directories..."
-          COPIED=0
-          while IFS= read -r -d '' zh_html; do
-            zh_dir=$(dirname "$zh_html")
-            name=$(basename "$zh_html" .html)
-
-            # Relative path from _site/zh (may be empty for root-level pages)
-            rel="${zh_dir#_site/zh}"
-            rel="${rel#/}"
-
-            # Corresponding English _files directory
-            if [ -z "$rel" ]; then
-              eng_files="_site/${name}_files"
-            else
-              eng_files="_site/${rel}/${name}_files"
-            fi
-
-            zh_files="${zh_dir}/${name}.zh_files"
-
-            if [ -d "$eng_files" ] && [ ! -d "$zh_files" ]; then
-              cp -r "$eng_files" "$zh_files"
-              echo "  ✓ Copied: $eng_files → $zh_files"
-              COPIED=$((COPIED+1))
-            fi
-          done < <(find _site/zh -name "*.html" -print0)
-          echo "✅ Done: copied figure files for ${COPIED} zh pages"
+      # FIX: after babelquarto finishes, rewrite every zh HTML reference from
+      # <name>.zh_files/... to the relative path of the existing English
+      # figure.  The previous approach COPIED the English <name>_files/ tree
+      # into the zh directory, which duplicated every figure byte in the
+      # deployed artifact (~80 MB).
+      - name: Point zh figure references at shared English figures
+        run: python3 .github/scripts/rewrite-zh-figure-refs.py _site
 
       # ── Save freeze cache (ALWAYS – even on failure) ─────────
       # This is the key to reducing wasted work across consecutive
@@ -520,6 +496,12 @@ jobs:
       # gh-pages, which pushed the entire site to the gh-pages branch on
       # every deploy (~493 MB per push, the main driver of repository
       # growth tracked in issue #306).
+      - name: Drop source maps from deploy artifact
+        run: |
+          MAP_SIZE=$(find _site -name "*.map" -exec du -ck {} + | tail -1 | cut -f1)
+          find _site -name "*.map" -delete
+          echo "Removed ${MAP_SIZE} kB of .map files from the deploy artifact"
+
       - name: Upload Quarto artifacts
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'pull_request'
         uses: actions/upload-pages-artifact@v5
