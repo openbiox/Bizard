@@ -1,3 +1,7 @@
+# Print warnings as they occur so CI logs show the underlying causes
+# instead of the opaque "There were N warnings" session summary.
+options(warn = 1)
+
 # scan_qmd_packages: find used R packages in .qmd files
 scan_qmd_packages <- function(root = ".") {
     # Skip scanning `library()` and `require()` calls, since we cannot reliably
