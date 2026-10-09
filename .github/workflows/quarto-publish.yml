@@ -57,11 +57,6 @@ env:
 
 jobs:
   build-deploy:
-    # deploy-pages requires the deployment job to target the github-pages
-    # environment (the Pages deployment API rejects requests without it).
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     # Group by PR number for PRs, by branch ref for pushes.
@@ -563,3 +558,31 @@ jobs:
           else
             echo "Skipping cleanup - validation failed (path: $TMP_PATH)"
           fi
+
+  # deploy-pages requires the deployment job to target the github-pages
+  # environment. The environment's protection rules only allow deployments
+  # from main-context runs, so deployment is a separate job that never runs
+  # on pull_request events (where the ref is refs/pull/<n>/merge).
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build-deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages-deploy-${{ github.workflow }}
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+        with:
+          artifact_name: github-pages
