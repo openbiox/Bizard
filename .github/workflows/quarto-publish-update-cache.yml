@@ -49,7 +49,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -60,7 +60,7 @@ jobs:
       - name: Restore freeze cache
         id: freeze-restore
         if: inputs.force_full_rebuild != true
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: _freeze
           key: freeze-${{ runner.os }}-nightly-${{ github.run_id }}-${{ github.run_attempt }}
@@ -97,7 +97,7 @@ jobs:
           use-public-rspm: true
 
       - name: Cache R packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.local/share/renv
@@ -114,7 +114,7 @@ jobs:
 
       # ── Python Setup ─────────────────────────────────────────
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -128,12 +128,12 @@ jobs:
 
       # ── Julia Setup ──────────────────────────────────────────
       - name: Set up Julia
-        uses: julia-actions/setup-julia@v2
+        uses: julia-actions/setup-julia@v3
         with:
           version: '1'
 
       - name: Cache Julia packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.julia
           key: julia-packages-${{ runner.os }}-${{ hashFiles('Julia/Project.toml') }}
@@ -375,7 +375,7 @@ jobs:
 
       - name: Save freeze cache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: _freeze
           key: freeze-${{ runner.os }}-nightly-${{ steps.date.outputs.week }}-${{ github.run_attempt }}
@@ -384,7 +384,7 @@ jobs:
       # next nightly run can restore from it via the "freeze-<OS>-" prefix.
       - name: Save freeze cache (shared key)
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: _freeze
           key: freeze-${{ runner.os }}-nightly-${{ github.run_id }}
@@ -397,7 +397,7 @@ jobs:
       # every deploy (~493 MB per push, the main driver of repository
       # growth tracked in issue #306).
       - name: Upload Quarto artifacts
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: "_site"
 
@@ -419,3 +419,29 @@ jobs:
           else
             echo "Skipping cleanup - validation failed (path: $TMP_PATH)"
           fi
+
+  # deploy-pages requires the deployment job to target the github-pages
+  # environment. The environment's protection rules only allow deployments
+  # from main-context runs, so deployment is a separate dedicated job.
+  deploy:
+    needs: build-deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages-deploy-${{ github.workflow }}
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+        with:
+          artifact_name: github-pages
