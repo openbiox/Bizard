@@ -60,14 +60,15 @@ jobs:
       # ── Install all declared deps into an isolated library ─────
       # Fresh library (no cache): guarantees the lockfile only records
       # what DESCRIPTION + Remotes genuinely require at current versions.
+      # Repos stay as configured by setup-r (use-public-rspm), which picks
+      # the correct distro URL (noble on current runners); do not hardcode.
       - name: Install all dependencies (isolated library)
         env:
           R_LIBS_USER: /tmp/dep-lib
         run: |
           mkdir -p /tmp/dep-lib
           Rscript - <<'RS'
-          options(repos = c(CRAN = "https://packagemanager.posit.co/cran/__linux__/jammy/latest"))
-          pkgs <- dcf <- read.dcf("DESCRIPTION")
+          dcf <- read.dcf("DESCRIPTION")
           imports <- trimws(strsplit(dcf[1, "Imports"], ",")[[1]])
           imports <- gsub("\\(.*$", "", imports)
           imports <- imports[imports != "" & imports != "R"]
@@ -80,8 +81,22 @@ jobs:
           message("Installing ", length(install), " packages...")
           install.packages(install)
 
+          # install.packages() only warns on Bioconductor-only packages
+          # (e.g. ComplexHeatmap): backfill them via BiocManager, which
+          # mirrors to Posit PPM automatically when CRAN is an RSPM URL.
+          missing <- install[!vapply(install, requireNamespace, logical(1), quietly = TRUE)]
+          if (length(missing) > 0) {
+            message("Installing Bioconductor-only packages: ", paste(missing, collapse = ", "))
+            BiocManager::install(missing, update = FALSE, ask = FALSE)
+          }
+
+          still_missing <- install[!vapply(install, requireNamespace, logical(1), quietly = TRUE)]
+          if (length(still_missing) > 0) {
+            stop("Failed to install: ", paste(still_missing, collapse = ", "))
+          }
+
           if (nzchar(remotes_raw)) {
-            remotes_list <- trimws(strsplit(remotes_raw, ",\n")[[1]])
+            remotes_list <- trimws(strsplit(remotes_raw, ",")[[1]])
             remotes_list <- remotes_list[nzchar(remotes_list)]
             message("Installing ", length(remotes_list), " GitHub remotes...")
             for (r in remotes_list) {
@@ -99,7 +114,6 @@ jobs:
           R_LIBS_USER: /tmp/dep-lib
         run: |
           Rscript - <<'RS'
-          options(repos = c(CRAN = "https://packagemanager.posit.co/cran/__linux__/jammy/latest"))
           dcf <- read.dcf("DESCRIPTION")
           imports <- trimws(strsplit(dcf[1, "Imports"], ",")[[1]])
           imports <- gsub("\\(.*$", "", imports)
