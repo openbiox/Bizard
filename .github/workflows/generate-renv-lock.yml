@@ -54,11 +54,15 @@ jobs:
         run: Rscript -e 'install.packages("renv")'
 
       - name: Install system dependencies
+        # libglpk-dev: igraph.so links against libglpk.so.40, which PPM
+        # binaries do not bundle – without it igraph fails to load, taking
+        # ggtangle → enrichplot → clusterProfiler down with it (CI run
+        # 38054639637).
         run: |
           sudo apt-get update -y
           sudo apt-get install -y libcurl4-openssl-dev libssl-dev libxml2-dev \
             libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev \
-            libpng-dev libtiff5-dev libjpeg-dev zlib1g-dev libicu-dev
+            libpng-dev libtiff5-dev libjpeg-dev zlib1g-dev libicu-dev libglpk-dev
 
       # ── Install all declared deps into an isolated library ─────
       # Fresh library (no cache): guarantees the lockfile only records
@@ -93,11 +97,6 @@ jobs:
             BiocManager::install(missing, update = FALSE, ask = FALSE)
           }
 
-          still_missing <- install[!vapply(install, requireNamespace, logical(1), quietly = TRUE)]
-          if (length(still_missing) > 0) {
-            stop("Failed to install: ", paste(still_missing, collapse = ", "))
-          }
-
           if (nzchar(remotes_raw)) {
             remotes_list <- trimws(strsplit(remotes_raw, ",")[[1]])
             remotes_list <- remotes_list[nzchar(remotes_list)]
@@ -106,6 +105,15 @@ jobs:
               tryCatch(remotes::install_github(r, upgrade = "never", dependencies = FALSE),
                        error = function(e) message("WARN remote failed: ", r, " – ", conditionMessage(e)))
             }
+          }
+
+          # Final verdict AFTER the remotes loop: packages only available
+          # from GitHub remotes would otherwise trip this check early
+          # (CI run 38054639637 – the stop() fired before the loop ran and
+          # the workflow structurally could never succeed).
+          still_missing <- install[!vapply(install, requireNamespace, logical(1), quietly = TRUE)]
+          if (length(still_missing) > 0) {
+            stop("Failed to install: ", paste(still_missing, collapse = ", "))
           }
           RS
 
