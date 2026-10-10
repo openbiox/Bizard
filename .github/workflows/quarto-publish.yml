@@ -245,12 +245,36 @@ jobs:
       - name: Resolve project renv library path
         id: renv-lib
         run: |
-          LIB_PATH=$(find renv/library -mindepth 2 -maxdepth 2 -type d | head -n1)
+          # Ask R where the restored project library actually lives: newer
+          # renv releases may deviate from the legacy
+          # renv/library/<prefix>/<R-version> layout, so never hard-code it.
+          # The autoloader (.Rprofile) renv::load()s the project, making
+          # .libPaths()[1] the restored library; renv::paths$library() is the
+          # computed fallback. Accept a candidate only if it exists and
+          # actually contains a locked package (jsonlite).
+          Rscript - <<'RS' > /tmp/renv-lib-candidates.txt
+          lib <- tryCatch(renv::paths$library(project = getwd()), error = function(e) NULL)
+          if (!is.null(lib)) cat(normalizePath(lib, mustWork = FALSE), "\n")
+          cat(.libPaths()[1], "\n")
+          RS
+          LIB_PATH=""
+          while IFS= read -r CANDIDATE; do
+            if [ -n "$CANDIDATE" ] && [ -d "$CANDIDATE/jsonlite" ]; then
+              LIB_PATH=$(cd "$CANDIDATE" && pwd -P)
+              break
+            fi
+          done < <(grep '^/' /tmp/renv-lib-candidates.txt || true)
           if [ -z "$LIB_PATH" ]; then
-            echo "::error::No renv project library found under renv/library/"
+            echo "::error::Could not locate the restored renv project library."
+            echo "--- candidates ---"
+            cat /tmp/renv-lib-candidates.txt || true
+            echo "--- workspace renv layout ---"
+            ls -la renv/ 2>/dev/null || echo "(no renv/ directory)"
+            find . -maxdepth 4 -type d -path '*renv*' 2>/dev/null | head -20
+            echo "--- RENV_PATHS_ROOT=$RENV_PATHS_ROOT ---"
+            ls "$RENV_PATHS_ROOT" 2>/dev/null | head || true
             exit 1
           fi
-          LIB_PATH=$(cd "$LIB_PATH" && pwd -P)
           echo "lib-path=$LIB_PATH" >> "$GITHUB_OUTPUT"
           echo "Project renv library: $LIB_PATH"
 
