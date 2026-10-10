@@ -138,6 +138,22 @@ jobs:
           RENV_CONFIG_SANDBOX_ENABLED: false
 
 
+      # ── Resolve project renv library for workers ─────────────
+      # See quarto-publish.yml: workers pre-render inside an isolated clone
+      # where renv activation never runs, so point R_LIBS at the restored
+      # project library (CI run 38082831797).
+      - name: Resolve project renv library path
+        id: renv-lib
+        run: |
+          LIB_PATH=$(find renv/library -mindepth 2 -maxdepth 2 -type d | head -n1)
+          if [ -z "$LIB_PATH" ]; then
+            echo "::error::No renv project library found under renv/library/"
+            exit 1
+          fi
+          LIB_PATH=$(cd "$LIB_PATH" && pwd -P)
+          echo "lib-path=$LIB_PATH" >> "$GITHUB_OUTPUT"
+          echo "Project renv library: $LIB_PATH"
+
       # ── Python Setup ─────────────────────────────────────────
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -312,6 +328,7 @@ jobs:
           TMP: ${{ env.TMP_DIR }}
           TEMP: ${{ env.TMP_DIR }}
           QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
+          R_LIBS: ${{ steps.renv-lib.outputs.lib-path }}
           # 4 vCPU / 16 GB runner: each worker runs its own quarto+R session
           # (~1–1.5 GB peak), so 4 concurrent workers fit comfortably.
           JOBS: '4'
