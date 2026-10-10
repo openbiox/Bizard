@@ -96,14 +96,47 @@ jobs:
         with:
           use-public-rspm: true
 
-      # See quarto-publish.yml: ensure a repinned babelquarto is actually
-      # reinstalled instead of reused from the restored package library.
-      - name: Drop cached babelquarto before dependency install
-        run: Rscript -e 'if (requireNamespace("babelquarto", quietly = TRUE)) remove.packages("babelquarto")'
+      # ── R dependencies via renv (issue #306, B1) ─────────────
+      # See quarto-publish.yml for the full rationale: renv.lock pins the
+      # exact versions resolved from DESCRIPTION, setup-renv keys its
+      # package cache on the lockfile hash, and a changed lockfile only
+      # pays the delta thanks to the restore-keys prefix.  A repinned
+      # GitHub package (e.g. our babelquarto fork) therefore takes effect
+      # without any manual cache-busting step.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            libudunits2-dev \
+            libglpk-dev \
+            librsvg2-dev
 
-      - uses: r-lib/actions/setup-r-dependencies@v2
+      # pak derives the system requirements of the full dependency closure
+      # from DESCRIPTION — the same job PKG_SYSREQS=true used to do inside
+      # setup-r-dependencies.  This MUST run before setup-renv: renv
+      # load-tests every package during restore, so missing system
+      # libraries (e.g. librsvg behind rsvg) would abort it.  pak installs
+      # as a PPM binary in seconds; pkg_sysreqs() only returns the install
+      # commands (it never installs), so run them through a privileged
+      # shell here.  The explicit apt line above covers the libraries
+      # known to be needed; this catches anything else in the closure.
+      - name: Install system requirements for locked packages
+        run: |
+          Rscript -e 'if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak")'
+          SCRIPTS=$(Rscript -e 'cat(pak::pkg_sysreqs("deps::.")$install_scripts, sep = "\n")')
+          if [ -n "$SCRIPTS" ]; then
+            echo "$SCRIPTS" | sudo bash
+          else
+            echo "No additional system requirements needed"
+          fi
+
+      - uses: r-lib/actions/setup-renv@v2
         env:
-          PKG_SYSREQS: "true"
+          # See quarto-publish.yml: renv's sandbox doubles install time on
+          # ephemeral runners for no benefit.
+          RENV_CONFIG_SANDBOX_ENABLED: false
+
 
       # ── Python Setup ─────────────────────────────────────────
       - name: Set up Python
@@ -188,6 +221,28 @@ jobs:
         run: |
           Rscript update-dependencies.R
           python manage-dependencies.py --update
+
+      # The scan above may append QMD-discovered install-call packages to
+      # DESCRIPTION that are newer than renv.lock; delta-install just the
+      # difference before rendering.  See quarto-publish.yml for detail.
+      - name: Install scan-added dependencies (delta)
+        run: |
+          Rscript - <<'RS'
+          dcf <- read.dcf("DESCRIPTION")
+          imports <- if ("Imports" %in% colnames(dcf)) {
+            x <- trimws(strsplit(dcf[1, "Imports"], ",")[[1]])
+            gsub("\\(.*$", "", x)
+          } else character(0)
+          imports <- setdiff(imports[imports != "" & imports != "R"], "R")
+          missing <- imports[!vapply(imports, function(p)
+            requireNamespace(p, quietly = TRUE), logical(1))]
+          if (length(missing) == 0) {
+            message("All Imports loadable - no delta install needed.")
+          } else {
+            message("Delta-installing: ", paste(missing, collapse = ", "))
+            pak::pak(missing)
+          }
+          RS
 
       - name: Commit updated dependency files
         run: |

@@ -16,6 +16,10 @@
 # ║     pushes cancel stale in-progress builds.                          ║
 # ║  5. RESOURCE CONSERVATION: Failed builds still save their freeze    ║
 # ║     progress, so the next run picks up where it left off.            ║
+# ║  6. RENV LOCKFILE INSTALLS (issue #306, B1): R dependencies come    ║
+# ║     from renv.lock via setup-renv, cache keyed on the lockfile      ║
+# ║     hash — an unchanged lockfile restores in minutes instead of a   ║
+# ║     ~26 min pak resolution + install.                               ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 
 on:
@@ -183,20 +187,51 @@ jobs:
         with:
           use-public-rspm: true
 
+      # ── R dependencies via renv (issue #306, B1) ─────────────
+      # renv.lock pins the exact versions resolved from DESCRIPTION by
+      # generate-renv-lock.yml, and setup-renv keys its package cache on
+      # the lockfile hash: an unchanged lockfile restores the whole
+      # library in minutes instead of re-resolving and installing ~650
+      # packages (~26 min).  When the lockfile changes, the restore-keys
+      # prefix still restores the previous cache and renv::restore()
+      # installs only the delta — which is also why a repinned GitHub
+      # package (e.g. our babelquarto fork) takes effect without any
+      # manual cache-busting step.
       - name: Install system dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y libcurl4-openssl-dev
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            libudunits2-dev \
+            libglpk-dev \
+            librsvg2-dev
 
-      # The restored R package library may carry a previously installed
-      # build of a GitHub-pinned package; without this, pak reuses the old
-      # binary and a new pin (e.g. our babelquarto fork) never takes effect.
-      - name: Drop cached babelquarto before dependency install
-        run: Rscript -e 'if (requireNamespace("babelquarto", quietly = TRUE)) remove.packages("babelquarto")'
+      # pak derives the system requirements of the full dependency closure
+      # from DESCRIPTION — the same job PKG_SYSREQS=true used to do inside
+      # setup-r-dependencies.  This MUST run before setup-renv: renv
+      # load-tests every package during restore, so missing system
+      # libraries (e.g. librsvg behind rsvg) would abort it.  pak installs
+      # as a PPM binary in seconds; pkg_sysreqs() only returns the install
+      # commands (it never installs), so run them through a privileged
+      # shell here.  The explicit apt line above covers the libraries
+      # known to be needed; this catches anything else in the closure.
+      - name: Install system requirements for locked packages
+        run: |
+          Rscript -e 'if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak")'
+          SCRIPTS=$(Rscript -e 'cat(pak::pkg_sysreqs("deps::.")$install_scripts, sep = "\n")')
+          if [ -n "$SCRIPTS" ]; then
+            echo "$SCRIPTS" | sudo bash
+          else
+            echo "No additional system requirements needed"
+          fi
 
-      - uses: r-lib/actions/setup-r-dependencies@v2
+      - uses: r-lib/actions/setup-renv@v2
         env:
-          PKG_SYSREQS: "true"
+          # renv's install sandbox copies packages into a private library
+          # before promoting them; on ephemeral CI runners it doubles
+          # install time for no benefit, so switch it off.
+          RENV_CONFIG_SANDBOX_ENABLED: false
+
 
       # ── Python Setup ─────────────────────────────────────────
       - name: Set up Python
@@ -291,6 +326,34 @@ jobs:
         run: |
           Rscript update-dependencies.R
           python manage-dependencies.py --update
+
+      # The scan above appends QMD-discovered install-call packages to
+      # DESCRIPTION, but those are newer than renv.lock, so renv::restore()
+      # did not install them.  Delta-install just the difference against
+      # the lockfile before anything renders.  No-op on a typical run.
+      - name: Install scan-added dependencies (delta)
+        run: |
+          Rscript - <<'RS'
+          dcf <- read.dcf("DESCRIPTION")
+          imports <- if ("Imports" %in% colnames(dcf)) {
+            x <- trimws(strsplit(dcf[1, "Imports"], ",")[[1]])
+            gsub("\\(.*$", "", x)
+          } else character(0)
+          remotes_field <- if ("Remotes" %in% colnames(dcf)) {
+            trimws(strsplit(dcf[1, "Remotes"], ",")[[1]])
+          } else character(0)
+          # Remote refs (user/repo) are handled by renv from the Remotes
+          # field of the packages renv restores, not installed directly.
+          imports <- setdiff(imports[imports != "" & imports != "R"], "R")
+          missing <- imports[!vapply(imports, function(p)
+            requireNamespace(p, quietly = TRUE), logical(1))]
+          if (length(missing) == 0) {
+            message("All Imports loadable - no delta install needed.")
+          } else {
+            message("Delta-installing: ", paste(missing, collapse = ", "))
+            pak::pak(missing)
+          }
+          RS
 
       - name: Commit updated dependency files
         if: github.event_name != 'pull_request'
