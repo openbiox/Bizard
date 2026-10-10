@@ -84,18 +84,33 @@ jobs:
         with:
           use-public-rspm: true
 
+      # R dependencies via renv lockfile (issue #306, B1) — mirrors
+      # quarto-publish.yml: setup-renv keys its cache on the renv.lock
+      # hash; a changed lockfile only pays the delta.
       - name: Install system dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y libcurl4-openssl-dev
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            libudunits2-dev \
+            libglpk-dev
 
-      - name: Drop cached babelquarto before dependency install
-        run: Rscript -e 'if (requireNamespace("babelquarto", quietly = TRUE)) remove.packages("babelquarto")'
-
-      - uses: r-lib/actions/setup-r-dependencies@v2
+      - uses: r-lib/actions/setup-renv@v2
         env:
-          PKG_SYSREQS: "true"
+          RENV_CONFIG_SANDBOX_ENABLED: false
 
+      # pkg_sysreqs() only returns the install commands (it never installs);
+      # run them through a privileged shell, as in quarto-publish.yml.
+      - name: Install system requirements for locked packages
+        run: |
+          SCRIPTS=$(Rscript -e 'cat(pak::pkg_sysreqs("deps::.")$install_scripts, sep = "\n")')
+          if [ -n "$SCRIPTS" ]; then
+            echo "$SCRIPTS" | sudo bash
+          else
+            echo "No additional system requirements needed"
+          fi
+
+      # Mark AFTER setup-renv + sysreqs so r_deps measures the new pipeline.
       - name: Mark phase — R dependencies done
         run: echo "r_deps=$(date +%s)" >> /tmp/benchmark-clock
 
