@@ -93,22 +93,32 @@ jobs:
           sudo apt-get install -y \
             libcurl4-openssl-dev \
             libudunits2-dev \
-            libglpk-dev
+            libglpk-dev \
+            librsvg2-dev
 
-      - uses: r-lib/actions/setup-renv@v2
-        env:
-          RENV_CONFIG_SANDBOX_ENABLED: false
-
-      # pkg_sysreqs() only returns the install commands (it never installs);
-      # run them through a privileged shell, as in quarto-publish.yml.
+      # pak derives the system requirements of the full dependency closure
+      # from DESCRIPTION — the same job PKG_SYSREQS=true used to do inside
+      # setup-r-dependencies.  This MUST run before setup-renv: renv
+      # load-tests every package during restore, so missing system
+      # libraries (e.g. librsvg behind rsvg) would abort it.  pak installs
+      # as a PPM binary in seconds; pkg_sysreqs() only returns the install
+      # commands (it never installs), so run them through a privileged
+      # shell here.  The explicit apt line above covers the libraries
+      # known to be needed; this catches anything else in the closure.
       - name: Install system requirements for locked packages
         run: |
+          Rscript -e 'if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak")'
           SCRIPTS=$(Rscript -e 'cat(pak::pkg_sysreqs("deps::.")$install_scripts, sep = "\n")')
           if [ -n "$SCRIPTS" ]; then
             echo "$SCRIPTS" | sudo bash
           else
             echo "No additional system requirements needed"
           fi
+
+      - uses: r-lib/actions/setup-renv@v2
+        env:
+          RENV_CONFIG_SANDBOX_ENABLED: false
+
 
       # Mark AFTER setup-renv + sysreqs so r_deps measures the new pipeline.
       - name: Mark phase — R dependencies done
