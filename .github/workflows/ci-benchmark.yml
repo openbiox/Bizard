@@ -1,0 +1,273 @@
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║  CI Benchmark – no-deploy build with machine-readable timing/sizes  ║
+# ║                                                                      ║
+# ║  Purpose (issue #306, item C4): give every optimization (B1 renv,    ║
+# ║  B2 parallelization, A3 site slimming, ...) a uniform before/after   ║
+# ║  measurement. Manual dispatch only; NEVER deploys, NEVER pushes,     ║
+# ║  and NEVER saves caches (restoring is fine — saving would pollute    ║
+# ║  the shared freeze-cache pool with benchmark entries).               ║
+# ║                                                                      ║
+# ║  Mirrors the render pipeline of quarto-publish-update-cache.yml      ║
+# ║  (pre-render all non-frozen → babelquarto → zh figure rewrite →     ║
+# ║  lazy-load) so timings are comparable with real builds.              ║
+# ║  NOTE: once C1 extracts composite actions, the shared setup steps    ║
+# ║  below should be replaced by the .github/actions/ equivalents.       ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+
+name: CI Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_full_rebuild:
+        description: 'Delete freeze cache first (measure a cold build)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-benchmark
+  cancel-in-progress: false
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      TMP_DIR: /mnt/TMP
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Start clock
+        run: echo "t0=$(date +%s)" > /tmp/benchmark-clock
+
+      # ── Restore freeze cache (read-only) ─────────────────────
+      # Same key prefix as the publishing workflows so the benchmark
+      # measures the real cache state. Restore only – never save.
+      - name: Restore freeze cache
+        if: inputs.force_full_rebuild != true
+        uses: actions/cache/restore@v6
+        with:
+          path: _freeze
+          key: benchmark-nosave-${{ github.run_id }}
+          restore-keys: |
+            freeze-${{ runner.os }}-
+
+      - name: Clear freeze for cold-build measurement
+        if: inputs.force_full_rebuild == true
+        run: rm -rf _freeze
+
+      - name: Mark phase — cache-restore done
+        run: echo "cache_restore=$(date +%s)" >> /tmp/benchmark-clock
+
+      # ── Environment (mirrors quarto-publish.yml) ─────────────
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tinytex: true
+
+      - name: Mark phase — quarto setup done
+        run: echo "quarto_setup=$(date +%s)" >> /tmp/benchmark-clock
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libcurl4-openssl-dev
+
+      - name: Drop cached babelquarto before dependency install
+        run: Rscript -e 'if (requireNamespace("babelquarto", quietly = TRUE)) remove.packages("babelquarto")'
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        env:
+          PKG_SYSREQS: "true"
+
+      - name: Mark phase — R dependencies done
+        run: echo "r_deps=$(date +%s)" >> /tmp/benchmark-clock
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      - name: Mark phase — python setup done
+        run: echo "python_setup=$(date +%s)" >> /tmp/benchmark-clock
+
+      # ── Render pipeline (mirrors quarto-publish-update-cache.yml) ──
+      - name: Pre-render all non-frozen QMD files
+        env:
+          TMPDIR: ${{ env.TMP_DIR }}
+          TMP: ${{ env.TMP_DIR }}
+          TEMP: ${{ env.TMP_DIR }}
+        run: |
+          sudo mkdir -p ${{ env.TMP_DIR }}
+          sudo chown -R $USER:$USER ${{ env.TMP_DIR }}
+          RENDERED=0
+          FAILED=0
+          while IFS= read -r -d '' qmd; do
+            rel="${qmd#./}"
+            [[ "$rel" == Julia/* ]] && continue
+            freeze_dir="_freeze/${rel%.qmd}"
+            if [ -d "$freeze_dir" ]; then continue; fi
+            echo "  → $rel"
+            if quarto render "$qmd" 2>&1; then
+              RENDERED=$((RENDERED+1))
+            else
+              echo "  ⚠️ Warning: failed to render $rel (non-fatal)"
+              FAILED=$((FAILED+1))
+            fi
+          done < <(find . -name "*.qmd" \
+                       -not -path "./_freeze/*" \
+                       -not -path "./_site/*" \
+                       -not -path "./.quarto/*" \
+                       -print0 | sort -z)
+          echo "📊 Pre-render summary: $RENDERED rendered, $FAILED failed"
+          [ $FAILED -gt 0 ] && echo "::warning::$FAILED QMD file(s) failed to pre-render"
+
+      - name: Mark phase — pre-render done
+        run: echo "pre_render=$(date +%s)" >> /tmp/benchmark-clock
+
+      - name: Render website with Babelquarto
+        env:
+          TMPDIR: ${{ env.TMP_DIR }}
+          TMP: ${{ env.TMP_DIR }}
+          TEMP: ${{ env.TMP_DIR }}
+          R_COMPILE_PKGS: 0
+        run: Rscript -e 'babelquarto::render_website()'
+
+      - name: Point zh figure references at shared English figures
+        run: python3 .github/scripts/rewrite-zh-figure-refs.py _site
+
+      - name: Add lazy loading to content images
+        run: python3 .github/scripts/lazy-load-images.py _site
+
+      - name: Mark phase — babelquarto render done
+        run: echo "render=$(date +%s)" >> /tmp/benchmark-clock
+
+      # ── Report ───────────────────────────────────────────────
+      # Writes a human-readable table to the job summary and a
+      # benchmark.json artifact for programmatic before/after diffs.
+      - name: Write benchmark report
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, subprocess
+
+          clock = {}
+          with open("/tmp/benchmark-clock") as f:
+              for line in f:
+                  name, value = line.strip().split("=", 1)
+                  clock[name] = int(value)
+          with open("/tmp/benchmark-clock") as f:
+              for line in f:
+                  name, value = line.strip().split("=", 1)
+                  if name == "cache_restore":
+                      clock.setdefault("t0", int(value))
+          t0 = clock["t0"]
+
+          ordered = [
+              ("cache_restore", "Cache restore"),
+              ("quarto_setup", "Quarto setup"),
+              ("r_deps", "R dependencies"),
+              ("python_setup", "Python setup"),
+              ("pre_render", "Pre-render non-frozen QMDs"),
+              ("render", "Babelquarto render + postprocess"),
+          ]
+          marks = [(t0, "start")] + [(clock[k], k) for k, _ in ordered]
+          phases = []
+          for (prev_time, _), (key, label) in zip(marks, ordered):
+              phases.append({
+                  "phase": label,
+                  "seconds": clock[key] - prev_time,
+                  "total_seconds": clock[key] - t0,
+              })
+
+          def du_mb(path):
+              if not os.path.isdir(path):
+                  return None
+              out = subprocess.run(["du", "-sk", path], capture_output=True, text=True)
+              return round(int(out.stdout.split()[0]) / 1024, 1)
+
+          site_total = du_mb("_site")
+          site_breakdown = []
+          if os.path.isdir("_site"):
+              out = subprocess.run(["du", "-sk"] + sorted(
+                  os.path.join("_site", e) for e in os.listdir("_site")),
+                  capture_output=True, text=True)
+              entries = [(l.split()[0], l.split()[1]) for l in out.stdout.splitlines() if l.strip()]
+              site_breakdown = [
+                  {"path": p, "mb": round(int(kb) / 1024, 1)}
+                  for kb, p in sorted(entries, key=lambda e: -int(e[0]))[:15]
+              ]
+
+          freeze_json = 0
+          if os.path.isdir("_freeze"):
+              out = subprocess.run(
+                  ["find", "_freeze", "-name", "*.json", "-type", "f"],
+                  capture_output=True, text=True)
+              freeze_json = len(out.stdout.splitlines())
+
+          report = {
+              "run_id": os.environ.get("GITHUB_RUN_ID"),
+              "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+              "sha": os.environ.get("GITHUB_SHA"),
+              "force_full_rebuild": os.environ.get("FORCE_FULL_REBUILD") == "true",
+              "phases": phases,
+              "site_total_mb": site_total,
+              "site_breakdown_mb": site_breakdown,
+              "freeze_total_mb": du_mb("_freeze"),
+              "freeze_json_entries": freeze_json,
+          }
+          with open("benchmark.json", "w") as f:
+              json.dump(report, f, indent=2)
+
+          lines = ["## CI Benchmark report", "", "| Phase | Seconds | Cumulative |",
+                   "|---|---|---|"]
+          for p in phases:
+              lines.append(f"| {p['phase']} | {p['seconds']} | {p['total_seconds']} |")
+          lines += ["", f"**_site total:** {site_total} MB",
+                    f"**_freeze:** {report['freeze_total_mb']} MB ({freeze_json} JSON entries)",
+                    "", "Top _site entries:", "```"]
+          for e in site_breakdown:
+              lines.append(f"{e['mb']:>8} MB  {e['path']}")
+          lines.append("```")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("\n".join(lines) + "\n")
+          PYEOF
+        env:
+          FORCE_FULL_REBUILD: ${{ inputs.force_full_rebuild }}
+
+      - name: Upload benchmark report
+        uses: actions/upload-artifact@v5
+        with:
+          name: benchmark-report
+          path: benchmark.json
+
+      - name: Cleanup temporary directory
+        if: always()
+        run: |
+          TMP_PATH="${{ env.TMP_DIR }}"
+          if [ -n "$TMP_PATH" ] && [[ "$TMP_PATH" =~ ^/mnt/TMP ]] && [ -d "$TMP_PATH" ]; then
+            sudo rm -rf "$TMP_PATH" || echo "Warning: cleanup of $TMP_PATH failed (non-critical)"
+          fi
