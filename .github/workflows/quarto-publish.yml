@@ -538,9 +538,15 @@ jobs:
           cd "$wdir/proj"
           echo "  → $rel"
           if quarto render "$rel" 2>&1; then
-            # Sync the disjoint freeze entry back to the workspace.
-            mkdir -p "$REPO_DIR/_freeze/$(dirname "${rel%.qmd}")"
-            rsync -a "_freeze/${rel%.qmd}/" "$REPO_DIR/_freeze/${rel%.qmd}/"
+            # Sync the disjoint freeze entry back to the workspace. Files
+            # with no executable code cells produce no freeze entry at all
+            # (quarto only freezes chunk output) — that's success, not an
+            # rsync error, so guard on the freeze dir existing (CI run
+            # 38080618199: rsync code 23 on About/Tutorial/index et al.).
+            if [ -d "_freeze/${rel%.qmd}" ]; then
+              mkdir -p "$REPO_DIR/_freeze/$(dirname "${rel%.qmd}")"
+              rsync -a "_freeze/${rel%.qmd}/" "$REPO_DIR/_freeze/${rel%.qmd}/"
+            fi
             echo "  ✓ OK: $rel"
             touch "$STATUS_DIR/$key.ok"
             rc=0
