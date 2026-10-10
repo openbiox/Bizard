@@ -245,17 +245,19 @@ jobs:
       - name: Resolve project renv library path
         id: renv-lib
         run: |
-          # Ask R where the restored project library actually lives: newer
-          # renv releases may deviate from the legacy
-          # renv/library/<prefix>/<R-version> layout, so never hard-code it.
-          # The autoloader (.Rprofile) renv::load()s the project, making
-          # .libPaths()[1] the restored library; renv::paths$library() is the
-          # computed fallback. Accept a candidate only if it exists and
-          # actually contains a locked package (jsonlite).
+          # Ask R where the restored project library actually lives: renv
+          # >= 1.1 relocates project libraries out of <project>/renv/library
+          # into a per-project cache (~/.cache/R/renv/library/<proj>-<hash>/
+          # ...), so never hard-code the path. renv::paths$library() reports
+          # it directly; .libPaths()[1] (set by the autoloader's renv::load())
+          # agrees. Accept a candidate only if it exists and contains a
+          # locked package (jsonlite). writeLines() avoids cat()'s space
+          # separator, which corrupts path matching.
           Rscript - <<'RS' > /tmp/renv-lib-candidates.txt
           lib <- tryCatch(renv::paths$library(project = getwd()), error = function(e) NULL)
-          if (!is.null(lib)) cat(normalizePath(lib, mustWork = FALSE), "\n")
-          cat(.libPaths()[1], "\n")
+          cands <- c(if (!is.null(lib)) normalizePath(lib, mustWork = FALSE),
+                     .libPaths()[1])
+          writeLines(unique(cands))
           RS
           LIB_PATH=""
           while IFS= read -r CANDIDATE; do
