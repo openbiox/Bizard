@@ -19,7 +19,7 @@ scan_qmd_packages <- function(root = ".") {
         pattern = "\\.qmd$", recursive = TRUE,
         ignore.case = TRUE
     )
-    lines <- lapply(paths, function(path) readLines(path))
+    lines <- lapply(paths, function(path) readLines(path, warn = FALSE))
     lines <- unlist(lines)
     deps <- lapply(patterns, function(pattern) {
         pkgs <- stringr::str_match_all(lines, pattern)
