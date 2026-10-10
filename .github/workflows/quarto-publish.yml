@@ -453,9 +453,9 @@ jobs:
       # pandoc, cutting the render from ~90 min down to ~20 min.
       #
       # Timing estimates:
-      #   First run (cold cache):  pre-render all ~60–80 min +
+      #   First run (cold cache):  pre-render all ~15–20 min (4-way parallel) +
       #                            babelquarto (pandoc only) ~20 min +
-      #                            setup ~15 min  ≈ 95–115 min total
+      #                            setup ~15 min  ≈ 50–55 min total
       #   Subsequent runs (warm):  pre-render 0 files + babelquarto ~20 min
       #                            + setup ~15 min  ≈ 35 min total
       # Timeout is 180 min to give first-run cold-cache builds a safe margin.
@@ -465,12 +465,25 @@ jobs:
           TMP: ${{ env.TMP_DIR }}
           TEMP: ${{ env.TMP_DIR }}
           QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
+          # 4 vCPU / 16 GB runner: each worker runs its own quarto+R session
+          # (~1–1.5 GB peak), so 4 concurrent workers fit comfortably.
+          JOBS: '4'
         run: |
-          echo "Pre-rendering non-frozen QMD files to populate workspace _freeze..."
+          echo "Pre-rendering non-frozen QMD files to populate workspace _freeze (JOBS=$JOBS workers)..."
           RENDERED=0
           SKIPPED=0
           FAILED=0
 
+          WORKROOT=$(mktemp -d "${TMPDIR:-/tmp}/prerender.XXXXXX")
+          STATUS_DIR="$WORKROOT/status"
+          REPO_DIR=$(pwd -P)
+          export WORKROOT STATUS_DIR REPO_DIR
+          trap 'rm -rf "$WORKROOT"' EXIT
+          mkdir -p "$STATUS_DIR"
+
+          # Build the work list (same filters as before).
+          LIST="$WORKROOT/list.txt"
+          : > "$LIST"
           while IFS= read -r -d '' qmd; do
             rel="${qmd#./}"
 
@@ -485,18 +498,73 @@ jobs:
               continue
             fi
 
-            echo "  → $rel"
-            if quarto render "$qmd" 2>&1; then
-              RENDERED=$((RENDERED+1))
-            else
-              echo "  ⚠️ Warning: failed to render $rel (non-fatal)"
-              FAILED=$((FAILED+1))
-            fi
+            printf '%s\n' "$rel" >> "$LIST"
           done < <(find . -name "*.qmd" \
                        -not -path "./_freeze/*" \
                        -not -path "./_site/*" \
                        -not -path "./.quarto/*" \
                        -print0 | sort -z)
+
+          TOTAL=$(wc -l < "$LIST")
+          echo "📋 Work list: $TOTAL file(s) to render, $SKIPPED skipped (frozen/Julia), $JOBS worker(s)"
+
+          # ── Worker: render one QMD inside an isolated clone of the repo ──
+          # Concurrent `quarto render` processes in the SHARED workspace race
+          # on site_libs maintenance (each render copies shared format
+          # resources into site_libs; interleaved lstat/copy/readdir errors
+          # out with "NotFound" and the page is silently dropped). Each
+          # worker therefore renders inside its own copy of the tree and
+          # only the disjoint _freeze/<file>/ result is synced back. The
+          # _freeze/site_libs/ overlap is identical across workers, so
+          # clobbering during sync is harmless.
+          cat > "$WORKROOT/worker.sh" <<'WORKER'
+          #!/bin/bash
+          set -u
+          rel="$1"
+          wdir=$(mktemp -d "$WORKROOT/w.XXXXXX") || { echo "❌ mktemp failed: $rel"; exit 9; }
+          key=$(echo "$rel" | tr '/' '_')
+
+          # Isolated clone: .git/_site/_freeze/.quarto are excluded (other
+          # files' freeze entries aren't needed to render one file; the
+          # rendered file gets a fresh _freeze/<rel>/ here which is synced
+          # back below). images/ is the bulk (~49 MB) but a real copy keeps
+          # this free of hardlink write-through risk.
+          mkdir -p "$wdir/proj"
+          (cd "$REPO_DIR" && tar --exclude=./.git --exclude=./_site \
+               --exclude=./_freeze --exclude=./.quarto \
+               -cf - .) | (cd "$wdir/proj" && tar -xf -)
+          mkdir -p "$wdir/proj/_freeze"
+
+          cd "$wdir/proj"
+          echo "  → $rel"
+          if quarto render "$rel" 2>&1; then
+            # Sync the disjoint freeze entry back to the workspace.
+            mkdir -p "$REPO_DIR/_freeze/$(dirname "${rel%.qmd}")"
+            rsync -a "_freeze/${rel%.qmd}/" "$REPO_DIR/_freeze/${rel%.qmd}/"
+            echo "  ✓ OK: $rel"
+            touch "$STATUS_DIR/$key.ok"
+            rc=0
+          else
+            echo "  ⚠️ Warning: failed to render $rel (non-fatal)"
+            touch "$STATUS_DIR/$key.fail"
+            rc=1
+          fi
+          rm -rf "$wdir"
+          exit $rc
+          WORKER
+          chmod +x "$WORKROOT/worker.sh"
+
+          if [ "$TOTAL" -gt 0 ]; then
+            # Exported env (TMPDIR/TMP/TEMP/QUARTO_JULIA_PROJECT/R libs)
+            # flows through xargs → worker → quarto → engine. `|| true`:
+            # individual failures are already accounted in the status files
+            # and must stay non-fatal (xargs exits 123 when any invocation
+            # fails).
+            xargs -P "$JOBS" -n 1 -r "$WORKROOT/worker.sh" < "$LIST" || true
+
+            RENDERED=$(find "$STATUS_DIR" -name '*.ok' | wc -l)
+            FAILED=$(find "$STATUS_DIR" -name '*.fail' | wc -l)
+          fi
 
           echo ""
           echo "📊 Pre-render summary: $RENDERED rendered, $SKIPPED skipped (frozen/Julia), $FAILED failed"
