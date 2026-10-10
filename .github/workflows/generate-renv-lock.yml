@@ -1,0 +1,178 @@
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║  Generate renv.lock (issue #306, item B1)                            ║
+# ║                                                                      ║
+# ║  Runs on every push to main that touches DESCRIPTION, requirements   ║
+# ║  or Julia deps.  Installs every declared dependency ( Imports +      ║
+# ║  Remotes ) in an isolated library, snapshots it to renv.lock, and    ║
+# ║  opens a PR with the refreshed lockfile.                             ║
+# ║                                                                      ║
+# ║  CI render jobs then use r-lib/actions/setup-renv with cache         ║
+# ║  keyed on the lockfile hash, so package installs only rerun when     ║
+# ║  the lockfile truly changes (issue #306 section 2.2).                ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+
+name: Generate renv.lock
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'DESCRIPTION'
+      - 'requirements.txt'
+      - 'Julia/Project.toml'
+      - '.github/workflows/generate-renv-lock.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: generate-renv-lock
+  cancel-in-progress: true
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      RENV_PATHS_ROOT: ~/.cache/R/renv
+      RENV_CONFIG_SANDBOX_ENABLED: false
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install renv
+        run: install.packages("renv")
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libcurl4-openssl-dev libssl-dev libxml2-dev \
+            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev \
+            libpng-dev libtiff5-dev libjpeg-dev zlib1g-dev libicu-dev
+
+      # ── Install all declared deps into an isolated library ─────
+      # Fresh library (no cache): guarantees the lockfile only records
+      # what DESCRIPTION + Remotes genuinely require at current versions.
+      # Repos stay as configured by setup-r (use-public-rspm), which picks
+      # the correct distro URL (noble on current runners); do not hardcode.
+      - name: Install all dependencies (isolated library)
+        env:
+          R_LIBS_USER: /tmp/dep-lib
+        run: |
+          mkdir -p /tmp/dep-lib
+          Rscript - <<'RS'
+          dcf <- read.dcf("DESCRIPTION")
+          imports <- trimws(strsplit(dcf[1, "Imports"], ",")[[1]])
+          imports <- gsub("\\(.*$", "", imports)
+          imports <- imports[imports != "" & imports != "R"]
+
+          remotes_raw <- ""
+          if ("Remotes" %in% colnames(dcf)) remotes_raw <- dcf[1, "Remotes"]
+          install <- c(imports, "remotes", "BiocManager")
+          install <- unique(install)
+
+          message("Installing ", length(install), " packages...")
+          install.packages(install)
+
+          # install.packages() only warns on Bioconductor-only packages
+          # (e.g. ComplexHeatmap): backfill them via BiocManager, which
+          # mirrors to Posit PPM automatically when CRAN is an RSPM URL.
+          missing <- install[!vapply(install, requireNamespace, logical(1), quietly = TRUE)]
+          if (length(missing) > 0) {
+            message("Installing Bioconductor-only packages: ", paste(missing, collapse = ", "))
+            BiocManager::install(missing, update = FALSE, ask = FALSE)
+          }
+
+          still_missing <- install[!vapply(install, requireNamespace, logical(1), quietly = TRUE)]
+          if (length(still_missing) > 0) {
+            stop("Failed to install: ", paste(still_missing, collapse = ", "))
+          }
+
+          if (nzchar(remotes_raw)) {
+            remotes_list <- trimws(strsplit(remotes_raw, ",")[[1]])
+            remotes_list <- remotes_list[nzchar(remotes_list)]
+            message("Installing ", length(remotes_list), " GitHub remotes...")
+            for (r in remotes_list) {
+              tryCatch(remotes::install_github(r, upgrade = "never", dependencies = FALSE),
+                       error = function(e) message("WARN remote failed: ", r, " – ", conditionMessage(e)))
+            }
+          }
+          RS
+
+      # ── Snapshot → renv.lock ───────────────────────────────────
+      # scan for packages: FALSE keeps the lockfile scoped to the
+      # explicit dependency list instead of crawling 500+ qmd files.
+      - name: Generate renv.lock
+        env:
+          R_LIBS_USER: /tmp/dep-lib
+        run: |
+          Rscript - <<'RS'
+          dcf <- read.dcf("DESCRIPTION")
+          imports <- trimws(strsplit(dcf[1, "Imports"], ",")[[1]])
+          imports <- gsub("\\(.*$", "", imports)
+          imports <- imports[imports != "" & imports != "R"]
+          packages <- unique(imports)
+
+          renv::snapshot(
+            project   = ".",
+            library   = Sys.getenv("R_LIBS_USER"),
+            lockfile  = "renv.lock",
+            packages  = packages,
+            type      = "explicit",
+            prompt    = FALSE,
+            force     = TRUE
+          )
+          RS
+
+      - name: Validate lockfile
+        run: |
+          Rscript -e '
+            lock <- jsonlite::fromJSON("renv.lock")
+            stopifnot(length(lock$Packages) > 100)
+            cat("Locked packages:", length(lock$Packages), "\n")
+            cat("R version:", lock$R$Version, "\n")'
+
+      # ── Open/update PR with the refreshed lockfile ─────────────
+      - name: Create or update lockfile PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="ci/renv-lock-update"
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+          if git fetch origin "$BRANCH" 2>/dev/null; then
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+          else
+            git checkout -B "$BRANCH"
+          fi
+
+          if git diff --quiet HEAD -- renv.lock; then
+            echo "renv.lock unchanged"
+            exit 0
+          fi
+
+          git add renv.lock
+          git commit -m "chore: refresh renv.lock from DESCRIPTION [skip ci]"
+          git push origin "$BRANCH"
+
+          if gh pr list --head "$BRANCH" --state open --json number -q '.[0].number' | grep -q .; then
+            echo "PR already open – pushed update"
+          else
+            gh pr create \
+              --base main --head "$BRANCH" \
+              --title "chore: refresh renv.lock" \
+              --body "Automated B1 lockfile refresh from \`DESCRIPTION\`.
+
+          Changes to \`DESCRIPTION\` (Imports/Remotes) trigger regeneration so the
+          render CI can key its cache on this file.
+
+          🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+          fi
