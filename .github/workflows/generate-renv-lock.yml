@@ -1,10 +1,26 @@
 # ╔══════════════════════════════════════════════════════════════════════╗
 # ║  Generate renv.lock (issue #306, item B1)                            ║
 # ║                                                                      ║
-# ║  Runs on every push to main that touches DESCRIPTION, requirements   ║
-# ║  or Julia deps.  Installs every declared dependency ( Imports +      ║
-# ║  Remotes ) in an isolated library, snapshots it to renv.lock, and    ║
-# ║  opens a PR with the refreshed lockfile.                             ║
+# ║  Runs on every push to main that touches DESCRIPTION.  Installs      ║
+# ║  every declared dependency (Imports + Suggests + Remotes) with pak   ║
+# ║  via r-lib/actions/setup-r-dependencies – the exact installer the    ║
+# ║  render workflows already use – snapshots the library to renv.lock,  ║
+# ║  and opens a PR with the refreshed lockfile.                         ║
+# ║                                                                      ║
+# ║  Why pak instead of a hand-rolled installer: the first attempt       ║
+# ║  (CI runs 38054639637 and 38057393508) failed on four fronts that    ║
+# ║  pak solves out of the box:                                          ║
+# ║    1. remotes::install_github(dependencies = FALSE) never installed  ║
+# ║       the transitive CRAN deps of GitHub remotes (babelquarto,       ║
+# ║       CellChat, ggalt, …);                                           ║
+# ║    2. Remotes declared inside a dependency's own DESCRIPTION         ║
+# ║       (scRNAtoolVis → junjunlab/jjPlot, sajuukLyu/ggunchull) were    ║
+# ║       invisible to the flat install list;                            ║
+# ║    3. hiplotlib's SSH submodule clone needs an SSH key runners       ║
+# ║       don't have (rewritten to HTTPS below);                         ║
+# ║    4. PPM binaries don't bundle every system library (e.g.           ║
+# ║       libudunits2 behind units → sf), and the old final check used   ║
+# ║       quietly = TRUE, so unloadable packages failed opaquely.        ║
 # ║                                                                      ║
 # ║  CI render jobs then use r-lib/actions/setup-renv with cache         ║
 # ║  keyed on the lockfile hash, so package installs only rerun when     ║
@@ -19,8 +35,6 @@ on:
     branches: [main]
     paths:
       - 'DESCRIPTION'
-      - 'requirements.txt'
-      - 'Julia/Project.toml'
       - '.github/workflows/generate-renv-lock.yml'
 
 permissions:
@@ -37,7 +51,6 @@ jobs:
     timeout-minutes: 120
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      RENV_PATHS_ROOT: ~/.cache/R/renv
       RENV_CONFIG_SANDBOX_ENABLED: false
     steps:
       - name: Checkout repo
@@ -47,98 +60,102 @@ jobs:
         with:
           use-public-rspm: true
 
-      - name: Install renv
-        # Not "run: install.packages(...)": bash rejects bare R code as a
-        # syntax error (CI run 38053475195) – every `run:` step here is a
-        # shell script, so R calls must go through Rscript.
-        run: Rscript -e 'install.packages("renv")'
+      # hiplotlib carries a git submodule pointing at
+      # git@github.com:hiplot/rscheduler.git; runners have no SSH key, so
+      # rewrite every SSH GitHub URL to HTTPS before any clone happens.
+      - name: Rewrite SSH git URLs to HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
-      - name: Install system dependencies
-        # libglpk-dev: igraph.so links against libglpk.so.40, which PPM
-        # binaries do not bundle – without it igraph fails to load, taking
-        # ggtangle → enrichplot → clusterProfiler down with it (CI run
-        # 38054639637).
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y libcurl4-openssl-dev libssl-dev libxml2-dev \
-            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev \
-            libpng-dev libtiff5-dev libjpeg-dev zlib1g-dev libicu-dev libglpk-dev
-
-      # ── Install all declared deps into an isolated library ─────
-      # Fresh library (no cache): guarantees the lockfile only records
-      # what DESCRIPTION + Remotes genuinely require at current versions.
-      # Repos stay as configured by setup-r (use-public-rspm), which picks
-      # the correct distro URL (noble on current runners); do not hardcode.
-      - name: Install all dependencies (isolated library)
+      # Same installer the render workflows use, so its behaviour is
+      # already proven on this repo: pak resolves Imports + Suggests +
+      # Remotes (recursively, including remotes-of-remotes) and installs
+      # system requirements.  Cache stays off – the lockfile must reflect
+      # a fresh resolution of the current DESCRIPTION, never a cached
+      # library.
+      - name: Install all dependencies (pak)
+        uses: r-lib/actions/setup-r-dependencies@v2
         env:
-          R_LIBS_USER: /tmp/dep-lib
+          PKG_SYSREQS: "true"
+        with:
+          cache: false
+          packages: 'deps::., any::renv, any::jsonlite'
+
+      # Smoke-test that the locked packages actually LOAD.  Installing is
+      # not enough: a missing system library surfaces only at load time,
+      # and the previous silently-quiet requireNamespace() check turned
+      # that into an opaque end-of-run failure.
+      - name: Smoke-test package loading
         run: |
-          mkdir -p /tmp/dep-lib
           Rscript - <<'RS'
-          dcf <- read.dcf("DESCRIPTION")
-          imports <- trimws(strsplit(dcf[1, "Imports"], ",")[[1]])
-          imports <- gsub("\\(.*$", "", imports)
-          imports <- imports[imports != "" & imports != "R"]
-
-          remotes_raw <- ""
-          if ("Remotes" %in% colnames(dcf)) remotes_raw <- dcf[1, "Remotes"]
-          install <- c(imports, "remotes", "BiocManager")
-          install <- unique(install)
-
-          message("Installing ", length(install), " packages...")
-          install.packages(install)
-
-          # install.packages() only warns on Bioconductor-only packages
-          # (e.g. ComplexHeatmap): backfill them via BiocManager, which
-          # mirrors to Posit PPM automatically when CRAN is an RSPM URL.
-          missing <- install[!vapply(install, requireNamespace, logical(1), quietly = TRUE)]
-          if (length(missing) > 0) {
-            message("Installing Bioconductor-only packages: ", paste(missing, collapse = ", "))
-            BiocManager::install(missing, update = FALSE, ask = FALSE)
+          probe <- c(
+            "babelquarto", "hiplotlib", "scRNAtoolVis", "CellChat",
+            "RIdeogram", "sf", "ggspatial", "ggfx", "calendR",
+            "ggalt", "cutoff", "ggmosaic", "CGPfunctions", "regplot",
+            "smoother", "igraph", "ggtangle", "clusterProfiler", "magick"
+          )
+          failed <- character(0)
+          for (p in probe) {
+            ok <- tryCatch({ loadNamespace(p); TRUE },
+                           error = function(e) {
+                             message("LOAD FAILED ", p, ": ", conditionMessage(e))
+                             FALSE
+                           })
+            if (!ok) failed <- c(failed, p)
           }
-
-          if (nzchar(remotes_raw)) {
-            remotes_list <- trimws(strsplit(remotes_raw, ",")[[1]])
-            remotes_list <- remotes_list[nzchar(remotes_list)]
-            message("Installing ", length(remotes_list), " GitHub remotes...")
-            for (r in remotes_list) {
-              tryCatch(remotes::install_github(r, upgrade = "never", dependencies = FALSE),
-                       error = function(e) message("WARN remote failed: ", r, " – ", conditionMessage(e)))
-            }
+          if (length(failed) > 0) {
+            stop("Packages installed but not loadable: ",
+                 paste(failed, collapse = ", "))
           }
-
-          # Final verdict AFTER the remotes loop: packages only available
-          # from GitHub remotes would otherwise trip this check early
-          # (CI run 38054639637 – the stop() fired before the loop ran and
-          # the workflow structurally could never succeed).
-          still_missing <- install[!vapply(install, requireNamespace, logical(1), quietly = TRUE)]
-          if (length(still_missing) > 0) {
-            stop("Failed to install: ", paste(still_missing, collapse = ", "))
-          }
+          message("All ", length(probe), " probe packages load cleanly.")
           RS
 
+      # ── Prepare the PR branch BEFORE generating the lockfile ───
+      # Checking out ci/renv-lock-update first (when it already exists)
+      # makes renv.lock a tracked file, so the later checkout can never
+      # collide with an untracked copy and `git diff --cached` below
+      # compares against the last committed lockfile.
+      - name: Prepare lockfile branch
+        run: |
+          BRANCH="ci/renv-lock-update"
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+          if git fetch origin "$BRANCH" 2>/dev/null; then
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+          else
+            git checkout -B "$BRANCH"
+          fi
+
       # ── Snapshot → renv.lock ───────────────────────────────────
-      # scan for packages: FALSE keeps the lockfile scoped to the
-      # explicit dependency list instead of crawling 500+ qmd files.
+      # The lockfile covers the full recursive closure of Imports +
+      # Suggests (anything a QMD chunk may load at render time) plus
+      # renv/jsonlite tooling.  Passing `packages` explicitly keeps renv
+      # from crawling 500+ qmd files to discover dependencies; renv
+      # still records the complete transitive closure of those roots.
+      # `library` is omitted on purpose: renv then scans .libPaths(),
+      # which covers wherever pak installed (R_LIBS_SITE / R_LIBS_USER).
       - name: Generate renv.lock
-        env:
-          R_LIBS_USER: /tmp/dep-lib
         run: |
           Rscript - <<'RS'
           dcf <- read.dcf("DESCRIPTION")
-          imports <- trimws(strsplit(dcf[1, "Imports"], ",")[[1]])
-          imports <- gsub("\\(.*$", "", imports)
-          imports <- imports[imports != "" & imports != "R"]
-          packages <- unique(imports)
+          pkgs_from_field <- function(field) {
+            if (!field %in% colnames(dcf)) return(character(0))
+            x <- trimws(strsplit(dcf[1, field], ",")[[1]])
+            x <- gsub("\\(.*$", "", x)
+            x[nzchar(x) & x != "R"]
+          }
+          packages <- unique(c(
+            pkgs_from_field("Imports"),
+            pkgs_from_field("Suggests"),
+            "renv", "jsonlite"
+          ))
 
           renv::snapshot(
-            project   = ".",
-            library   = Sys.getenv("R_LIBS_USER"),
-            lockfile  = "renv.lock",
-            packages  = packages,
-            type      = "explicit",
-            prompt    = FALSE,
-            force     = TRUE
+            project  = ".",
+            lockfile = "renv.lock",
+            packages = packages,
+            prompt   = FALSE,
+            force    = TRUE
           )
           RS
 
@@ -156,21 +173,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH="ci/renv-lock-update"
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
-          if git fetch origin "$BRANCH" 2>/dev/null; then
-            git checkout -B "$BRANCH" "origin/$BRANCH"
-          else
-            git checkout -B "$BRANCH"
-          fi
-
-          if git diff --quiet HEAD -- renv.lock; then
-            echo "renv.lock unchanged"
+          git add renv.lock
+          if git diff --cached --quiet -- renv.lock; then
+            echo "renv.lock unchanged – nothing to commit"
             exit 0
           fi
 
-          git add renv.lock
           git commit -m "chore: refresh renv.lock from DESCRIPTION [skip ci]"
           git push origin "$BRANCH"
 
