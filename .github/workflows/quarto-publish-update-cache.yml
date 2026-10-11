@@ -138,6 +138,48 @@ jobs:
           RENV_CONFIG_SANDBOX_ENABLED: false
 
 
+      # ── Resolve project renv library for workers ─────────────
+      # See quarto-publish.yml: workers pre-render inside an isolated clone
+      # where renv activation never runs, so point R_LIBS at the restored
+      # project library (CI run 38082831797).
+      - name: Resolve project renv library path
+        id: renv-lib
+        run: |
+          # Ask R where the restored project library actually lives: renv
+          # >= 1.1 relocates project libraries out of <project>/renv/library
+          # into a per-project cache (~/.cache/R/renv/library/<proj>-<hash>/
+          # ...), so never hard-code the path. renv::paths$library() reports
+          # it directly; .libPaths()[1] (set by the autoloader's renv::load())
+          # agrees. Accept a candidate only if it exists and contains a
+          # locked package (jsonlite). writeLines() avoids cat()'s space
+          # separator, which corrupts path matching.
+          Rscript - <<'RS' > /tmp/renv-lib-candidates.txt
+          lib <- tryCatch(renv::paths$library(project = getwd()), error = function(e) NULL)
+          cands <- c(if (!is.null(lib)) normalizePath(lib, mustWork = FALSE),
+                     .libPaths()[1])
+          writeLines(unique(cands))
+          RS
+          LIB_PATH=""
+          while IFS= read -r CANDIDATE; do
+            if [ -n "$CANDIDATE" ] && [ -d "$CANDIDATE/jsonlite" ]; then
+              LIB_PATH=$(cd "$CANDIDATE" && pwd -P)
+              break
+            fi
+          done < <(grep '^/' /tmp/renv-lib-candidates.txt || true)
+          if [ -z "$LIB_PATH" ]; then
+            echo "::error::Could not locate the restored renv project library."
+            echo "--- candidates ---"
+            cat /tmp/renv-lib-candidates.txt || true
+            echo "--- workspace renv layout ---"
+            ls -la renv/ 2>/dev/null || echo "(no renv/ directory)"
+            find . -maxdepth 4 -type d -path '*renv*' 2>/dev/null | head -20
+            echo "--- RENV_PATHS_ROOT=$RENV_PATHS_ROOT ---"
+            ls "$RENV_PATHS_ROOT" 2>/dev/null | head || true
+            exit 1
+          fi
+          echo "lib-path=$LIB_PATH" >> "$GITHUB_OUTPUT"
+          echo "Project renv library: $LIB_PATH"
+
       # ── Python Setup ─────────────────────────────────────────
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -240,6 +282,12 @@ jobs:
             message("All Imports loadable - no delta install needed.")
           } else {
             message("Delta-installing: ", paste(missing, collapse = ", "))
+            # renv's autoloader (renv::load()) replaced .libPaths() with the
+            # project library only, hiding pak from R_LIBS_USER — bootstrap
+            # it into the (writable) project library if missing, same
+            # pattern as ci-benchmark.yml (PPM binary, ~seconds).
+            if (!requireNamespace("pak", quietly = TRUE))
+              install.packages("pak")
             pak::pak(missing)
           }
           RS
@@ -312,6 +360,7 @@ jobs:
           TMP: ${{ env.TMP_DIR }}
           TEMP: ${{ env.TMP_DIR }}
           QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
+          R_LIBS: ${{ steps.renv-lib.outputs.lib-path }}
           # 4 vCPU / 16 GB runner: each worker runs its own quarto+R session
           # (~1–1.5 GB peak), so 4 concurrent workers fit comfortably.
           JOBS: '4'
