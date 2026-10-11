@@ -109,22 +109,19 @@ jobs:
           message("All ", length(probe), " probe packages load cleanly.")
           RS
 
-      # ── Prepare the PR branch BEFORE generating the lockfile ───
-      # Checking out ci/renv-lock-update first (when it already exists)
-      # makes renv.lock a tracked file, so the later checkout can never
-      # collide with an untracked copy and `git diff --cached` below
-      # compares against the last committed lockfile.
+      # ── Prepare the PR branch from main ────────────────────────
+      # Always rebuild ci/renv-lock-update from origin/main.  Reusing the
+      # stale remote branch (its base predates main's renv.lock) produced
+      # an add/add conflict on every regen; branching from main keeps the
+      # PR a clean one-file delta.
       - name: Prepare lockfile branch
         run: |
           BRANCH="ci/renv-lock-update"
           git config user.name "$GITHUB_ACTOR"
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
-          if git fetch origin "$BRANCH" 2>/dev/null; then
-            git checkout -B "$BRANCH" "origin/$BRANCH"
-          else
-            git checkout -B "$BRANCH"
-          fi
+          git fetch origin main
+          git checkout -B "$BRANCH" "origin/main"
 
       # ── Snapshot → renv.lock ───────────────────────────────────
       # The lockfile covers the full recursive closure of Imports +
@@ -132,8 +129,11 @@ jobs:
       # renv/jsonlite tooling.  Passing `packages` explicitly keeps renv
       # from crawling 500+ qmd files to discover dependencies; renv
       # still records the complete transitive closure of those roots.
-      # `library` is omitted on purpose: renv then scans .libPaths(),
-      # which covers wherever pak installed (R_LIBS_SITE / R_LIBS_USER).
+      # `library` points at the pak-installed library: renv 1.1 rejects
+      # plain .libPaths() scanning when the library is outside the
+      # project (six LinkingTo packages got "not installed" warnings and
+      # were dropped), so we hand it the exact directory the installer
+      # wrote to.
       - name: Generate renv.lock
         run: |
           Rscript - <<'RS'
@@ -150,10 +150,15 @@ jobs:
             "renv", "jsonlite"
           ))
 
+          # The library pak wrote to (R_LIBS_SITE / R_LIBS_USER), not a
+          # project library renv would fabricate inside the checkout.
+          library <- .libPaths()[1]
+
           renv::snapshot(
             project  = ".",
             lockfile = "renv.lock",
             packages = packages,
+            library  = library,
             prompt   = FALSE,
             force    = TRUE
           )
