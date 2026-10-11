@@ -87,17 +87,33 @@ jobs:
       # Install the known LinkingTo-only set explicitly.
       - name: Install LinkingTo-only packages
         run: |
-          Rscript -e '
-          pkgs <- c("AsioHeaders", "BiocVersion", "RcppArmadillo",
-                    "RcppProgress", "RcppThread", "sitmo")
+          Rscript - <<'RS'
+          pkgs <- c("AsioHeaders", "RcppArmadillo", "RcppProgress",
+                    "RcppThread", "sitmo")
           missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
-          if (length(missing) == 0) {
-            message("All LinkingTo-only packages already installed.")
-          } else {
+          if (length(missing) > 0) {
             message("Installing LinkingTo-only packages: ",
                     paste(missing, collapse = ", "))
             install.packages(missing)
-          }'
+          }
+
+          # BiocVersion is not served by CRAN/PPM for this R version; fetch
+          # it from Bioconductor.  Non-fatal: the snapshot tolerates its
+          # absence (it is a version-marker stub) – run 38104654296
+          # produced a valid 676-package lockfile without it.
+          if (!requireNamespace("BiocVersion", quietly = TRUE)) {
+            if (!requireNamespace("BiocManager", quietly = TRUE)) {
+              install.packages("BiocManager")
+            }
+            tryCatch(
+              BiocManager::install("BiocVersion", ask = FALSE, update = FALSE),
+              error = function(e) {
+                message("BiocVersion install failed (non-fatal): ",
+                        conditionMessage(e))
+              }
+            )
+          }
+          RS
 
       # Smoke-test that the locked packages actually LOAD.  Installing is
       # not enough: a missing system library surfaces only at load time,
