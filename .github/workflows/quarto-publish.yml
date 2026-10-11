@@ -79,7 +79,10 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          # Shallow checkout (issue #306, B5): the change-detection step
+          # below needs only the base commit, which it fetches on demand.
+          # Full history costs ~1 min of checkout against a ~5 GB .git.
+          fetch-depth: 1
 
       # ── Detect changed files ─────────────────────────────────
       # Determines which QMDs changed so we can:
@@ -103,6 +106,18 @@ jobs:
             echo "need_julia=true" >> "$GITHUB_OUTPUT"
             echo "need_python=true" >> "$GITHUB_OUTPUT"
             echo "ℹ️ No base SHA available – treating as full build"
+            exit 0
+          fi
+
+          # Shallow checkout (issue #306, B5): fetch just the base commit so
+          # the diff below has both endpoints. Fails soft – on error (e.g.
+          # the base commit was force-pushed away) fall back to a full build.
+          if ! git fetch --no-tags --depth=1 origin "$BASE_SHA"; then
+            echo "⚠️ Could not fetch base $BASE_SHA – treating as full build"
+            echo "changed_qmds=" >> "$GITHUB_OUTPUT"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "need_julia=true" >> "$GITHUB_OUTPUT"
+            echo "need_python=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
