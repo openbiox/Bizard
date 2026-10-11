@@ -80,6 +80,41 @@ jobs:
           cache: false
           packages: 'deps::., any::renv, any::jsonlite'
 
+      # pak's dependency solve only installs LinkingTo packages when a
+      # dependent package compiles from source; with PPM binaries nothing
+      # does, so header-only packages (AsioHeaders, sitmo, …) never land
+      # in the library and renv::snapshot() drops them from the lockfile.
+      # Install the known LinkingTo-only set explicitly.
+      - name: Install LinkingTo-only packages
+        run: |
+          Rscript - <<'RS'
+          pkgs <- c("AsioHeaders", "RcppArmadillo", "RcppProgress",
+                    "RcppThread", "sitmo")
+          missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+          if (length(missing) > 0) {
+            message("Installing LinkingTo-only packages: ",
+                    paste(missing, collapse = ", "))
+            install.packages(missing)
+          }
+
+          # BiocVersion is not served by CRAN/PPM for this R version; fetch
+          # it from Bioconductor.  Non-fatal: the snapshot tolerates its
+          # absence (it is a version-marker stub) – run 38104654296
+          # produced a valid 676-package lockfile without it.
+          if (!requireNamespace("BiocVersion", quietly = TRUE)) {
+            if (!requireNamespace("BiocManager", quietly = TRUE)) {
+              install.packages("BiocManager")
+            }
+            tryCatch(
+              BiocManager::install("BiocVersion", ask = FALSE, update = FALSE),
+              error = function(e) {
+                message("BiocVersion install failed (non-fatal): ",
+                        conditionMessage(e))
+              }
+            )
+          }
+          RS
+
       # Smoke-test that the locked packages actually LOAD.  Installing is
       # not enough: a missing system library surfaces only at load time,
       # and the previous silently-quiet requireNamespace() check turned
@@ -109,22 +144,19 @@ jobs:
           message("All ", length(probe), " probe packages load cleanly.")
           RS
 
-      # ── Prepare the PR branch BEFORE generating the lockfile ───
-      # Checking out ci/renv-lock-update first (when it already exists)
-      # makes renv.lock a tracked file, so the later checkout can never
-      # collide with an untracked copy and `git diff --cached` below
-      # compares against the last committed lockfile.
+      # ── Prepare the PR branch from main ────────────────────────
+      # Always rebuild ci/renv-lock-update from origin/main.  Reusing the
+      # stale remote branch (its base predates main's renv.lock) produced
+      # an add/add conflict on every regen; branching from main keeps the
+      # PR a clean one-file delta.
       - name: Prepare lockfile branch
         run: |
           BRANCH="ci/renv-lock-update"
           git config user.name "$GITHUB_ACTOR"
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
-          if git fetch origin "$BRANCH" 2>/dev/null; then
-            git checkout -B "$BRANCH" "origin/$BRANCH"
-          else
-            git checkout -B "$BRANCH"
-          fi
+          git fetch origin main
+          git checkout -B "$BRANCH" "origin/main"
 
       # ── Snapshot → renv.lock ───────────────────────────────────
       # The lockfile covers the full recursive closure of Imports +
@@ -132,8 +164,11 @@ jobs:
       # renv/jsonlite tooling.  Passing `packages` explicitly keeps renv
       # from crawling 500+ qmd files to discover dependencies; renv
       # still records the complete transitive closure of those roots.
-      # `library` is omitted on purpose: renv then scans .libPaths(),
-      # which covers wherever pak installed (R_LIBS_SITE / R_LIBS_USER).
+      # `library` hands renv the full .libPaths(): a single-library view
+      # is wrong in both directions – pak's library alone lost base and
+      # recommended packages (MASS, Matrix, survival, … were snapshotted
+      # out in run 38101269245), while renv's default project-scoped view
+      # missed packages pak installed altogether (run 38098486650).
       - name: Generate renv.lock
         run: |
           Rscript - <<'RS'
@@ -150,10 +185,16 @@ jobs:
             "renv", "jsonlite"
           ))
 
+          # Every library on the search path – pak's library first, then
+          # site/user, then R's base/recommended library – so nothing
+          # installed is invisible to the snapshot.
+          library <- .libPaths()
+
           renv::snapshot(
             project  = ".",
             lockfile = "renv.lock",
             packages = packages,
+            library  = library,
             prompt   = FALSE,
             force    = TRUE
           )
@@ -181,7 +222,10 @@ jobs:
           fi
 
           git commit -m "chore: refresh renv.lock from DESCRIPTION [skip ci]"
-          git push origin "$BRANCH"
+          # The branch is always rebuilt from origin/main above, so its
+          # history is disjoint from whatever the remote branch holds; a
+          # plain push is rejected non-fast-forward (run 38101269245).
+          git push --force origin "$BRANCH"
 
           if gh pr list --head "$BRANCH" --state open --json number -q '.[0].number' | grep -q .; then
             echo "PR already open – pushed update"
