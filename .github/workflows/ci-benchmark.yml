@@ -258,6 +258,38 @@ jobs:
             println("Tutorial packages ready")
           '
 
+      # Pre-render Julia notebooks to avoid OOM during the R-heavy main render.
+      # Also REQUIRED for correctness: without this step babelquarto executes
+      # Julia qmds inline in its temp dir and the julia-engine JSON handshake
+      # fails ("SyntaxError: Unexpected end of JSON input" — CI run
+      # 38114723635).  Pre-rendering freezes Julia/*.qmd into the workspace
+      # _freeze so babelquarto never executes them.
+      - name: Pre-render Julia notebooks
+        env:
+          QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
+          TMPDIR: ${{ env.TMP_DIR }}
+          TMP: ${{ env.TMP_DIR }}
+          TEMP: ${{ env.TMP_DIR }}
+        run: |
+          echo "Pre-rendering Julia tutorials..."
+          failed=0
+          for qmd in Julia/*.qmd; do
+            echo "  → $qmd"
+            if quarto render "$qmd" 2>&1; then
+              echo "  ✓ OK: $qmd"
+            else
+              echo "  ✗ Failed: $qmd"
+              failed=1
+            fi
+          done
+          julia_log="${HOME}/.cache/quarto/julia/julia_server_log.txt"
+          if [ -f "$julia_log" ]; then
+            echo "=== QNR server log ==="
+            tail -50 "$julia_log"
+            echo "======================"
+          fi
+          [ $failed -eq 0 ] || exit 1
+
       # ── Render pipeline (mirrors quarto-publish-update-cache.yml) ──
       - name: Pre-render all non-frozen QMD files
         env:
