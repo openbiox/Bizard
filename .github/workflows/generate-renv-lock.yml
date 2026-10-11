@@ -80,6 +80,25 @@ jobs:
           cache: false
           packages: 'deps::., any::renv, any::jsonlite'
 
+      # pak's dependency solve only installs LinkingTo packages when a
+      # dependent package compiles from source; with PPM binaries nothing
+      # does, so header-only packages (AsioHeaders, sitmo, …) never land
+      # in the library and renv::snapshot() drops them from the lockfile.
+      # Install the known LinkingTo-only set explicitly.
+      - name: Install LinkingTo-only packages
+        run: |
+          Rscript -e '
+          pkgs <- c("AsioHeaders", "BiocVersion", "RcppArmadillo",
+                    "RcppProgress", "RcppThread", "sitmo")
+          missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+          if (length(missing) == 0) {
+            message("All LinkingTo-only packages already installed.")
+          } else {
+            message("Installing LinkingTo-only packages: ",
+                    paste(missing, collapse = ", "))
+            install.packages(missing)
+          }'
+
       # Smoke-test that the locked packages actually LOAD.  Installing is
       # not enough: a missing system library surfaces only at load time,
       # and the previous silently-quiet requireNamespace() check turned
@@ -129,11 +148,11 @@ jobs:
       # renv/jsonlite tooling.  Passing `packages` explicitly keeps renv
       # from crawling 500+ qmd files to discover dependencies; renv
       # still records the complete transitive closure of those roots.
-      # `library` points at the pak-installed library: renv 1.1 rejects
-      # plain .libPaths() scanning when the library is outside the
-      # project (six LinkingTo packages got "not installed" warnings and
-      # were dropped), so we hand it the exact directory the installer
-      # wrote to.
+      # `library` hands renv the full .libPaths(): a single-library view
+      # is wrong in both directions – pak's library alone lost base and
+      # recommended packages (MASS, Matrix, survival, … were snapshotted
+      # out in run 38101269245), while renv's default project-scoped view
+      # missed packages pak installed altogether (run 38098486650).
       - name: Generate renv.lock
         run: |
           Rscript - <<'RS'
@@ -150,9 +169,10 @@ jobs:
             "renv", "jsonlite"
           ))
 
-          # The library pak wrote to (R_LIBS_SITE / R_LIBS_USER), not a
-          # project library renv would fabricate inside the checkout.
-          library <- .libPaths()[1]
+          # Every library on the search path – pak's library first, then
+          # site/user, then R's base/recommended library – so nothing
+          # installed is invisible to the snapshot.
+          library <- .libPaths()
 
           renv::snapshot(
             project  = ".",
@@ -186,7 +206,10 @@ jobs:
           fi
 
           git commit -m "chore: refresh renv.lock from DESCRIPTION [skip ci]"
-          git push origin "$BRANCH"
+          # The branch is always rebuilt from origin/main above, so its
+          # history is disjoint from whatever the remote branch holds; a
+          # plain push is rejected non-fast-forward (run 38101269245).
+          git push --force origin "$BRANCH"
 
           if gh pr list --head "$BRANCH" --state open --json number -q '.[0].number' | grep -q .; then
             echo "PR already open – pushed update"
