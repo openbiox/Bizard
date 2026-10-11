@@ -7,6 +7,12 @@ author:
 
 交互式火山图（Interactive Volcano Plot）是一种用于高通量数据（如转录组、蛋白组）差异表达分析的可视化图形。它在传统火山图的基础上，支持鼠标悬停查看基因信息、点击跳转外部数据库，并提供更灵活的阈值设定与配色方案，帮助研究者更高效地筛选和解读差异分析结果。
 
+::: callout-note
+**Hiplot 完整版应用**
+
+为控制页面体积，本教程中的交互式图形基于降采样后的示例数据绘制（保留全部显著基因，并随机抽取部分非显著基因）。如需完整功能的无代码版本，请使用 Hiplot 网站的 Volcano 插件：<https://hiplot.cn/basic/volcano?lang=zh_cn>
+:::
+
 ## 示例
 
 ![](../images/Omics/iVolcanoPlot_demo.png){fig-alt="iVolcanoPlot DEMO" fig-align="center" width="60%"}
@@ -61,6 +67,13 @@ sessioninfo::session_info("attached")
 # 读取数据
 f1 <- system.file("extdata/easy_input_limma.rds", package = "ivolcano")
 df_limma <- readRDS(f1)
+
+# 降采样以控制页面体积：保留全部显著基因（P.Value < 0.05 且 |logFC| > 1），
+# 并固定随机种子抽取 2,000 个非显著基因。实际分析请使用完整数据集。
+set.seed(1)
+is_sig <- df_limma$P.Value < 0.05 & abs(df_limma$logFC) > 1
+df_limma <- df_limma[sort(c(which(is_sig), sample(which(!is_sig), 2000))), ]
+
 # 查看数据集
 head(df_limma)
 ```
@@ -277,6 +290,12 @@ p
 # 准备 airway 差异分析数据并做 GO 富集分析
 f2 <- system.file("extdata/airway.rds", package = "ivolcano")
 df_airway <- readRDS(f2)
+
+# 同样进行降采样：padj < 0.05 的基因全部保留，因此富集分析与图形联动不受影响。
+set.seed(1)
+is_sig_airway <- !is.na(df_airway$padj) & df_airway$padj < 0.05
+df_airway <- df_airway[sort(c(which(is_sig_airway),
+                              sample(which(!is_sig_airway), 2000))), ]
 sig_genes <- df_airway$symbol[df_airway$padj < 0.01 & abs(df_airway$log2FoldChange) > 2]
 sig_genes <- sig_genes[!is.na(sig_genes)]
 entrez <- na.omit(mapIds(org.Hs.eg.db, sig_genes, "ENTREZID", "SYMBOL", multiVals = "first"))
