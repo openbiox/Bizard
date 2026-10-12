@@ -19,10 +19,14 @@ import sys
 SITE = sys.argv[1] if len(sys.argv) > 1 else "_site"
 ZH_ROOT = os.path.join(SITE, "zh")
 # Matches a relative reference whose first segment is site_libs/ or images/
-# (optionally preceded by ../).  Absolute, scheme-relative and srcset-less
+# (optionally preceded by ../ or ./).  Quarto emits page-relative asset URLs:
+# root-level pages (index, About, ...) emit "./images/...", category pages
+# emit "../images/...", so both prefixes must be handled — a "./"-prefixed
+# ref that goes unmatched here would silently survive and 404 after the
+# duplicate zh tree is pruned.  Absolute, scheme-relative and srcset-less
 # attributes only; url(...) inside CSS also covered via the ( prefix.
 REF_RE = re.compile(
-    r'(?P<prefix>["\'(=])\s*(?P<dots>(?:\.\./)*)?(?P<path>(?:site_libs|images)/[^"\'()\s>]+)'
+    r'(?P<prefix>["\'(=])\s*(?P<dots>(?:\.\./|\.\/)*)?(?P<path>(?:site_libs|images)/[^"\'()\s>]+)'
 )
 
 rewritten = 0
