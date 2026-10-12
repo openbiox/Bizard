@@ -19,8 +19,9 @@ if not os.path.isdir(zh_root):
     sys.exit(0)
 
 # Any relative site_libs/ or images/ reference that resolves INSIDE the zh
-# tree means the rewrite step did not cover it — refuse to delete.
-ref_re = re.compile(r'["\'(=]\s*((?:\.\./)*)(?:site_libs|images)/[^"\'()\s>]+')
+# tree means the rewrite step did not cover it — refuse to delete.  The
+# prefix alternation mirrors REF_RE in rewrite-zh-site-refs.py (../ and ./).
+ref_re = re.compile(r'["\'(=]\s*((?:\.\./|\.\/)*)(?:site_libs|images)/[^"\'()\s>]+')
 leftover = 0
 for dirpath, _dirnames, filenames in os.walk(zh_root):
     for fname in filenames:
