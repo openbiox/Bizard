@@ -1,0 +1,353 @@
+name: 'Render site'
+description: >-
+  Shared render pipeline for both publish workflows: temporary scratch dir,
+  Julia pre-render, changed-file fail-fast pre-render, 4-way parallel
+  pre-render of all non-frozen QMDs (populates workspace _freeze), skill ZIP,
+  babelquarto render with one retry, and the zh post-processing scripts.
+  Assumes setup-render-env ran earlier in the same job: the QUARTO_JULIA_PROJECT
+  variable it wrote to GITHUB_ENV is present in this action's step
+  environments (GITHUB_ENV writes propagate to all later job steps, including
+  composite action steps), and R_LIBS paths are passed via the lib-path input.
+
+inputs:
+  has_changes:
+    description: >-
+      'true' when the change-detection step found changed QMDs (main workflow
+      only; the nightly cache-refresh workflow passes 'false').
+    required: false
+    default: 'false'
+  changed_qmds:
+    description: 'Space-separated list of changed QMD paths from the change-detection step.'
+    required: false
+    default: ''
+  render_julia:
+    description: >-
+      'true' when Julia was set up (setup-render-env's julia-ready output);
+      gates the Julia pre-render step.
+    required: false
+    default: 'true'
+  lib_path:
+    description: "Restored renv project library (setup-render-env's lib-path output)."
+    required: true
+  tmp_dir:
+    description: 'Scratch directory for render temp files and worker clones.'
+    required: false
+    default: /mnt/TMP
+
+runs:
+  using: composite
+  steps:
+    - name: Create temporary directory
+      shell: bash
+      run: |
+        sudo mkdir -p ${{ inputs.tmp_dir }}
+        sudo chown -R $USER:$USER ${{ inputs.tmp_dir }}
+
+    # Pre-render Julia notebooks BEFORE the R-heavy main render to avoid OOM.
+    # babelquarto loads R + hundreds of packages (~1.5 GB); adding CairoMakie
+    # (~1-2 GB peak) would exceed the runner's RAM limit.
+    - name: Pre-render Julia notebooks
+      # The workflow's original condition (steps.setup-julia.outcome ==
+      # 'success') is not visible here: setup-julia is internal to the
+      # setup-render-env action. The caller gates on its julia-ready output.
+      if: inputs.render_julia == 'true'
+      env:
+        TMPDIR: ${{ inputs.tmp_dir }}
+        TMP: ${{ inputs.tmp_dir }}
+        TEMP: ${{ inputs.tmp_dir }}
+      shell: bash
+      run: |
+        echo "Pre-rendering Julia tutorials (no R process = lower peak memory)..."
+        failed=0
+        for qmd in Julia/*.qmd; do
+          echo "  → $qmd"
+          if quarto render "$qmd" 2>&1; then
+            echo "  ✓ OK: $qmd"
+          else
+            echo "  ✗ Failed: $qmd"
+            failed=1
+          fi
+        done
+        julia_log="${HOME}/.cache/quarto/julia/julia_server_log.txt"
+        if [ -f "$julia_log" ]; then
+          echo ""
+          echo "=== QNR server log ==="
+          tail -50 "$julia_log"
+          echo "======================"
+        fi
+        [ $failed -eq 0 ] || exit 1
+        echo "All Julia notebooks pre-rendered. Freeze cache populated."
+
+    # Pre-render ONLY the changed QMD files for early failure detection.
+    # If a changed file has a syntax error or broken dependency, this step
+    # fails in ~2 min instead of waiting ~90 min for the full site render.
+    # Successfully rendered files populate the freeze cache for the next step.
+    - name: Pre-render changed QMD files (fail-fast)
+      if: inputs.has_changes == 'true'
+      env:
+        CHANGED_QMDS: ${{ inputs.changed_qmds }}
+        TMPDIR: ${{ inputs.tmp_dir }}
+        TMP: ${{ inputs.tmp_dir }}
+        TEMP: ${{ inputs.tmp_dir }}
+        # Same isolation gap as the full pre-render step below: this step
+        # runs in the workspace before any worker clone, but quarto's R
+        # engine here also bypasses renv's autoloader wiring (run
+        # 38093942045: LibPaths = [R_LIBS_USER, /opt/R/...] with
+        # "knitr: (None)"). R_LIBS prepends the restored project library
+        # so knitr and the locked packages resolve.
+        R_LIBS: ${{ inputs.lib_path }}
+      shell: bash
+      run: |
+        echo "Pre-rendering changed files for early failure detection..."
+        for qmd in $CHANGED_QMDS; do
+          # Julia files are pre-rendered separately (OOM prevention)
+          if [[ "$qmd" == Julia/* ]]; then continue; fi
+          if [ ! -f "$qmd" ]; then continue; fi
+
+          echo "  → $qmd"
+          quarto render "$qmd" 2>&1 || { echo "❌ FAILED: $qmd"; exit 1; }
+          echo "  ✓ OK: $qmd"
+
+          # Also render the bilingual counterpart so freeze covers both
+          if [[ "$qmd" == *.zh.qmd ]]; then
+            counterpart="${qmd%.zh.qmd}.qmd"
+          else
+            counterpart="${qmd%.qmd}.zh.qmd"
+          fi
+          if [ -f "$counterpart" ] && ! echo "$CHANGED_QMDS" | grep -qF "$counterpart"; then
+            echo "  → $counterpart (bilingual counterpart)"
+            quarto render "$counterpart" 2>&1 || { echo "❌ FAILED: $counterpart"; exit 1; }
+            echo "  ✓ OK: $counterpart"
+          fi
+        done
+        echo "✅ All changed files pre-rendered successfully."
+
+    # ── Pre-render ALL non-frozen files (freeze-cache fix) ─────
+    # ROOT CAUSE: babelquarto::render_website() renders in a temp dir
+    # (withr::local_tempdir()), creates _freeze there, copies only _site
+    # back to the workspace, and then deletes the temp dir. The workspace
+    # _freeze is never updated, so the save step finds only the few
+    # entries from the changed-file pre-render step above (e.g. 6 Julia
+    # entries), not the 500+ entries from the full render.
+    #
+    # FIX: pre-render every non-frozen .qmd file here (workspace _freeze
+    # gets populated), then babelquarto copies the full _freeze into its
+    # temp dir and uses it – skipping all code execution and only running
+    # pandoc, cutting the render from ~90 min down to ~20 min.
+    #
+    # Timing estimates:
+    #   First run (cold cache):  pre-render all ~15–20 min (4-way parallel) +
+    #                            babelquarto (pandoc only) ~20 min +
+    #                            setup ~15 min  ≈ 50–55 min total
+    #   Subsequent runs (warm):  pre-render 0 files + babelquarto ~20 min
+    #                            + setup ~15 min  ≈ 35 min total
+    # Timeout is 180 min to give first-run cold-cache builds a safe margin.
+    - name: Pre-render all non-frozen QMD files
+      env:
+        TMPDIR: ${{ inputs.tmp_dir }}
+        TMP: ${{ inputs.tmp_dir }}
+        TEMP: ${{ inputs.tmp_dir }}
+        # QUARTO_JULIA_PROJECT arrives via GITHUB_ENV from setup-render-env;
+        # R_LIBS points at the restored project library (isolated worker
+        # clones bypass renv's autoloader wiring, see the changed-file step).
+        R_LIBS: ${{ inputs.lib_path }}
+        # 4 vCPU / 16 GB runner: each worker runs its own quarto+R session
+        # (~1–1.5 GB peak), so 4 concurrent workers fit comfortably.
+        JOBS: '4'
+      shell: bash
+      run: |
+        echo "Pre-rendering non-frozen QMD files to populate workspace _freeze (JOBS=$JOBS workers)..."
+        RENDERED=0
+        SKIPPED=0
+        FAILED=0
+
+        WORKROOT=$(mktemp -d "${TMPDIR:-/tmp}/prerender.XXXXXX")
+        STATUS_DIR="$WORKROOT/status"
+        REPO_DIR=$(pwd -P)
+        export WORKROOT STATUS_DIR REPO_DIR
+        trap 'rm -rf "$WORKROOT"' EXIT
+        mkdir -p "$STATUS_DIR"
+
+        # Build the work list (same filters as before).
+        LIST="$WORKROOT/list.txt"
+        : > "$LIST"
+        while IFS= read -r -d '' qmd; do
+          rel="${qmd#./}"
+
+          # Julia files are handled by the dedicated Julia pre-render step
+          [[ "$rel" == Julia/* ]] && { SKIPPED=$((SKIPPED+1)); continue; }
+
+          # If a _freeze entry already exists for this file, skip it.
+          # Quarto mirrors the source path: _freeze/<path-without-ext>/
+          freeze_dir="_freeze/${rel%.qmd}"
+          if [ -d "$freeze_dir" ]; then
+            SKIPPED=$((SKIPPED+1))
+            continue
+          fi
+
+          printf '%s\n' "$rel" >> "$LIST"
+        done < <(find . -name "*.qmd" \
+                     -not -path "./_freeze/*" \
+                     -not -path "./_site/*" \
+                     -not -path "./.quarto/*" \
+                     -print0 | sort -z)
+
+        TOTAL=$(wc -l < "$LIST")
+        echo "📋 Work list: $TOTAL file(s) to render, $SKIPPED skipped (frozen/Julia), $JOBS worker(s)"
+
+        # ── Worker: render one QMD inside an isolated clone of the repo ──
+        # Concurrent `quarto render` processes in the SHARED workspace race
+        # on site_libs maintenance (each render copies shared format
+        # resources into site_libs; interleaved lstat/copy/readdir errors
+        # out with "NotFound" and the page is silently dropped). Each
+        # worker therefore renders inside its own copy of the tree and
+        # only the disjoint _freeze/<file>/ result is synced back. The
+        # _freeze/site_libs/ overlap is identical across workers, so
+        # clobbering during sync is harmless.
+        cat > "$WORKROOT/worker.sh" <<'WORKER'
+        #!/bin/bash
+        set -u
+        rel="$1"
+        wdir=$(mktemp -d "$WORKROOT/w.XXXXXX") || { echo "❌ mktemp failed: $rel"; exit 9; }
+        key=$(echo "$rel" | tr '/' '_')
+
+        # Isolated clone: .git/_site/_freeze/.quarto are excluded (other
+        # files' freeze entries aren't needed to render one file; the
+        # rendered file gets a fresh _freeze/<rel>/ here which is synced
+        # back below). images/ is the bulk (~49 MB) but a real copy keeps
+        # this free of hardlink write-through risk.
+        mkdir -p "$wdir/proj"
+        (cd "$REPO_DIR" && tar --exclude=./.git --exclude=./_site \
+             --exclude=./_freeze --exclude=./.quarto \
+             -cf - .) | (cd "$wdir/proj" && tar -xf -)
+        mkdir -p "$wdir/proj/_freeze"
+
+        cd "$wdir/proj"
+        echo "  → $rel"
+        if quarto render "$rel" 2>&1; then
+          # Sync the disjoint freeze entry back to the workspace. Files
+          # with no executable code cells produce no freeze entry at all
+          # (quarto only freezes chunk output) — that's success, not an
+          # rsync error, so guard on the freeze dir existing (CI run
+          # 38080618199: rsync code 23 on About/Tutorial/index et al.).
+          if [ -d "_freeze/${rel%.qmd}" ]; then
+            mkdir -p "$REPO_DIR/_freeze/$(dirname "${rel%.qmd}")"
+            rsync -a "_freeze/${rel%.qmd}/" "$REPO_DIR/_freeze/${rel%.qmd}/"
+          fi
+          echo "  ✓ OK: $rel"
+          touch "$STATUS_DIR/$key.ok"
+          rc=0
+        else
+          echo "  ⚠️ Warning: failed to render $rel (non-fatal)"
+          touch "$STATUS_DIR/$key.fail"
+          rc=1
+        fi
+        rm -rf "$wdir"
+        exit $rc
+        WORKER
+        chmod +x "$WORKROOT/worker.sh"
+
+        if [ "$TOTAL" -gt 0 ]; then
+          # Exported env (TMPDIR/TMP/TEMP/QUARTO_JULIA_PROJECT/R libs)
+          # flows through xargs → worker → quarto → engine. `|| true`:
+          # individual failures are already accounted in the status files
+          # and must stay non-fatal (xargs exits 123 when any invocation
+          # fails).
+          xargs -P "$JOBS" -n 1 -r "$WORKROOT/worker.sh" < "$LIST" || true
+
+          RENDERED=$(find "$STATUS_DIR" -name '*.ok' | wc -l)
+          FAILED=$(find "$STATUS_DIR" -name '*.fail' | wc -l)
+        fi
+
+        echo ""
+        echo "📊 Pre-render summary: $RENDERED rendered, $SKIPPED skipped (frozen/Julia), $FAILED failed"
+        # if-statement, not "[ $FAILED -gt 0 ] && echo": when FAILED=0 the
+        # && chain returns 1 and would fail the step under bash -e.
+        if [ $FAILED -gt 0 ]; then
+          echo "::warning::$FAILED QMD file(s) failed to pre-render"
+        fi
+        # Count JSON outputs for a richer diagnostic (one per frozen code chunk)
+        TOTAL_FROZEN=$(find _freeze -name "*.json" -type f 2>/dev/null | wc -l)
+        echo "❄️  Freeze cache now has $TOTAL_FROZEN frozen output(s) (JSON entries)"
+
+    # ── Generate skill ZIP ───────────────────────────────────
+    # Must run BEFORE babelquarto so the zip exists at project root when
+    # babelquarto copies the project to its temp dir for rendering.
+    # Quarto then copies it to _site/ via the resources entry in _quarto.yml,
+    # ensuring quarto publish gh-pages reliably includes it.
+    - name: Generate unified skill ZIP package
+      shell: bash
+      run: |
+        # Stage files with correct names inside the zip
+        SKILL_TMP=$(mktemp -d)
+        cp SKILL.md "${SKILL_TMP}/SKILL.md"
+        cp files/gallery_data.csv "${SKILL_TMP}/gallery_data.csv"
+        cp files/gallery_data_zh.csv "${SKILL_TMP}/gallery_data_zh.csv"
+        cp files/bizard-skill-readme.md "${SKILL_TMP}/README.md"
+        (cd "${SKILL_TMP}" && zip -r - SKILL.md gallery_data.csv gallery_data_zh.csv README.md) > bizard-skill.zip
+        rm -rf "${SKILL_TMP}"
+        echo "✅ Created bizard-skill.zip at project root ($(du -h bizard-skill.zip | cut -f1))"
+
+    - name: Render website with Babelquarto
+      id: babelquarto-render
+      env:
+        TMPDIR: ${{ inputs.tmp_dir }}
+        TMP: ${{ inputs.tmp_dir }}
+        TEMP: ${{ inputs.tmp_dir }}
+        R_COMPILE_PKGS: 0
+      shell: bash
+      run: Rscript -e 'babelquarto::render_website()'
+
+    # Some tutorials stream example data from external hosts (Tencent COS,
+    # hiplot.cn) that can intermittently refuse a runner connection. A
+    # single retry re-executes only the files that had not finished
+    # (successful chunks are already frozen in _freeze), so the second
+    # attempt is cheap and usually lands on a healthier network path.
+    - name: Render website with Babelquarto (retry once)
+      if: steps.babelquarto-render.outcome == 'failure'
+      env:
+        TMPDIR: ${{ inputs.tmp_dir }}
+        TMP: ${{ inputs.tmp_dir }}
+        TEMP: ${{ inputs.tmp_dir }}
+        R_COMPILE_PKGS: 0
+      shell: bash
+      run: Rscript -e 'babelquarto::render_website()'
+
+    # ── Share English figures with zh pages ───────────────────
+    # ROOT CAUSE: babelquarto renames <name>.zh.qmd → <name>.qmd before
+    # rendering the zh pass, but the frozen chunk HTML still references
+    # <name>.zh_files/figure-html/ (the path from when the file was named
+    # <name>.zh.qmd).  The actual figure PNGs are never placed at that path
+    # because code is not re-executed (freeze is used).  The English figures
+    # live at _site/<category>/<name>_files/ and are identical (zh .qmd
+    # files share the same code blocks as their English counterparts).
+    # FIX: after babelquarto finishes, rewrite every zh HTML reference from
+    # <name>.zh_files/... to the relative path of the existing English
+    # figure.  The previous approach COPIED the English <name>_files/ tree
+    # into the zh directory, which duplicated every figure byte in the
+    # deployed artifact (~80 MB).
+    - name: Point zh figure references at shared English figures
+      shell: bash
+      run: python3 .github/scripts/rewrite-zh-figure-refs.py _site
+
+    # ── Deduplicate zh site_libs/ and images/ trees ──────────
+    # babelquarto copies the shared site_libs/ and images/ trees into
+    # _site/zh/ as byte-identical duplicates of the root copies (~94 MB
+    # per deploy).  Rewrite every zh HTML reference that resolves under
+    # zh/site_libs/ or zh/images/ to the root-tree equivalent, then
+    # delete the duplicate trees.  The prune script refuses to delete if
+    # any zh page still resolves a reference inside the zh trees.
+    - name: Deduplicate zh site_libs and images against root trees
+      shell: bash
+      run: |
+        python3 .github/scripts/rewrite-zh-site-refs.py _site
+        python3 .github/scripts/prune-zh-duplicates.py _site
+
+    # ── Lazy-load images ─────────────────────────────────────
+    # Figures dominate every page's payload. Native loading="lazy"
+    # defers offscreen fetches (no JS, no layout shift - Quarto emits
+    # width/height on figures), and decoding="async" keeps the page
+    # responsive while images decode. Sidebar/logo images stay eager.
+    - name: Add lazy loading to content images
+      shell: bash
+      run: python3 .github/scripts/lazy-load-images.py _site

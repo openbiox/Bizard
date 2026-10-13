@@ -1,0 +1,245 @@
+name: 'Setup render environment'
+description: >-
+  Shared Quarto + R (renv) + Python + conditional Julia toolchain for both
+  publish workflows. Composite actions cannot read the `secrets` context, so
+  the GitHub token is passed explicitly as an input. `GITHUB_ENV` writes made
+  here (QUARTO_JULIA_PROJECT) propagate to later workflow steps, as does the
+  `lib-path` output.
+
+inputs:
+  gh_token:
+    description: >-
+      GitHub token for quarto/quarto-actions and renv installs (secrets
+      context is unavailable inside composite actions; pass
+      'secrets.GITHUB_TOKEN' from the workflow).
+    required: true
+  need_julia:
+    description: >-
+      Whether changed QMDs require Julia (from the change-detection step).
+      Defaults to 'true' so callers that skip change detection still set up
+      Julia.
+    required: false
+    default: 'true'
+  julia_frozen:
+    description: >-
+      Count of frozen Julia outputs (from the freeze-check step); '0' forces
+      Julia setup. Defaults to '0' (no freeze cache = full setup).
+    required: false
+    default: '0'
+  force_full_rebuild:
+    description: 'True when the build must ignore all caches and re-run everything.'
+    required: false
+    default: false
+
+outputs:
+  lib-path:
+    description: >-
+      Absolute path of the restored renv project library. Point R_LIBS at this
+      in render workers (their isolated clones bypass renv's autoloader).
+    value: ${{ steps.renv-lib.outputs.lib-path }}
+  julia-ready:
+    description: >-
+      'true' when Julia was installed and the QUARTO_JULIA_PROJECT environment
+      was prepared — gate the Julia pre-render step on this.
+    value: ${{ steps.setup-julia.outcome == 'success' }}
+
+runs:
+  using: composite
+  steps:
+    # ── Quarto Setup ────────────────────────────────────────
+    - name: Set up Quarto
+      uses: quarto-dev/quarto-actions/setup@v2
+      env:
+        GH_TOKEN: ${{ inputs.gh_token }}
+      with:
+        tinytex: true
+
+    # ── R Setup ──────────────────────────────────────────────
+    - uses: r-lib/actions/setup-r@v2
+      with:
+        use-public-rspm: true
+
+    # ── R dependencies via renv (issue #306, B1) ─────────────
+    # renv.lock pins the exact versions resolved from DESCRIPTION by
+    # generate-renv-lock.yml, and setup-renv keys its package cache on
+    # the lockfile hash: an unchanged lockfile restores the whole
+    # library in minutes instead of re-resolving and installing ~650
+    # packages (~26 min).  When the lockfile changes, the restore-keys
+    # prefix still restores the previous cache and renv::restore()
+    # installs only the delta — which is also why a repinned GitHub
+    # package (e.g. our babelquarto fork) takes effect without any
+    # manual cache-busting step.
+    - name: Install system dependencies
+      shell: bash
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y \
+          libcurl4-openssl-dev \
+          libudunits2-dev \
+          libglpk-dev \
+          librsvg2-dev
+
+    # pak derives the system requirements of the full dependency closure
+    # from DESCRIPTION — the same job PKG_SYSREQS=true used to do inside
+    # setup-r-dependencies.  This MUST run before setup-renv: renv
+    # load-tests every package during restore, so missing system
+    # libraries (e.g. librsvg behind rsvg) would abort it.  pak installs
+    # as a PPM binary in seconds; pkg_sysreqs() only returns the install
+    # commands (it never installs), so run them through a privileged
+    # shell here.  The explicit apt line above covers the libraries
+    # known to be needed; this catches anything else in the closure.
+    - name: Install system requirements for locked packages
+      shell: bash
+      run: |
+        Rscript -e 'if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak")'
+        SCRIPTS=$(Rscript -e 'cat(pak::pkg_sysreqs("deps::.")$install_scripts, sep = "\n")')
+        if [ -n "$SCRIPTS" ]; then
+          echo "$SCRIPTS" | sudo bash
+        else
+          echo "No additional system requirements needed"
+        fi
+
+    - uses: r-lib/actions/setup-renv@v2
+      env:
+        # renv's install sandbox copies packages into a private library
+        # before promoting them; on ephemeral CI runners it doubles
+        # install time for no benefit, so switch it off.
+        RENV_CONFIG_SANDBOX_ENABLED: false
+
+    # ── Resolve project renv library for workers ─────────────
+    # Workers pre-render inside an isolated clone of the repo, so renv's
+    # activation code (which resolves the project library relative to the
+    # working directory and relies on autoloader wiring) does not run
+    # there — CI run 38082831797: every R-based worker render failed with
+    # LibPaths = [/home/runner/work/_temp/Library, /opt/R/...] and
+    # "knitr: (None)". Point R_LIBS at the restored project library so
+    # each worker session can see the locked packages. R prepends R_LIBS
+    # to .libPaths(), ahead of R_LIBS_USER.
+    - name: Resolve project renv library path
+      id: renv-lib
+      shell: bash
+      run: |
+        # Ask R where the restored project library actually lives: renv
+        # >= 1.1 relocates project libraries out of <project>/renv/library
+        # into a per-project cache (~/.cache/R/renv/library/<proj>-<hash>/
+        # ...), so never hard-code the path. renv::paths$library() reports
+        # it directly; .libPaths()[1] (set by the autoloader's renv::load())
+        # agrees. Accept a candidate only if it exists and contains a
+        # locked package (jsonlite). writeLines() avoids cat()'s space
+        # separator, which corrupts path matching.
+        Rscript - <<'RS' > /tmp/renv-lib-candidates.txt
+        lib <- tryCatch(renv::paths$library(project = getwd()), error = function(e) NULL)
+        cands <- c(if (!is.null(lib)) normalizePath(lib, mustWork = FALSE),
+                   .libPaths()[1])
+        writeLines(unique(cands))
+        RS
+        LIB_PATH=""
+        while IFS= read -r CANDIDATE; do
+          if [ -n "$CANDIDATE" ] && [ -d "$CANDIDATE/jsonlite" ]; then
+            LIB_PATH=$(cd "$CANDIDATE" && pwd -P)
+            break
+          fi
+        done < <(grep '^/' /tmp/renv-lib-candidates.txt || true)
+        if [ -z "$LIB_PATH" ]; then
+          echo "::error::Could not locate the restored renv project library."
+          echo "--- candidates ---"
+          cat /tmp/renv-lib-candidates.txt || true
+          echo "--- workspace renv layout ---"
+          ls -la renv/ 2>/dev/null || echo "(no renv/ directory)"
+          find . -maxdepth 4 -type d -path '*renv*' 2>/dev/null | head -20
+          echo "--- RENV_PATHS_ROOT=$RENV_PATHS_ROOT ---"
+          ls "$RENV_PATHS_ROOT" 2>/dev/null | head || true
+          exit 1
+        fi
+        echo "lib-path=$LIB_PATH" >> "$GITHUB_OUTPUT"
+        echo "Project renv library: $LIB_PATH"
+
+    # ── Python Setup ─────────────────────────────────────────
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install Python dependencies
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then
+          pip install -r requirements.txt
+        fi
+
+    # ── Julia Setup (conditional) ────────────────────────────
+    # Julia setup takes ~9 min. Skip it when:
+    #  - No Julia QMDs changed AND freeze already covers Julia files
+    # Always install when: Julia files changed, no freeze, or force rebuild.
+    - name: Set up Julia
+      id: setup-julia
+      if: >-
+        inputs.need_julia == 'true' ||
+        inputs.julia_frozen == '0' ||
+        inputs.force_full_rebuild == true
+      uses: julia-actions/setup-julia@v3
+      with:
+        version: '1'
+
+    - name: Cache Julia packages
+      if: steps.setup-julia.outcome == 'success'
+      uses: actions/cache@v6
+      with:
+        path: ~/.julia
+        key: julia-packages-${{ runner.os }}-${{ hashFiles('Julia/Project.toml') }}
+        restore-keys: |
+          julia-packages-${{ runner.os }}-
+
+    - name: Install Julia packages
+      if: steps.setup-julia.outcome == 'success'
+      shell: bash
+      run: |
+        # Find the QuartoNotebookRunner version required by this Quarto installation.
+        # Quarto bundles its own julia-engine Project.toml that pins an exact QNR version.
+        JULIA_ENGINE_PROJ=$(find /opt/quarto -name "Project.toml" -path "*/julia-engine/*" 2>/dev/null | head -1)
+        QNR_VERSION=""
+        if [ -n "$JULIA_ENGINE_PROJ" ]; then
+          QNR_VERSION=$(grep -oP 'QuartoNotebookRunner = "=([^"]+)"' "$JULIA_ENGINE_PROJ" \
+            | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' || true)
+          echo "Quarto requires QuartoNotebookRunner=${QNR_VERSION} (from ${JULIA_ENGINE_PROJ})"
+        fi
+
+        # Create a dedicated QNR environment.  Setting QUARTO_JULIA_PROJECT to this
+        # path tells Quarto to skip ensureQuartoNotebookRunnerEnvironment (which calls
+        # Pkg.update() and needs network at render time) and simply verify QNR loads.
+        QNR_ENV="${HOME}/.julia/environments/quarto-julia-env"
+        mkdir -p "${QNR_ENV}"
+
+        if [ -n "$QNR_VERSION" ]; then
+          julia --project="${QNR_ENV}" -e "
+            using Pkg
+            Pkg.add(name=\"QuartoNotebookRunner\", version=\"${QNR_VERSION}\")
+            Pkg.instantiate()
+            using QuartoNotebookRunner
+            println(\"QuartoNotebookRunner \$(pkgversion(QuartoNotebookRunner)) ready\")
+          "
+        else
+          julia --project="${QNR_ENV}" -e '
+            using Pkg
+            Pkg.add("QuartoNotebookRunner")
+            Pkg.instantiate()
+            using QuartoNotebookRunner
+            println("QuartoNotebookRunner $(pkgversion(QuartoNotebookRunner)) ready")
+          '
+        fi
+
+        # Export so the render step can pick it up.
+        echo "QUARTO_JULIA_PROJECT=${QNR_ENV}" >> "$GITHUB_ENV"
+
+        # Pre-instantiate the tutorial project environment (Julia/Project.toml).
+        # QNR workers use JULIA_PROJECT=@. and cd into the notebook directory,
+        # so they automatically pick up Julia/Project.toml for CairoMakie etc.
+        julia --project=Julia -e '
+          using Pkg
+          Pkg.resolve()
+          Pkg.instantiate()
+          using CairoMakie, DataFrames, Statistics
+          println("Tutorial packages ready")
+        '
