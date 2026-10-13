@@ -1,6 +1,6 @@
 # Automatic QMD Translation System
 
-This directory contains the automatic translation system for Bizard's bilingual documentation.
+This directory contains the automatic translation system for Bizard's bilingual documentation, plus helper scripts that keep the site metadata in sync with the chart QMDs.
 
 ## Overview
 
@@ -16,6 +16,51 @@ The translation system automatically:
 - **`translate_qmd.py`**: Python script for translating QMD files
 - **`translation-blacklist.txt`**: Files/patterns to exclude from automatic translation
 - **`../workflows/auto-translate.yml`**: GitHub Action workflow
+- **`sync-sidebar.py`**: Appends new chart pages to `_quarto.yml` (see its docstring)
+- **`sync-gallery.py`**: Appends missing rows to the gallery CSVs (see below)
+- **`generate_skills.py`**: Generates the unified `SKILL.md` from the gallery CSV
+- **`test_sync_gallery.py`**: pytest suite for `sync-gallery.py` (`python3 -m pytest .github/scripts/`)
+
+## Gallery CSV Workflow (sync-gallery.py)
+
+[GraphGallery.qmd](../../GraphGallery.qmd) renders its reactable tables and
+recommender from two hand-editable CSVs — `files/gallery_data.csv` and
+`files/gallery_data_zh.csv` — with schema
+`Id,Name,Image_url,Tutorial_url,Description,Type,Level1,Level2`.
+Historically every new chart tutorial also required hand-adding rows to
+both files; a missed row made the new figure silently disappear from the
+gallery and the AI skill pack.
+
+`sync-gallery.py` makes **"add one qmd" the only required step**. A
+contributor never edits the CSVs by hand for a new chart page:
+
+1. Add the chart qmd (and optionally its `.zh.qmd`) as usual; every
+   chunk labelled `fig*` with a non-empty single-line `fig-cap`
+   (and not `eval: false`) renders one PNG that belongs in the gallery.
+2. Run `python3 .github/scripts/sync-gallery.py --update` — it derives
+   the missing rows (URLs, captions, `Type` from the frontmatter title,
+   `Level1`/`Level2` from the directory or sidebar) and appends them to
+   both CSVs. The zh CSV mirrors every English row with a `/zh/`
+   tutorial URL and the zh fig-cap/title as text seeds.
+3. CI runs `--check` and fails when a rendered figure is missing from
+   the gallery, so drift cannot land unnoticed.
+
+Safety properties:
+
+- **append-only**: existing rows are never modified, reordered, or
+  deleted — hand curation (screenshots, edited names, translations)
+  stays the source of truth. Row text is a seed, safe to hand-edit later.
+- Mixed EOLs are preserved: appended rows use the file's last-line EOL.
+- `Id` continues from the current maximum; en/zh row counts must be
+  equal before the script touches anything.
+- Rows the script cannot derive (currently none — Hiplot `Level2` comes
+  from the sidebar section linking the page) are reported for manual
+  action instead of guessed.
+
+```bash
+python3 .github/scripts/sync-gallery.py --check    # exit 1 if out of sync (CI)
+python3 .github/scripts/sync-gallery.py --update   # append missing rows in place
+```
 
 ## How It Works
 
