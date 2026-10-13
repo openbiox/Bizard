@@ -97,6 +97,19 @@ The workflow supports multiple AI providers:
 - Monthly cost (estimated): $5-20 USD depending on PR volume
 - Alternative providers may have different pricing
 
+### Local R Environment (renv)
+
+CI renders the site with R package versions pinned in `renv.lock` (generated from `DESCRIPTION` by an automated workflow). To reproduce that environment locally:
+
+```r
+install.packages("renv")
+renv::restore(lockfile = "renv.lock", prompt = FALSE)
+```
+
+- **Do not edit `renv.lock` by hand.** Add dependencies via `DESCRIPTION` (run `Rscript update-dependencies.R` after adding packages to a tutorial); the [Generate renv.lock workflow](https://github.com/openbiox/Bizard/blob/main/.github/workflows/generate-renv-lock.yml) refreshes the lockfile automatically via a PR.
+- Python dependencies live in `requirements.txt`; Julia tutorials use `Julia/Project.toml` (`Pkg.instantiate()`).
+- Rendering any page locally also requires [Quarto](https://quarto.org/docs/get-started/).
+
 ---
 
 <a name="chinese"></a>
@@ -191,6 +204,19 @@ AI 翻译质量不错，但并非完美。请审查：
 - 每次翻译平均成本：约 0.01-0.05 美元（OpenAI 定价）
 - 月度成本（估算）：5-20 美元，取决于 PR 数量
 - 替代提供商可能有不同的定价
+
+### 本地 R 环境（renv）
+
+CI 渲染站点时使用 `renv.lock` 中固定的 R 包版本（该文件由自动化工作流根据 `DESCRIPTION` 生成）。本地复现该环境：
+
+```r
+install.packages("renv")
+renv::restore(lockfile = "renv.lock", prompt = FALSE)
+```
+
+- **请勿手动编辑 `renv.lock`。** 通过 `DESCRIPTION` 添加依赖（在教程中加入新包后运行 `Rscript update-dependencies.R`）；[Generate renv.lock 工作流](https://github.com/openbiox/Bizard/blob/main/.github/workflows/generate-renv-lock.yml) 会自动通过 PR 刷新 lockfile。
+- Python 依赖位于 `requirements.txt`；Julia 教程使用 `Julia/Project.toml`（`Pkg.instantiate()`）。
+- 本地渲染任何页面还需要安装 [Quarto](https://quarto.org/docs/get-started/)。
 
 ---
 
