@@ -39,6 +39,23 @@ Bizard brings together powerful visualization tools, curated code, and collabora
 
 Download the Bizard (A Biomedical Visualization Atlas) unified skill for your AI assistant: [Download AI Skill zip](https://openbiox.github.io/Bizard/bizard-skill.zip).
 
+## Local Development Environment
+
+Contributors who want to render tutorials locally should reproduce the CI environment:
+
+- **R packages**: the repo pins its R dependency closure in `renv.lock` (~680 packages, resolved from `DESCRIPTION` by the [Generate renv.lock workflow](https://github.com/openbiox/Bizard/blob/main/.github/workflows/generate-renv-lock.yml)). Do not edit `renv.lock` by hand — changes to `DESCRIPTION` or `requirements.txt` regenerate it automatically via a PR. To install the locked versions locally:
+
+  ```r
+  install.packages("renv")
+  renv::restore(lockfile = "renv.lock", prompt = FALSE)
+  ```
+
+- **Python** packages: `pip install -r requirements.txt`
+- **Julia** tutorials: `julia --project=Julia -e 'using Pkg; Pkg.instantiate()'`
+- **Quarto**: required to render any page — see <https://quarto.org/docs/get-started/>.
+
+CI restores the same `renv.lock` on every build (cache keyed on the lockfile hash), so a successful local restore matches the rendered site.
+
 ## Citation
 
 If you use Bizard in your research, please cite our paper:
