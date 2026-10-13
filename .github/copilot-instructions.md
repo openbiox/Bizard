@@ -62,23 +62,23 @@ Verify: `quarto --version`
 
 ### 3. Install R Package Dependencies
 
-```r
-# Install pak (fast dependency resolver)
-install.packages("pak")
-
-# Install all project dependencies declared in DESCRIPTION
-pak::pak(ask = FALSE)
-
-# Or using devtools
-install.packages("devtools")
-devtools::install_deps()
-```
-
-The project uses `babelquarto` for bilingual rendering:
+The repo pins its full R dependency closure in `renv.lock` (~680 packages,
+generated from `DESCRIPTION` by the [Generate renv.lock workflow](https://github.com/openbiox/Bizard/blob/main/.github/workflows/generate-renv-lock.yml)).
+To match CI exactly:
 
 ```r
-pak::pak("ropensci/babelquarto")
+install.packages("renv")
+renv::restore(lockfile = "renv.lock", prompt = FALSE)
 ```
+
+- **Do not edit `renv.lock` by hand.** Add dependencies via `DESCRIPTION`
+  (run `Rscript update-dependencies.R` after adding packages to a tutorial)
+  and the lockfile workflow refreshes it automatically via a PR.
+- `babelquarto` is pinned to a known-good fork in the `Remotes:` field of
+  `DESCRIPTION` — `renv::restore()` installs it; no separate install needed.
+- Python: `pip install -r requirements.txt`; Julia tutorials:
+  `julia --project=Julia -e 'using Pkg; Pkg.instantiate()'`.
+- Full details: see **Local Development Environment** in `README.md`.
 
 ---
 
@@ -209,11 +209,19 @@ grep -r 'images/.*_demo' --include="*.qmd" -h \
 
 ### 6. CI Pipeline
 
-The GitHub Actions workflow (`.github/workflows/quarto-publish.yml`):
-1. Sets up Quarto and R via `r-lib/actions/setup-r@v2`
-2. Runs `update-dependencies.R` to sync `DESCRIPTION`
-3. Renders the site with `babelquarto::render_website()`
-4. Deploys to GitHub Pages (on push to `main`/`master`)
+The deploy workflow (`.github/workflows/quarto-publish.yml`, name **"Github Page"**):
+1. Detects changed QMD files and restores the freeze cache (only changed
+   tutorials are re-executed)
+2. Installs Quarto/R/renv/Python/Julia via the reusable
+   [`.github/actions/setup-render-env`](https://github.com/openbiox/Bizard/blob/main/.github/actions/setup-render-env/action.yml)
+   composite action — R packages come from `renv.lock` via `r-lib/actions/setup-renv`,
+   not ad-hoc installs
+3. Runs `update-dependencies.R` to sync `DESCRIPTION`
+4. Renders the site with `babelquarto::render_website()` via the
+   [`.github/actions/render-site`](https://github.com/openbiox/Bizard/blob/main/.github/actions/render-site/action.yml)
+   composite action
+5. Uploads the `_site` artifact and deploys to GitHub Pages via
+   `actions/deploy-pages` (separate `deploy` job, main branch only)
 
 Trigger a manual re-render via the **Actions** tab → **Github Page** → **Run workflow**.
 
