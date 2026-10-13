@@ -1,0 +1,46 @@
+name: Check Gallery Sync
+
+# Fail when a rendered figure chunk (`fig*` label with a fig-cap) has no
+# row in files/gallery_data*.csv. Contributors run `--update` locally
+# (see .github/scripts/README.md); this keeps drift out of main.
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**.qmd'
+      - 'files/gallery_data*.csv'
+      - '_quarto.yml'
+      - '.github/scripts/sync-gallery.py'
+  pull_request:
+    paths:
+      - '**.qmd'
+      - 'files/gallery_data*.csv'
+      - '_quarto.yml'
+      - '.github/scripts/sync-gallery.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-gallery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: pip install pytest
+
+      - name: Run script tests
+        run: python3 -m pytest .github/scripts/test_sync_gallery.py -q
+
+      - name: Check gallery CSVs are in sync
+        run: python3 .github/scripts/sync-gallery.py --check
