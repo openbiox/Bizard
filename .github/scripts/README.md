@@ -36,7 +36,13 @@ contributor never edits the CSVs by hand for a new chart page:
 
 1. Add the chart qmd (and optionally its `.zh.qmd`) as usual; every
    chunk labelled `fig*` with a non-empty single-line `fig-cap`
-   (and not `eval: false`) renders one PNG that belongs in the gallery.
+   (and not `eval: false`) renders one figure that belongs in the
+   gallery. Most R chunks render `<label>-1.png`; python-engine
+   chunks render `<label>-output-1.png`. Chunks whose figure cannot
+   be referenced as a static `figure-html` PNG are reported for
+   manual action instead of guessed (julia chunks embed base64
+   figures; interactive widgets like ggplotly/girafe/networkD3
+   render no static PNG).
 2. Run `python3 .github/scripts/sync-gallery.py --update` — it derives
    the missing rows (URLs, captions, `Type` from the frontmatter title,
    `Level1`/`Level2` from the directory or sidebar) and appends them to
@@ -53,9 +59,11 @@ Safety properties:
 - Mixed EOLs are preserved: appended rows use the file's last-line EOL.
 - `Id` continues from the current maximum; en/zh row counts must be
   equal before the script touches anything.
-- Rows the script cannot derive (currently none — Hiplot `Level2` comes
-  from the sidebar section linking the page) are reported for manual
-  action instead of guessed.
+- Rows the script cannot derive (julia chunks, interactive-widget
+  chunks, and the few python chunks whose warning output shifts the
+  PNG to `-output-2.png`; Hiplot pages outside a sidebar section) are
+  reported for manual action instead of guessed — they never fail
+  `--check`.
 
 ```bash
 python3 .github/scripts/sync-gallery.py --check    # exit 1 if out of sync (CI)

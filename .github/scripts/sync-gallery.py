@@ -7,8 +7,15 @@ the gallery and the AI skill pack. This script makes "add one qmd" the
 only required step:
 
 - Every English chart qmd chunk whose label starts with `fig` and that
-  carries a non-empty single-line `fig-cap` corresponds to one rendered
-  PNG. Chunks marked `eval: false` are skipped (they never render).
+  carries a non-empty single-line `fig-cap` belongs in the gallery.
+  Chunks marked `eval: false` are skipped (they never render).
+- Most R chunks render `<label>-1.png`; python-engine chunks render
+  `<label>-output-1.png`. Chunks whose figure cannot be referenced as a
+  static `figure-html` PNG are reported for manual action instead of
+  guessed: julia chunks embed figures as base64 data URIs; chunks
+  calling interactive-widget functions (ggplotly, girafe, networkD3,
+  ...) render no static PNG; a few python chunks emit `-output-2.png`
+  because a warning precedes the figure (fig-py-violin-basic/strip).
 - The existing CSV rows stay the single source of truth for manual
   curation (hand-picked screenshots, edited names, translations). The
   script only APPENDS rows for rendered figures missing from the CSV;
@@ -74,26 +81,93 @@ CLINICS_LEVEL2 = {
     "RegressionTable": "RegressionAnalysisTable",
 }
 
+# GraphGallery's reactable tables filter on these Level2 names; the BASICS
+# directory rows all carry the directory name as Level2 (DataOverTime's
+# curated rows use "Evolution").
+DIR_LEVEL2_OVERRIDES = {
+    "Distribution": "Distribution",
+    "Correlation": "Correlation",
+    "Ranking": "Ranking",
+    "Composition": "Composition",
+    "DataOverTime": "Evolution",
+    "Proportion": "Proportion",
+    "Animation": "Animation",
+    "Python": "Python",
+    "Julia": "Julia",
+}
+
 # Hiplot pages span four gallery sections (BASICS/OMICS/CLINICS/MAP).
 # Their Level2 comes from the sidebar section that links the page.
 HIPLOT_LEVEL2 = ("BASICS", "OMICS", "CLINICS", "MAP")
 
-CHUNK_RE = re.compile(r"```+\{[^}]*\}\n(.*?)```", re.S)
+# Chunks calling these functions render an interactive htmlwidget (or
+# plotly) figure — no static figure-html PNG exists to reference.
+NO_PNG_FUNCTIONS = (
+    "ggplotly",
+    "girafe",
+    "geom_polygon_interactive",
+    "circlepackeR",
+    "collapsibleTree",
+    "dygraph",
+    "chorddiag",
+    "simpleNetwork",
+    "sankeyNetwork",
+    "d3heatmap",
+    "streamgraph",
+    "ivolcano",
+    "e_charts",
+    "d3wordcloud",
+    "regplot",
+)
+
+# These python chunks emit `-output-2.png` (a seaborn palette warning
+# becomes the first chunk output), so the PNG path cannot be derived
+# statically; they need a hand-verified URL.
+KNOWN_MULTI_OUTPUT_LABELS = frozenset({"fig-py-violin-basic", "fig-py-violin-strip"})
+
+CHUNK_RE = re.compile(r"```+\{([^}]*)\}\n(.*?)```", re.S)
 LABEL_RE = re.compile(r"#\|\s*label:\s*(\S+)")
 EVAL_FALSE_RE = re.compile(r"#\|\s*eval:\s*false")
 CAP_RE = re.compile(r'#\|\s*fig-cap:\s*"([^"]*)"')
 
 
+def _engine_of(options):
+    """Chunk engine from the fence options: `{r, fig.height=5}` -> "r"."""
+    return options.strip().split(",")[0].strip()
+
+
+def _no_png_function(body):
+    """First widget-rendering call in the chunk body, or None."""
+    for fn in NO_PNG_FUNCTIONS:
+        if re.search(rf"\b{re.escape(fn)}\s*\(", body):
+            return fn
+    return None
+
+
+def manual_reason_for(label, engine, body):
+    """Reason a rendered fig chunk yields no derivable static PNG, or None."""
+    if engine == "julia":
+        return "julia chunks embed figures as base64 data URIs (no figure-html PNG)"
+    if label in KNOWN_MULTI_OUTPUT_LABELS:
+        return "chunk emits -output-2.png (warning precedes the figure); verify the URL by hand"
+    fn = _no_png_function(body)
+    if fn:
+        return f"interactive widget ({fn}) renders no static figure-html PNG"
+    return None
+
+
 def parse_fig_chunks(qmd_text):
-    """Extract (label, fig-cap) pairs for rendered figure chunks.
+    """Extract figure-chunk records for rendered figure chunks.
 
     A figure chunk carries a label starting with `fig` and a non-empty
     single-line quoted fig-cap; chunks marked `eval: false` never render
-    a PNG and are skipped.
+    a PNG and are skipped. Each record is a dict with keys `label`,
+    `caption`, `engine`, and `manual_reason` (None when a static PNG
+    URL can be derived).
     """
     figures = []
     for match in CHUNK_RE.finditer(qmd_text):
-        body = match.group(1)
+        options, body = match.group(1), match.group(2)
         label = LABEL_RE.search(body)
         cap = CAP_RE.search(body)
         if label is None or cap is None or EVAL_FALSE_RE.search(body):
@@ -101,7 +175,15 @@ def parse_fig_chunks(qmd_text):
         name, caption = label.group(1), cap.group(1)
         if not name.startswith("fig") or not caption:
             continue
-        figures.append((name, caption))
+        engine = _engine_of(options)
+        figures.append(
+            {
+                "label": name,
+                "caption": caption,
+                "engine": engine,
+                "manual_reason": manual_reason_for(name, engine, body),
+            }
+        )
     return figures
 
 
@@ -129,7 +211,7 @@ def derive_level2(directory, page, root):
         return CLINICS_LEVEL2.get(page, page)
     if directory == "Hiplot":
         return hiplot_level2(os.path.join(root, "_quarto.yml"), directory, page)
-    return page
+    return DIR_LEVEL2_OVERRIDES.get(directory, page)
 
 
 def parse_hiplot_sections(yml_path):
@@ -197,6 +279,7 @@ def collect_missing(root):
         )
 
     covered = csv_covered_labels(en_text)
+    next_id = max_id
 
     missing = []
     for directory in CHART_DIRS:
@@ -216,27 +299,38 @@ def collect_missing(root):
                     zh_text = fh.read()
             title = read_frontmatter_title(text)
             zh_title = read_frontmatter_title(zh_text) if zh_text else None
-            for label, caption in parse_fig_chunks(text):
+            zh_caps = {f["label"]: f["caption"] for f in parse_fig_chunks(zh_text)} if zh_text else {}
+            level2 = derive_level2(directory, page, root)
+            for fig in parse_fig_chunks(text):
+                label = fig["label"]
                 if label in covered:
                     continue
-                level2 = derive_level2(directory, page, root)
-                zh_caption = None
-                if zh_text:
-                    zh_caps = dict(parse_fig_chunks(zh_text))
-                    zh_caption = zh_caps.get(label)
+                is_placeable = fig["manual_reason"] is None and level2 is not None
+                row_id = None
+                if is_placeable:
+                    next_id += 1
+                    row_id = next_id
+                image_url = None
+                if fig["manual_reason"] is None:
+                    infix = "-output" if fig["engine"] == "python" else ""
+                    image_url = (
+                        f"{CSV_BASE}/{directory}/{page}_files/figure-html/"
+                        f"{label}{infix}-1.png"
+                    )
                 missing.append(
                     {
-                        "id": max_id + len(missing) + 1,
+                        "id": row_id,
                         "dir": directory,
                         "page": page,
                         "label": label,
-                        "name": caption,
-                        "zh_name": zh_caption or caption,
-                        "image_url": f"{CSV_BASE}/{directory}/{page}_files/figure-html/{label}-1.png",
+                        "name": fig["caption"],
+                        "zh_name": zh_caps.get(label) or fig["caption"],
+                        "image_url": image_url,
+                        "manual_reason": fig["manual_reason"],
                         "tutorial_url": f"{CSV_BASE}/{directory}/{page}.html#{label}",
                         "zh_tutorial_url": f"{CSV_BASE}/zh/{directory}/{page}.html#{label}",
-                        "description": caption,
-                        "zh_description": zh_caption or caption,
+                        "description": fig["caption"],
+                        "zh_description": zh_caps.get(label) or fig["caption"],
                         "type": title,
                         "zh_type": zh_title or title,
                         "level1": "HIPLOT" if directory == "Hiplot" else DIR_LEVEL1[directory],
@@ -252,7 +346,7 @@ def format_row(row, zh=False):
         fields = [
             row["id"],
             row["zh_name"],
-            row["image_url"],
+            row["image_url"] or "",
             row["zh_tutorial_url"],
             row["zh_description"],
             row["zh_type"],
@@ -263,7 +357,7 @@ def format_row(row, zh=False):
         fields = [
             row["id"],
             row["name"],
-            row["image_url"],
+            row["image_url"] or "",
             row["tutorial_url"],
             row["description"],
             row["type"],
@@ -281,12 +375,16 @@ def load_csv_text(path):
 
 
 def csv_covered_labels(text):
-    """Labels already present in a gallery CSV (from figure-html/anchor URLs)."""
+    """Labels already present in a gallery CSV (from figure-html/anchor URLs).
+
+    Matches every rendered-page variant: `-1.png`, `-output-1.png`, and
+    curated `-N.png` (N>=2) URLs, plus `#label` and `#slug` anchors.
+    """
     covered = set()
     for r in csv.reader(text.splitlines()):
         if len(r) < 4:
             continue
-        m = re.search(r"figure-html/([A-Za-z0-9._-]+?)-1\.png", r[2])
+        m = re.search(r"figure-html/([A-Za-z0-9._-]+?)(?:-output)?-\d+\.png", r[2])
         if m:
             covered.add(m.group(1))
         m2 = re.search(r"\.html#([A-Za-z0-9._-]+)", r[3])
@@ -304,29 +402,34 @@ def append_rows(csv_text, new_lines):
 
 
 def check(root):
-    """Report out-of-sync rows; return 1 when any exist (CI mode)."""
+    """Report out-of-sync rows; return 1 only when placeable rows are missing.
+
+    Manual cases (widget/julia chunks, unplaced Hiplot pages) are reported
+    but never fail CI, because they have no derivable fix.
+    """
     missing = collect_missing(root)
-    unplaceable = [m for m in missing if m["level2"] is None]
-    for m in missing:
-        if m["level2"] is None:
-            print(f"OUT OF SYNC: {m['dir']}/{m['page']}.qmd#{m['label']} needs manual placement (no Hiplot sidebar section)")
-        else:
-            print(f"OUT OF SYNC: {m['dir']}/{m['page']}.qmd#{m['label']} missing from gallery (Id {m['id']})")
-    if missing:
-        print(
-            f"--check failed: {len(missing)} missing row(s)"
-            + (f", {len(unplaceable)} manual" if unplaceable else "")
-        )
+    manual = [m for m in missing if m["manual_reason"] or m["level2"] is None]
+    placeable = [m for m in missing if not (m["manual_reason"] or m["level2"] is None)]
+    for m in placeable:
+        print(f"OUT OF SYNC: {m['dir']}/{m['page']}.qmd#{m['label']} missing from gallery (Id {m['id']})")
+    for m in manual:
+        reason = m["manual_reason"] or "no Hiplot sidebar section"
+        print(f"MANUAL: {m['dir']}/{m['page']}.qmd#{m['label']} — {reason}")
+    if placeable:
+        print(f"--check failed: {len(placeable)} placeable row(s) missing, {len(manual)} manual")
         return 1
+    if manual:
+        print(f"gallery CSVs are in sync ({len(manual)} manual case(s) pending)")
+        return 0
     print("gallery CSVs are in sync with chart qmds")
     return 0
 
 
 def update(root):
-    """Append missing rows to both CSVs in place; return 1 if manual cases remain."""
+    """Append placeable missing rows to both CSVs in place; return 1 if manual cases remain."""
     missing = collect_missing(root)
-    manual = [m for m in missing if m["level2"] is None]
-    applicable = [m for m in missing if m["level2"] is not None]
+    manual = [m for m in missing if m["manual_reason"] or m["level2"] is None]
+    applicable = [m for m in missing if not (m["manual_reason"] or m["level2"] is None)]
 
     paths = {
         False: os.path.join(root, "files", "gallery_data.csv"),
@@ -344,7 +447,8 @@ def update(root):
             fh.write(append_rows(texts[zh], new_lines[zh]))
 
     for row in manual:
-        print(f"MANUAL ACTION: {row['dir']}/{row['page']}.qmd#{row['label']} (no Hiplot sidebar section)")
+        reason = row["manual_reason"] or "no Hiplot sidebar section"
+        print(f"MANUAL ACTION: {row['dir']}/{row['page']}.qmd#{row['label']} ({reason})")
     if new_lines[False]:
         print(f"appended {len(new_lines[False])} row(s) to both gallery CSVs")
     elif manual:
