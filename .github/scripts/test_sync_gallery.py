@@ -100,6 +100,91 @@ ZH_CSV = (
     "交互式火山图,OMICS,iVolcanoPlot\r\n"
 )
 
+# {python} mirror of the live ViolinPlot page: on the deployed site
+# basic/strip emit `-output-2.png` (a seaborn palette warning becomes the
+# first chunk output) while split emits `-output-1.png`.
+PY_QMD_EN = """---
+title: "Violin Plot"
+---
+
+```{python}
+#| label: fig-py-violin-basic
+#| fig-cap: "Basic violin plot"
+plt.show()
+```
+
+```{python}
+#| label: fig-py-violin-split
+#| fig-cap: "Split violin by group"
+plt.show()
+```
+
+```{python}
+#| label: fig-py-violin-strip
+#| fig-cap: "Strip plot overlay"
+plt.show()
+```
+"""
+
+PY_QMD_ZH = """---
+title: "小提琴图"
+---
+
+```{python}
+#| label: fig-py-violin-basic
+#| fig-cap: "基础小提琴图"
+plt.show()
+```
+
+```{python}
+#| label: fig-py-violin-split
+#| fig-cap: "按分组拆分小提琴图"
+plt.show()
+```
+
+```{python}
+#| label: fig-py-violin-strip
+#| fig-cap: "带抖动的小提琴图"
+plt.show()
+```
+"""
+
+# An {r} chunk calling an interactive-widget function and a {julia} chunk:
+# neither writes a static figure-html PNG (verified against the live site).
+WIDGET_QMD_EN = """---
+title: "Interactive Charts"
+---
+
+```{r}
+#| label: fig-ggplotly-basic
+#| fig-cap: "Interactive ggplot"
+ggplotly(p)
+```
+
+```{julia}
+#| label: fig-jl-heat
+#| fig-cap: "Julia heatmap"
+heatmap(xs, ys)
+```
+"""
+
+WIDGET_QMD_ZH = """---
+title: "交互式图表"
+---
+
+```{r}
+#| label: fig-ggplotly-basic
+#| fig-cap: "交互式 ggplot"
+ggplotly(p)
+```
+
+```{julia}
+#| label: fig-jl-heat
+#| fig-cap: "Julia 热图"
+heatmap(xs, ys)
+```
+"""
+
 
 # --------------------------------------------------------------------------
 # Chunk parsing
@@ -110,7 +195,7 @@ def test_parse_fig_chunks_keeps_only_rendered_figures():
 
     figs = parse_fig_chunks(QMD_EN)
 
-    assert figs == [
+    assert [(f["label"], f["caption"]) for f in figs] == [
         ("fig-1.1BasicPlot", "Basic interactive volcano plot"),
         ("fig-1.3size_by", "Map point size by -log10(P) value"),
     ]
@@ -125,10 +210,32 @@ def test_parse_fig_chunks_accepts_nodash_and_dotted_labels():
         "```{python}\n#| label: fig-1.3size_by\n#| fig-cap: \"Sizes\"\nplot(2)\n```\n"
     )
 
-    assert parse_fig_chunks(qmd) == [
+    assert [(f["label"], f["caption"]) for f in parse_fig_chunks(qmd)] == [
         ("fig1Calend", "Calendar"),
         ("fig-1.3size_by", "Sizes"),
     ]
+
+
+def test_parse_fig_chunks_reports_engine():
+    """Each record carries the chunk engine (first word of the fence options)."""
+    parse_fig_chunks = sync_gallery.parse_fig_chunks
+
+    qmd = (
+        "---\ntitle: \"T\"\n---\n\n"
+        "```{r}\n#| label: fig-r-basic\n#| fig-cap: \"R\"\nplot(1)\n```\n"
+        "```{python}\n#| label: fig-py-basic\n#| fig-cap: \"Py\"\nplt.show()\n```\n"
+        "```{julia}\n#| label: fig-jl-basic\n#| fig-cap: \"Jl\"\nplot(1)\n```\n"
+        "```{r, fig.height=5, warning=FALSE}\n#| label: fig-r-opted\n#| fig-cap: \"Opts\"\nplot(2)\n```\n"
+    )
+
+    engines = {f["label"]: f["engine"] for f in parse_fig_chunks(qmd)}
+
+    assert engines == {
+        "fig-r-basic": "r",
+        "fig-py-basic": "python",
+        "fig-jl-basic": "julia",
+        "fig-r-opted": "r",
+    }
 
 
 def test_read_frontmatter_title_handles_quoted_titles():
@@ -191,18 +298,26 @@ def test_parse_hiplot_sections_reads_mathematical_bold_headers():
 import tempfile
 
 
+def write_qmd_page(tmp, directory, page, en_text, zh_text):
+    """Write one chart page (en + zh) into the mini repo."""
+    os.makedirs(os.path.join(tmp, directory), exist_ok=True)
+    with open(os.path.join(tmp, directory, page + ".qmd"), "w") as fh:
+        fh.write(en_text)
+    with open(os.path.join(tmp, directory, page + ".zh.qmd"), "w") as fh:
+        fh.write(zh_text)
+
+
+def write_gallery_csvs(tmp):
+    os.makedirs(os.path.join(tmp, "files"), exist_ok=True)
+    for name, text in (("gallery_data.csv", EN_CSV), ("gallery_data_zh.csv", ZH_CSV)):
+        with open(os.path.join(tmp, "files", name), "w", newline="") as fh:
+            fh.write(text)
+
+
 def make_root(tmp):
     """Build a mini repo: Omics/iVolcanoPlot.qmd + 2-row gallery CSVs."""
-    os.makedirs(os.path.join(tmp, "Omics"))
-    with open(os.path.join(tmp, "Omics", "iVolcanoPlot.qmd"), "w") as fh:
-        fh.write(QMD_EN)
-    with open(os.path.join(tmp, "Omics", "iVolcanoPlot.zh.qmd"), "w") as fh:
-        fh.write(QMD_ZH)
-    os.makedirs(os.path.join(tmp, "files"))
-    with open(os.path.join(tmp, "files", "gallery_data.csv"), "w", newline="") as fh:
-        fh.write(EN_CSV)
-    with open(os.path.join(tmp, "files", "gallery_data_zh.csv"), "w", newline="") as fh:
-        fh.write(ZH_CSV)
+    write_qmd_page(tmp, "Omics", "iVolcanoPlot", QMD_EN, QMD_ZH)
+    write_gallery_csvs(tmp)
 
 
 def test_collect_missing_derives_ivolcano_rows():
@@ -272,3 +387,156 @@ def test_update_appends_rows_to_both_csvs_preserving_eol():
         # idempotent: second run changes nothing
         assert update(tmp) == 0
         assert open(os.path.join(tmp, "files", "gallery_data.csv"), newline="").read() == en
+
+
+# --------------------------------------------------------------------------
+# Rules R1/R2 (follow-up to #340): python-engine URL infix, and fig chunks
+# whose output is interactive (or julia) render no static PNG.
+# --------------------------------------------------------------------------
+
+def test_collect_missing_derives_python_output_url():
+    """R2: python-engine chunks render `<label>-output-1.png`, not `-1.png`."""
+    collect_missing = sync_gallery.collect_missing
+
+    with tempfile.TemporaryDirectory() as tmp:
+        write_qmd_page(tmp, "Python", "ViolinPlot", PY_QMD_EN, PY_QMD_ZH)
+        write_gallery_csvs(tmp)
+        missing = collect_missing(tmp)
+
+    assert [m["label"] for m in missing] == [
+        "fig-py-violin-basic",
+        "fig-py-violin-split",
+        "fig-py-violin-strip",
+    ]
+    split_row = missing[1]
+    assert split_row["image_url"] == (
+        "https://openbiox.github.io/Bizard/Python/ViolinPlot_files/figure-html/"
+        "fig-py-violin-split-output-1.png"
+    )
+    assert split_row["manual_reason"] is None
+
+
+def test_collect_missing_routes_widget_and_julia_chunks_to_manual():
+    """R1: chunks emitting only interactive widgets (or julia chunks) get a
+    manual_reason and no guessed image_url."""
+    collect_missing = sync_gallery.collect_missing
+
+    with tempfile.TemporaryDirectory() as tmp:
+        write_qmd_page(tmp, "Animation", "Interactivity", WIDGET_QMD_EN, WIDGET_QMD_ZH)
+        write_gallery_csvs(tmp)
+        missing = collect_missing(tmp)
+
+    assert [m["label"] for m in missing] == ["fig-ggplotly-basic", "fig-jl-heat"]
+    for row in missing:
+        assert row["image_url"] is None
+        assert row["manual_reason"]
+
+
+def test_collect_missing_routes_known_multi_output_chunks_to_manual():
+    """fig-py-violin-basic/strip emit -output-2.png (seaborn palette warning
+    becomes the first chunk output) — statically undetectable, so manual."""
+    collect_missing = sync_gallery.collect_missing
+
+    with tempfile.TemporaryDirectory() as tmp:
+        write_qmd_page(tmp, "Python", "ViolinPlot", PY_QMD_EN, PY_QMD_ZH)
+        write_gallery_csvs(tmp)
+        missing = collect_missing(tmp)
+
+    for row in (missing[0], missing[2]):
+        assert row["image_url"] is None
+        assert row["manual_reason"]
+
+
+def test_check_exits_0_when_only_manual_cases_remain():
+    """Permanent manual cases must not fail CI --check forever."""
+    check = sync_gallery.check
+
+    with tempfile.TemporaryDirectory() as tmp:
+        write_qmd_page(tmp, "Animation", "Interactivity", WIDGET_QMD_EN, WIDGET_QMD_ZH)
+        write_gallery_csvs(tmp)
+        assert check(tmp) == 0
+
+
+def test_update_appends_only_placeable_rows_and_reports_manual():
+    update = sync_gallery.update
+
+    with tempfile.TemporaryDirectory() as tmp:
+        write_qmd_page(tmp, "Animation", "Interactivity", WIDGET_QMD_EN, WIDGET_QMD_ZH)
+        write_qmd_page(tmp, "Python", "ViolinPlot", PY_QMD_EN, PY_QMD_ZH)
+        write_gallery_csvs(tmp)
+        assert update(tmp) == 1  # manual cases remain
+
+        en = open(os.path.join(tmp, "files", "gallery_data.csv"), newline="").read()
+        zh = open(os.path.join(tmp, "files", "gallery_data_zh.csv"), newline="").read()
+
+        # only the derivable python row lands, as the next id in both CSVs
+        assert "2,Split violin by group," in en
+        assert "figure-html/fig-py-violin-split-output-1.png" in en
+        assert "2,按分组拆分小提琴图," in zh
+        assert "fig-ggplotly-basic" not in en and "fig-jl-heat" not in en
+
+
+def test_csv_covered_labels_reads_output_infix_urls():
+    csv_covered_labels = sync_gallery.csv_covered_labels
+
+    text = (
+        "Id,Name,Image_url,Tutorial_url,Description,Type,Level1,Level2\r\n"
+        "1,Clustered Heatmap,"
+        "https://openbiox.github.io/Bizard/Python/Heatmap_files/figure-html/fig-py-heatmap-cluster-output-1.png,"
+        "https://openbiox.github.io/Bizard/Python/Heatmap.html#fig-py-heatmap-cluster,"
+        "Clustered heatmap,PYTHON,PYTHON,Heatmap\r\n"
+    )
+
+    assert csv_covered_labels(text) == {"fig-py-heatmap-cluster"}
+
+
+def test_csv_covered_labels_reads_multi_page_urls():
+    """Old curated rows may point at `-N.png` (N>=2) of the same chunk with a
+    slug anchor; the label still counts as covered so --update does not append
+    a near-duplicate row (regression from #340, Ids 802/828)."""
+    csv_covered_labels = sync_gallery.csv_covered_labels
+
+    text = (
+        "Id,Name,Image_url,Tutorial_url,Description,Type,Level1,Level2\r\n"
+        "555,GWAS Circos Plot,"
+        "https://openbiox.github.io/Bizard/Omics/GwasSnpPlot_files/figure-html/fig-3GwasSnpManhattan-3.png,"
+        "https://openbiox.github.io/Bizard/Omics/GwasSnpPlot.html#manhattan-plot-for-snp-screening,"
+        "Manhattan plot for SNP screening,GWAS Circos Plot,OMICS,GwasSnpPlot\r\n"
+    )
+
+    assert "fig-3GwasSnpManhattan" in csv_covered_labels(text)
+
+
+def test_collect_missing_uses_gallery_level2_names():
+    """Level2 must match GraphGallery's table filters: DataOverTime pages live
+    under "Evolution"; Python/Julia rows use their language name; every other
+    BASICS directory's curated rows use the directory name itself."""
+    collect_missing = sync_gallery.collect_missing
+
+    with tempfile.TemporaryDirectory() as tmp:
+        write_qmd_page(tmp, "DataOverTime", "AreaChart", QMD_EN, QMD_ZH)
+        write_gallery_csvs(tmp)
+        missing = collect_missing(tmp)
+
+    assert missing[0]["level2"] == "Evolution"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        write_qmd_page(tmp, "Python", "ViolinPlot", PY_QMD_EN, PY_QMD_ZH)
+        write_gallery_csvs(tmp)
+        missing = collect_missing(tmp)
+
+    assert missing[0]["level2"] == "Python"
+
+    for directory in (
+        "Distribution",
+        "Correlation",
+        "Ranking",
+        "Composition",
+        "Proportion",
+        "Animation",
+    ):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_qmd_page(tmp, directory, "SomePage", QMD_EN, QMD_ZH)
+            write_gallery_csvs(tmp)
+            missing = collect_missing(tmp)
+        assert missing[0]["level2"] == directory, directory
