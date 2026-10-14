@@ -1,25 +1,35 @@
 on:
-  pull_request_target:
+  pull_request:
     branches: [main, master]
 
 name: Render the new Quarto files
 
 # https://github.com/r-lib/actions/tree/v2/examples#render-rmarkdown
 # https://github.com/quarto-dev/quarto-actions
+#
+# Runs on the safe `pull_request` event, so the token is read-only for
+# fork PRs and untrusted PR code (checked out and rendered in job 2) never
+# executes with write access or secrets. The PR comments that need a
+# writable token are posted by the companion `pr-review-comment.yml`
+# workflow, which reacts to this workflow's completion in the trusted
+# default-branch context.
 
 env:
-  isExtPR: ${{ github.event.pull_request.head.repo.fork == true }}
   RUST_BACKTRACE: 1
 
 jobs:
   # ── Job 1: Format check ────────────────────────────────────────────────────
   # Security note: Uses only the GitHub API to read changed file contents;
-  # NO checkout of untrusted PR code occurs in this job.
+  # NO checkout of untrusted PR code occurs in this job. It also derives
+  # the changed-QMD list so job 2 can be skipped entirely for PRs that
+  # touch no tutorial files.
   format-check:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
+    outputs:
+      any_qmd_changed: ${{ steps.format-check.outputs.any_qmd_changed }}
+      qmd_files: ${{ steps.format-check.outputs.qmd_files }}
     steps:
       - name: Detect changed QMD files and run format check
         id: format-check
@@ -34,6 +44,22 @@ jobs:
               per_page:    100,
             });
 
+            // Render gate for job 2: any added/modified/renamed QMD counts,
+            // zh files included (mirrors the previous tj-actions/changed-files
+            // behavior). Validated files below are the stricter subset.
+            const renderable = files.filter(f =>
+              f.filename.toLowerCase().endsWith('.qmd') &&
+              f.status !== 'removed'
+            );
+            core.setOutput('any_qmd_changed', String(renderable.length > 0));
+            core.setOutput('qmd_files', renderable.map(f => f.filename).join(' '));
+
+            const fs = require('fs');
+            fs.mkdirSync('pr-review-meta', { recursive: true });
+            // The workflow_run commenter reads the PR number from this artifact,
+            // because workflow_run's pull_requests array is empty for fork PRs.
+            fs.writeFileSync('pr-review-meta/pr-number', String(context.payload.pull_request.number));
+
             const qmdFiles = files.filter(f =>
               (f.filename.endsWith('.qmd') || f.filename.endsWith('.Qmd')) &&
               !f.filename.endsWith('.zh.qmd') &&
@@ -42,8 +68,10 @@ jobs:
             );
 
             if (qmdFiles.length === 0) {
-              core.setOutput('summary', 'No new QMD tutorial files to check.');
-              core.setOutput('has_errors', 'false');
+              fs.writeFileSync(
+                'pr-review-meta/format-comment.md',
+                '## ✅ QMD Format Check\n\nNo new QMD tutorial files to check.\n'
+              );
               return;
             }
 
@@ -139,46 +167,42 @@ jobs:
             }
 
             const summary = lines.join('\n');
-            core.setOutput('summary',    summary);
-            core.setOutput('has_errors', String(hasErrors));
-
-            if (hasErrors) core.setFailed('QMD format errors found');
-
-      - name: Post format check comment on PR
-        if: always()
-        uses: actions/github-script@v9
-        env:
-          FORMAT_SUMMARY: ${{ steps.format-check.outputs.summary }}
-          HAS_ERRORS: ${{ steps.format-check.outputs.has_errors }}
-        with:
-          script: |
-            const summary   = process.env.FORMAT_SUMMARY || '(no output)';
-            const hasErrors = process.env.HAS_ERRORS === 'true';
-            const icon      = hasErrors ? '❌' : '✅';
+            const icon    = hasErrors ? '❌' : '✅';
 
             const body = `## ${icon} QMD Format Check\n\n${summary}\n\n` +
               `> Automated check by the [PR Review workflow]` +
               `(${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).\n` +
               `> See [contribution guidance](../blob/main/Template/visualization_guidance_EN.qmd) for the expected tutorial format.`;
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: context.issue.number, body
-            });
+            fs.writeFileSync('pr-review-meta/format-comment.md', body);
+
+            if (hasErrors) core.setFailed('QMD format errors found');
+
+      - name: Upload format summary for the comment poster
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: format-summary
+          path: pr-review-meta
+          if-no-files-found: ignore
 
   # ── Job 2: Render preview ──────────────────────────────────────────────────
+  # Only runs when the PR actually changes QMD files; PRs touching only
+  # CSVs, config, or docs skip the ~35 min environment setup entirely.
+  # PR comments are posted by pr-review-comment.yml (this job's token is
+  # read-only on fork PRs).
   build-deploy:
     runs-on: ubuntu-latest
     needs: format-check
-    if: "!failure()"
+    if: ${{ !failure() && needs.format-check.outputs.any_qmd_changed == 'true' }}
     concurrency:
       group: pr-review-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      QMD_FILES: ${{ needs.format-check.outputs.qmd_files }}
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
@@ -204,18 +228,7 @@ jobs:
       - name: Scan .qmd for dependencies and update
         run: Rscript update-dependencies.R
 
-      - name: Get the new quarto files
-        id: new-qmd-files
-        uses: tj-actions/changed-files@v47.0.6 # v46
-        with:
-          files: |
-            **.Qmd
-            **.qmd
-
       - name: Render the new quarto files
-        if: steps.new-qmd-files.outputs.any_changed == 'true'
-        env:
-          QMD_FILES: ${{ steps.new-qmd-files.outputs.all_changed_files }}
         run: |
           # every qmd file should be self-contained
           mkdir -p _QMD_RENDER_REVIEW
@@ -231,43 +244,9 @@ jobs:
           done
 
       - name: Upload Quarto artifacts
-        if: steps.new-qmd-files.outputs.any_changed == 'true'
         uses: actions/upload-artifact@v7
         id: artifact-upload
         with:
           name: quarto-rendered-files
           path: _QMD_RENDER_REVIEW
           if-no-files-found: "ignore"
-
-      - name: Comment PR with artifact link
-        if: steps.new-qmd-files.outputs.any_changed == 'true' && github.event_name == 'pull_request_target'
-        uses: actions/github-script@v9
-        env:
-          CHANGED_FILES: ${{ steps.new-qmd-files.outputs.all_changed_files }}
-        with:
-          script: |
-            const runId = context.runId;
-            const repo = context.repo;
-            const artifactUrl = `https://github.com/${repo.owner}/${repo.repo}/actions/runs/${runId}`;
-            const changedFiles = process.env.CHANGED_FILES;
-            
-            const comment = `## 📊 Quarto Render Preview
-            
-            The new or modified Quarto files have been rendered and are available as artifacts.
-            
-            **🔗 [View and Download Rendered Files](${artifactUrl})**
-            
-            Click the link above, scroll to the "Artifacts" section at the bottom of the page, and download \`quarto-rendered-files\` to preview the rendered HTML files.
-            
-            **Modified files:**
-            \`\`\`
-            ${changedFiles}
-            \`\`\`
-            `;
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: repo.owner,
-              repo: repo.repo,
-              body: comment
-            });
