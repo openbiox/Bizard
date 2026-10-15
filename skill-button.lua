@@ -18,14 +18,26 @@ function Pandoc(doc)
 
   local button_html = [[
 <div class="skill-button-container" style="margin:1rem 0;padding:0.8rem 1rem;background:linear-gradient(135deg,#f0f7ff,#e8f4f8);border-radius:8px;border:1px solid #d0e3f0;">
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
-    <span style="font-size:0.9rem;color:#2c5282;">
-      <strong>🤖 AI Skill</strong> — Download the Bizard unified skill for your AI assistant
-    </span>
-    <a id="bizard-skill-download" href="bizard-skill.zip" download
-      style="background:#3a86ff;color:#fff;border:none;padding:0.45rem 1rem;border-radius:6px;cursor:pointer;font-size:0.85rem;font-weight:600;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:0.3rem;">
-      ⬇️ Download Skill ZIP
-    </a>
+  <div style="display:flex;flex-direction:column;gap:0.5rem;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+      <span style="font-size:0.9rem;color:#2c5282;">
+        <strong>🤖 AI Skill</strong> — Download the Bizard unified skill for your AI assistant
+      </span>
+      <a id="bizard-skill-download" href="bizard-skill.zip" download
+        style="background:#3a86ff;color:#fff;border:none;padding:0.45rem 1rem;border-radius:6px;cursor:pointer;font-size:0.85rem;font-weight:600;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:0.3rem;">
+        ⬇️ Download Skill ZIP
+      </a>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;border-top:1px dashed #d0e3f0;padding-top:0.5rem;">
+      <span style="font-size:0.9rem;color:#2c5282;">
+        <strong>🔌 MCP Server</strong> — Let AI agents (Claude Code, Cursor, …) query Bizard live:
+        <code style="background:#fff;border:1px solid #d0e3f0;border-radius:4px;padding:0.1rem 0.4rem;font-size:0.8rem;">claude mcp add bizard -- npx @openbiox/bizard-mcp</code>
+      </span>
+      <a href="https://github.com/openbiox/Bizard/tree/main/mcp" target="_blank" rel="noopener"
+        style="background:#3a86ff;color:#fff;border:none;padding:0.45rem 1rem;border-radius:6px;cursor:pointer;font-size:0.85rem;font-weight:600;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:0.3rem;">
+        📖 MCP Docs
+      </a>
+    </div>
   </div>
 </div>
 <script>
