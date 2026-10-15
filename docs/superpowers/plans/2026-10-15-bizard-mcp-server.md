@@ -46,7 +46,7 @@
 - Consumes: `generate_skills.py` (import: `CODE_BLOCK_RE`, `R_LIB_RE`, `PY_IMPORT_RE`, `JL_USING_RE`, `extract_all_code_blocks`, `extract_description`, `detect_language`, `extract_packages`, `KNOWN_CATEGORIES`, `parse_yaml_field`)
 - Produces: `extract_code_snippets(qmd_path: Path, chart_id: str, base_url: str) -> list[dict]` returning `[{"chartId": str, "lang": "r"|"python"|"julia", "code": str, "packages": list[str], "dataUrls": list[str], "sourceAnchor": str}]`; `extract_chart_id(qmd_path: Path) -> str` (filename stem); `extract_data_urls(code: str) -> list[str]` (regex over `https?://\S+\.(csv|tsv|rds|txt|xlsx?)`).
 
-- [ ] **Step 1: Create test file with failing tests**
+- [x] **Step 1: Create test file with failing tests**
 
 ```python
 # .github/scripts/tests/test_bundle_lib.py
@@ -100,12 +100,12 @@ def test_extract_code_snippets_empty_qmd(tmp_path):
     assert extract_code_snippets(qmd, "Empty", "https://x/") == []
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard && python3 -m pytest .github/scripts/tests/test_bundle_lib.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'bundle_lib'`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # .github/scripts/bundle_lib.py
@@ -177,12 +177,12 @@ def extract_code_snippets(qmd_path: Path, chart_id: str, base_url: str) -> List[
     return snippets
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python3 -m pytest .github/scripts/tests/test_bundle_lib.py -v`
 Expected: PASS (5 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .github/scripts/bundle_lib.py .github/scripts/tests/test_bundle_lib.py
@@ -217,7 +217,7 @@ bundle.json schema:
 }
 ```
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 # .github/scripts/tests/test_build_bundle.py
@@ -294,12 +294,12 @@ def test_llms_txt_lists_all_charts(tmp_path, qmd_root):
     assert "https://site/Distribution/ViolinPlot.html" in txt
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python3 -m pytest .github/scripts/tests/test_build_bundle.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'build_bundle'`
 
-- [ ] **Step 3: Implement build-bundle.py**
+- [x] **Step 3: Implement build-bundle.py**
 
 ```python
 # .github/scripts/build-bundle.py
@@ -464,17 +464,17 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest .github/scripts/tests/test_build_bundle.py -v`
 Expected: PASS (3 tests)
 
-- [ ] **Step 5: Verify against real repo data**
+- [x] **Step 5: Verify against real repo data**
 
 Run: `python3 .github/scripts/build-bundle.py --out /tmp/bizard-bundle-test`
 Expected: stdout reports ~798 charts and >0 snippets; `ls /tmp/bizard-bundle-test` shows both files.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add .github/scripts/build-bundle.py .github/scripts/tests/test_build_bundle.py
@@ -498,7 +498,7 @@ git commit -m "feat: add MCP bundle builder (bundle.json + llms.txt) from galler
   - `server.ts`: `createBizardServer(bundle: Bundle): McpServer`
   - `index.ts`: stdio entry; CLI accepts `--http` flag placeholder (transport switch lands Task 7)
 
-- [ ] **Step 1: Scaffold package**
+- [x] **Step 1: Scaffold package**
 
 ```bash
 mkdir -p /Users/wsx/Documents/GitHub/Bizard/mcp/src/snapshot /Users/wsx/Documents/GitHub/Bizard/mcp/test
@@ -569,12 +569,12 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 2: Install dependencies**
+- [x] **Step 2: Install dependencies**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npm install`
 Expected: `node_modules/` and `package-lock.json` created, no errors.
 
-- [ ] **Step 3: Write failing tests for bundle loading**
+- [x] **Step 3: Write failing tests for bundle loading**
 
 Create `mcp/test/bundle.test.ts`:
 
@@ -623,12 +623,12 @@ describe("loadBundle", () => {
 });
 ```
 
-- [ ] **Step 4: Run tests to verify they fail**
+- [x] **Step 4: Run tests to verify they fail**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run test/bundle.test.ts`
 Expected: FAIL — `Cannot find module '../src/bundle.js'`
 
-- [ ] **Step 5: Implement types + bundle loader**
+- [x] **Step 5: Implement types + bundle loader**
 
 Create `mcp/src/types.ts`:
 
@@ -726,12 +726,12 @@ export function loadSnapshot(): Bundle | null {
 }
 ```
 
-- [ ] **Step 6: Run bundle tests to verify they pass**
+- [x] **Step 6: Run bundle tests to verify they pass**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run test/bundle.test.ts`
 Expected: PASS (3 tests)
 
-- [ ] **Step 7: Write failing test for MCP server wiring**
+- [x] **Step 7: Write failing test for MCP server wiring**
 
 Create `mcp/test/server.test.ts`:
 
@@ -847,12 +847,12 @@ export async function callTool(
 
 Note: verify exact SDK import paths against `node_modules/@modelcontextprotocol/sdk` after install; if `InMemoryTransport` path differs (e.g. `@modelcontextprotocol/sdk/inMemory.js` vs `.../shared/inMemory.js`), fix the import, not the test logic.
 
-- [ ] **Step 8: Run server tests to verify they fail**
+- [x] **Step 8: Run server tests to verify they fail**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run test/server.test.ts`
 Expected: FAIL — `Cannot find module '../src/server.js'`
 
-- [ ] **Step 9: Implement server core with all 8 tools registered**
+- [x] **Step 9: Implement server core with all 8 tools registered**
 
 Create `mcp/src/search.ts` — the deterministic bilingual scorer (spec §4.1):
 
@@ -1097,12 +1097,12 @@ await server.connect(new StdioServerTransport());
 
 Add to `mcp/package.json` scripts: `"build:bundle": "python3 ../.github/scripts/build-bundle.py --out src/snapshot"` (dev convenience; CI will manage the real snapshot).
 
-- [ ] **Step 10: Run tests to verify they pass**
+- [x] **Step 10: Run tests to verify they pass**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run`
 Expected: PASS (bundle 3 + server 3)
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add mcp/
@@ -1121,7 +1121,7 @@ git commit -m "feat(mcp): scaffold TypeScript MCP server core with stdio transpo
 - Consumes: `Bundle`, `Chart`, `CodeSnippet` types from `src/types.ts`; `findChart(bundle, id): Chart | undefined`, `snippetsFor(bundle, chartId): CodeSnippet[]` (defined in this task in `src/tutorial.ts` and reused later)
 - Produces: `tutorialTool(bundle, chartId)` and `codeTool(bundle, chartId, language)` — both return MCP tool results (`{ content: [{ type: "text", text }] }`). Registration into `server.ts` (moving `bizard_get_tutorial`/`bizard_get_code` from stub to real).
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```typescript
 // mcp/test/tutorial.test.ts
@@ -1168,12 +1168,12 @@ describe("codePayload", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run test/tutorial.test.ts`
 Expected: FAIL — module `../src/tutorial.js` not found
 
-- [ ] **Step 3: Implement tutorial.ts**
+- [x] **Step 3: Implement tutorial.ts**
 
 ```typescript
 import type { Bundle, Chart, CodeSnippet } from "./types.js";
@@ -1241,12 +1241,12 @@ const LICENSE_NOTE = "CC-BY-NC-4.0: non-commercial use with attribution. Cite Bi
 
 and use `license: LICENSE_NOTE`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run test/tutorial.test.ts`
 Expected: PASS (6 tests)
 
-- [ ] **Step 5: Register tools in server.ts**
+- [x] **Step 5: Register tools in server.ts**
 
 Replace the two placeholder registrations from Task 3 (`bizard_get_tutorial`, `bizard_get_code` were NOT yet added in Task 3 — add them now) with `registerTutorialTools(server, bundle)` called from `createBizardServer`:
 
@@ -1302,12 +1302,12 @@ export function errorResult(message: string) {
 }
 ```
 
-- [ ] **Step 6: Run full test suite**
+- [x] **Step 6: Run full test suite**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run`
 Expected: PASS (all prior + 6 new)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add mcp/
@@ -1326,7 +1326,7 @@ git commit -m "feat(mcp): add bizard_get_tutorial and bizard_get_code tools"
 - Consumes: `findChart`, `snippetsFor` from `src/tutorial.ts`; `Chart`, `Bundle` types
 - Produces: `adaptGuidance(bundle, chartId, language, userDataContext?) -> AdaptChecklist` and `citationPayload(bundle, chartId | null, paperOnly, format) -> object` — wired into server via `registerAdaptTool`/`registerCiteTool` in `mcp/src/adapt-tools.ts` and `mcp/src/cite-tools.ts`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```typescript
 // mcp/test/adapt.test.ts
@@ -1393,12 +1393,12 @@ describe("citationPayload", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run test/adapt.test.ts test/cite.test.ts`
 Expected: FAIL — modules missing
 
-- [ ] **Step 3: Implement adapt.ts**
+- [x] **Step 3: Implement adapt.ts**
 
 ```typescript
 // mcp/src/adapt.ts
@@ -1497,7 +1497,7 @@ export function adaptGuidance(
 }
 ```
 
-- [ ] **Step 4: Implement citation in `mcp/src/citation.ts`**
+- [x] **Step 4: Implement citation in `mcp/src/citation.ts`**
 
 ```typescript
 import type { Bundle } from "./types.js";
@@ -1538,21 +1538,21 @@ export function citationPayload(
 }
 ```
 
-- [ ] **Step 5: Run the new tests**
+- [x] **Step 5: Run the new tests**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run test/adapt.test.ts test/citation.test.ts`
 Expected: PASS (9 tests). Note test file name: `citation.test.ts` (matches Step 1's second block if renamed consistently).
 
-- [ ] **Step 6: Wire into server.ts**
+- [x] **Step 6: Wire into server.ts**
 
 Create `mcp/src/adapt-tools.ts` with `registerAdaptTools(server, bundle)` registering `bizard_adapt_guidance` and `bizard_cite` (schema per spec §4.2/§4.3: `chartId`, `language`, optional `userDataContext`; cite: `chartId?`, `paperOnly`, `format`), calling `adaptGuidance`/`citationPayload` and wrapping with `jsonResult`/`errorResult`. Call it from `createBizardServer`.
 
-- [ ] **Step 7: Full suite**
+- [x] **Step 7: Full suite**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add mcp/
@@ -1575,7 +1575,7 @@ git commit -m "feat(mcp): add bizard_adapt_guidance and bizard_cite tools"
   - `detectCredentialLevel(env): Promise<1 | 2 | 3>` and `DEGRADATION_NOTES` map
   - Types: `CheckInput { contributionType, content, language }`, `CheckResult { pass, issues[], checklist[], pointsPreview }`, `SubmitInput { contributionType, title, body, asPR }`, `CredentialEnv { ghPath?: string, token?: string, exec?: ExecFn }`, `SubmitResult { level: 1|2|3, submitted: boolean, url?: string, draft?: string, deepLink?: string, note: string }`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```typescript
 // mcp/test/contribute.test.ts
@@ -1714,12 +1714,12 @@ describe("submitContribution", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run test/contribute.test.ts`
 Expected: FAIL — module missing
 
-- [ ] **Step 3: Implement contribute.ts**
+- [x] **Step 3: Implement contribute.ts**
 
 ```typescript
 // mcp/src/contribute.ts
@@ -1908,16 +1908,16 @@ function draftResult(owner, repo, title, body, truncated, level): SubmitResult {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run test/contribute.test.ts`
 Expected: PASS (9 tests). Fix any type errors from the sketch above — the plan sketches logic, executor completes types (e.g. simplify `execOf` to a clean async wrapper using `node:child_process.execFile` promisified once).
 
-- [ ] **Step 5: Register in server.ts**
+- [x] **Step 5: Register in server.ts**
 
 Create `mcp/src/contribute-tools.ts` exporting `registerContributeTools(server, bundle)` that registers `bizard_contribute_check` (pure, calls `checkContribution`) and `bizard_contribute_submit` (calls `submitContribution(input, {})` — real environment, no injection), each wrapped in `jsonResult`/`errorResult`. Call from `createBizardServer`.
 
-- [ ] **Step 6: Full suite + real-gh smoke test**
+- [x] **Step 6: Full suite + real-gh smoke test**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run && node -e "
 import('./dist/index.js').catch(()=>{});"
@@ -1925,7 +1925,7 @@ Expected: vitest PASS; smoke exits without unhandled rejection.
 
 Manual (only if the runner has gh): `gh auth status` — record which level the dev machine reports via `detectCredentialLevel` with the real exec; expected 1 on the user's machine.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add mcp/
@@ -1945,7 +1945,7 @@ git commit -m "feat(mcp): contribution tools with credential degradation chain (
 - Consumes: `createBizardServer` (Task 3), `adaptGuidance` (Task 5), `checkContribution` (Task 6)
 - Produces: 4 prompts (`recommend`, `adapt`, `troubleshoot`, `contribute`) registered on the server; resources `bizard://catalog`, `bizard://tutorial/{chartId}`; `recordUsage(event, chartId?, language?, query?)` writing JSONL; env override `BIZARD_USAGE_LOG` (`off` disables, else path).
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```typescript
 // mcp/test/prompts.test.ts
@@ -1999,12 +1999,12 @@ describe("usage log", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run test/prompts.test.ts test/usage.test.ts`
 Expected: FAIL
 
-- [ ] **Step 3: Implement usage.ts**
+- [x] **Step 3: Implement usage.ts**
 
 ```typescript
 // mcp/src/usage.ts
@@ -2064,7 +2064,7 @@ function sha256_8(s: string): string {
 
 (Executor note: the draft above mixes `logPath`/`logPath` spellings — resolve to a single `logPath(override?)` helper as shown; the test passes `"/tmp/vb-test.jsonl"` as the override argument.)
 
-- [ ] **Step 4: Implement prompts.ts**
+- [x] **Step 4: Implement prompts.ts**
 
 ```typescript
 // mcp/src/prompts.ts
@@ -2147,16 +2147,16 @@ Then: for (a) call bizard_adapt_guidance and fix the data prep; for (b) check th
 }
 ```
 
-- [ ] **Step 5: Implement resources.ts + register all in server.ts**
+- [x] **Step 5: Implement resources.ts + register all in server.ts**
 
 `registerResources(server, bundle)`: `bizard://catalog` → compact charts JSON; `bizard://tutorial/{chartId}` → `tutorialPayload`; reading `bizard://llms-txt` from bundle dir `snapshot/llms.txt` when present. Wire `registerPrompts`, `registerAdaptTools`, `registerContributeTools`, `registerResources` into `createBizardServer`.
 
-- [ ] **Step 6: Run full suite**
+- [x] **Step 6: Run full suite**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run`
 Expected: PASS (all suites)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add mcp/
@@ -2178,7 +2178,7 @@ git commit -m "feat(mcp): lifecycle prompts, catalog resources, local anonymous 
 - Consumes: `createBizardServer` (full, from Tasks 3-7); `build-bundle.py` (Task 2)
 - Produces: `npx @openbiox/bizard-mcp` (stdio) and `--http` Streamable HTTP mode; CI: `mcp-ci.yml` (PR gate: lint+test on `mcp/**`), `mcp-bundle.yml` (main: builds bundle → commits snapshot → runs node tests). `_quarto.yml` resources gains `files/mcp/*` so the bundle ships with the site.
 
-- [ ] **Step 1: Implement http.ts**
+- [x] **Step 1: Implement http.ts**
 
 ```typescript
 // mcp/src/http.ts
@@ -2240,7 +2240,7 @@ async function handleBody(req: IncomingMessage, res: ServerResponse, transport: 
 
 Constants: `RATE_CAPACITY` (declare next to `RATE_INTERVAL_MS`).
 
-- [ ] **Step 2: Update index.ts**
+- [x] **Step 2: Update index.ts**
 
 ```typescript
 #!/usr/bin/env node
@@ -2265,7 +2265,7 @@ if (wantHttp) {
 }
 ```
 
-- [ ] **Step 3: Write failing HTTP test**
+- [x] **Step 3: Write failing HTTP test**
 
 ```typescript
 // mcp/test/http.test.ts
@@ -2296,12 +2296,12 @@ describe("http transport", () => {
 
 (If the SDK's Streamable HTTP requires a session handshake beyond a single initialize, adapt the test to perform the SDK's expected sequence — consult `node_modules/@modelcontextprotocol/sdk` examples. The assertion is: a full client session can list tools.)
 
-- [ ] **Step 4: Run suite**
+- [x] **Step 4: Run suite**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npx vitest run`
 Expected: PASS
 
-- [ ] **Step 5: Create CI workflow `mcp-ci.yml`**
+- [x] **Step 5: Create CI workflow `mcp-ci.yml`**
 
 ```yaml
 # .github/workflows/mcp-ci.yml
@@ -2391,7 +2391,7 @@ jobs:
 
 Note the smoke test needs a snapshot: add to `mcp/package.json` scripts `"build:bundle": "python3 .github/scripts/build-bundle.py --out src/snapshot"` — path from repo root; in CI run it from repo root before `npm test`.
 
-- [ ] **Step 6: Create `mcp-bundle.yml` (main-branch bundle publish + snapshot commit)**
+- [x] **Step 6: Create `mcp-bundle.yml` (main-branch bundle publish + snapshot commit)**
 
 ```yaml
 name: MCP Bundle Build
@@ -2437,7 +2437,7 @@ jobs:
           fi
 ```
 
-- [ ] **Step 7: Register bundle in `_quarto.yml` resources**
+- [x] **Step 7: Register bundle in `_quarto.yml` resources**
 
 Modify `_quarto.yml`:
 
@@ -2448,12 +2448,12 @@ Modify `_quarto.yml`:
     - "files/mcp/*"
 ```
 
-- [ ] **Step 8: Verify YAML validity + run full CI-relevant checks locally**
+- [x] **Step 8: Verify YAML validity + run full CI-relevant checks locally**
 
 Run: `python3 -c "import yaml,sys; [yaml.safe_load(open(f)) for f in ['.github/workflows/mcp-ci.yml','.github/workflows/mcp-bundle.yml']]" && cd mcp && npx tsc --noEmit && npx vitest run`
 Expected: no errors; all tests pass.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add .github/workflows/mcp-ci.yml .github/workflows/mcp-bundle.yml _quarto.yml mcp/
@@ -2473,7 +2473,7 @@ git commit -m "ci(mcp): add MCP CI workflows (python bundle tests, node tests, s
 - Consumes: everything above
 - Produces: documented, verified, PR-ready branch
 
-- [ ] **Step 1: Write `mcp/README.md`**
+- [x] **Step 1: Write `mcp/README.md`**
 
 Content (write it fully in the plan):
 - What it is (one paragraph, from spec §1.2 table)
@@ -2484,7 +2484,7 @@ Content (write it fully in the plan):
 - Privacy: local JSONL only, `BIZARD_USAGE_LOG=off` to disable, no network telemetry
 - Development: `npm test`, `npm run build:bundle`, coverage ≥ 80%
 
-- [ ] **Step 2: Full local gate**
+- [x] **Step 2: Full local gate**
 
 Run:
 ```bash
@@ -2494,21 +2494,21 @@ python3 -m pytest .github/scripts/tests -v
 ```
 Expected: all green; coverage ≥ 80%.
 
-- [ ] **Step 3: Live stdio smoke via MCP inspector**
+- [x] **Step 3: Live stdio smoke via MCP inspector**
 
 Run: `cd /Users/wsx/Documents/GitHub/Bizard/mcp && npm run build && python3 .github/scripts/build-bundle.py --out src/snapshot && npx @modelcontextprotocol/inspector node dist/index.js`
 Expected: inspector opens; `tools/list` shows 8 tools; `bizard_search "violin"` returns a card with tutorialUrl; `bizard_cite chartId=ViolinPlot format=bibtex` includes DOI; `bizard_contribute_submit` returns level 3 draft + deep-link (no creds in inspector env).
 
-- [ ] **Step 4: HTTP smoke**
+- [x] **Step 4: HTTP smoke**
 
 Run: `BIZARD_HTTP_PORT=3111 node dist/index.js --http &` then POST initialize via curl, expect 200 + serverInfo.
 Kill the process after.
 
-- [ ] **Step 5: Final self-review against spec**
+- [x] **Step 5: Final self-review against spec**
 
 Check spec §4 tool list (8 tools), §4.5 prompts/resources, §5 usage log, §6 deployments, §7 error paths. Tick each; note any gap as follow-up (do not implement new scope).
 
-- [ ] **Step 6: Push branch + open PR**
+- [x] **Step 6: Push branch + open PR**
 
 ```bash
 git push -u origin feat/mcp-server
@@ -2528,7 +2528,7 @@ Implements the MCP design in `docs/superpowers/specs/2026-10-15-bizard-mcp-desig
 - [x] Vitest suites for search scoring, tutorial/code, adapt, citation, contribute (mock exec + fetch), usage log, HTTP transport
 - [x] Live stdio smoke via @modelcontextprotocol/inspector
 - [x] HTTP smoke on localhost
-- [ ] CI green (mcp-ci.yml: python tests + node tests + 80% gate + stdio smoke)
+- [x] CI green (mcp-ci.yml: python tests + node tests + 80% gate + stdio smoke) — all 9 PR #347 checks green (deploy job SKIPPED by design: github-pages environment only deploys from main)
 - [ ] llms.txt visible on deployed site after merge
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
