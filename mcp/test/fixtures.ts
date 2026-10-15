@@ -27,6 +27,6 @@ export const validBundle: Bundle = {
   },
   citation: {
     paperDoi: "10.1002/imm3.70038", paperUrl: "https://arxiv.org/abs/2503.06845",
-    bibtex: "@article{wang2025bizard,...}", license: "CC-BY-NC-4.0",
+    bibtex: "@article{wang2025bizard,\n  doi = {10.1002/imm3.70038},\n  title = {Bizard: a biomedical visualization atlas}\n}", license: "CC-BY-NC-4.0",
   },
 };

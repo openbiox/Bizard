@@ -4,10 +4,11 @@ import { callTool, listTools } from "./client.js";
 import { validBundle } from "./fixtures.js";
 
 describe("createBizardServer (stdio-capable core)", () => {
-  it("lists the 4 initial tools", async () => {
+  it("lists the 6 initial tools", async () => {
     const tools = await listTools(createBizardServer(validBundle));
     expect(tools.map((t) => t.name).sort()).toEqual([
-      "bizard_get_code", "bizard_get_tutorial", "bizard_list_categories", "bizard_search",
+      "bizard_adapt_guidance", "bizard_cite", "bizard_get_code",
+      "bizard_get_tutorial", "bizard_list_categories", "bizard_search",
     ]);
   });
 });
@@ -65,6 +66,28 @@ describe("bizard_get_tutorial / bizard_get_code", () => {
   it("degraded mode: get_tutorial returns structured build hint error", async () => {
     const server = createBizardServer(null);
     const result = await callTool(server, "bizard_get_tutorial", { chartId: "ViolinPlot" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("npm run build:bundle");
+  });
+});
+
+describe("bizard_adapt_guidance / bizard_cite", () => {
+  it("returns five-section checklist for a known chart", async () => {
+    const server = createBizardServer(validBundle);
+    const result = await callTool(server, "bizard_adapt_guidance", { chartId: "ViolinPlot", language: "r" });
+    expect(result.content[0].text).toContain("Common failure modes");
+  });
+
+  it("cite returns bibtex with chart annotation", async () => {
+    const server = createBizardServer(validBundle);
+    const result = await callTool(server, "bizard_cite", { chartId: "ViolinPlot", format: "bibtex" });
+    expect(result.content[0].text).toContain("ViolinPlot.html");
+    expect(result.content[0].text).toContain("10.1002/imm3.70038");
+  });
+
+  it("degraded mode: adapt_guidance returns structured build hint error", async () => {
+    const server = createBizardServer(null);
+    const result = await callTool(server, "bizard_adapt_guidance", { chartId: "ViolinPlot", language: "r" });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("npm run build:bundle");
   });
