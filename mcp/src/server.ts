@@ -5,10 +5,12 @@ import { adjacentSuggestions, searchCharts } from "./search.js";
 import { registerTutorialTools } from "./tutorial-tools.js";
 import { registerAdaptTools } from "./adapt-tools.js";
 import { registerContributeTools } from "./contribute-tools.js";
+import { registerPrompts } from "./prompts.js";
+import { registerResources } from "./resources.js";
 
 const SEARCH_LIMIT_MAX = 20;
 const QUERY_MAX_CHARS = 4000;
-const NO_BUNDLE_ERROR =
+export const NO_BUNDLE_ERROR =
   "bizard-mcp: bundle snapshot unavailable. The maintainer must run " +
   "`npm run build:bundle` (or CI) to generate src/snapshot/bundle.json, then rebuild.";
 
@@ -77,6 +79,8 @@ export function createBizardServer(source: Bundle | BundleHolder | null): McpSer
   registerTutorialTools(server, lazyBundle);
   registerAdaptTools(server, lazyBundle);
   registerContributeTools(server);
+  registerPrompts(server);
+  registerResources(server, getBundle);
 
   return server;
 }

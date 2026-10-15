@@ -25,3 +25,7 @@ export async function callTool(
   await client.close();
   return res as { isError?: boolean; content: Array<{ type: string; text: string }> };
 }
+
+export async function clientWith(server: McpServer): Promise<Client> {
+  return connect(server);
+}
