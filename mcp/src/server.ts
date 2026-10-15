@@ -4,6 +4,7 @@ import type { Bundle, Chart } from "./types.js";
 import { adjacentSuggestions, searchCharts } from "./search.js";
 import { registerTutorialTools } from "./tutorial-tools.js";
 import { registerAdaptTools } from "./adapt-tools.js";
+import { registerContributeTools } from "./contribute-tools.js";
 
 const SEARCH_LIMIT_MAX = 20;
 const QUERY_MAX_CHARS = 4000;
@@ -75,6 +76,7 @@ export function createBizardServer(source: Bundle | BundleHolder | null): McpSer
   };
   registerTutorialTools(server, lazyBundle);
   registerAdaptTools(server, lazyBundle);
+  registerContributeTools(server);
 
   return server;
 }

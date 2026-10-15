@@ -4,11 +4,17 @@ import { callTool, listTools } from "./client.js";
 import { validBundle } from "./fixtures.js";
 
 describe("createBizardServer (stdio-capable core)", () => {
-  it("lists the 6 initial tools", async () => {
+  it("exposes all 8 lifecycle tools", async () => {
     const tools = await listTools(createBizardServer(validBundle));
     expect(tools.map((t) => t.name).sort()).toEqual([
-      "bizard_adapt_guidance", "bizard_cite", "bizard_get_code",
-      "bizard_get_tutorial", "bizard_list_categories", "bizard_search",
+      "bizard_adapt_guidance",
+      "bizard_cite",
+      "bizard_contribute_check",
+      "bizard_contribute_submit",
+      "bizard_get_code",
+      "bizard_get_tutorial",
+      "bizard_list_categories",
+      "bizard_search",
     ]);
   });
 });
@@ -90,5 +96,32 @@ describe("bizard_adapt_guidance / bizard_cite", () => {
     const result = await callTool(server, "bizard_adapt_guidance", { chartId: "ViolinPlot", language: "r" });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("npm run build:bundle");
+  });
+});
+
+describe("bizard_contribute_check / bizard_contribute_submit", () => {
+  it("check flags a malformed draft without touching the network", async () => {
+    const server = createBizardServer(validBundle);
+    const result = await callTool(server, "bizard_contribute_check", {
+      contributionType: "new-tutorial", content: "just some prose", language: "en",
+    });
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain("Setup");
+  });
+
+  it("submit degrades to draft + deep-link without credentials", async () => {
+    const server = createBizardServer(validBundle);
+    const result = await callTool(server, "bizard_contribute_submit", {
+      contributionType: "fix", title: "Fix typo", body: "Body", asPR: false,
+    });
+    expect(result.content[0].text).toContain("deepLink");
+  });
+
+  it("degraded mode: contribute_check still works (no bundle needed)", async () => {
+    const server = createBizardServer(null);
+    const result = await callTool(server, "bizard_contribute_check", {
+      contributionType: "fix", content: "---\ntitle: x\nauthor: a\n---\nbody", language: "en",
+    });
+    expect(result.isError).toBeUndefined();
   });
 });
