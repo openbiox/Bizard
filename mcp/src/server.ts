@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Bundle, Chart } from "./types.js";
 import { adjacentSuggestions, searchCharts } from "./search.js";
+import { registerTutorialTools } from "./tutorial-tools.js";
 
 const SEARCH_LIMIT_MAX = 20;
 const QUERY_MAX_CHARS = 4000;
@@ -62,6 +63,14 @@ export function createBizardServer(source: Bundle | BundleHolder | null): McpSer
     const bundle = getBundle();
     if (!bundle) return bundleError();
     return categoriesTool(bundle);
+  });
+
+  registerTutorialTools(server, {
+    get: () => {
+      const bundle = getBundle();
+      if (!bundle) throw new Error(NO_BUNDLE_ERROR);
+      return bundle;
+    },
   });
 
   return server;
