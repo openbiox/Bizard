@@ -66,6 +66,28 @@ def test_bundle_categories_counts(tmp_path, qmd_root):
     assert dist and dist[0]["count"] == 2
 
 
+def test_builder_rejects_short_row_missing_required_fields(tmp_path, qmd_root):
+    # Row 2 is truncated: DictReader restval fills missing columns with None,
+    # which must not pass through into chart dicts (search crashes on nulls).
+    en = tmp_path / "gallery.csv"
+    en.write_text(EN_CSV + "3,Broken Chart,https://img/3.png\n")
+    with pytest.raises(ValueError, match="required field") as excinfo:
+        build_bundle(en, None, None, None, tmp_path, "https://site/")
+    assert "Tutorial_url" in str(excinfo.value)
+
+
+def test_builder_rejects_row_with_empty_required_field(tmp_path, qmd_root):
+    en = tmp_path / "gallery.csv"
+    en.write_text(EN_CSV.replace(
+        '2,Dumbbell Plot,https://img/2.png,https://site/Ranking/Dumbbell.html,"Compare two",Dumbbell,RANKING,Distribution',
+        '2,,https://img/2.png,https://site/Ranking/Dumbbell.html,"Compare two",Dumbbell,RANKING,Distribution',
+    ))
+    with pytest.raises(ValueError, match="required field") as excinfo:
+        build_bundle(en, None, None, None, tmp_path, "https://site/")
+    assert "Name" in str(excinfo.value)
+    assert "Id=2" in str(excinfo.value)
+
+
 def test_llms_txt_lists_all_charts(tmp_path, qmd_root):
     en = tmp_path / "gallery.csv"
     en.write_text(EN_CSV)

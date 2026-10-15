@@ -25,6 +25,22 @@ from bundle_lib import extract_code_snippets
 
 PAGE_URL_RE = re.compile(r"/([^/]+)/([^/#?]+)\.html")
 
+# Fields every gallery row must carry; None/empty here would flow into the
+# bundle and crash downstream consumers (search does toLowerCase on these).
+REQUIRED_FIELDS = ("Id", "Name", "Type", "Level1", "Level2", "Tutorial_url",
+                   "Image_url", "Description")
+
+
+def validate_row(row: dict, source: str) -> None:
+    """Fail loudly when a row is missing required fields (short rows fill
+    absent columns with None via DictReader restval)."""
+    missing = [f for f in REQUIRED_FIELDS if not (row.get(f) or "").strip()]
+    if missing:
+        raise ValueError(
+            f"{source}: row Id={row.get('Id') or '<missing>'} "
+            f"missing required field(s): {', '.join(missing)}"
+        )
+
 CATEGORY_NAMES_ZH = {
     "Distribution": "分布", "Correlation": "相关", "Ranking": "排序",
     "Composition": "组成", "Proportion": "比例", "DataOverTime": "时间序列",
@@ -68,6 +84,8 @@ def build_bundle(gallery_csv: Optional[Path], gallery_zh_csv: Optional[Path],
                  keywords_en: Optional[Path], keywords_zh: Optional[Path],
                  qmd_root: Path, base_url: str) -> dict:
     en_rows = read_csv_rows(gallery_csv)
+    for row in en_rows:
+        validate_row(row, f"{gallery_csv}")
     zh_by_id = {row["Id"]: row for row in read_csv_rows(gallery_zh_csv)}
 
     page_snippets: Dict[Tuple[str, str], List[dict]] = {}

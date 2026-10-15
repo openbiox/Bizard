@@ -10,12 +10,20 @@ const SNAPSHOT_PATH = join(dirname(fileURLToPath(import.meta.url)), "snapshot", 
  * is not a bundle-shaped object — the server falls back to the snapshot
  * (or a startup failure) rather than serving garbage.
  */
+/** Chart fields a row lost to a malformed CSV cell; null here crashes search. */
+const REQUIRED_CHART_FIELDS = [
+  "name", "type", "level1", "level2", "tutorialUrl", "imageUrl", "description",
+] as const;
+
 export function loadBundle(inline: unknown): Bundle {
   const b = inline as Bundle | undefined;
   if (
     !b || typeof b !== "object" ||
     !Array.isArray(b.charts) || b.charts.length === 0 ||
-    !b.charts.every((c) => typeof c?.id === "string" && c.id.length > 0) ||
+    !b.charts.every((c) =>
+      typeof c?.id === "string" && c.id.length > 0 &&
+      REQUIRED_CHART_FIELDS.every((f) => typeof c[f] === "string" && c[f].length > 0),
+    ) ||
     !Array.isArray(b.categories) ||
     !b.meta || typeof b.meta !== "object" ||
     !b.citation || typeof b.citation !== "object"

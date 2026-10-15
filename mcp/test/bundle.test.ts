@@ -39,4 +39,14 @@ describe("loadBundle", () => {
     delete bad.charts[0].id;
     expect(() => loadBundle(bad)).toThrow(/missing or invalid/i);
   });
+
+  it.each(["name", "type", "level1", "level2", "tutorialUrl", "imageUrl", "description"] as const)(
+    "rejects a chart whose %s is null (builder restval pass-through)",
+    (field) => {
+      const bad = structuredClone(validBundle);
+      // @ts-expect-error corrupting fixture to simulate a malformed bundle
+      bad.charts[0][field] = null;
+      expect(() => loadBundle(bad)).toThrow(/missing or invalid/i);
+    },
+  );
 });
