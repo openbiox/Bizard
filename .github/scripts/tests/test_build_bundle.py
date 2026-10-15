@@ -15,6 +15,7 @@ build_bundle_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(build_bundle_mod)
 build_bundle = build_bundle_mod.build_bundle
 llms_txt = build_bundle_mod.llms_txt
+main = build_bundle_mod.main
 
 EN_CSV = """Id,Name,Image_url,Tutorial_url,Description,Type,Level1,Level2
 1,"Basic Violin Plot",https://img/1.png,https://site/Distribution/ViolinPlot.html,"A plot, with comma",Violin Plot,BASICS,Distribution
@@ -44,7 +45,7 @@ def test_bundle_roundtrip_real_schema(tmp_path, qmd_root):
     zh = tmp_path / "gallery_zh.csv"
     en.write_text(EN_CSV)
     zh.write_text(ZH_CSV)
-    bundle = build_bundle(en, zh, None, None, tmp_path, "https://site/")
+    bundle, _ = build_bundle(en, zh, None, None, tmp_path, "https://site/")
     assert len(bundle["charts"]) == 2
     # comma inside quoted description survives
     assert bundle["charts"][0]["description"] == "A plot, with comma"
@@ -61,7 +62,7 @@ def test_bundle_roundtrip_real_schema(tmp_path, qmd_root):
 def test_bundle_categories_counts(tmp_path, qmd_root):
     en = tmp_path / "gallery.csv"
     en.write_text(EN_CSV)
-    bundle = build_bundle(en, None, None, None, tmp_path, "https://site/")
+    bundle, _ = build_bundle(en, None, None, None, tmp_path, "https://site/")
     dist = [c for c in bundle["categories"] if c["name"] == "Distribution"]
     assert dist and dist[0]["count"] == 2
 
@@ -88,10 +89,51 @@ def test_builder_rejects_row_with_empty_required_field(tmp_path, qmd_root):
     assert "Id=2" in str(excinfo.value)
 
 
+def test_main_exits_nonzero_and_reports_when_gallery_missing(tmp_path, qmd_root, capsys, monkeypatch):
+    # I-4: a silent empty bundle (exit 0) would let CI publish content loss.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.argv", ["build-bundle.py", "--out", str(tmp_path / "out")])
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    assert excinfo.value.code != 0
+    err = capsys.readouterr().err
+    assert "gallery" in err.lower()
+
+
+def test_main_prints_loud_summary_on_zero_charts(tmp_path, qmd_root, capsys, monkeypatch):
+    en = tmp_path / "gallery.csv"
+    en.write_text("Id,Name,Image_url,Tutorial_url,Description,Type,Level1,Level2\n")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "files").mkdir()
+    (tmp_path / "files" / "gallery_data.csv").write_text(en.read_text())
+    monkeypatch.setattr("sys.argv", ["build-bundle.py", "--out", str(tmp_path / "out")])
+    with pytest.raises(SystemExit) as excinfo:
+        main()
+    assert excinfo.value.code != 0
+    assert "0 charts" in capsys.readouterr().err
+
+
+def test_main_reports_pages_whose_qmd_is_missing(tmp_path, qmd_root, capsys, monkeypatch):
+    en = tmp_path / "gallery.csv"
+    # Dumbbell has no QMD on disk → partial snippet loss surfaces as a loud
+    # ⚠️ warning (exit 0); only total content loss exits non-zero.
+    en.write_text(EN_CSV)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "files").mkdir(exist_ok=True)
+    (tmp_path / "files" / "gallery_data.csv").write_text(EN_CSV)
+    monkeypatch.setattr("sys.argv", ["build-bundle.py", "--out", str(tmp_path / "out")])
+    main()  # must NOT raise SystemExit: one missing qmd is a warning, not fatal
+    err = capsys.readouterr().err
+    assert "⚠️" in err
+    assert "Dumbbell" in err or "qmd" in err.lower()
+    # bundle still written with the healthy chart
+    assert (tmp_path / "out" / "bundle.json").exists()
+
+
 def test_llms_txt_lists_all_charts(tmp_path, qmd_root):
     en = tmp_path / "gallery.csv"
     en.write_text(EN_CSV)
-    bundle = build_bundle(en, None, None, None, tmp_path, "https://site/")
+    bundle, _ = build_bundle(en, None, None, None, tmp_path, "https://site/")
     txt = llms_txt(bundle)
     assert "# Bizard" in txt
     assert "Basic Violin Plot" in txt

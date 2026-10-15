@@ -17,6 +17,7 @@ import argparse
 import csv
 import json
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -82,7 +83,11 @@ def load_keywords(keywords_en: Optional[Path], keywords_zh: Optional[Path]) -> O
 
 def build_bundle(gallery_csv: Optional[Path], gallery_zh_csv: Optional[Path],
                  keywords_en: Optional[Path], keywords_zh: Optional[Path],
-                 qmd_root: Path, base_url: str) -> dict:
+                 qmd_root: Path, base_url: str) -> Tuple[dict, List[str]]:
+    """Return (bundle, warnings) — warnings name every silent-content-loss path."""
+    warnings: List[str] = []
+    if gallery_csv is None or not gallery_csv.exists():
+        raise ValueError(f"gallery CSV not found: {gallery_csv}")
     en_rows = read_csv_rows(gallery_csv)
     for row in en_rows:
         validate_row(row, f"{gallery_csv}")
@@ -98,12 +103,16 @@ def build_bundle(gallery_csv: Optional[Path], gallery_zh_csv: Optional[Path],
             chart_id = f"{stem}-{row['Id']}"
             if (category, stem) not in page_snippets:
                 qmd_path = qmd_root / category / f"{stem}.qmd"
-                page_snippets[(category, stem)] = (
-                    extract_code_snippets(qmd_path, stem, base_url)
-                    if qmd_path.is_file() else []
-                )
+                if qmd_path.is_file():
+                    page_snippets[(category, stem)] = extract_code_snippets(qmd_path, stem, base_url)
+                else:
+                    page_snippets[(category, stem)] = []
+                    warnings.append(f"missing qmd: {qmd_path} (row Id={row['Id']} carries no code snippets)")
             raw = page_snippets[(category, stem)]
         else:
+            warnings.append(
+                f"Tutorial_url not parseable, chart carries no snippets: {row['Tutorial_url']!r} (Id={row['Id']})"
+            )
             chart_id = row["Id"]
             raw = []
 
@@ -131,7 +140,7 @@ def build_bundle(gallery_csv: Optional[Path], gallery_zh_csv: Optional[Path],
             "count": sum(1 for c in charts if c["level2"] == name),
         })
 
-    return {
+    bundle = {
         "meta": {
             "siteVersion": "",
             "bundleVersion": 1,
@@ -144,6 +153,7 @@ def build_bundle(gallery_csv: Optional[Path], gallery_zh_csv: Optional[Path],
         "keywords": load_keywords(keywords_en, keywords_zh),
         "citation": CITATION,
     }
+    return bundle, warnings
 
 
 def llms_txt(bundle: dict) -> str:
@@ -174,17 +184,41 @@ def main() -> None:
     parser.add_argument("--qmd-root", default=".")
     args = parser.parse_args()
 
-    bundle = build_bundle(
-        Path(args.gallery), Path(args.gallery_zh),
-        Path(args.keywords), Path(args.keywords_zh),
-        Path(args.qmd_root), args.base_url,
-    )
+    try:
+        bundle, warnings = build_bundle(
+            Path(args.gallery), Path(args.gallery_zh),
+            Path(args.keywords), Path(args.keywords_zh),
+            Path(args.qmd_root), args.base_url,
+        )
+    except ValueError as e:
+        # Loud failure: a missing/unreadable gallery CSV must not become a
+        # silently empty bundle that CI publishes as if it were healthy.
+        print(f"❌ {e}", file=sys.stderr)
+        raise SystemExit(1) from e
+
+    for w in warnings:
+        print(f"⚠️  {w}", file=sys.stderr)
+
+    # Fail loudly on content loss: CI must not publish a snippet-less bundle
+    # as if it were healthy (I-4). One missing qmd is a warning above; total
+    # loss of charts or snippets is fatal. Checked before any file is written.
+    critical: List[str] = []
+    if len(bundle["charts"]) == 0:
+        critical.append("0 charts built — gallery CSV empty or unreadable")
+    elif len(bundle["codeSnippets"]) == 0:
+        critical.append("0 code snippets — every qmd missing or unparsable")
+    if critical:
+        for c in critical:
+            print(f"❌ {c}", file=sys.stderr)
+        raise SystemExit(1)
+
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "bundle.json").write_text(
         json.dumps(bundle, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     (out_dir / "llms.txt").write_text(llms_txt(bundle), encoding="utf-8")
+
     print(f"✅ bundle: {len(bundle['charts'])} charts, "
           f"{len(bundle['codeSnippets'])} snippets → {out_dir}/bundle.json")
 
