@@ -92,7 +92,8 @@ def test_builder_rejects_row_with_empty_required_field(tmp_path, qmd_root):
 def test_main_exits_nonzero_and_reports_when_gallery_missing(tmp_path, qmd_root, capsys, monkeypatch):
     # I-4: a silent empty bundle (exit 0) would let CI publish content loss.
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("sys.argv", ["build-bundle.py", "--out", str(tmp_path / "out")])
+    monkeypatch.setattr("sys.argv", ["build-bundle.py", "--out", str(tmp_path / "out"),
+                                     "--gallery", str(tmp_path / "absent.csv")])
     with pytest.raises(SystemExit) as excinfo:
         main()
     assert excinfo.value.code != 0
@@ -106,7 +107,9 @@ def test_main_prints_loud_summary_on_zero_charts(tmp_path, qmd_root, capsys, mon
     monkeypatch.chdir(tmp_path)
     (tmp_path / "files").mkdir()
     (tmp_path / "files" / "gallery_data.csv").write_text(en.read_text())
-    monkeypatch.setattr("sys.argv", ["build-bundle.py", "--out", str(tmp_path / "out")])
+    monkeypatch.setattr("sys.argv", ["build-bundle.py", "--out", str(tmp_path / "out"),
+                                     "--gallery", str(tmp_path / "files" / "gallery_data.csv"),
+                                     "--qmd-root", str(tmp_path)])
     with pytest.raises(SystemExit) as excinfo:
         main()
     assert excinfo.value.code != 0
@@ -121,7 +124,9 @@ def test_main_reports_pages_whose_qmd_is_missing(tmp_path, qmd_root, capsys, mon
     monkeypatch.chdir(tmp_path)
     (tmp_path / "files").mkdir(exist_ok=True)
     (tmp_path / "files" / "gallery_data.csv").write_text(EN_CSV)
-    monkeypatch.setattr("sys.argv", ["build-bundle.py", "--out", str(tmp_path / "out")])
+    monkeypatch.setattr("sys.argv", ["build-bundle.py", "--out", str(tmp_path / "out"),
+                                     "--gallery", str(tmp_path / "files" / "gallery_data.csv"),
+                                     "--qmd-root", str(tmp_path)])
     main()  # must NOT raise SystemExit: one missing qmd is a warning, not fatal
     err = capsys.readouterr().err
     assert "⚠️" in err

@@ -3,9 +3,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { adaptGuidance } from "./adapt.js";
 import { citationPayload } from "./citation.js";
 import { jsonResult, errorResult } from "./results.js";
-import type { LazyBundle } from "./tutorial-tools.js";
+import type { LazyBundle, UsageTracker } from "./tutorial-tools.js";
 
-export function registerAdaptTools(server: McpServer, bundle: LazyBundle): void {
+export function registerAdaptTools(server: McpServer, bundle: LazyBundle, track: UsageTracker): void {
   server.registerTool("bizard_adapt_guidance", {
     title: "Get chart adaptation guidance",
     description: "Category-aware checklist for adapting a Bizard chart tutorial to the user's own data: data shape, dependencies, parameter mapping, failure modes, alternatives.",
@@ -18,7 +18,9 @@ export function registerAdaptTools(server: McpServer, bundle: LazyBundle): void 
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ chartId, language, userDataContext }) => {
     try {
-      return jsonResult(adaptGuidance(bundle.get(), chartId, language, userDataContext));
+      const payload = adaptGuidance(bundle.get(), chartId, language, userDataContext);
+      track({ event: "adapt", chartId, language });
+      return jsonResult(payload);
     } catch (e) {
       return errorResult((e as Error).message);
     }
@@ -36,6 +38,7 @@ export function registerAdaptTools(server: McpServer, bundle: LazyBundle): void 
   }, async ({ chartId = null, paperOnly, format }) => {
     try {
       const result = citationPayload(bundle.get(), chartId, paperOnly, format);
+      track({ event: "cite", chartId: chartId ?? undefined });
       return jsonResult(format === "json" ? result.json : result.text);
     } catch (e) {
       return errorResult((e as Error).message);

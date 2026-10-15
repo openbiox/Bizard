@@ -10,6 +10,8 @@ import { registerPrompts } from "./prompts.js";
 import { registerResources } from "./resources.js";
 import { updateNotice } from "./update-check.js";
 import type { NoticeQueue } from "./update-check.js";
+import { recordUsage } from "./usage.js";
+import type { UsageEvent } from "./usage.js";
 
 const SEARCH_LIMIT_MAX = 20;
 const QUERY_MAX_CHARS = 4000;
@@ -58,6 +60,13 @@ export function createBizardServer(
   // One-time SFL notice (spec §3.4): consumed by the first tool result after an update swap.
   const drainNotice = (): string | null => (notices ? updateNotice(notices) : null);
 
+  // Local-only, anonymous usage feedback (README Privacy): fire-and-forget — a
+  // logging failure must never fail the tool call it observes. Each handler
+  // passes its event only after the payload was built successfully.
+  const track = (ev: UsageEvent) => {
+    void recordUsage(ev).catch(() => { /* local log best-effort only */ });
+  };
+
   const server = new McpServer(SERVER_IDENTITY);
 
   server.registerTool("bizard_search", {
@@ -73,6 +82,7 @@ export function createBizardServer(
   }, async ({ query, language, category, limit }) => {
     const bundle = getBundle();
     if (!bundle) return bundleError();
+    track({ event: "search", language, query });
     return searchTool(bundle, query, language, category, limit, drainNotice());
   });
 
@@ -94,8 +104,8 @@ export function createBizardServer(
       return bundle;
     },
   };
-  registerTutorialTools(server, lazyBundle);
-  registerAdaptTools(server, lazyBundle);
+  registerTutorialTools(server, lazyBundle, track);
+  registerAdaptTools(server, lazyBundle, track);
   registerContributeTools(server, opts?.credentialEnv);
   registerPrompts(server);
   registerResources(server, getBundle);

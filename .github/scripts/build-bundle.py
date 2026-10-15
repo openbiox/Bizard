@@ -173,15 +173,20 @@ def llms_txt(bundle: dict) -> str:
     return "\n".join(lines)
 
 
+# Defaults resolve against the repo root (this script lives in
+# .github/scripts/), so the npm `build:bundle` script works from mcp/ and CI
+# invocations from the repo root behave identically without explicit paths.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", default="files/mcp", help="Output directory")
+    parser.add_argument("--out", default=str(REPO_ROOT / "files" / "mcp"), help="Output directory")
     parser.add_argument("--base-url", default="https://openbiox.github.io/Bizard/")
-    parser.add_argument("--gallery", default="files/gallery_data.csv")
-    parser.add_argument("--gallery-zh", default="files/gallery_data_zh.csv")
-    parser.add_argument("--keywords", default="files/recommender_keywords.json")
-    parser.add_argument("--keywords-zh", default="files/recommender_keywords_zh.json")
-    parser.add_argument("--qmd-root", default=".")
+    parser.add_argument("--gallery", default=str(REPO_ROOT / "files" / "gallery_data.csv"))
+    parser.add_argument("--gallery-zh", default=str(REPO_ROOT / "files" / "gallery_data_zh.csv"))
+    parser.add_argument("--keywords", default=str(REPO_ROOT / "files" / "recommender_keywords.json"))
+    parser.add_argument("--keywords-zh", default=str(REPO_ROOT / "files" / "recommender_keywords_zh.json"))
+    parser.add_argument("--qmd-root", default=str(REPO_ROOT))
     args = parser.parse_args()
 
     try:

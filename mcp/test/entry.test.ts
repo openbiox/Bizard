@@ -25,6 +25,9 @@ describe("runCli", () => {
     });
     expect(startHttp).toHaveBeenCalledTimes(1);
     expect(startHttp).toHaveBeenCalledWith(expect.anything(), 4599);
+    // First arg is the per-request server factory, not a bare instance.
+    const [makeServer] = startHttp.mock.calls[0];
+    expect(typeof makeServer()).toBe("object");
   });
 
   it("uses the default HTTP port when BIZARD_HTTP_PORT is unset", async () => {

@@ -76,17 +76,17 @@ Usage feedback is local-only, anonymous, and never networked:
 
 ```bash
 npm install
-npm run build:bundle   # regenerate src/snapshot/ from repo content (run from repo root)
+npm run build:bundle   # regenerate src/snapshot/ (works from mcp/ — defaults are repo-root-relative)
 npm test               # vitest suite
 npm run coverage       # gate: statements ≥ 80%
 npm run build          # tsc + copy snapshot into dist/
 ```
 
 `npm run build:bundle` shells out to `../.github/scripts/build-bundle.py`,
-whose CLI defaults are repo-root-relative — run it from `mcp/` via the npm
-script (which resolves the path), or run the Python script from the repo root
-with an explicit `--out`. CI: `.github/workflows/mcp-ci.yml` (Python bundle
-tests, node tests + coverage gate, stdio smoke) and
-`.github/workflows/mcp-bundle.yml` (rebuilds `files/mcp/bundle.json` +
-`llms.txt` on content pushes, which the site ships via `_quarto.yml`
-resources).
+whose CLI defaults resolve against the repository root regardless of the
+current working directory. Run it from `mcp/` via the npm script, or run the
+Python script from anywhere with an explicit `--out`. CI:
+`.github/workflows/mcp-ci.yml` (Python bundle tests, node tests + coverage
+gate, stdio smoke) and `.github/workflows/mcp-bundle.yml` (rebuilds
+`files/mcp/bundle.json` + `llms.txt` on content pushes, which the site ships
+via `_quarto.yml` resources).

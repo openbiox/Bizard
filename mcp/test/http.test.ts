@@ -23,8 +23,7 @@ function freePort(): number {
 describe("http transport", () => {
   it("responds to initialize over Streamable HTTP", async () => {
     const port = freePort();
-    const server = createBizardServer(validBundle);
-    startHttpServer(server, port);
+    startHttpServer(() => createBizardServer(validBundle), port);
     const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "POST", headers: INIT_HEADERS, body: JSON.stringify(INIT),
     });
@@ -35,8 +34,7 @@ describe("http transport", () => {
 
   it("answers tools/list after initialize with the 8 lifecycle tools", async () => {
     const port = freePort();
-    const server = createBizardServer(validBundle);
-    startHttpServer(server, port);
+    startHttpServer(() => createBizardServer(validBundle), port);
 
     const initRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "POST", headers: INIT_HEADERS, body: JSON.stringify(INIT),
@@ -55,10 +53,39 @@ describe("http transport", () => {
     expect(text).toContain("bizard_contribute_check");
   });
 
+  it("serves concurrent POSTs — a second request while one is in flight must not crash", async () => {
+    const port = freePort();
+    startHttpServer(() => createBizardServer(validBundle), port);
+    // Two overlapping POSTs: the old shared-instance implementation threw
+    // "Already connected to a transport" on the second connect() and the
+    // unhandled rejection killed the process, dropping the in-flight reply.
+    const [a, b] = await Promise.all([
+      fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: "POST", headers: INIT_HEADERS, body: JSON.stringify(INIT),
+      }),
+      fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: "POST", headers: INIT_HEADERS, body: JSON.stringify(INIT),
+      }),
+    ]);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(await a.text()).toContain("bizard");
+    expect(await b.text()).toContain("bizard");
+  });
+
+  it("rejects oversized bodies with 413, not a generic 500", async () => {
+    const port = freePort();
+    startHttpServer(() => createBizardServer(validBundle), port);
+    const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST", headers: INIT_HEADERS, body: "x".repeat(1_100_000),
+    });
+    expect(res.status).toBe(413);
+    await res.text();
+  });
+
   it("rate limits excessive requests from one IP", async () => {
     const port = freePort();
-    const server = createBizardServer(validBundle);
-    startHttpServer(server, port);
+    startHttpServer(() => createBizardServer(validBundle), port);
     // Default capacity is generous; hammer /mcp with a 404 path (cheap) and
     // expect some 429 among the first burst after capacity is consumed.
     let saw429 = false;
@@ -74,10 +101,9 @@ describe("http transport", () => {
 
   it("keys rate buckets on X-Forwarded-For when BIZARD_TRUST_PROXY is set (spec §6.2 前置反代)", async () => {
     const port = freePort();
-    const server = createBizardServer(validBundle);
     process.env.BIZARD_TRUST_PROXY = "1";
     try {
-      startHttpServer(server, port);
+      startHttpServer(() => createBizardServer(validBundle), port);
       // Exhaust client 9.9.9.9's bucket (capacity 60/min).
       let exhausted = false;
       for (let i = 0; i < 200; i++) {
@@ -105,8 +131,7 @@ describe("http transport", () => {
 
   it("ignores X-Forwarded-For by default so clients cannot spoof fresh buckets", async () => {
     const port = freePort();
-    const server = createBizardServer(validBundle);
-    startHttpServer(server, port);
+    startHttpServer(() => createBizardServer(validBundle), port);
     // Exhaust one forwarded identity, then "rotate" it — same socket bucket,
     // so the rotated identity must still be rate limited.
     let exhausted = false;

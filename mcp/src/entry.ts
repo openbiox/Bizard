@@ -12,7 +12,7 @@ const DEGRADED_NOTE =
 export interface CliDeps {
   loadSnapshotFn?: () => Bundle | null;
   connect?: (server: ReturnType<typeof createBizardServer>) => Promise<void>;
-  startHttp?: (server: ReturnType<typeof createBizardServer>, port: number) => void;
+  startHttp?: (makeServer: () => ReturnType<typeof createBizardServer>, port: number) => void;
   env?: Record<string, string | undefined>;
   stderr?: (line: string) => void;
   startUpdateCheck?: (holder: MutableHolder, notices: NoticeQueue) => void;
@@ -43,10 +43,13 @@ export async function runCli(argv: string[], deps: CliDeps = {}): Promise<void> 
 
   if (argv.includes("--http")) {
     const port = Number(env.BIZARD_HTTP_PORT ?? DEFAULT_HTTP_PORT);
+    // The HTTP path builds a fresh server per request (one transport per
+    // McpServer — a shared instance crashes on concurrent POSTs).
+    const makeServer = () => createBizardServer({ get: () => holder.bundle }, notices);
     if (deps.startHttp) {
-      deps.startHttp(server, port);
+      deps.startHttp(makeServer, port);
     } else {
-      startHttpServer(server, port);
+      startHttpServer(makeServer, port);
     }
   } else {
     const connect = deps.connect

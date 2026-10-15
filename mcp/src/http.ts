@@ -4,6 +4,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 const RATE_CAPACITY = 60; // requests/min per client IP
 const RATE_INTERVAL_MS = 60_000;
+const BODY_MAX_BYTES = 1_000_000; // JSON-RPC messages are small; reject larger uploads
+
 /** Trust X-Forwarded-For for client keying (spec §6.2 前置反代). Off by default:
  *  without a proxy in front, clients could spoof fresh buckets. Read per
  *  request so a config change takes effect without a restart. */
@@ -14,13 +16,15 @@ function trustProxy(): boolean {
 
 interface Bucket { tokens: number; last: number; }
 
-/** Client identity for rate limiting: X-Forwarded-For's leftmost IP when
- *  behind a trusted proxy, else the socket address. */
+/** Client identity for rate limiting: the IP that just handed the request to
+ *  the trusted proxy (rightmost X-Forwarded-For hop) when behind one, else the
+ *  socket address. The leftmost hop is client-controlled and spoofable. */
 function clientIp(req: IncomingMessage): string {
   if (trustProxy()) {
     const forwarded = req.headers["x-forwarded-for"];
     if (typeof forwarded === "string" && forwarded.length > 0) {
-      return forwarded.split(",")[0].trim();
+      const hops = forwarded.split(",").map((h) => h.trim()).filter(Boolean);
+      if (hops.length > 0) return hops[hops.length - 1];
     }
   }
   return req.socket.remoteAddress ?? "unknown";
@@ -28,9 +32,12 @@ function clientIp(req: IncomingMessage): string {
 
 /**
  * Stateless Streamable HTTP endpoint (spec §6.2: public anonymous access).
- * One transport per POST; per-IP token-bucket rate limiting.
+ * The factory builds one McpServer per POST — the SDK allows a single
+ * transport per server instance, so sharing one across concurrent requests
+ * throws "Already connected to a transport" (and kills the process via an
+ * unhandled rejection). Per-IP token-bucket rate limiting.
  */
-export function startHttpServer(server: McpServer, port: number): void {
+export function startHttpServer(makeServer: () => McpServer, port: number): void {
   const buckets = new Map<string, Bucket>();
 
   const http = createServer((req, res) => {
@@ -41,7 +48,14 @@ export function startHttpServer(server: McpServer, port: number): void {
       return;
     }
     if (req.method === "POST" && req.url === "/mcp") {
-      void handlePost(server, req, res);
+      handlePost(makeServer(), req, res).catch((e) => {
+        console.error(`bizard-mcp HTTP: request failed: ${(e as Error).message}`);
+        if (res.headersSent) return;
+        // Oversized uploads are the client's doing — 413, not a server fault.
+        const status = e instanceof BodyTooLargeError ? 413 : 500;
+        res.writeHead(status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: status === 413 ? "request body too large" : "internal error" }));
+      });
       return;
     }
     res.writeHead(404).end();
@@ -63,7 +77,12 @@ async function handlePost(server: McpServer, req: IncomingMessage, res: ServerRe
 
 async function readBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > BODY_MAX_BYTES) throw new BodyTooLargeError();
+    chunks.push(chunk as Buffer);
+  }
   const raw = Buffer.concat(chunks).toString("utf-8");
   try {
     return JSON.parse(raw || "{}");
@@ -72,8 +91,17 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   }
 }
 
+class BodyTooLargeError extends Error {}
+
 function allow(ip: string, buckets: Map<string, Bucket>): boolean {
   const now = Date.now();
+  // Opportunistic eviction: a public endpoint sees one-off IPs (spoofed or
+  // scanned); without pruning, the bucket map grows without bound.
+  if (buckets.size >= RATE_CAPACITY) {
+    for (const [key, b] of buckets) {
+      if (now - b.last > RATE_INTERVAL_MS) buckets.delete(key);
+    }
+  }
   const b = buckets.get(ip) ?? { tokens: RATE_CAPACITY, last: now };
   const elapsed = now - b.last;
   b.tokens = Math.min(RATE_CAPACITY, b.tokens + (elapsed / RATE_INTERVAL_MS) * RATE_CAPACITY);
