@@ -2,10 +2,29 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-const RATE_CAPACITY = 60; // requests/min per IP
+const RATE_CAPACITY = 60; // requests/min per client IP
 const RATE_INTERVAL_MS = 60_000;
+/** Trust X-Forwarded-For for client keying (spec §6.2 前置反代). Off by default:
+ *  without a proxy in front, clients could spoof fresh buckets. Read per
+ *  request so a config change takes effect without a restart. */
+function trustProxy(): boolean {
+  const v = process.env.BIZARD_TRUST_PROXY;
+  return v === "1" || v === "true";
+}
 
 interface Bucket { tokens: number; last: number; }
+
+/** Client identity for rate limiting: X-Forwarded-For's leftmost IP when
+ *  behind a trusted proxy, else the socket address. */
+function clientIp(req: IncomingMessage): string {
+  if (trustProxy()) {
+    const forwarded = req.headers["x-forwarded-for"];
+    if (typeof forwarded === "string" && forwarded.length > 0) {
+      return forwarded.split(",")[0].trim();
+    }
+  }
+  return req.socket.remoteAddress ?? "unknown";
+}
 
 /**
  * Stateless Streamable HTTP endpoint (spec §6.2: public anonymous access).
@@ -15,7 +34,7 @@ export function startHttpServer(server: McpServer, port: number): void {
   const buckets = new Map<string, Bucket>();
 
   const http = createServer((req, res) => {
-    const ip = req.socket.remoteAddress ?? "unknown";
+    const ip = clientIp(req);
     if (!allow(ip, buckets)) {
       res.writeHead(429, { "Retry-After": "30" });
       res.end(JSON.stringify({ error: "rate limited" }));
