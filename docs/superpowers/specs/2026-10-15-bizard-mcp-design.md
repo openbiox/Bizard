@@ -138,8 +138,7 @@ digraph bizard_mcp {
   }
   OUT ->|首次运行下载\n内置快照兜底| CORE;
   CORE -> FS; CORE -> LOG;
-  HOST <->
-  CORE [label="MCP 协议"];
+  HOST <->|MCP 协议| CORE;
   GH ->|级别1/2:\n以用户身份发 issue/PR| REPO [label="openbiox/Bizard\nissue + PR"];
   HOST ->|级别3:\n草稿 + deep-link| REPO;
 }
@@ -360,7 +359,7 @@ npx @openbiox/bizard-mcp            # stdio,一条命令
 | bundle 体积随教程增长膨胀 | codeSnippets 仅存代码+元数据,不含正文;超限时按分类分片 |
 | generate_skills.py 正则演进导致双脚本漂移 | M1 时把代码块提取函数抽为共享模块,两脚本同 import(而非复制) |
 | 托管实例被滥用(高频抓取) | 限流 + bundle 公开可下载(诚实客户端直接下快照),工具调用非唯一渠道 |
-| CC-BY-NC 许可被 AI 误用声明 | `bizard_cite` 固化许可声明文本,`get_code` 返回值附带许可行 |
+| CC-BY-NC 许可被 AI 误用声明 | `bizard_cite` 固化许可声明文本,`bizard_get_code` 返回值附带许可行 |
 | zh 内容质量不一致(部分教程无 zh 版) | bundle 中 nameZh/tutorialUrlZh 可空,检索按 language 权重回退英文 |
 | SFL 风格的更新通知打扰 | 一次性追加,版本会话内只提示一次 |
 
