@@ -5,6 +5,7 @@ import { adjacentSuggestions, searchCharts } from "./search.js";
 import { registerTutorialTools } from "./tutorial-tools.js";
 import { registerAdaptTools } from "./adapt-tools.js";
 import { registerContributeTools } from "./contribute-tools.js";
+import type { CredentialEnv } from "./contribute.js";
 import { registerPrompts } from "./prompts.js";
 import { registerResources } from "./resources.js";
 import { updateNotice } from "./update-check.js";
@@ -43,7 +44,11 @@ function bundleError() {
 /** Constant server identity — never derives from bundle state. */
 const SERVER_IDENTITY = { name: "bizard-mcp", version: "0.1.0" } as const;
 
-export function createBizardServer(source: Bundle | BundleHolder | null, notices?: NoticeQueue): McpServer {
+export function createBizardServer(
+  source: Bundle | BundleHolder | null,
+  notices?: NoticeQueue,
+  opts?: { credentialEnv?: CredentialEnv },
+): McpServer {
   const getBundle = (): Bundle | null => {
     if (source === null) return null;
     if ("get" in source && typeof source.get === "function") return source.get();
@@ -91,7 +96,7 @@ export function createBizardServer(source: Bundle | BundleHolder | null, notices
   };
   registerTutorialTools(server, lazyBundle);
   registerAdaptTools(server, lazyBundle);
-  registerContributeTools(server);
+  registerContributeTools(server, opts?.credentialEnv);
   registerPrompts(server);
   registerResources(server, getBundle);
 

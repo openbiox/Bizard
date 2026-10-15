@@ -109,12 +109,28 @@ describe("bizard_contribute_check / bizard_contribute_submit", () => {
     expect(result.content[0].text).toContain("Setup");
   });
 
-  it("submit degrades to draft + deep-link without credentials", async () => {
-    const server = createBizardServer(validBundle);
+  it("submit degrades to draft + deep-link via the injected credential env, never real gh", async () => {
+    const calls: Array<{ cmd: string; args: string[] }> = [];
+    const server = createBizardServer(validBundle, undefined, {
+      credentialEnv: {
+        exec: async (cmd, args) => {
+          calls.push({ cmd, args });
+          return { code: 127, stdout: "", stderr: "not found" };
+        },
+      },
+    });
     const result = await callTool(server, "bizard_contribute_submit", {
       contributionType: "fix", title: "Fix typo", body: "Body", asPR: false,
     });
-    expect(result.content[0].text).toContain("deepLink");
+    const payload = JSON.parse(result.content[0].text) as {
+      level: number; submitted: boolean; deepLink: string;
+    };
+    expect(payload.level).toBe(3);
+    expect(payload.submitted).toBe(false);
+    expect(payload.deepLink).toMatch(/^https:\/\/github\.com\/openbiox\/Bizard\/issues\/new\?/);
+    // The stub must have run in place of the real gh CLI (injection point proven).
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls[0].cmd).toBe("gh");
   });
 
   it("degraded mode: contribute_check still works (no bundle needed)", async () => {

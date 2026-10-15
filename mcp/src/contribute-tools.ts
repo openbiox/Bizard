@@ -1,11 +1,12 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { checkContribution, submitContribution } from "./contribute.js";
+import type { CredentialEnv } from "./contribute.js";
 import { jsonResult, errorResult } from "./results.js";
 
 const USER_CONTEXT_MAX_CHARS = 2000;
 
-export function registerContributeTools(server: McpServer): void {
+export function registerContributeTools(server: McpServer, credentialEnv?: CredentialEnv): void {
   server.registerTool("bizard_contribute_check", {
     title: "Check a contribution draft",
     description: "Static checks on a draft tutorial/fix before submitting to Bizard: front matter, Setup section, executable code blocks; previews contribution points.",
@@ -35,7 +36,7 @@ export function registerContributeTools(server: McpServer): void {
     annotations: { readOnlyHint: false, openWorldHint: true },
   }, async ({ contributionType, title, body, asPR }) => {
     try {
-      return jsonResult(await submitContribution({ contributionType, title, body, asPR }, {}));
+      return jsonResult(await submitContribution({ contributionType, title, body, asPR }, credentialEnv ?? {}));
     } catch (e) {
       return errorResult((e as Error).message);
     }
