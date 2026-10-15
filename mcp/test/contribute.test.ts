@@ -89,22 +89,57 @@ describe("submitContribution", () => {
     expect(create.args.join(" ")).toContain("New chart");
   });
 
+  it("level 1: labels new-tutorial with the repo's real 新增图表-新教程 label", async () => {
+    const calls: Array<{ cmd: string; args: string[] }> = [];
+    const exec: ExecFn = async (cmd, args) => {
+      calls.push({ cmd, args });
+      return { code: 0, stdout: "https://github.com/openbiox/Bizard/issues/1\n", stderr: "" };
+    };
+    await submitContribution(
+      { contributionType: "new-tutorial", title: "New chart", body: "Body", asPR: false },
+      { exec },
+    );
+    const create = calls.find((c) => c.args.includes("issue"))!;
+    const labelIdx = create.args.indexOf("--label");
+    expect(labelIdx).toBeGreaterThanOrEqual(0);
+    expect(create.args[labelIdx + 1]).toBe("新增图表-新教程");
+  });
+
+  it("level 1: submits fix/translation/gallery-image UNLABELED (no nonexistent labels)", async () => {
+    const calls: Array<{ cmd: string; args: string[] }> = [];
+    const exec: ExecFn = async (cmd, args) => {
+      calls.push({ cmd, args });
+      return { code: 0, stdout: "https://github.com/openbiox/Bizard/issues/2\n", stderr: "" };
+    };
+    for (const contributionType of ["fix", "translation", "gallery-image"] as const) {
+      await submitContribution(
+        { contributionType, title: "T", body: "B", asPR: false },
+        { exec },
+      );
+      const create = calls.find((c) => c.args.includes("issue"))!;
+      expect(create.args).not.toContain("--label");
+    }
+  });
+
   it("level 2: POSTs to GitHub issues API with token header", async () => {
     let capturedInit: RequestInit | undefined;
     let capturedUrl = "";
+    let capturedBody: Record<string, unknown> = {};
     const fetchMock = (async (url: string | URL, init?: RequestInit) => {
       capturedUrl = String(url);
       capturedInit = init;
       return new Response(JSON.stringify({ html_url: "https://github.com/openbiox/Bizard/issues/1000" }), { status: 201 });
     }) as typeof fetch;
     const res = await submitContribution(
-      { contributionType: "fix", title: "Fix", body: "Body", asPR: false },
+      { contributionType: "new-tutorial", title: "New chart", body: "Body", asPR: false },
       { exec: async () => ({ code: 127, stdout: "", stderr: "" }), githubToken: "tok", fetch: fetchMock },
     );
     expect(res.level).toBe(2);
     expect(res.submitted).toBe(true);
     expect(capturedUrl).toBe("https://api.github.com/repos/openbiox/Bizard/issues");
     expect((capturedInit?.headers as Record<string, string>)["Authorization"]).toBe("Bearer tok");
+    capturedBody = JSON.parse(String(capturedInit?.body));
+    expect(capturedBody.labels).toEqual(["新增图表-新教程"]);
   });
 
   it("level 3: returns draft + deep-link, no exec/fetch used", async () => {

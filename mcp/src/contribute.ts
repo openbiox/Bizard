@@ -57,11 +57,9 @@ const POINTS: Record<CheckInput["contributionType"], string> = {
   "gallery-image": "+3",
 };
 
-const ISSUE_LABELS: Record<CheckInput["contributionType"], string> = {
-  "new-tutorial": "new-tutorial",
-  "fix": "optimization",
-  "translation": "translation",
-  "gallery-image": "gallery",
+/** Only labels that exist in openbiox/Bizard; other types submit unlabeled for maintainer triage. */
+const ISSUE_LABELS: Partial<Record<CheckInput["contributionType"], string>> = {
+  "new-tutorial": "新增图表-新教程",
 };
 
 export function checkContribution(input: CheckInput): CheckResult {
@@ -109,11 +107,12 @@ export async function submitContribution(input: SubmitInput, env: CredentialEnv)
 
 async function submitViaGh(input: SubmitInput, env: CredentialEnv, owner: string, repo: string,
                            body: string, truncated: boolean): Promise<SubmitResult> {
+  const label = ISSUE_LABELS[input.contributionType];
   const args = ["issue", "create",
     "--repo", `${owner}/${repo}`,
     "--title", truncateTitle(input.title),
-    "--body", body,
-    "--label", ISSUE_LABELS[input.contributionType]];
+    "--body", body];
+  if (label) args.push("--label", label);
   const res = await execOf(env)("gh", args);
   if (res.code === 0) {
     const url = res.stdout.trim().split("\n").pop() ?? null;
@@ -136,7 +135,11 @@ async function submitViaApi(input: SubmitInput, env: CredentialEnv, owner: strin
       "Content-Type": "application/json",
       "User-Agent": "bizard-mcp",
     },
-    body: JSON.stringify({ title: truncateTitle(input.title), body, labels: [ISSUE_LABELS[input.contributionType]] }),
+    body: JSON.stringify({
+      title: truncateTitle(input.title),
+      body,
+      ...(ISSUE_LABELS[input.contributionType] ? { labels: [ISSUE_LABELS[input.contributionType]] } : {}),
+    }),
   });
   if (res.ok) {
     const data = (await res.json()) as { html_url: string };
