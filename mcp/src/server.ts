@@ -7,6 +7,8 @@ import { registerAdaptTools } from "./adapt-tools.js";
 import { registerContributeTools } from "./contribute-tools.js";
 import { registerPrompts } from "./prompts.js";
 import { registerResources } from "./resources.js";
+import { updateNotice } from "./update-check.js";
+import type { NoticeQueue } from "./update-check.js";
 
 const SEARCH_LIMIT_MAX = 20;
 const QUERY_MAX_CHARS = 4000;
@@ -19,8 +21,16 @@ export interface BundleHolder {
   get(): Bundle | null;
 }
 
-function json(value: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
+function json(value: unknown, note?: string | null) {
+  const payload: Record<string, unknown> = note === null || note === undefined
+    ? { ...value as object }
+    : { note, ...value as object };
+  return {
+    content: [{
+      type: "text" as const,
+      text: JSON.stringify(payload, null, 2),
+    }],
+  };
 }
 
 function bundleError() {
@@ -33,12 +43,15 @@ function bundleError() {
 /** Constant server identity — never derives from bundle state. */
 const SERVER_IDENTITY = { name: "bizard-mcp", version: "0.1.0" } as const;
 
-export function createBizardServer(source: Bundle | BundleHolder | null): McpServer {
+export function createBizardServer(source: Bundle | BundleHolder | null, notices?: NoticeQueue): McpServer {
   const getBundle = (): Bundle | null => {
     if (source === null) return null;
     if ("get" in source && typeof source.get === "function") return source.get();
     return source as Bundle;
   };
+
+  // One-time SFL notice (spec §3.4): consumed by the first tool result after an update swap.
+  const drainNotice = (): string | null => (notices ? updateNotice(notices) : null);
 
   const server = new McpServer(SERVER_IDENTITY);
 
@@ -55,7 +68,7 @@ export function createBizardServer(source: Bundle | BundleHolder | null): McpSer
   }, async ({ query, language, category, limit }) => {
     const bundle = getBundle();
     if (!bundle) return bundleError();
-    return searchTool(bundle, query, language, category, limit);
+    return searchTool(bundle, query, language, category, limit, drainNotice());
   });
 
   server.registerTool("bizard_list_categories", {
@@ -66,7 +79,7 @@ export function createBizardServer(source: Bundle | BundleHolder | null): McpSer
   }, async () => {
     const bundle = getBundle();
     if (!bundle) return bundleError();
-    return categoriesTool(bundle);
+    return categoriesTool(bundle, drainNotice());
   });
 
   const lazyBundle = {
@@ -86,7 +99,7 @@ export function createBizardServer(source: Bundle | BundleHolder | null): McpSer
 }
 
 export function searchTool(bundle: Bundle, query: string, language: "en" | "zh",
-                           category?: string, limit = 5) {
+                           category?: string, limit = 5, note: string | null = null) {
   const hits = searchCharts(bundle, query, { category });
   const nameOf = (c: Chart) => (language === "zh" ? c.nameZh ?? c.name : c.name);
   const urlOf = (c: Chart) => (language === "zh" ? c.tutorialUrlZh ?? c.tutorialUrl : c.tutorialUrl);
@@ -98,13 +111,13 @@ export function searchTool(bundle: Bundle, query: string, language: "en" | "zh",
     tutorialUrl: urlOf(chart),
     description: chart.description,
   }));
-  if (cards.length > 0) return json({ results: cards });
+  if (cards.length > 0) return json({ results: cards }, note);
   const near = adjacentSuggestions(bundle, query).map((c) => ({
     id: c.id, name: nameOf(c), tutorialUrl: urlOf(c),
   }));
-  return json({ results: [], suggestions: near, note: "No exact matches. Nearby charts in the closest category:" });
+  return json({ results: [], suggestions: near, note: note ?? "No exact matches. Nearby charts in the closest category:" });
 }
 
-function categoriesTool(bundle: Bundle) {
-  return json(bundle.categories);
+function categoriesTool(bundle: Bundle, note: string | null = null) {
+  return json(bundle.categories, note);
 }
