@@ -5,7 +5,7 @@ author:
   - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed;"
 ---
 
-A ridgeline plot (joyplot) stacks one density curve per category along a shared x-axis, exposing how a distribution shifts across many groups at a glance. In biomedical research it is a favorite for comparing marker-expression distributions across cell clusters, or any many-group distribution comparison that would overwhelm a grid of faceted histograms. In Python the dedicated `joypy` package builds ridgelines on top of `matplotlib`.
+A ridgeline plot (joyplot) stacks one density curve per category along a shared x-axis, exposing how a distribution shifts across many groups at a glance. In biomedical research it is a favorite for comparing marker-expression distributions across cell clusters, or any many-group distribution comparison that would overwhelm a grid of faceted histograms. In Python it composes cleanly from per-group kernel density estimates (`scipy.stats.gaussian_kde`) layered on shared `matplotlib` axes.
 
 ## Example
 
@@ -15,16 +15,15 @@ A ridgeline plot (joyplot) stacks one density curve per category along a shared 
 
 - System Requirements: Cross-platform (Linux/MacOS/Windows)
 - Programming Language: **Python**
-- Dependencies: `matplotlib`, `seaborn`, `pandas`, `numpy`, `joypy`
+- Dependencies: `matplotlib`, `pandas`, `numpy`, `scipy`
 
 ```{python}
 #| label: packages-setup
 #| output: false
 import matplotlib.pyplot as plt
-import seaborn as sns
 import pandas as pd
 import numpy as np
-import joypy
+from scipy.stats import gaussian_kde
 ```
 
 ## Data Preparation
@@ -46,64 +45,95 @@ for cluster, mu in zip(clusters, base_means):
         'Marker': np.random.normal(mu, 1.1, n_per_cluster)
     }))
 marker = pd.concat(records, ignore_index=True)
-marker['Cluster'] = pd.Categorical(marker['Cluster'], categories=clusters, ordered=True)
+
+# Shared evaluation grid and ridge spacing
+xs = np.linspace(-1, 11, 300)
+offset = 0.55
 ```
 
 ## Visualization
 
 ### Basic Ridgeline Plot
 
-`joypy.joyplot` stacks one KDE per group when given `by=`; `overlap` controls how far neighboring curves are allowed to cover each other.
+Each cluster contributes one kernel density estimate; ridges are drawn bottom-up so the upper curves partially cover the ones beneath them.
 
 ```{python}
 #| label: fig-py-ridge-basic
 #| fig-cap: "Marker-expression distribution across eight cell clusters"
 #| width: 80%
 #| fig-align: center
-fig, axes = joypy.joyplot(marker, by='Cluster', column='Marker',
-                          figsize=(7, 5), overlap=1.2,
-                          linewidth=1.2, linecolor='0.3',
-                          color='#8da0cb', grid=False)
-plt.xlabel('Marker expression (a.u.)')
+n = len(clusters)
+fig, ax = plt.subplots(figsize=(7, 5))
+for i in reversed(range(n)):                    # bottom first, top last
+    d = marker.loc[marker['Cluster'] == clusters[i], 'Marker']
+    ys = gaussian_kde(d)(xs)
+    base = offset * (n - 1 - i)
+    ax.plot(xs, base + ys, color='0.3', linewidth=1.1)
+    ax.fill_between(xs, base, base + ys, color='#8da0cb', alpha=0.9)
+ax.set_yticks([offset * (n - 1 - i) for i in range(n)], labels=clusters)
+ax.set_xlabel('Marker expression (a.u.)')
+ax.spines[['top', 'right', 'left']].set_visible(False)
+ax.tick_params(axis='y', length=0)
+plt.tight_layout()
 plt.show()
 ```
 
-### Faded Ridge with Colormap
+### Fading Ridge with Colormap
 
-`fade=True` lightens curves toward the back, and `colormap` encodes the stacking order — helpful when many groups make labels hard to trace.
+Encoding the stacking order with a colormap and fading the fill toward the back helps when many groups make labels hard to trace.
 
 ```{python}
 #| label: fig-py-ridge-fade
-#| fig-cap: "Ridgeline with fading fill and a colormap-encoded order"
+#| fig-cap: "Ridgeline with colormap-encoded order and fading fill"
 #| width: 80%
 #| fig-align: center
-fig, axes = joypy.joyplot(marker, by='Cluster', column='Marker',
-                          figsize=(7, 5), overlap=1.5, fade=True,
-                          colormap=plt.cm.viridis,
-                          linewidth=1.0, linecolor='0.2', grid=False)
-plt.xlabel('Marker expression (a.u.)')
+n = len(clusters)
+fig, ax = plt.subplots(figsize=(7, 5))
+for i in reversed(range(n)):
+    d = marker.loc[marker['Cluster'] == clusters[i], 'Marker']
+    ys = gaussian_kde(d)(xs)
+    base = offset * (n - 1 - i)
+    shade = plt.cm.viridis(i / (n - 1))
+    ax.plot(xs, base + ys, color=shade, linewidth=1.1)
+    ax.fill_between(xs, base, base + ys, color=shade,
+                    alpha=0.35 + 0.6 * i / (n - 1))
+ax.set_yticks([offset * (n - 1 - i) for i in range(n)], labels=clusters)
+ax.set_xlabel('Marker expression (a.u.)')
+ax.spines[['top', 'right', 'left']].set_visible(False)
+ax.tick_params(axis='y', length=0)
+plt.tight_layout()
 plt.show()
 ```
 
 ### Ridgeline from Histograms
 
-Setting `hist=True` stacks binned counts instead of smooth densities, which keeps the discrete sampling visible in smaller cohorts.
+Replacing the KDE with per-group histograms keeps the discrete sampling visible in smaller cohorts.
 
 ```{python}
 #| label: fig-py-ridge-hist
 #| fig-cap: "Histogram-based ridgeline (binned counts per cluster)"
 #| width: 80%
 #| fig-align: center
-fig, axes = joypy.joyplot(marker, by='Cluster', column='Marker',
-                          figsize=(7, 5), hist=True, bins=24,
-                          overlap=0.4, grid=False,
-                          color='#66c2a5', linewidth=0.8, linecolor='0.2')
-plt.xlabel('Marker expression (a.u.)')
+n = len(clusters)
+bins = np.linspace(-1, 11, 25)
+fig, ax = plt.subplots(figsize=(7, 5))
+for i in reversed(range(n)):
+    d = marker.loc[marker['Cluster'] == clusters[i], 'Marker']
+    counts, edges = np.histogram(d, bins=bins)
+    base = offset * (n - 1 - i)
+    ax.bar(edges[:-1], counts, width=np.diff(edges), bottom=base,
+           align='edge', color='#66c2a5', edgecolor='0.2', linewidth=0.6)
+ax.set_yticks([offset * (n - 1 - i) for i in range(n)], labels=clusters)
+ax.set_xlabel('Marker expression (a.u.)')
+ax.set_ylabel('Count (offset per cluster)')
+ax.spines[['top', 'right', 'left']].set_visible(False)
+ax.tick_params(axis='y', length=0)
+plt.tight_layout()
 plt.show()
 ```
 
 ## References
 
 1. Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. *Computing in Science & Engineering*, 9(3), 90-95.
-2. sbebo. joypy: Joyplots in Python. https://github.com/sbebo/joypy
+2. Virtanen, P., et al. (2020). SciPy 1.0: fundamental algorithms for scientific computing in Python. *Nature Methods*, 17(3), 261-272.
 3. From Data to Viz. Ridgeline. https://www.data-to-viz.com/graph/ridgeline.html
