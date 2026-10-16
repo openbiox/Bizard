@@ -1,0 +1,228 @@
+---
+title: "Mutation Landscape Oncoplot"
+author:
+  - "**[Editor]** [Shixiang Wang](https://github.com/ShixiangWang);"
+  - "**[Contributors]** ."
+---
+
+A mutation landscape plot (oncoplot, also called a mutation waterfall plot) displays the somatic alteration profile of a cohort gene by gene and sample by sample: rows are the most frequently mutated genes, columns are the samples, and each filled cell is a mutation, colored by its consequence (missense, nonsense, frameshift, splice site, …). Mutation frequency labels on the left, burden bars on top and the option to split samples by molecular subtype or cohort make the oncoplot the standard summary figure of cancer genomics studies, where it reveals which genes drive which subgroup. This tutorial reproduces the chart type covered by the *顶刊图社* series (issue 008); see the Reference section below.
+
+## Example
+
+![](../images/Omics/MutationOncoplot_demo.png){fig-alt="MutationOncoplot DEMO" fig-align="center" width="80%"}
+
+This oncoplot summarizes a simulated 60-sample cohort across 20 cancer driver genes. Samples are grouped by two molecular subtypes (Subtype A and Subtype B), genes are grouped by signaling pathway (`RTK/RAS`, `PI3K`, `p53`, …), and the top barplot shows each sample's total mutation count. Subtype A is dominated by `TP53` (35% of all samples) and `EGFR` mutations, while Subtype B carries most of the `STK11`, `KEAP1` and `KRAS` alterations — exactly the kind of subgroup-specific pattern an oncoplot is meant to expose. Mutation types are color-coded and `TP53` occasionally shows `Multi_Hit` (more than one event).
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming Language: R
+
+-   Dependencies: `ComplexHeatmap`; `tidyverse`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Installing necessary packages
+if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
+  install.packages("ComplexHeatmap")
+}
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+  install.packages("tidyverse")
+}
+
+# Load packages
+library(ComplexHeatmap)
+library(tidyverse)
+```
+
+## Data Preparation
+
+The example simulates a small cohort so the tutorial is fully reproducible without downloading protected TCGA data: 60 samples, two molecular subtypes, and 20 common cancer driver genes mutated with subtype-specific probabilities. `Multi_Hit` marks genes carrying more than one event in a sample.
+
+```{r simulate data, message=FALSE}
+set.seed(2026)
+
+genes <- c("TP53", "EGFR", "KRAS", "STK11", "KEAP1", "PIK3CA", "PTEN", "RB1",
+           "APC", "ARID1A", "NF1", "NOTCH1", "BRAF", "CDKN2A", "SMAD4", "FBXW7",
+           "ATM", "BRCA2", "ERBB2", "MET")
+cohort <- rep(c("Subtype A", "Subtype B"), c(35, 25))
+samples <- sprintf("S%02d", 1:60)
+
+# Subtype-specific mutation probabilities per gene
+p_a <- c(.52, .34, .10, .14, .10, .10, .12, .10, .06, .22, .08, .06, .04, .10, .05, .06, .06, .05, .05, .04)
+p_b <- c(.22, .08, .42, .40, .36, .14, .10, .10, .10, .06, .10, .06, .06, .10, .10, .08, .05, .05, .06, .08)
+mut_types <- c("Missense", "Nonsense", "Frameshift", "Splice_Site", "In_Frame")
+type_p <- c(.58, .14, .12, .08, .08)
+
+mutations <- map_dfr(seq_along(samples), function(i) {
+  p <- if (cohort[i] == "Subtype A") p_a else p_b
+  hit <- genes[runif(length(genes)) < p]
+  if (length(hit) == 0) return(NULL)
+  type <- sample(mut_types, length(hit), replace = TRUE, prob = type_p)
+  # Tumor suppressors such as TP53 can receive a second hit, shown as Multi_Hit
+  if (runif(1) < .15 && "TP53" %in% hit) {
+    type[hit == "TP53"] <- "Multi_Hit"
+  }
+  tibble(sample = samples[i], gene = hit, type = type)
+})
+
+head(mutations)
+```
+
+**Note:** In your own analysis the input is a long table with one row per mutation, containing at least the sample name, the gene name and the mutation type (from a MAF file, `maftools`, or your variant caller). The code below reshapes it into the alternating matrix used by `oncoPrint()`.
+
+```{r build matrix, message=FALSE}
+# Reshape the mutation table into a gene x sample matrix; a cell holds one or
+# several alteration types separated by ";"
+gene_levels <- names(sort(table(factor(mutations$gene, levels = genes)), decreasing = TRUE))
+mat <- matrix("", nrow = length(genes), ncol = length(samples),
+              dimnames = list(genes, samples))
+for (i in seq_len(nrow(mutations))) {
+  cell <- mat[mutations$gene[i], mutations$sample[i]]
+  mat[mutations$gene[i], mutations$sample[i]] <-
+    if (cell == "") mutations$type[i] else paste(cell, mutations$type[i], sep = ";")
+}
+
+# Order samples: by subtype, then by mutation count (waterfall look)
+mut_count <- colSums(mat != "")
+ord <- order(factor(cohort, levels = c("Subtype A", "Subtype B")), -mut_count)
+mat <- mat[gene_levels, ord]
+
+# Annotation vectors aligned with the reordered matrix
+cohort_ordered <- factor(cohort[ord], levels = c("Subtype A", "Subtype B"))
+tmb <- mut_count[ord]
+
+# Colors for alteration types
+mutation_colors <- c(
+  Missense = "#3690C0", Nonsense = "#A50F15", Frameshift = "#F16913",
+  Splice_Site = "#6A51A3", In_Frame = "#31A354", Multi_Hit = "#252525"
+)
+
+# One drawing function per alteration type
+rect_fun <- function(color) {
+  function(x, y, w, h) grid.rect(x, y, w * 0.9, h * 0.9, gp = gpar(fill = color, col = NA))
+}
+alter_fun <- list(
+  background = rect_fun("#F2F2F2"),
+  Missense = rect_fun(mutation_colors["Missense"]),
+  Nonsense = rect_fun(mutation_colors["Nonsense"]),
+  Frameshift = rect_fun(mutation_colors["Frameshift"]),
+  Splice_Site = rect_fun(mutation_colors["Splice_Site"]),
+  In_Frame = rect_fun(mutation_colors["In_Frame"]),
+  Multi_Hit = rect_fun(mutation_colors["Multi_Hit"])
+)
+```
+
+## Visualization
+
+### 1. Basic Plot
+
+The basic oncoplot shows the alteration matrix with one colored block per mutation; the left labels give each gene's mutation frequency and the right barplot counts alterations per gene.
+
+```{r}
+#| label: fig-1.1BasicOncoplot
+#| fig-cap: "Basic Mutation Landscape Oncoplot"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6.5
+
+p1 <- oncoPrint(mat,
+  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,
+  column_order = samples[ord], show_column_names = FALSE,
+  row_names_gp = gpar(fontsize = 9, fontface = "italic"), pct_gp = gpar(fontsize = 8),
+  heatmap_legend_param = list(title = "Mutation type"))
+draw(p1)
+```
+
+### 2. Add Cohort Split and Mutation Burden
+
+Splitting the columns by molecular subtype and adding a top barplot of each sample's mutation count turns the matrix into the classic landscape figure: subgroup-specific genes become visually obvious.
+
+```{r}
+#| label: fig-1.2CohortOncoplot
+#| fig-cap: "Oncoplot split by molecular subtype with mutation burden bars"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 7
+
+top_annotation <- HeatmapAnnotation(
+  TMB = anno_barplot(tmb, height = unit(1.1, "cm"),
+                     gp = gpar(fill = "#6A51A3", col = NA)),
+  annotation_name_gp = gpar(fontsize = 9))
+
+p2 <- oncoPrint(mat,
+  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,
+  column_order = samples[ord], show_column_names = FALSE,
+  column_split = cohort_ordered, column_title_gp = gpar(fontsize = 10, fontface = "bold"),
+  top_annotation = top_annotation,
+  bottom_annotation = HeatmapAnnotation(
+    Subtype = as.character(cohort_ordered),
+    col = list(Subtype = c("Subtype A" = "#E08214", "Subtype B" = "#5E3C99")),
+    annotation_name_side = "left", annotation_name_gp = gpar(fontsize = 9)),
+  row_names_gp = gpar(fontsize = 9, fontface = "italic"), pct_gp = gpar(fontsize = 8),
+  heatmap_legend_param = list(title = "Mutation type"))
+draw(p2)
+```
+
+::: callout-tip
+**Key Parameters: **
+
+- `column_split`: splits the columns into panels, here by molecular subtype; `row_split` works the same way for genes (used in Figure 3).
+- `top_annotation`: any `HeatmapAnnotation` — the mutation burden barplot (`anno_barplot`) is the conventional choice.
+- `alter_fun_is_vectorized = FALSE`: draw alteration blocks one cell at a time; required when the functions above are not vectorized.
+:::
+
+### 3. Group Genes by Pathway
+
+Grouping the rows by signaling pathway (`RTK/RAS`, `PI3K`, `p53`, …) organizes the waterfall into functional blocks, which is how oncoplots are usually laid out in publications.
+
+```{r}
+#| label: fig-1.3PathwayOncoplot
+#| fig-cap: "Oncoplot with genes grouped by signaling pathway"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10.5
+#| fig-height: 7.5
+
+pathway <- c(
+  TP53 = "p53", RB1 = "p53", CDKN2A = "p53",
+  EGFR = "RTK/RAS", ERBB2 = "RTK/RAS", MET = "RTK/RAS", KRAS = "RTK/RAS",
+  BRAF = "RTK/RAS", NF1 = "RTK/RAS",
+  PIK3CA = "PI3K", PTEN = "PI3K", STK11 = "PI3K", KEAP1 = "PI3K",
+  APC = "WNT/Notch", NOTCH1 = "WNT/Notch", FBXW7 = "WNT/Notch",
+  ARID1A = "Chromatin", SMAD4 = "TGF-beta", ATM = "DDR", BRCA2 = "DDR")
+pathway_levels <- c("RTK/RAS", "PI3K", "p53", "WNT/Notch", "Chromatin", "TGF-beta", "DDR")
+
+p3 <- oncoPrint(mat,
+  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,
+  column_order = samples[ord], show_column_names = FALSE,
+  row_split = factor(pathway[gene_levels], levels = pathway_levels),
+  row_title_gp = gpar(fontsize = 9, fontface = "bold"), row_title_rot = 0,
+  column_split = cohort_ordered, column_title_gp = gpar(fontsize = 10, fontface = "bold"),
+  top_annotation = top_annotation,
+  row_names_gp = gpar(fontsize = 9, fontface = "italic"), pct_gp = gpar(fontsize = 8),
+  heatmap_legend_param = list(title = "Mutation type"))
+draw(p3)
+```
+
+Figure 3 reveals the same cohort structure with a functional reading: Subtype A accumulates `TP53` events and RTK/RAS-pathway `EGFR` mutations, while Subtype B concentrates `STK11`/`KEAP1` (PI3K pathway) and `KRAS` alterations.
+
+## Applications
+
+-   **Cohort characterization**: first-line summary of a cancer genomics study, usually split by subtype, stage or treatment arm.
+-   **Driver discovery**: recurrently altered genes and their co-occurrence or mutual exclusivity patterns.
+-   **Mutation burden**: the top barplot counts the mutated genes of every sample.
+-   The `maftools` package provides a widely used alternative implementation (`maftools::oncoplot()`) that reads MAF files directly; the `ComplexHeatmap` approach used here keeps the figure inside the general heatmap framework and supports arbitrary annotation tracks.
+
+## Reference
+
+\[1\] 顶刊图社 | 第008期：基因突变全景瀑布图. WeChat article. <http://mp.weixin.qq.com/s?__biz=MzU5NjE2ODU0OQ==&mid=2247483816&idx=1&sn=73bb796a166fb501934ab4fab2aaf28a>
+
+\[2\] Mayakonda A, Lin DC, Assenov Y, Plass C, Koeffler HP. Maftools: efficient and comprehensive analysis of somatic variants in cancer. Genome Res. 2018;28(11):1747-1756. doi:10.1101/gr.239244.118
+
+\[3\] Gu Z, Eils R, Schlesner M. Complex heatmaps reveal patterns and correlations in multidimensional genomic data. Bioinformatics. 2016;32(18):2847-2849. doi:10.1093/bioinformatics/btw313
