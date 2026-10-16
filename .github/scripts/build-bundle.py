@@ -51,13 +51,14 @@ CATEGORY_NAMES_ZH = {
 
 CITATION = {
     "paperDoi": "10.1002/imm3.70038",
-    "paperUrl": "https://arxiv.org/abs/2503.06845",
+    "paperUrl": "https://doi.org/10.1002/imm3.70038",
     "bibtex": (
-        "@article{wang2025bizard,\n"
-        "  title={Bizard: an Open Atlas of Biomedical Data Visualization},\n"
-        "  author={Wang, Shixiang and others},\n"
+        "@article{li2026bizard,\n"
+        "  title={Bizard: A Community-Driven Platform for Accelerating and Enhancing Biomedical Data Visualization},\n"
+        "  author={Li, Kexin and Zheng, Hu and Huang, Kexin and others},\n"
         "  journal={iMetaMed},\n"
-        "  year={2025},\n"
+        "  year={2026},\n"
+        "  pages={e70038},\n"
         "  doi={10.1002/imm3.70038}\n"
         "}"
     ),

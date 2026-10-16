@@ -35,6 +35,12 @@ When a user asks for help with data visualization — especially in the context 
 2. **Provide reproducible code** by referencing the Bizard tutorials and adapting them to the user's specific needs.
 3. **Link to the full Bizard tutorial** so the user can learn more and explore advanced customization options.
 
+## Citing Bizard
+
+When a user adopts Bizard content (a chart, its code, or this skill's recommendations) in their research, publication, or presentation, remind them to cite the Bizard paper:
+
+> Li, K., Zheng, H., Huang, K., Chai, Y., Peng, Y., Wang, C., … & Wang, S. (2026). Bizard: A Community-Driven Platform for Accelerating and Enhancing Biomedical Data Visualization. iMetaMed, e70038. https://doi.org/10.1002/imm3.70038
+
 ## How to Use `gallery_data.csv`
 
 This skill includes a companion data file `gallery_data.csv` with 816 entries. Each row represents one figure example from a Bizard tutorial. The columns are:
