@@ -11,7 +11,7 @@ A mutation landscape plot (oncoplot, also called a mutation waterfall plot) disp
 
 ![](../images/Omics/MutationOncoplot_demo.png){fig-alt="MutationOncoplot DEMO" fig-align="center" width="80%"}
 
-This oncoplot summarizes a simulated 60-sample cohort across 20 cancer driver genes. Samples are grouped by two molecular subtypes (Subtype A and Subtype B), genes are grouped by signaling pathway (`RTK/RAS`, `PI3K`, `p53`, …), and the top barplot shows each sample's total mutation count. Subtype A is dominated by `TP53` (35% of all samples) and `EGFR` mutations, while Subtype B carries most of the `STK11`, `KEAP1` and `KRAS` alterations — exactly the kind of subgroup-specific pattern an oncoplot is meant to expose. Mutation types are color-coded and `TP53` occasionally shows `Multi_Hit` (more than one event).
+This oncoplot summarizes a simulated 60-sample cohort across 20 cancer driver genes. Samples are grouped by two molecular subtypes (Subtype A and Subtype B), genes are grouped by signaling pathway (`RTK/RAS`, `PI3K`, `p53`, …), and the top barplot shows each sample's total mutation count. Subtype A is dominated by `TP53` (35% of all samples) and `EGFR` mutations, while Subtype B carries most of the `STK11`, `KEAP1` and `KRAS` alterations — exactly the kind of subgroup-specific pattern an oncoplot is meant to expose. Mutation types are color-coded and `TP53` occasionally shows `Multi_Hit` (more than one event). The same cohort is drawn again with the `maftools` engine in sections 4–5.
 
 ## Setup
 
@@ -19,7 +19,7 @@ This oncoplot summarizes a simulated 60-sample cohort across 20 cancer driver ge
 
 -   Programming Language: R
 
--   Dependencies: `ComplexHeatmap`; `tidyverse`
+-   Dependencies: `ComplexHeatmap`; `tidyverse`; `maftools`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages
@@ -29,10 +29,14 @@ if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
 if (!requireNamespace("tidyverse", quietly = TRUE)) {
   install.packages("tidyverse")
 }
+if (!requireNamespace("maftools", quietly = TRUE)) {
+  BiocManager::install("maftools")
+}
 
 # Load packages
 library(ComplexHeatmap)
 library(tidyverse)
+library(maftools)
 ```
 
 ## Data Preparation
@@ -113,7 +117,55 @@ alter_fun <- list(
 )
 ```
 
+The matrix above is the native `ComplexHeatmap` input. The `maftools` workflow instead consumes a **MAF-style table** — one row per variant, with the gene, the sample barcode and the `Variant_Classification` (e.g. `Missense_Mutation`, `Nonsense_Mutation`, `Frame_Shift_Del`). Two details matter when converting:
+
+- **Multi_Hit is derived, not stored.** Our simulated table uses an explicit `Multi_Hit` marker for a single gene-sample cell, but `read.maf()` silently *drops* rows whose `Variant_Classification` it does not recognise. We therefore expand every `Multi_Hit` cell back into two individual events (`Missense` + `Nonsense`); maftools then re-derives the multi-hit cells itself — which is also how real MAF files behave.
+- **Coordinates and alleles** are required by the MAF schema. For plotting they only need to be well-formed; real files carry the actual genomic positions.
+
+```{r convert maf, message=FALSE}
+# Expand explicit Multi_Hit cells into two individual events
+mutations_long <- bind_rows(
+  mutations |> filter(type != "Multi_Hit"),
+  mutations |> filter(type == "Multi_Hit") |> mutate(type = "Missense"),
+  mutations |> filter(type == "Multi_Hit") |> mutate(type = "Nonsense"))
+
+# Our short type names -> the MAF Variant_Classification vocabulary
+maf_class <- c(Missense = "Missense_Mutation", Nonsense = "Nonsense_Mutation",
+               Frameshift = "Frame_Shift_Del", Splice_Site = "Splice_Site",
+               In_Frame = "In_Frame_Del")
+variant_type <- c(Missense = "SNP", Nonsense = "SNP", Frameshift = "DEL",
+                  Splice_Site = "SNP", In_Frame = "DEL")
+
+set.seed(7)
+maf_data <- mutations_long |>
+  mutate(
+    Hugo_Symbol = gene,
+    Variant_Classification = maf_class[type],
+    Variant_Type = variant_type[type],
+    Chromosome = paste0("chr", (match(gene, genes) %% 22) + 1),
+    Start_Position = 100000L + as.integer(match(gene, genes)) * 54321L +
+      row_number() * 37L + sample(1:99L, n(), replace = TRUE),
+    End_Position = Start_Position,
+    Reference_Allele = "A",
+    Tumor_Seq_Allele2 = "G",
+    Tumor_Sample_Barcode = sample) |>
+  select(Hugo_Symbol, Chromosome, Start_Position, End_Position,
+         Reference_Allele, Tumor_Seq_Allele2, Variant_Classification,
+         Variant_Type, Tumor_Sample_Barcode)
+
+# Sample-level annotation (kept alongside the MAF)
+clin_data <- tibble(Tumor_Sample_Barcode = samples, Subtype = cohort)
+
+# Read everything into a maftools MAF object
+maf <- read.maf(maf = as.data.frame(maf_data),
+                clinicalData = as.data.frame(clin_data), verbose = FALSE)
+
+head(maf_data)
+```
+
 ## Visualization
+
+The same cohort is drawn twice: sections 1–3 build the landscape on `ComplexHeatmap::oncoPrint()` — full control over annotation tracks and cell rendering — while sections 4–5 use the `maftools` engine on the MAF representation prepared above, the standard route for real mutation files.
 
 ### 1. Basic Plot
 
@@ -212,12 +264,68 @@ draw(p3)
 
 Figure 3 reveals the same cohort structure with a functional reading: Subtype A accumulates `TP53` events and RTK/RAS-pathway `EGFR` mutations, while Subtype B concentrates `STK11`/`KEAP1` (PI3K pathway) and `KRAS` alterations.
 
+
+### 4. maftools Oncoplot
+
+With the cohort available as a MAF object (`maf`), `maftools::oncoplot()` draws the classic cancer-genomics landscape: per-sample mutation-burden bars on top, per-gene frequency and variant-class breakdown on the right, automatic percentage labels and its own colour vocabulary. `sortByMutation = TRUE` orders samples by the number of mutated genes, giving the familiar waterfall.
+
+```{r}
+#| label: fig-1.4MaftoolsOncoplot
+#| fig-cap: "Basic maftools oncoplot of the same cohort"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6.5
+
+oncoplot(maf = maf, top = 20, sortByMutation = TRUE)
+```
+
+::: callout-tip
+**Key Parameters: **
+
+- `top`: how many of the most frequently mutated genes to draw (here all 20).
+- `sortByMutation`: order samples by mutation count (`TRUE`) or keep file order (`FALSE`).
+- Samples without a single alteration are not shown: the title counts the 53 of 60 samples that carry at least one mutation.
+:::
+
+### 5. maftools with Clinical Annotation
+
+`clinicalFeatures` adds annotation tracks from the clinical table — the direct counterpart of the `column_split` view in Figure 2. `sortByAnnotation = TRUE` groups samples by the annotation, so the subtype-specific genes line up in blocks again (compare the `TP53` block on the left with the `STK11`/`KEAP1` block on the right).
+
+```{r}
+#| label: fig-1.5MaftoolsCohortOncoplot
+#| fig-cap: "maftools oncoplot annotated and sorted by molecular subtype"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 7
+
+oncoplot(maf = maf, top = 20,
+         clinicalFeatures = "Subtype", sortByAnnotation = TRUE)
+```
+
+::: callout-tip
+**Key Parameters: **
+
+- `clinicalFeatures`: column(s) of the clinical table drawn as annotation tracks below the matrix.
+- `sortByAnnotation`: sort samples within the annotation groups (`TRUE`).
+:::
+
+### 6. Choosing an Engine
+
+Both routes describe the same cohort — `TP53` altered in 40% of the mutated samples (35% of all 60), `STK11`/`KEAP1`/`KRAS` concentrated in Subtype B — but they optimise for different workflows:
+
+- **`ComplexHeatmap::oncoPrint()`** (sections 1–3): full control — custom cell renderers, arbitrary annotation tracks from any data, arbitrary row/column grouping, integration with the rest of the heatmap ecosystem. Best when the oncoplot must compose with other heatmap panels or needs bespoke styling.
+- **`maftools::oncoplot()`** (sections 4–5): the standard intake for real MAF files — read a cohort's variants in one call and get publication-ready summaries (burden bars, variant-class breakdown, clinical annotations, derived multi-hit cells). Best for routine cohort figures and for anything downstream in the maftools toolkit (mutual exclusivity, TiTv, driver analysis).
+
 ## Applications
 
 -   **Cohort characterization**: first-line summary of a cancer genomics study, usually split by subtype, stage or treatment arm.
 -   **Driver discovery**: recurrently altered genes and their co-occurrence or mutual exclusivity patterns.
 -   **Mutation burden**: the top barplot counts the mutated genes of every sample.
--   The `maftools` package provides a widely used alternative implementation (`maftools::oncoplot()`) that reads MAF files directly; the `ComplexHeatmap` approach used here keeps the figure inside the general heatmap framework and supports arbitrary annotation tracks.
+-   Both engines shown above accept real cohorts: `ComplexHeatmap` composes with any heatmap panel, while `maftools::read.maf()` ingests MAF files from your variant caller directly — it adds `clinicalData` annotation tracks (sections 4–5) and unlocks the wider maftools toolkit (mutual exclusivity, TiTv, driver analysis) downstream.
 
 ## Reference
 
