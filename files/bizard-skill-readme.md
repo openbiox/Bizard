@@ -55,6 +55,10 @@ skill package above is not the only option — Bizard ships an MCP server,
 adaptation guidance, citation metadata, and template-checked contribution — all
 from a CI-generated snapshot of the same sources as this skill, so they never drift.
 
+The skill and the MCP server complement each other — same CI-generated data,
+different delivery — so you can keep this skill loaded and connect the server
+side by side: the skill supplies the workflow, the server supplies live lookups.
+
 No local install needed — any MCP-capable agent (Claude Code, Cursor,
 Cline, Windsurf, VS Code Copilot Chat, …) can connect to the public hosted
 instance run by the Bizard team (may be faster from mainland China). Most
