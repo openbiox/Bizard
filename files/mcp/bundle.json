@@ -2,7 +2,7 @@
   "meta": {
     "siteVersion": "",
     "bundleVersion": 1,
-    "generatedAt": "2026-10-16T10:33:32.490280+00:00",
+    "generatedAt": "2026-10-16T15:23:14.223763+00:00",
     "license": "CC-BY-NC-4.0"
   },
   "categories": [
@@ -55,6 +55,11 @@
       "name": "Evolution",
       "nameZh": null,
       "count": 61
+    },
+    {
+      "name": "FcFcPlot",
+      "nameZh": null,
+      "count": 3
     },
     {
       "name": "GeneStructurePlot",
@@ -12426,6 +12431,51 @@
       "description": "Enhanced Volcano Plot with Highlighted Regions",
       "codeRefs": [
         "python"
+      ]
+    },
+    {
+      "id": "FcFcPlot-817",
+      "name": "Basic FC-FC Scatter Plot",
+      "nameZh": "基础 FC-FC 散点图",
+      "type": "FC-FC Scatter Plot",
+      "level1": "OMICS",
+      "level2": "FcFcPlot",
+      "tutorialUrl": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html#fig-1.1BasicFcFc",
+      "tutorialUrlZh": "https://openbiox.github.io/Bizard/zh/Omics/FcFcPlot.html#fig-1.1BasicFcFc",
+      "imageUrl": "https://openbiox.github.io/Bizard/Omics/FcFcPlot_files/figure-html/fig-1.1BasicFcFc-1.png",
+      "description": "Basic FC-FC scatter plot with fold-change threshold lines and a reference diagonal built with ggplot2",
+      "codeRefs": [
+        "r"
+      ]
+    },
+    {
+      "id": "FcFcPlot-818",
+      "name": "Color points by significance category",
+      "nameZh": "按显著性类别着色",
+      "type": "FC-FC Scatter Plot",
+      "level1": "OMICS",
+      "level2": "FcFcPlot",
+      "tutorialUrl": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html#fig-1.2CategoryFcFc",
+      "tutorialUrlZh": "https://openbiox.github.io/Bizard/zh/Omics/FcFcPlot.html#fig-1.2CategoryFcFc",
+      "imageUrl": "https://openbiox.github.io/Bizard/Omics/FcFcPlot_files/figure-html/fig-1.2CategoryFcFc-1.png",
+      "description": "Points colored by significance category — shared / subset-specific / discordant markers",
+      "codeRefs": [
+        "r"
+      ]
+    },
+    {
+      "id": "FcFcPlot-819",
+      "name": "FC-FC scatter plot with significance-scaled points and curated gene labels",
+      "nameZh": "点大小编码显著性并标注基因的 FC-FC 散点图",
+      "type": "FC-FC Scatter Plot",
+      "level1": "OMICS",
+      "level2": "FcFcPlot",
+      "tutorialUrl": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html#fig-1.3LabelFcFc",
+      "tutorialUrlZh": "https://openbiox.github.io/Bizard/zh/Omics/FcFcPlot.html#fig-1.3LabelFcFc",
+      "imageUrl": "https://openbiox.github.io/Bizard/Omics/FcFcPlot_files/figure-html/fig-1.3LabelFcFc-1.png",
+      "description": "Point size encodes statistical significance and genes at the extremes and top shared markers are labeled",
+      "codeRefs": [
+        "r"
       ]
     }
   ],
@@ -168932,6 +168982,150 @@
       ],
       "dataUrls": [],
       "sourceAnchor": "https://openbiox.github.io/Bizard/Python/VolcanoPlot.html"
+    },
+    {
+      "chartId": "FcFcPlot-817",
+      "lang": "r",
+      "code": "# Load the PBMC marker gene table\ndata(\"pbmc.markers\")\n\n# Marker statistics of the two monocyte subsets\ncd14 <- pbmc.markers |>\n  filter(cluster == \"CD14+ Mono\") |>\n  select(gene, avg_log2FC, p_val_adj)\n\nfcgr3a <- pbmc.markers |>\n  filter(cluster == \"FCGR3A+ Mono\") |>\n  select(gene, avg_log2FC, p_val_adj)\n\n# Join by gene: 546 genes are markers in both subsets\nfc_fc <- inner_join(cd14, fcgr3a, by = \"gene\", suffix = c(\"_cd14\", \"_fcgr3a\"))\n\n# Classify each gene and compute the plotting score\nfc_cut <- 0.5\np_cut <- 0.05\nfc_fc <- fc_fc |>\n  mutate(\n    sig_cd14 = p_val_adj_cd14 < p_cut & abs(avg_log2FC_cd14) >= fc_cut,\n    sig_fcgr3a = p_val_adj_fcgr3a < p_cut & abs(avg_log2FC_fcgr3a) >= fc_cut,\n    category = case_when(\n      sig_cd14 & sig_fcgr3a & sign(avg_log2FC_cd14) == sign(avg_log2FC_fcgr3a) ~ \"Shared marker\",\n      sig_cd14 & sig_fcgr3a ~ \"Discordant\",\n      sig_cd14 ~ \"CD14+ Mono-specific\",\n      sig_fcgr3a ~ \"FCGR3A+ Mono-specific\",\n      TRUE ~ \"Not significant\"\n    ),\n    neglog10p = -log10(pmax(p_val_adj_cd14, p_val_adj_fcgr3a))\n  )\n\n# View data\nhead(fc_fc)",
+      "packages": [
+        "ggrepel",
+        "scRNAtoolVis",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html"
+    },
+    {
+      "chartId": "FcFcPlot-817",
+      "lang": "r",
+      "code": "ggplot(fc_fc, aes(avg_log2FC_cd14, avg_log2FC_fcgr3a)) +\n  geom_hline(yintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_vline(xintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_abline(slope = 1, intercept = 0, linetype = \"dotted\", color = \"grey60\") +\n  geom_point(color = \"#2166AC\", size = 1.8, alpha = 0.7) +\n  labs(x = expression(log[2]*FC~\"(CD14+ Mono vs rest)\"),\n       y = expression(log[2]*FC~\"(FCGR3A+ Mono vs rest)\")) +\n  theme_bw()",
+      "packages": [
+        "ggrepel",
+        "scRNAtoolVis",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html"
+    },
+    {
+      "chartId": "FcFcPlot-817",
+      "lang": "r",
+      "code": "category_colors <- c(\n  \"Shared marker\" = \"#B2182B\",\n  \"Discordant\" = \"#7B3294\",\n  \"CD14+ Mono-specific\" = \"#2166AC\",\n  \"FCGR3A+ Mono-specific\" = \"#1B9E77\",\n  \"Not significant\" = \"grey70\"\n)\n\nggplot(fc_fc, aes(avg_log2FC_cd14, avg_log2FC_fcgr3a)) +\n  geom_hline(yintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_vline(xintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_point(aes(color = category), size = 2, alpha = 0.75) +\n  scale_color_manual(values = category_colors) +\n  labs(x = expression(log[2]*FC~\"(CD14+ Mono vs rest)\"),\n       y = expression(log[2]*FC~\"(FCGR3A+ Mono vs rest)\"),\n       color = \"Category\") +\n  theme_bw()",
+      "packages": [
+        "ggrepel",
+        "scRNAtoolVis",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html"
+    },
+    {
+      "chartId": "FcFcPlot-817",
+      "lang": "r",
+      "code": "# Curated label set: discordant genes, extremes on both axes and top shared markers\nlabel_genes <- bind_rows(\n  fc_fc |> filter(category == \"Discordant\") |>\n    slice_max(abs(avg_log2FC_cd14 - avg_log2FC_fcgr3a), n = 3),\n  fc_fc |> slice_max(abs(avg_log2FC_cd14), n = 3),\n  fc_fc |> slice_max(abs(avg_log2FC_fcgr3a), n = 3),\n  fc_fc |> filter(gene == \"MS4A7\"),\n  fc_fc |> filter(category == \"Shared marker\") |>\n    slice_max(neglog10p + pmin(abs(avg_log2FC_cd14), abs(avg_log2FC_fcgr3a)), n = 6)\n) |>\n  distinct(gene, .keep_all = TRUE)\n\nggplot(fc_fc, aes(avg_log2FC_cd14, avg_log2FC_fcgr3a)) +\n  geom_hline(yintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_vline(xintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_abline(slope = 1, intercept = 0, linetype = \"dotted\", color = \"grey60\") +\n  geom_point(aes(color = category, size = neglog10p), alpha = 0.75) +\n  scale_color_manual(values = category_colors) +\n  scale_size_continuous(range = c(0.8, 5), name = expression(-log[10](P[adj]))) +\n  geom_text_repel(data = label_genes, aes(label = gene, color = category),\n                  size = 3.1, fontface = \"italic\", max.overlaps = 40,\n                  box.padding = 0.55, segment.size = 0.25,\n                  show.legend = FALSE, seed = 1) +\n  labs(x = expression(log[2]*FC~\"(CD14+ Mono vs rest)\"),\n       y = expression(log[2]*FC~\"(FCGR3A+ Mono vs rest)\"),\n       color = \"Category\") +\n  theme_bw()",
+      "packages": [
+        "ggrepel",
+        "scRNAtoolVis",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html"
+    },
+    {
+      "chartId": "FcFcPlot-818",
+      "lang": "r",
+      "code": "# Load the PBMC marker gene table\ndata(\"pbmc.markers\")\n\n# Marker statistics of the two monocyte subsets\ncd14 <- pbmc.markers |>\n  filter(cluster == \"CD14+ Mono\") |>\n  select(gene, avg_log2FC, p_val_adj)\n\nfcgr3a <- pbmc.markers |>\n  filter(cluster == \"FCGR3A+ Mono\") |>\n  select(gene, avg_log2FC, p_val_adj)\n\n# Join by gene: 546 genes are markers in both subsets\nfc_fc <- inner_join(cd14, fcgr3a, by = \"gene\", suffix = c(\"_cd14\", \"_fcgr3a\"))\n\n# Classify each gene and compute the plotting score\nfc_cut <- 0.5\np_cut <- 0.05\nfc_fc <- fc_fc |>\n  mutate(\n    sig_cd14 = p_val_adj_cd14 < p_cut & abs(avg_log2FC_cd14) >= fc_cut,\n    sig_fcgr3a = p_val_adj_fcgr3a < p_cut & abs(avg_log2FC_fcgr3a) >= fc_cut,\n    category = case_when(\n      sig_cd14 & sig_fcgr3a & sign(avg_log2FC_cd14) == sign(avg_log2FC_fcgr3a) ~ \"Shared marker\",\n      sig_cd14 & sig_fcgr3a ~ \"Discordant\",\n      sig_cd14 ~ \"CD14+ Mono-specific\",\n      sig_fcgr3a ~ \"FCGR3A+ Mono-specific\",\n      TRUE ~ \"Not significant\"\n    ),\n    neglog10p = -log10(pmax(p_val_adj_cd14, p_val_adj_fcgr3a))\n  )\n\n# View data\nhead(fc_fc)",
+      "packages": [
+        "ggrepel",
+        "scRNAtoolVis",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html"
+    },
+    {
+      "chartId": "FcFcPlot-818",
+      "lang": "r",
+      "code": "ggplot(fc_fc, aes(avg_log2FC_cd14, avg_log2FC_fcgr3a)) +\n  geom_hline(yintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_vline(xintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_abline(slope = 1, intercept = 0, linetype = \"dotted\", color = \"grey60\") +\n  geom_point(color = \"#2166AC\", size = 1.8, alpha = 0.7) +\n  labs(x = expression(log[2]*FC~\"(CD14+ Mono vs rest)\"),\n       y = expression(log[2]*FC~\"(FCGR3A+ Mono vs rest)\")) +\n  theme_bw()",
+      "packages": [
+        "ggrepel",
+        "scRNAtoolVis",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html"
+    },
+    {
+      "chartId": "FcFcPlot-818",
+      "lang": "r",
+      "code": "category_colors <- c(\n  \"Shared marker\" = \"#B2182B\",\n  \"Discordant\" = \"#7B3294\",\n  \"CD14+ Mono-specific\" = \"#2166AC\",\n  \"FCGR3A+ Mono-specific\" = \"#1B9E77\",\n  \"Not significant\" = \"grey70\"\n)\n\nggplot(fc_fc, aes(avg_log2FC_cd14, avg_log2FC_fcgr3a)) +\n  geom_hline(yintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_vline(xintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_point(aes(color = category), size = 2, alpha = 0.75) +\n  scale_color_manual(values = category_colors) +\n  labs(x = expression(log[2]*FC~\"(CD14+ Mono vs rest)\"),\n       y = expression(log[2]*FC~\"(FCGR3A+ Mono vs rest)\"),\n       color = \"Category\") +\n  theme_bw()",
+      "packages": [
+        "ggrepel",
+        "scRNAtoolVis",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html"
+    },
+    {
+      "chartId": "FcFcPlot-818",
+      "lang": "r",
+      "code": "# Curated label set: discordant genes, extremes on both axes and top shared markers\nlabel_genes <- bind_rows(\n  fc_fc |> filter(category == \"Discordant\") |>\n    slice_max(abs(avg_log2FC_cd14 - avg_log2FC_fcgr3a), n = 3),\n  fc_fc |> slice_max(abs(avg_log2FC_cd14), n = 3),\n  fc_fc |> slice_max(abs(avg_log2FC_fcgr3a), n = 3),\n  fc_fc |> filter(gene == \"MS4A7\"),\n  fc_fc |> filter(category == \"Shared marker\") |>\n    slice_max(neglog10p + pmin(abs(avg_log2FC_cd14), abs(avg_log2FC_fcgr3a)), n = 6)\n) |>\n  distinct(gene, .keep_all = TRUE)\n\nggplot(fc_fc, aes(avg_log2FC_cd14, avg_log2FC_fcgr3a)) +\n  geom_hline(yintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_vline(xintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_abline(slope = 1, intercept = 0, linetype = \"dotted\", color = \"grey60\") +\n  geom_point(aes(color = category, size = neglog10p), alpha = 0.75) +\n  scale_color_manual(values = category_colors) +\n  scale_size_continuous(range = c(0.8, 5), name = expression(-log[10](P[adj]))) +\n  geom_text_repel(data = label_genes, aes(label = gene, color = category),\n                  size = 3.1, fontface = \"italic\", max.overlaps = 40,\n                  box.padding = 0.55, segment.size = 0.25,\n                  show.legend = FALSE, seed = 1) +\n  labs(x = expression(log[2]*FC~\"(CD14+ Mono vs rest)\"),\n       y = expression(log[2]*FC~\"(FCGR3A+ Mono vs rest)\"),\n       color = \"Category\") +\n  theme_bw()",
+      "packages": [
+        "ggrepel",
+        "scRNAtoolVis",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html"
+    },
+    {
+      "chartId": "FcFcPlot-819",
+      "lang": "r",
+      "code": "# Load the PBMC marker gene table\ndata(\"pbmc.markers\")\n\n# Marker statistics of the two monocyte subsets\ncd14 <- pbmc.markers |>\n  filter(cluster == \"CD14+ Mono\") |>\n  select(gene, avg_log2FC, p_val_adj)\n\nfcgr3a <- pbmc.markers |>\n  filter(cluster == \"FCGR3A+ Mono\") |>\n  select(gene, avg_log2FC, p_val_adj)\n\n# Join by gene: 546 genes are markers in both subsets\nfc_fc <- inner_join(cd14, fcgr3a, by = \"gene\", suffix = c(\"_cd14\", \"_fcgr3a\"))\n\n# Classify each gene and compute the plotting score\nfc_cut <- 0.5\np_cut <- 0.05\nfc_fc <- fc_fc |>\n  mutate(\n    sig_cd14 = p_val_adj_cd14 < p_cut & abs(avg_log2FC_cd14) >= fc_cut,\n    sig_fcgr3a = p_val_adj_fcgr3a < p_cut & abs(avg_log2FC_fcgr3a) >= fc_cut,\n    category = case_when(\n      sig_cd14 & sig_fcgr3a & sign(avg_log2FC_cd14) == sign(avg_log2FC_fcgr3a) ~ \"Shared marker\",\n      sig_cd14 & sig_fcgr3a ~ \"Discordant\",\n      sig_cd14 ~ \"CD14+ Mono-specific\",\n      sig_fcgr3a ~ \"FCGR3A+ Mono-specific\",\n      TRUE ~ \"Not significant\"\n    ),\n    neglog10p = -log10(pmax(p_val_adj_cd14, p_val_adj_fcgr3a))\n  )\n\n# View data\nhead(fc_fc)",
+      "packages": [
+        "ggrepel",
+        "scRNAtoolVis",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html"
+    },
+    {
+      "chartId": "FcFcPlot-819",
+      "lang": "r",
+      "code": "ggplot(fc_fc, aes(avg_log2FC_cd14, avg_log2FC_fcgr3a)) +\n  geom_hline(yintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_vline(xintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_abline(slope = 1, intercept = 0, linetype = \"dotted\", color = \"grey60\") +\n  geom_point(color = \"#2166AC\", size = 1.8, alpha = 0.7) +\n  labs(x = expression(log[2]*FC~\"(CD14+ Mono vs rest)\"),\n       y = expression(log[2]*FC~\"(FCGR3A+ Mono vs rest)\")) +\n  theme_bw()",
+      "packages": [
+        "ggrepel",
+        "scRNAtoolVis",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html"
+    },
+    {
+      "chartId": "FcFcPlot-819",
+      "lang": "r",
+      "code": "category_colors <- c(\n  \"Shared marker\" = \"#B2182B\",\n  \"Discordant\" = \"#7B3294\",\n  \"CD14+ Mono-specific\" = \"#2166AC\",\n  \"FCGR3A+ Mono-specific\" = \"#1B9E77\",\n  \"Not significant\" = \"grey70\"\n)\n\nggplot(fc_fc, aes(avg_log2FC_cd14, avg_log2FC_fcgr3a)) +\n  geom_hline(yintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_vline(xintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_point(aes(color = category), size = 2, alpha = 0.75) +\n  scale_color_manual(values = category_colors) +\n  labs(x = expression(log[2]*FC~\"(CD14+ Mono vs rest)\"),\n       y = expression(log[2]*FC~\"(FCGR3A+ Mono vs rest)\"),\n       color = \"Category\") +\n  theme_bw()",
+      "packages": [
+        "ggrepel",
+        "scRNAtoolVis",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html"
+    },
+    {
+      "chartId": "FcFcPlot-819",
+      "lang": "r",
+      "code": "# Curated label set: discordant genes, extremes on both axes and top shared markers\nlabel_genes <- bind_rows(\n  fc_fc |> filter(category == \"Discordant\") |>\n    slice_max(abs(avg_log2FC_cd14 - avg_log2FC_fcgr3a), n = 3),\n  fc_fc |> slice_max(abs(avg_log2FC_cd14), n = 3),\n  fc_fc |> slice_max(abs(avg_log2FC_fcgr3a), n = 3),\n  fc_fc |> filter(gene == \"MS4A7\"),\n  fc_fc |> filter(category == \"Shared marker\") |>\n    slice_max(neglog10p + pmin(abs(avg_log2FC_cd14), abs(avg_log2FC_fcgr3a)), n = 6)\n) |>\n  distinct(gene, .keep_all = TRUE)\n\nggplot(fc_fc, aes(avg_log2FC_cd14, avg_log2FC_fcgr3a)) +\n  geom_hline(yintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_vline(xintercept = c(-fc_cut, fc_cut), linetype = \"dashed\", color = \"grey50\") +\n  geom_abline(slope = 1, intercept = 0, linetype = \"dotted\", color = \"grey60\") +\n  geom_point(aes(color = category, size = neglog10p), alpha = 0.75) +\n  scale_color_manual(values = category_colors) +\n  scale_size_continuous(range = c(0.8, 5), name = expression(-log[10](P[adj]))) +\n  geom_text_repel(data = label_genes, aes(label = gene, color = category),\n                  size = 3.1, fontface = \"italic\", max.overlaps = 40,\n                  box.padding = 0.55, segment.size = 0.25,\n                  show.legend = FALSE, seed = 1) +\n  labs(x = expression(log[2]*FC~\"(CD14+ Mono vs rest)\"),\n       y = expression(log[2]*FC~\"(FCGR3A+ Mono vs rest)\"),\n       color = \"Category\") +\n  theme_bw()",
+      "packages": [
+        "ggrepel",
+        "scRNAtoolVis",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/FcFcPlot.html"
     }
   ],
   "keywords": {
