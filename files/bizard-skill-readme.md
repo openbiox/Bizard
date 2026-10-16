@@ -5,7 +5,7 @@
 | File | Purpose |
 |------|---------|
 | `SKILL.md` | The AI skill instruction document — load this into your AI assistant |
-| `gallery_data.csv` | 793 visualization examples with image URLs, tutorial links, descriptions, and categories |
+| `gallery_data.csv` | 816 visualization examples with image URLs, tutorial links, descriptions, and categories |
 | `gallery_data_zh.csv` | Chinese version of the gallery data |
 | `README.md` | This file |
 

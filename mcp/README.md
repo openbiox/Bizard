@@ -48,6 +48,29 @@ One package, two transports:
 - **Local (stdio, default)**: `npx @openbiox/bizard-mcp`. Full capability; contribution runs at level 1/2 when local credentials exist.
 - **Hosted (Streamable HTTP)**: `npx @openbiox/bizard-mcp --http`. Port via `BIZARD_HTTP_PORT` (default 3000). Anonymous, stateless — each POST to `/mcp` gets a fresh transport. Per-IP token-bucket rate limit (60 req/min; 429 with `Retry-After`). Contribution runs at level 3 (no credentials on the server).
 
+### Public hosted instance (no install required)
+
+A community instance is deployed by the Bizard team — no local install,
+works with any MCP client that supports Streamable HTTP. It may also be
+faster than npm-based setup for users in mainland China:
+
+```bash
+claude mcp add --transport http bizard http://biotree.top:38123/bizard-mcp/mcp
+```
+
+MCP client JSON configuration:
+
+```json
+{
+  "mcpServers": {
+    "bizard": { "type": "http", "url": "http://biotree.top:38123/bizard-mcp/mcp" }
+  }
+}
+```
+
+Same anonymous, stateless, rate-limited behavior as the self-hosted HTTP
+mode; contribution runs at level 3 (the instance holds no credentials).
+
 ## Contribution credential degradation
 
 `bizard_contribute_submit` probes the environment on every call and states
