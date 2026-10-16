@@ -1,0 +1,167 @@
+---
+title: "径向堆积柱状图"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** Claude Code —— AI 生成，独立 AI 复核；"
+---
+
+径向堆积柱状图把堆积柱状图卷成圆环：每个扇区是一个类别，类别内部的构成**沿半径方向由内向外堆叠**，总量与内部比例从同一个紧凑的图形中读出。它是经典堆积柱状图的"径向表亲"，也是普通环形图的加强版；当一个图里要放进十余个类别、且每个类别还有若干构成部分时（每个岛屿的企鹅种类、每个样本的细胞类型、每个谱系的变异类别），它尤其能发挥价值。本教程复现《顶刊图社》系列（第002期）介绍的图表类型，见文末参考文献。
+
+## 示例
+
+![](../images/Composition/RadialStackedBar_demo.png){fig-alt="RadialStackedBar DEMO" fig-align="center" width="65%"}
+
+这张径向堆积柱状图展示了各研究岛屿的企鹅普查构成：每个扇区是一个岛屿，彩色分段的三个部分沿半径堆叠，分段内的数字给出计数——Biscoe 岛远大于其他两岛，且各岛的物种构成差异明显。
+
+## 环境配置
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`tidyverse`；`palmerpenguins`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Installing necessary packages
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+  install.packages("tidyverse")
+}
+if (!requireNamespace("palmerpenguins", quietly = TRUE)) {
+  install.packages("palmerpenguins")
+}
+
+# Load packages
+library(tidyverse)
+library(palmerpenguins)
+```
+
+## 数据准备
+
+示例使用 `palmerpenguins` 内置的 `penguins` 数据集：按岛屿与物种交叉计数的观测记录——正是径向堆积柱状图需要的长表格式（每行一个"组 × 部分"组合及其数量）。
+
+```{r load data, message=FALSE}
+data("penguins")
+
+island_species <- penguins |>
+  filter(!is.na(sex)) |>
+  count(island, species)
+
+island_species
+```
+
+**注意：** 任何 `count()` 风格的宽长表都可以——两列分组分别定义扇区与堆叠部分，第三列是量值（计数、百分比、丰度）。
+
+## 可视化
+
+### 1. 基础绘图
+
+全部奥秘就是 `coord_polar(theta = "x")`：普通堆积柱的柱子变成扇区，堆叠方向变成半径方向。数值标签用 `position_stack()` 定位，每个标签落在自己分段的中央。
+
+```{r}
+#| label: fig-1.1BasicRadialStacked
+#| fig-cap: "基础径向堆积柱状图"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 6.8
+#| fig-height: 6.8
+
+radial_colors <- c(Adelie = "#3a86ff", Chinstrap = "#f4a261", Gentoo = "#2a9d8f")
+
+ggplot(island_species, aes(x = island, y = n, fill = species)) +
+  geom_col(width = .85, colour = "white", linewidth = .35) +
+  geom_text(aes(label = n), position = position_stack(vjust = .5),
+            colour = "white", fontface = "bold", size = 3.4) +
+  coord_polar(theta = "x") +
+  scale_fill_manual(values = radial_colors) +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.major.y = element_line(colour = "grey88"),
+        axis.text.y = element_text(colour = "grey50", size = 8))
+```
+
+::: callout-tip
+**关键参数：**
+
+- `theta = "x"`：把 x 轴卷成角度；若用 `coord_polar(theta = "y")` 则卷的是数值轴——堆积柱请保持 `"x"`。
+- `width = .85`：扇区的角度宽度；调小可在类别之间留出间隔。
+- `position_stack(vjust = .5)`：标签定位在每个堆叠分段的中央。
+:::
+
+### 2. 比例版与环形中空
+
+把计数换成比例，图形就变成构成图；给数值轴设一个负下限即可挖出环形中空，圆心中间还能放标题。
+
+```{r}
+#| label: fig-1.2ProportionRadialStacked
+#| fig-cap: "各岛屿的物种比例（环形中空）"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 6.8
+#| fig-height: 6.8
+
+island_props <- island_species |>
+  group_by(island) |>
+  mutate(frac = n / sum(n)) |>
+  ungroup()
+
+ggplot(island_props, aes(x = island, y = frac, fill = species)) +
+  geom_col(width = .85, colour = "white", linewidth = .35) +
+  geom_text(aes(label = scales::percent(frac, accuracy = 0.1)),
+            position = position_stack(vjust = .5),
+            colour = "white", fontface = "bold", size = 3.2) +
+  coord_polar(theta = "x") +
+  scale_y_continuous(labels = scales::percent, limits = c(-0.45, 1)) +
+  annotate("text", x = 0, y = -0.45, label = "Species\ncomposition",
+           size = 3.6, colour = "grey30", fontface = "bold") +
+  scale_fill_manual(values = radial_colors) +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid = element_blank(), axis.text = element_blank(),
+        axis.title = element_blank())
+```
+
+### 3. 排序扇区
+
+按某个关注部分的比例重排扇区（`fct_reorder()`）是"排序柱状图"的径向版本——把要对比的对象排进视觉顺序。
+
+```{r}
+#| label: fig-1.3SortedRadialStacked
+#| fig-cap: "按 Gentoo 占比排序的扇区"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 6.8
+#| fig-height: 6.8
+
+island_sorted <- island_props |>
+  mutate(island = fct_reorder(island, frac * (species == "Gentoo"), .fun = sum))
+
+ggplot(island_sorted, aes(x = island, y = frac, fill = species)) +
+  geom_col(width = .85, colour = "white", linewidth = .35) +
+  geom_text(aes(label = scales::percent(frac, accuracy = 0.1)),
+            position = position_stack(vjust = .5),
+            colour = "white", fontface = "bold", size = 3.2) +
+  coord_polar(theta = "x", start = -pi / 3) +
+  scale_y_continuous(labels = scales::percent, limits = c(-0.45, 1)) +
+  scale_fill_manual(values = radial_colors) +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid = element_blank(), axis.text = element_blank(),
+        axis.title = element_blank())
+```
+
+## 应用场景
+
+-   **交叉分类构成**：每个地点的物种、每个样本的细胞类型、每个队列的突变类别——所有"二维计数表"形状的数据。
+-   **紧凑仪表盘**：4–12 个扇区时径向形态一眼可读，比一排很长的堆积柱更省空间。
+-   **环形图替代方案**：普通环形图只展示一个构成；径向堆积柱状图为**每个扇区**各展示一个构成。
+-   配方始终是 `geom_col()` + `coord_polar()`——堆积柱状图的一切技巧（排序、标签、分组）原样适用。
+
+## 参考文献
+
+\[1\] 顶刊图社 | 第002期：径向堆积柱状图. 微信公众号文章. <http://mp.weixin.qq.com/s?__biz=MzU5NjE2ODU0OQ==&mid=2247483770&idx=1&sn=8b284bca4da2552a07d0ed475ce5f5cf>
+
+\[2\] Horst AM, Hill AP, Gorman KB. palmerpenguins: Palmer Archipelago (Antarctica) penguin data. R package version 0.1.0. 2020. doi:10.5281/zenodo.3960218
