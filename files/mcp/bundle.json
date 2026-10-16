@@ -2,7 +2,7 @@
   "meta": {
     "siteVersion": "",
     "bundleVersion": 1,
-    "generatedAt": "2026-10-16T17:29:24.285414+00:00",
+    "generatedAt": "2026-10-16T18:09:01.145614+00:00",
     "license": "CC-BY-NC-4.0"
   },
   "categories": [
@@ -129,7 +129,7 @@
     {
       "name": "MutationOncoplot",
       "nameZh": null,
-      "count": 3
+      "count": 5
     },
     {
       "name": "NetworkPlot",
@@ -12569,6 +12569,36 @@
       "tutorialUrlZh": "https://openbiox.github.io/Bizard/zh/Composition/CircularAnnotation.html#fig-1.3CustomCircular",
       "imageUrl": "https://openbiox.github.io/Bizard/Composition/CircularAnnotation_files/figure-html/fig-1.3CustomCircular-1.png",
       "description": "Same cohort re-sorted by BMI with a wider gap — one-call customization",
+      "codeRefs": [
+        "r"
+      ]
+    },
+    {
+      "id": "MutationOncoplot-826",
+      "name": "Basic maftools oncoplot of the same cohort",
+      "nameZh": "同一队列的 maftools 基础 oncoplot",
+      "type": "Mutation Landscape Oncoplot",
+      "level1": "OMICS",
+      "level2": "MutationOncoplot",
+      "tutorialUrl": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html#fig-1.4MaftoolsOncoplot",
+      "tutorialUrlZh": "https://openbiox.github.io/Bizard/zh/Omics/MutationOncoplot.html#fig-1.4MaftoolsOncoplot",
+      "imageUrl": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot_files/figure-html/fig-1.4MaftoolsOncoplot-1.png",
+      "description": "maftools oncoplot of the same cohort: burden bars / per-gene frequency breakdown and auto-derived multi-hit cells",
+      "codeRefs": [
+        "r"
+      ]
+    },
+    {
+      "id": "MutationOncoplot-827",
+      "name": "maftools oncoplot annotated and sorted by molecular subtype",
+      "nameZh": "按分子亚型注释并排序的 maftools oncoplot",
+      "type": "Mutation Landscape Oncoplot",
+      "level1": "OMICS",
+      "level2": "MutationOncoplot",
+      "tutorialUrl": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html#fig-1.5MaftoolsCohortOncoplot",
+      "tutorialUrlZh": "https://openbiox.github.io/Bizard/zh/Omics/MutationOncoplot.html#fig-1.5MaftoolsCohortOncoplot",
+      "imageUrl": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot_files/figure-html/fig-1.5MaftoolsCohortOncoplot-1.png",
+      "description": "maftools oncoplot with the clinical Subtype annotation track; samples sorted within annotation groups",
       "codeRefs": [
         "r"
       ]
@@ -169228,6 +169258,7 @@
       "code": "set.seed(2026)\n\ngenes <- c(\"TP53\", \"EGFR\", \"KRAS\", \"STK11\", \"KEAP1\", \"PIK3CA\", \"PTEN\", \"RB1\",\n           \"APC\", \"ARID1A\", \"NF1\", \"NOTCH1\", \"BRAF\", \"CDKN2A\", \"SMAD4\", \"FBXW7\",\n           \"ATM\", \"BRCA2\", \"ERBB2\", \"MET\")\ncohort <- rep(c(\"Subtype A\", \"Subtype B\"), c(35, 25))\nsamples <- sprintf(\"S%02d\", 1:60)\n\n# Subtype-specific mutation probabilities per gene\np_a <- c(.52, .34, .10, .14, .10, .10, .12, .10, .06, .22, .08, .06, .04, .10, .05, .06, .06, .05, .05, .04)\np_b <- c(.22, .08, .42, .40, .36, .14, .10, .10, .10, .06, .10, .06, .06, .10, .10, .08, .05, .05, .06, .08)\nmut_types <- c(\"Missense\", \"Nonsense\", \"Frameshift\", \"Splice_Site\", \"In_Frame\")\ntype_p <- c(.58, .14, .12, .08, .08)\n\nmutations <- map_dfr(seq_along(samples), function(i) {\n  p <- if (cohort[i] == \"Subtype A\") p_a else p_b\n  hit <- genes[runif(length(genes)) < p]\n  if (length(hit) == 0) return(NULL)\n  type <- sample(mut_types, length(hit), replace = TRUE, prob = type_p)\n  # Tumor suppressors such as TP53 can receive a second hit, shown as Multi_Hit\n  if (runif(1) < .15 && \"TP53\" %in% hit) {\n    type[hit == \"TP53\"] <- \"Multi_Hit\"\n  }\n  tibble(sample = samples[i], gene = hit, type = type)\n})\n\nhead(mutations)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169239,6 +169270,19 @@
       "code": "# Reshape the mutation table into a gene x sample matrix; a cell holds one or\n# several alteration types separated by \";\"\ngene_levels <- names(sort(table(factor(mutations$gene, levels = genes)), decreasing = TRUE))\nmat <- matrix(\"\", nrow = length(genes), ncol = length(samples),\n              dimnames = list(genes, samples))\nfor (i in seq_len(nrow(mutations))) {\n  cell <- mat[mutations$gene[i], mutations$sample[i]]\n  mat[mutations$gene[i], mutations$sample[i]] <-\n    if (cell == \"\") mutations$type[i] else paste(cell, mutations$type[i], sep = \";\")\n}\n\n# Order samples: by subtype, then by mutation count (waterfall look)\nmut_count <- colSums(mat != \"\")\nord <- order(factor(cohort, levels = c(\"Subtype A\", \"Subtype B\")), -mut_count)\nmat <- mat[gene_levels, ord]\n\n# Annotation vectors aligned with the reordered matrix\ncohort_ordered <- factor(cohort[ord], levels = c(\"Subtype A\", \"Subtype B\"))\ntmb <- mut_count[ord]\n\n# Colors for alteration types\nmutation_colors <- c(\n  Missense = \"#3690C0\", Nonsense = \"#A50F15\", Frameshift = \"#F16913\",\n  Splice_Site = \"#6A51A3\", In_Frame = \"#31A354\", Multi_Hit = \"#252525\"\n)\n\n# One drawing function per alteration type\nrect_fun <- function(color) {\n  function(x, y, w, h) grid.rect(x, y, w * 0.9, h * 0.9, gp = gpar(fill = color, col = NA))\n}\nalter_fun <- list(\n  background = rect_fun(\"#F2F2F2\"),\n  Missense = rect_fun(mutation_colors[\"Missense\"]),\n  Nonsense = rect_fun(mutation_colors[\"Nonsense\"]),\n  Frameshift = rect_fun(mutation_colors[\"Frameshift\"]),\n  Splice_Site = rect_fun(mutation_colors[\"Splice_Site\"]),\n  In_Frame = rect_fun(mutation_colors[\"In_Frame\"]),\n  Multi_Hit = rect_fun(mutation_colors[\"Multi_Hit\"])\n)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-820",
+      "lang": "r",
+      "code": "# Expand explicit Multi_Hit cells into two individual events\nmutations_long <- bind_rows(\n  mutations |> filter(type != \"Multi_Hit\"),\n  mutations |> filter(type == \"Multi_Hit\") |> mutate(type = \"Missense\"),\n  mutations |> filter(type == \"Multi_Hit\") |> mutate(type = \"Nonsense\"))\n\n# Our short type names -> the MAF Variant_Classification vocabulary\nmaf_class <- c(Missense = \"Missense_Mutation\", Nonsense = \"Nonsense_Mutation\",\n               Frameshift = \"Frame_Shift_Del\", Splice_Site = \"Splice_Site\",\n               In_Frame = \"In_Frame_Del\")\nvariant_type <- c(Missense = \"SNP\", Nonsense = \"SNP\", Frameshift = \"DEL\",\n                  Splice_Site = \"SNP\", In_Frame = \"DEL\")\n\nset.seed(7)\nmaf_data <- mutations_long |>\n  mutate(\n    Hugo_Symbol = gene,\n    Variant_Classification = maf_class[type],\n    Variant_Type = variant_type[type],\n    Chromosome = paste0(\"chr\", (match(gene, genes) %% 22) + 1),\n    Start_Position = 100000L + as.integer(match(gene, genes)) * 54321L +\n      row_number() * 37L + sample(1:99L, n(), replace = TRUE),\n    End_Position = Start_Position,\n    Reference_Allele = \"A\",\n    Tumor_Seq_Allele2 = \"G\",\n    Tumor_Sample_Barcode = sample) |>\n  select(Hugo_Symbol, Chromosome, Start_Position, End_Position,\n         Reference_Allele, Tumor_Seq_Allele2, Variant_Classification,\n         Variant_Type, Tumor_Sample_Barcode)\n\n# Sample-level annotation (kept alongside the MAF)\nclin_data <- tibble(Tumor_Sample_Barcode = samples, Subtype = cohort)\n\n# Read everything into a maftools MAF object\nmaf <- read.maf(maf = as.data.frame(maf_data),\n                clinicalData = as.data.frame(clin_data), verbose = FALSE)\n\nhead(maf_data)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169250,6 +169294,7 @@
       "code": "p1 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p1)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169261,6 +169306,7 @@
       "code": "top_annotation <- HeatmapAnnotation(\n  TMB = anno_barplot(tmb, height = unit(1.1, \"cm\"),\n                     gp = gpar(fill = \"#6A51A3\", col = NA)),\n  annotation_name_gp = gpar(fontsize = 9))\n\np2 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  column_split = cohort_ordered, column_title_gp = gpar(fontsize = 10, fontface = \"bold\"),\n  top_annotation = top_annotation,\n  bottom_annotation = HeatmapAnnotation(\n    Subtype = as.character(cohort_ordered),\n    col = list(Subtype = c(\"Subtype A\" = \"#E08214\", \"Subtype B\" = \"#5E3C99\")),\n    annotation_name_side = \"left\", annotation_name_gp = gpar(fontsize = 9)),\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p2)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169272,6 +169318,31 @@
       "code": "pathway <- c(\n  TP53 = \"p53\", RB1 = \"p53\", CDKN2A = \"p53\",\n  EGFR = \"RTK/RAS\", ERBB2 = \"RTK/RAS\", MET = \"RTK/RAS\", KRAS = \"RTK/RAS\",\n  BRAF = \"RTK/RAS\", NF1 = \"RTK/RAS\",\n  PIK3CA = \"PI3K\", PTEN = \"PI3K\", STK11 = \"PI3K\", KEAP1 = \"PI3K\",\n  APC = \"WNT/Notch\", NOTCH1 = \"WNT/Notch\", FBXW7 = \"WNT/Notch\",\n  ARID1A = \"Chromatin\", SMAD4 = \"TGF-beta\", ATM = \"DDR\", BRCA2 = \"DDR\")\npathway_levels <- c(\"RTK/RAS\", \"PI3K\", \"p53\", \"WNT/Notch\", \"Chromatin\", \"TGF-beta\", \"DDR\")\n\np3 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  row_split = factor(pathway[gene_levels], levels = pathway_levels),\n  row_title_gp = gpar(fontsize = 9, fontface = \"bold\"), row_title_rot = 0,\n  column_split = cohort_ordered, column_title_gp = gpar(fontsize = 10, fontface = \"bold\"),\n  top_annotation = top_annotation,\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p3)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-820",
+      "lang": "r",
+      "code": "oncoplot(maf = maf, top = 20, sortByMutation = TRUE)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-820",
+      "lang": "r",
+      "code": "oncoplot(maf = maf, top = 20,\n         clinicalFeatures = \"Subtype\", sortByAnnotation = TRUE)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169283,6 +169354,7 @@
       "code": "set.seed(2026)\n\ngenes <- c(\"TP53\", \"EGFR\", \"KRAS\", \"STK11\", \"KEAP1\", \"PIK3CA\", \"PTEN\", \"RB1\",\n           \"APC\", \"ARID1A\", \"NF1\", \"NOTCH1\", \"BRAF\", \"CDKN2A\", \"SMAD4\", \"FBXW7\",\n           \"ATM\", \"BRCA2\", \"ERBB2\", \"MET\")\ncohort <- rep(c(\"Subtype A\", \"Subtype B\"), c(35, 25))\nsamples <- sprintf(\"S%02d\", 1:60)\n\n# Subtype-specific mutation probabilities per gene\np_a <- c(.52, .34, .10, .14, .10, .10, .12, .10, .06, .22, .08, .06, .04, .10, .05, .06, .06, .05, .05, .04)\np_b <- c(.22, .08, .42, .40, .36, .14, .10, .10, .10, .06, .10, .06, .06, .10, .10, .08, .05, .05, .06, .08)\nmut_types <- c(\"Missense\", \"Nonsense\", \"Frameshift\", \"Splice_Site\", \"In_Frame\")\ntype_p <- c(.58, .14, .12, .08, .08)\n\nmutations <- map_dfr(seq_along(samples), function(i) {\n  p <- if (cohort[i] == \"Subtype A\") p_a else p_b\n  hit <- genes[runif(length(genes)) < p]\n  if (length(hit) == 0) return(NULL)\n  type <- sample(mut_types, length(hit), replace = TRUE, prob = type_p)\n  # Tumor suppressors such as TP53 can receive a second hit, shown as Multi_Hit\n  if (runif(1) < .15 && \"TP53\" %in% hit) {\n    type[hit == \"TP53\"] <- \"Multi_Hit\"\n  }\n  tibble(sample = samples[i], gene = hit, type = type)\n})\n\nhead(mutations)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169294,6 +169366,19 @@
       "code": "# Reshape the mutation table into a gene x sample matrix; a cell holds one or\n# several alteration types separated by \";\"\ngene_levels <- names(sort(table(factor(mutations$gene, levels = genes)), decreasing = TRUE))\nmat <- matrix(\"\", nrow = length(genes), ncol = length(samples),\n              dimnames = list(genes, samples))\nfor (i in seq_len(nrow(mutations))) {\n  cell <- mat[mutations$gene[i], mutations$sample[i]]\n  mat[mutations$gene[i], mutations$sample[i]] <-\n    if (cell == \"\") mutations$type[i] else paste(cell, mutations$type[i], sep = \";\")\n}\n\n# Order samples: by subtype, then by mutation count (waterfall look)\nmut_count <- colSums(mat != \"\")\nord <- order(factor(cohort, levels = c(\"Subtype A\", \"Subtype B\")), -mut_count)\nmat <- mat[gene_levels, ord]\n\n# Annotation vectors aligned with the reordered matrix\ncohort_ordered <- factor(cohort[ord], levels = c(\"Subtype A\", \"Subtype B\"))\ntmb <- mut_count[ord]\n\n# Colors for alteration types\nmutation_colors <- c(\n  Missense = \"#3690C0\", Nonsense = \"#A50F15\", Frameshift = \"#F16913\",\n  Splice_Site = \"#6A51A3\", In_Frame = \"#31A354\", Multi_Hit = \"#252525\"\n)\n\n# One drawing function per alteration type\nrect_fun <- function(color) {\n  function(x, y, w, h) grid.rect(x, y, w * 0.9, h * 0.9, gp = gpar(fill = color, col = NA))\n}\nalter_fun <- list(\n  background = rect_fun(\"#F2F2F2\"),\n  Missense = rect_fun(mutation_colors[\"Missense\"]),\n  Nonsense = rect_fun(mutation_colors[\"Nonsense\"]),\n  Frameshift = rect_fun(mutation_colors[\"Frameshift\"]),\n  Splice_Site = rect_fun(mutation_colors[\"Splice_Site\"]),\n  In_Frame = rect_fun(mutation_colors[\"In_Frame\"]),\n  Multi_Hit = rect_fun(mutation_colors[\"Multi_Hit\"])\n)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-821",
+      "lang": "r",
+      "code": "# Expand explicit Multi_Hit cells into two individual events\nmutations_long <- bind_rows(\n  mutations |> filter(type != \"Multi_Hit\"),\n  mutations |> filter(type == \"Multi_Hit\") |> mutate(type = \"Missense\"),\n  mutations |> filter(type == \"Multi_Hit\") |> mutate(type = \"Nonsense\"))\n\n# Our short type names -> the MAF Variant_Classification vocabulary\nmaf_class <- c(Missense = \"Missense_Mutation\", Nonsense = \"Nonsense_Mutation\",\n               Frameshift = \"Frame_Shift_Del\", Splice_Site = \"Splice_Site\",\n               In_Frame = \"In_Frame_Del\")\nvariant_type <- c(Missense = \"SNP\", Nonsense = \"SNP\", Frameshift = \"DEL\",\n                  Splice_Site = \"SNP\", In_Frame = \"DEL\")\n\nset.seed(7)\nmaf_data <- mutations_long |>\n  mutate(\n    Hugo_Symbol = gene,\n    Variant_Classification = maf_class[type],\n    Variant_Type = variant_type[type],\n    Chromosome = paste0(\"chr\", (match(gene, genes) %% 22) + 1),\n    Start_Position = 100000L + as.integer(match(gene, genes)) * 54321L +\n      row_number() * 37L + sample(1:99L, n(), replace = TRUE),\n    End_Position = Start_Position,\n    Reference_Allele = \"A\",\n    Tumor_Seq_Allele2 = \"G\",\n    Tumor_Sample_Barcode = sample) |>\n  select(Hugo_Symbol, Chromosome, Start_Position, End_Position,\n         Reference_Allele, Tumor_Seq_Allele2, Variant_Classification,\n         Variant_Type, Tumor_Sample_Barcode)\n\n# Sample-level annotation (kept alongside the MAF)\nclin_data <- tibble(Tumor_Sample_Barcode = samples, Subtype = cohort)\n\n# Read everything into a maftools MAF object\nmaf <- read.maf(maf = as.data.frame(maf_data),\n                clinicalData = as.data.frame(clin_data), verbose = FALSE)\n\nhead(maf_data)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169305,6 +169390,7 @@
       "code": "p1 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p1)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169316,6 +169402,7 @@
       "code": "top_annotation <- HeatmapAnnotation(\n  TMB = anno_barplot(tmb, height = unit(1.1, \"cm\"),\n                     gp = gpar(fill = \"#6A51A3\", col = NA)),\n  annotation_name_gp = gpar(fontsize = 9))\n\np2 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  column_split = cohort_ordered, column_title_gp = gpar(fontsize = 10, fontface = \"bold\"),\n  top_annotation = top_annotation,\n  bottom_annotation = HeatmapAnnotation(\n    Subtype = as.character(cohort_ordered),\n    col = list(Subtype = c(\"Subtype A\" = \"#E08214\", \"Subtype B\" = \"#5E3C99\")),\n    annotation_name_side = \"left\", annotation_name_gp = gpar(fontsize = 9)),\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p2)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169327,6 +169414,31 @@
       "code": "pathway <- c(\n  TP53 = \"p53\", RB1 = \"p53\", CDKN2A = \"p53\",\n  EGFR = \"RTK/RAS\", ERBB2 = \"RTK/RAS\", MET = \"RTK/RAS\", KRAS = \"RTK/RAS\",\n  BRAF = \"RTK/RAS\", NF1 = \"RTK/RAS\",\n  PIK3CA = \"PI3K\", PTEN = \"PI3K\", STK11 = \"PI3K\", KEAP1 = \"PI3K\",\n  APC = \"WNT/Notch\", NOTCH1 = \"WNT/Notch\", FBXW7 = \"WNT/Notch\",\n  ARID1A = \"Chromatin\", SMAD4 = \"TGF-beta\", ATM = \"DDR\", BRCA2 = \"DDR\")\npathway_levels <- c(\"RTK/RAS\", \"PI3K\", \"p53\", \"WNT/Notch\", \"Chromatin\", \"TGF-beta\", \"DDR\")\n\np3 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  row_split = factor(pathway[gene_levels], levels = pathway_levels),\n  row_title_gp = gpar(fontsize = 9, fontface = \"bold\"), row_title_rot = 0,\n  column_split = cohort_ordered, column_title_gp = gpar(fontsize = 10, fontface = \"bold\"),\n  top_annotation = top_annotation,\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p3)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-821",
+      "lang": "r",
+      "code": "oncoplot(maf = maf, top = 20, sortByMutation = TRUE)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-821",
+      "lang": "r",
+      "code": "oncoplot(maf = maf, top = 20,\n         clinicalFeatures = \"Subtype\", sortByAnnotation = TRUE)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169338,6 +169450,7 @@
       "code": "set.seed(2026)\n\ngenes <- c(\"TP53\", \"EGFR\", \"KRAS\", \"STK11\", \"KEAP1\", \"PIK3CA\", \"PTEN\", \"RB1\",\n           \"APC\", \"ARID1A\", \"NF1\", \"NOTCH1\", \"BRAF\", \"CDKN2A\", \"SMAD4\", \"FBXW7\",\n           \"ATM\", \"BRCA2\", \"ERBB2\", \"MET\")\ncohort <- rep(c(\"Subtype A\", \"Subtype B\"), c(35, 25))\nsamples <- sprintf(\"S%02d\", 1:60)\n\n# Subtype-specific mutation probabilities per gene\np_a <- c(.52, .34, .10, .14, .10, .10, .12, .10, .06, .22, .08, .06, .04, .10, .05, .06, .06, .05, .05, .04)\np_b <- c(.22, .08, .42, .40, .36, .14, .10, .10, .10, .06, .10, .06, .06, .10, .10, .08, .05, .05, .06, .08)\nmut_types <- c(\"Missense\", \"Nonsense\", \"Frameshift\", \"Splice_Site\", \"In_Frame\")\ntype_p <- c(.58, .14, .12, .08, .08)\n\nmutations <- map_dfr(seq_along(samples), function(i) {\n  p <- if (cohort[i] == \"Subtype A\") p_a else p_b\n  hit <- genes[runif(length(genes)) < p]\n  if (length(hit) == 0) return(NULL)\n  type <- sample(mut_types, length(hit), replace = TRUE, prob = type_p)\n  # Tumor suppressors such as TP53 can receive a second hit, shown as Multi_Hit\n  if (runif(1) < .15 && \"TP53\" %in% hit) {\n    type[hit == \"TP53\"] <- \"Multi_Hit\"\n  }\n  tibble(sample = samples[i], gene = hit, type = type)\n})\n\nhead(mutations)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169349,6 +169462,19 @@
       "code": "# Reshape the mutation table into a gene x sample matrix; a cell holds one or\n# several alteration types separated by \";\"\ngene_levels <- names(sort(table(factor(mutations$gene, levels = genes)), decreasing = TRUE))\nmat <- matrix(\"\", nrow = length(genes), ncol = length(samples),\n              dimnames = list(genes, samples))\nfor (i in seq_len(nrow(mutations))) {\n  cell <- mat[mutations$gene[i], mutations$sample[i]]\n  mat[mutations$gene[i], mutations$sample[i]] <-\n    if (cell == \"\") mutations$type[i] else paste(cell, mutations$type[i], sep = \";\")\n}\n\n# Order samples: by subtype, then by mutation count (waterfall look)\nmut_count <- colSums(mat != \"\")\nord <- order(factor(cohort, levels = c(\"Subtype A\", \"Subtype B\")), -mut_count)\nmat <- mat[gene_levels, ord]\n\n# Annotation vectors aligned with the reordered matrix\ncohort_ordered <- factor(cohort[ord], levels = c(\"Subtype A\", \"Subtype B\"))\ntmb <- mut_count[ord]\n\n# Colors for alteration types\nmutation_colors <- c(\n  Missense = \"#3690C0\", Nonsense = \"#A50F15\", Frameshift = \"#F16913\",\n  Splice_Site = \"#6A51A3\", In_Frame = \"#31A354\", Multi_Hit = \"#252525\"\n)\n\n# One drawing function per alteration type\nrect_fun <- function(color) {\n  function(x, y, w, h) grid.rect(x, y, w * 0.9, h * 0.9, gp = gpar(fill = color, col = NA))\n}\nalter_fun <- list(\n  background = rect_fun(\"#F2F2F2\"),\n  Missense = rect_fun(mutation_colors[\"Missense\"]),\n  Nonsense = rect_fun(mutation_colors[\"Nonsense\"]),\n  Frameshift = rect_fun(mutation_colors[\"Frameshift\"]),\n  Splice_Site = rect_fun(mutation_colors[\"Splice_Site\"]),\n  In_Frame = rect_fun(mutation_colors[\"In_Frame\"]),\n  Multi_Hit = rect_fun(mutation_colors[\"Multi_Hit\"])\n)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-822",
+      "lang": "r",
+      "code": "# Expand explicit Multi_Hit cells into two individual events\nmutations_long <- bind_rows(\n  mutations |> filter(type != \"Multi_Hit\"),\n  mutations |> filter(type == \"Multi_Hit\") |> mutate(type = \"Missense\"),\n  mutations |> filter(type == \"Multi_Hit\") |> mutate(type = \"Nonsense\"))\n\n# Our short type names -> the MAF Variant_Classification vocabulary\nmaf_class <- c(Missense = \"Missense_Mutation\", Nonsense = \"Nonsense_Mutation\",\n               Frameshift = \"Frame_Shift_Del\", Splice_Site = \"Splice_Site\",\n               In_Frame = \"In_Frame_Del\")\nvariant_type <- c(Missense = \"SNP\", Nonsense = \"SNP\", Frameshift = \"DEL\",\n                  Splice_Site = \"SNP\", In_Frame = \"DEL\")\n\nset.seed(7)\nmaf_data <- mutations_long |>\n  mutate(\n    Hugo_Symbol = gene,\n    Variant_Classification = maf_class[type],\n    Variant_Type = variant_type[type],\n    Chromosome = paste0(\"chr\", (match(gene, genes) %% 22) + 1),\n    Start_Position = 100000L + as.integer(match(gene, genes)) * 54321L +\n      row_number() * 37L + sample(1:99L, n(), replace = TRUE),\n    End_Position = Start_Position,\n    Reference_Allele = \"A\",\n    Tumor_Seq_Allele2 = \"G\",\n    Tumor_Sample_Barcode = sample) |>\n  select(Hugo_Symbol, Chromosome, Start_Position, End_Position,\n         Reference_Allele, Tumor_Seq_Allele2, Variant_Classification,\n         Variant_Type, Tumor_Sample_Barcode)\n\n# Sample-level annotation (kept alongside the MAF)\nclin_data <- tibble(Tumor_Sample_Barcode = samples, Subtype = cohort)\n\n# Read everything into a maftools MAF object\nmaf <- read.maf(maf = as.data.frame(maf_data),\n                clinicalData = as.data.frame(clin_data), verbose = FALSE)\n\nhead(maf_data)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169360,6 +169486,7 @@
       "code": "p1 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p1)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169371,6 +169498,7 @@
       "code": "top_annotation <- HeatmapAnnotation(\n  TMB = anno_barplot(tmb, height = unit(1.1, \"cm\"),\n                     gp = gpar(fill = \"#6A51A3\", col = NA)),\n  annotation_name_gp = gpar(fontsize = 9))\n\np2 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  column_split = cohort_ordered, column_title_gp = gpar(fontsize = 10, fontface = \"bold\"),\n  top_annotation = top_annotation,\n  bottom_annotation = HeatmapAnnotation(\n    Subtype = as.character(cohort_ordered),\n    col = list(Subtype = c(\"Subtype A\" = \"#E08214\", \"Subtype B\" = \"#5E3C99\")),\n    annotation_name_side = \"left\", annotation_name_gp = gpar(fontsize = 9)),\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p2)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169382,6 +169510,31 @@
       "code": "pathway <- c(\n  TP53 = \"p53\", RB1 = \"p53\", CDKN2A = \"p53\",\n  EGFR = \"RTK/RAS\", ERBB2 = \"RTK/RAS\", MET = \"RTK/RAS\", KRAS = \"RTK/RAS\",\n  BRAF = \"RTK/RAS\", NF1 = \"RTK/RAS\",\n  PIK3CA = \"PI3K\", PTEN = \"PI3K\", STK11 = \"PI3K\", KEAP1 = \"PI3K\",\n  APC = \"WNT/Notch\", NOTCH1 = \"WNT/Notch\", FBXW7 = \"WNT/Notch\",\n  ARID1A = \"Chromatin\", SMAD4 = \"TGF-beta\", ATM = \"DDR\", BRCA2 = \"DDR\")\npathway_levels <- c(\"RTK/RAS\", \"PI3K\", \"p53\", \"WNT/Notch\", \"Chromatin\", \"TGF-beta\", \"DDR\")\n\np3 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  row_split = factor(pathway[gene_levels], levels = pathway_levels),\n  row_title_gp = gpar(fontsize = 9, fontface = \"bold\"), row_title_rot = 0,\n  column_split = cohort_ordered, column_title_gp = gpar(fontsize = 10, fontface = \"bold\"),\n  top_annotation = top_annotation,\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p3)",
       "packages": [
         "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-822",
+      "lang": "r",
+      "code": "oncoplot(maf = maf, top = 20, sortByMutation = TRUE)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-822",
+      "lang": "r",
+      "code": "oncoplot(maf = maf, top = 20,\n         clinicalFeatures = \"Subtype\", sortByAnnotation = TRUE)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
         "tidyverse"
       ],
       "dataUrls": [],
@@ -169566,6 +169719,198 @@
       ],
       "dataUrls": [],
       "sourceAnchor": "https://openbiox.github.io/Bizard/Composition/CircularAnnotation.html"
+    },
+    {
+      "chartId": "MutationOncoplot-826",
+      "lang": "r",
+      "code": "set.seed(2026)\n\ngenes <- c(\"TP53\", \"EGFR\", \"KRAS\", \"STK11\", \"KEAP1\", \"PIK3CA\", \"PTEN\", \"RB1\",\n           \"APC\", \"ARID1A\", \"NF1\", \"NOTCH1\", \"BRAF\", \"CDKN2A\", \"SMAD4\", \"FBXW7\",\n           \"ATM\", \"BRCA2\", \"ERBB2\", \"MET\")\ncohort <- rep(c(\"Subtype A\", \"Subtype B\"), c(35, 25))\nsamples <- sprintf(\"S%02d\", 1:60)\n\n# Subtype-specific mutation probabilities per gene\np_a <- c(.52, .34, .10, .14, .10, .10, .12, .10, .06, .22, .08, .06, .04, .10, .05, .06, .06, .05, .05, .04)\np_b <- c(.22, .08, .42, .40, .36, .14, .10, .10, .10, .06, .10, .06, .06, .10, .10, .08, .05, .05, .06, .08)\nmut_types <- c(\"Missense\", \"Nonsense\", \"Frameshift\", \"Splice_Site\", \"In_Frame\")\ntype_p <- c(.58, .14, .12, .08, .08)\n\nmutations <- map_dfr(seq_along(samples), function(i) {\n  p <- if (cohort[i] == \"Subtype A\") p_a else p_b\n  hit <- genes[runif(length(genes)) < p]\n  if (length(hit) == 0) return(NULL)\n  type <- sample(mut_types, length(hit), replace = TRUE, prob = type_p)\n  # Tumor suppressors such as TP53 can receive a second hit, shown as Multi_Hit\n  if (runif(1) < .15 && \"TP53\" %in% hit) {\n    type[hit == \"TP53\"] <- \"Multi_Hit\"\n  }\n  tibble(sample = samples[i], gene = hit, type = type)\n})\n\nhead(mutations)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-826",
+      "lang": "r",
+      "code": "# Reshape the mutation table into a gene x sample matrix; a cell holds one or\n# several alteration types separated by \";\"\ngene_levels <- names(sort(table(factor(mutations$gene, levels = genes)), decreasing = TRUE))\nmat <- matrix(\"\", nrow = length(genes), ncol = length(samples),\n              dimnames = list(genes, samples))\nfor (i in seq_len(nrow(mutations))) {\n  cell <- mat[mutations$gene[i], mutations$sample[i]]\n  mat[mutations$gene[i], mutations$sample[i]] <-\n    if (cell == \"\") mutations$type[i] else paste(cell, mutations$type[i], sep = \";\")\n}\n\n# Order samples: by subtype, then by mutation count (waterfall look)\nmut_count <- colSums(mat != \"\")\nord <- order(factor(cohort, levels = c(\"Subtype A\", \"Subtype B\")), -mut_count)\nmat <- mat[gene_levels, ord]\n\n# Annotation vectors aligned with the reordered matrix\ncohort_ordered <- factor(cohort[ord], levels = c(\"Subtype A\", \"Subtype B\"))\ntmb <- mut_count[ord]\n\n# Colors for alteration types\nmutation_colors <- c(\n  Missense = \"#3690C0\", Nonsense = \"#A50F15\", Frameshift = \"#F16913\",\n  Splice_Site = \"#6A51A3\", In_Frame = \"#31A354\", Multi_Hit = \"#252525\"\n)\n\n# One drawing function per alteration type\nrect_fun <- function(color) {\n  function(x, y, w, h) grid.rect(x, y, w * 0.9, h * 0.9, gp = gpar(fill = color, col = NA))\n}\nalter_fun <- list(\n  background = rect_fun(\"#F2F2F2\"),\n  Missense = rect_fun(mutation_colors[\"Missense\"]),\n  Nonsense = rect_fun(mutation_colors[\"Nonsense\"]),\n  Frameshift = rect_fun(mutation_colors[\"Frameshift\"]),\n  Splice_Site = rect_fun(mutation_colors[\"Splice_Site\"]),\n  In_Frame = rect_fun(mutation_colors[\"In_Frame\"]),\n  Multi_Hit = rect_fun(mutation_colors[\"Multi_Hit\"])\n)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-826",
+      "lang": "r",
+      "code": "# Expand explicit Multi_Hit cells into two individual events\nmutations_long <- bind_rows(\n  mutations |> filter(type != \"Multi_Hit\"),\n  mutations |> filter(type == \"Multi_Hit\") |> mutate(type = \"Missense\"),\n  mutations |> filter(type == \"Multi_Hit\") |> mutate(type = \"Nonsense\"))\n\n# Our short type names -> the MAF Variant_Classification vocabulary\nmaf_class <- c(Missense = \"Missense_Mutation\", Nonsense = \"Nonsense_Mutation\",\n               Frameshift = \"Frame_Shift_Del\", Splice_Site = \"Splice_Site\",\n               In_Frame = \"In_Frame_Del\")\nvariant_type <- c(Missense = \"SNP\", Nonsense = \"SNP\", Frameshift = \"DEL\",\n                  Splice_Site = \"SNP\", In_Frame = \"DEL\")\n\nset.seed(7)\nmaf_data <- mutations_long |>\n  mutate(\n    Hugo_Symbol = gene,\n    Variant_Classification = maf_class[type],\n    Variant_Type = variant_type[type],\n    Chromosome = paste0(\"chr\", (match(gene, genes) %% 22) + 1),\n    Start_Position = 100000L + as.integer(match(gene, genes)) * 54321L +\n      row_number() * 37L + sample(1:99L, n(), replace = TRUE),\n    End_Position = Start_Position,\n    Reference_Allele = \"A\",\n    Tumor_Seq_Allele2 = \"G\",\n    Tumor_Sample_Barcode = sample) |>\n  select(Hugo_Symbol, Chromosome, Start_Position, End_Position,\n         Reference_Allele, Tumor_Seq_Allele2, Variant_Classification,\n         Variant_Type, Tumor_Sample_Barcode)\n\n# Sample-level annotation (kept alongside the MAF)\nclin_data <- tibble(Tumor_Sample_Barcode = samples, Subtype = cohort)\n\n# Read everything into a maftools MAF object\nmaf <- read.maf(maf = as.data.frame(maf_data),\n                clinicalData = as.data.frame(clin_data), verbose = FALSE)\n\nhead(maf_data)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-826",
+      "lang": "r",
+      "code": "p1 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p1)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-826",
+      "lang": "r",
+      "code": "top_annotation <- HeatmapAnnotation(\n  TMB = anno_barplot(tmb, height = unit(1.1, \"cm\"),\n                     gp = gpar(fill = \"#6A51A3\", col = NA)),\n  annotation_name_gp = gpar(fontsize = 9))\n\np2 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  column_split = cohort_ordered, column_title_gp = gpar(fontsize = 10, fontface = \"bold\"),\n  top_annotation = top_annotation,\n  bottom_annotation = HeatmapAnnotation(\n    Subtype = as.character(cohort_ordered),\n    col = list(Subtype = c(\"Subtype A\" = \"#E08214\", \"Subtype B\" = \"#5E3C99\")),\n    annotation_name_side = \"left\", annotation_name_gp = gpar(fontsize = 9)),\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p2)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-826",
+      "lang": "r",
+      "code": "pathway <- c(\n  TP53 = \"p53\", RB1 = \"p53\", CDKN2A = \"p53\",\n  EGFR = \"RTK/RAS\", ERBB2 = \"RTK/RAS\", MET = \"RTK/RAS\", KRAS = \"RTK/RAS\",\n  BRAF = \"RTK/RAS\", NF1 = \"RTK/RAS\",\n  PIK3CA = \"PI3K\", PTEN = \"PI3K\", STK11 = \"PI3K\", KEAP1 = \"PI3K\",\n  APC = \"WNT/Notch\", NOTCH1 = \"WNT/Notch\", FBXW7 = \"WNT/Notch\",\n  ARID1A = \"Chromatin\", SMAD4 = \"TGF-beta\", ATM = \"DDR\", BRCA2 = \"DDR\")\npathway_levels <- c(\"RTK/RAS\", \"PI3K\", \"p53\", \"WNT/Notch\", \"Chromatin\", \"TGF-beta\", \"DDR\")\n\np3 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  row_split = factor(pathway[gene_levels], levels = pathway_levels),\n  row_title_gp = gpar(fontsize = 9, fontface = \"bold\"), row_title_rot = 0,\n  column_split = cohort_ordered, column_title_gp = gpar(fontsize = 10, fontface = \"bold\"),\n  top_annotation = top_annotation,\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p3)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-826",
+      "lang": "r",
+      "code": "oncoplot(maf = maf, top = 20, sortByMutation = TRUE)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-826",
+      "lang": "r",
+      "code": "oncoplot(maf = maf, top = 20,\n         clinicalFeatures = \"Subtype\", sortByAnnotation = TRUE)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-827",
+      "lang": "r",
+      "code": "set.seed(2026)\n\ngenes <- c(\"TP53\", \"EGFR\", \"KRAS\", \"STK11\", \"KEAP1\", \"PIK3CA\", \"PTEN\", \"RB1\",\n           \"APC\", \"ARID1A\", \"NF1\", \"NOTCH1\", \"BRAF\", \"CDKN2A\", \"SMAD4\", \"FBXW7\",\n           \"ATM\", \"BRCA2\", \"ERBB2\", \"MET\")\ncohort <- rep(c(\"Subtype A\", \"Subtype B\"), c(35, 25))\nsamples <- sprintf(\"S%02d\", 1:60)\n\n# Subtype-specific mutation probabilities per gene\np_a <- c(.52, .34, .10, .14, .10, .10, .12, .10, .06, .22, .08, .06, .04, .10, .05, .06, .06, .05, .05, .04)\np_b <- c(.22, .08, .42, .40, .36, .14, .10, .10, .10, .06, .10, .06, .06, .10, .10, .08, .05, .05, .06, .08)\nmut_types <- c(\"Missense\", \"Nonsense\", \"Frameshift\", \"Splice_Site\", \"In_Frame\")\ntype_p <- c(.58, .14, .12, .08, .08)\n\nmutations <- map_dfr(seq_along(samples), function(i) {\n  p <- if (cohort[i] == \"Subtype A\") p_a else p_b\n  hit <- genes[runif(length(genes)) < p]\n  if (length(hit) == 0) return(NULL)\n  type <- sample(mut_types, length(hit), replace = TRUE, prob = type_p)\n  # Tumor suppressors such as TP53 can receive a second hit, shown as Multi_Hit\n  if (runif(1) < .15 && \"TP53\" %in% hit) {\n    type[hit == \"TP53\"] <- \"Multi_Hit\"\n  }\n  tibble(sample = samples[i], gene = hit, type = type)\n})\n\nhead(mutations)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-827",
+      "lang": "r",
+      "code": "# Reshape the mutation table into a gene x sample matrix; a cell holds one or\n# several alteration types separated by \";\"\ngene_levels <- names(sort(table(factor(mutations$gene, levels = genes)), decreasing = TRUE))\nmat <- matrix(\"\", nrow = length(genes), ncol = length(samples),\n              dimnames = list(genes, samples))\nfor (i in seq_len(nrow(mutations))) {\n  cell <- mat[mutations$gene[i], mutations$sample[i]]\n  mat[mutations$gene[i], mutations$sample[i]] <-\n    if (cell == \"\") mutations$type[i] else paste(cell, mutations$type[i], sep = \";\")\n}\n\n# Order samples: by subtype, then by mutation count (waterfall look)\nmut_count <- colSums(mat != \"\")\nord <- order(factor(cohort, levels = c(\"Subtype A\", \"Subtype B\")), -mut_count)\nmat <- mat[gene_levels, ord]\n\n# Annotation vectors aligned with the reordered matrix\ncohort_ordered <- factor(cohort[ord], levels = c(\"Subtype A\", \"Subtype B\"))\ntmb <- mut_count[ord]\n\n# Colors for alteration types\nmutation_colors <- c(\n  Missense = \"#3690C0\", Nonsense = \"#A50F15\", Frameshift = \"#F16913\",\n  Splice_Site = \"#6A51A3\", In_Frame = \"#31A354\", Multi_Hit = \"#252525\"\n)\n\n# One drawing function per alteration type\nrect_fun <- function(color) {\n  function(x, y, w, h) grid.rect(x, y, w * 0.9, h * 0.9, gp = gpar(fill = color, col = NA))\n}\nalter_fun <- list(\n  background = rect_fun(\"#F2F2F2\"),\n  Missense = rect_fun(mutation_colors[\"Missense\"]),\n  Nonsense = rect_fun(mutation_colors[\"Nonsense\"]),\n  Frameshift = rect_fun(mutation_colors[\"Frameshift\"]),\n  Splice_Site = rect_fun(mutation_colors[\"Splice_Site\"]),\n  In_Frame = rect_fun(mutation_colors[\"In_Frame\"]),\n  Multi_Hit = rect_fun(mutation_colors[\"Multi_Hit\"])\n)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-827",
+      "lang": "r",
+      "code": "# Expand explicit Multi_Hit cells into two individual events\nmutations_long <- bind_rows(\n  mutations |> filter(type != \"Multi_Hit\"),\n  mutations |> filter(type == \"Multi_Hit\") |> mutate(type = \"Missense\"),\n  mutations |> filter(type == \"Multi_Hit\") |> mutate(type = \"Nonsense\"))\n\n# Our short type names -> the MAF Variant_Classification vocabulary\nmaf_class <- c(Missense = \"Missense_Mutation\", Nonsense = \"Nonsense_Mutation\",\n               Frameshift = \"Frame_Shift_Del\", Splice_Site = \"Splice_Site\",\n               In_Frame = \"In_Frame_Del\")\nvariant_type <- c(Missense = \"SNP\", Nonsense = \"SNP\", Frameshift = \"DEL\",\n                  Splice_Site = \"SNP\", In_Frame = \"DEL\")\n\nset.seed(7)\nmaf_data <- mutations_long |>\n  mutate(\n    Hugo_Symbol = gene,\n    Variant_Classification = maf_class[type],\n    Variant_Type = variant_type[type],\n    Chromosome = paste0(\"chr\", (match(gene, genes) %% 22) + 1),\n    Start_Position = 100000L + as.integer(match(gene, genes)) * 54321L +\n      row_number() * 37L + sample(1:99L, n(), replace = TRUE),\n    End_Position = Start_Position,\n    Reference_Allele = \"A\",\n    Tumor_Seq_Allele2 = \"G\",\n    Tumor_Sample_Barcode = sample) |>\n  select(Hugo_Symbol, Chromosome, Start_Position, End_Position,\n         Reference_Allele, Tumor_Seq_Allele2, Variant_Classification,\n         Variant_Type, Tumor_Sample_Barcode)\n\n# Sample-level annotation (kept alongside the MAF)\nclin_data <- tibble(Tumor_Sample_Barcode = samples, Subtype = cohort)\n\n# Read everything into a maftools MAF object\nmaf <- read.maf(maf = as.data.frame(maf_data),\n                clinicalData = as.data.frame(clin_data), verbose = FALSE)\n\nhead(maf_data)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-827",
+      "lang": "r",
+      "code": "p1 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p1)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-827",
+      "lang": "r",
+      "code": "top_annotation <- HeatmapAnnotation(\n  TMB = anno_barplot(tmb, height = unit(1.1, \"cm\"),\n                     gp = gpar(fill = \"#6A51A3\", col = NA)),\n  annotation_name_gp = gpar(fontsize = 9))\n\np2 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  column_split = cohort_ordered, column_title_gp = gpar(fontsize = 10, fontface = \"bold\"),\n  top_annotation = top_annotation,\n  bottom_annotation = HeatmapAnnotation(\n    Subtype = as.character(cohort_ordered),\n    col = list(Subtype = c(\"Subtype A\" = \"#E08214\", \"Subtype B\" = \"#5E3C99\")),\n    annotation_name_side = \"left\", annotation_name_gp = gpar(fontsize = 9)),\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p2)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-827",
+      "lang": "r",
+      "code": "pathway <- c(\n  TP53 = \"p53\", RB1 = \"p53\", CDKN2A = \"p53\",\n  EGFR = \"RTK/RAS\", ERBB2 = \"RTK/RAS\", MET = \"RTK/RAS\", KRAS = \"RTK/RAS\",\n  BRAF = \"RTK/RAS\", NF1 = \"RTK/RAS\",\n  PIK3CA = \"PI3K\", PTEN = \"PI3K\", STK11 = \"PI3K\", KEAP1 = \"PI3K\",\n  APC = \"WNT/Notch\", NOTCH1 = \"WNT/Notch\", FBXW7 = \"WNT/Notch\",\n  ARID1A = \"Chromatin\", SMAD4 = \"TGF-beta\", ATM = \"DDR\", BRCA2 = \"DDR\")\npathway_levels <- c(\"RTK/RAS\", \"PI3K\", \"p53\", \"WNT/Notch\", \"Chromatin\", \"TGF-beta\", \"DDR\")\n\np3 <- oncoPrint(mat,\n  alter_fun = alter_fun, alter_fun_is_vectorized = FALSE, col = mutation_colors,\n  column_order = samples[ord], show_column_names = FALSE,\n  row_split = factor(pathway[gene_levels], levels = pathway_levels),\n  row_title_gp = gpar(fontsize = 9, fontface = \"bold\"), row_title_rot = 0,\n  column_split = cohort_ordered, column_title_gp = gpar(fontsize = 10, fontface = \"bold\"),\n  top_annotation = top_annotation,\n  row_names_gp = gpar(fontsize = 9, fontface = \"italic\"), pct_gp = gpar(fontsize = 8),\n  heatmap_legend_param = list(title = \"Mutation type\"))\ndraw(p3)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-827",
+      "lang": "r",
+      "code": "oncoplot(maf = maf, top = 20, sortByMutation = TRUE)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
+    },
+    {
+      "chartId": "MutationOncoplot-827",
+      "lang": "r",
+      "code": "oncoplot(maf = maf, top = 20,\n         clinicalFeatures = \"Subtype\", sortByAnnotation = TRUE)",
+      "packages": [
+        "ComplexHeatmap",
+        "maftools",
+        "tidyverse"
+      ],
+      "dataUrls": [],
+      "sourceAnchor": "https://openbiox.github.io/Bizard/Omics/MutationOncoplot.html"
     }
   ],
   "keywords": {
