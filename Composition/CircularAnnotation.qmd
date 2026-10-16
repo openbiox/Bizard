@@ -5,13 +5,13 @@ author:
   - "**[Contributors]** ."
 ---
 
-A circular multi-track sample annotation plot arranges every sample of a cohort as one sector of a ring: each sector carries an outer label, concentric tracks encode different variables (continuous variables as lollipop tracks whose dot radius marks the value, categorical variables as colored bands), and the gap of the ring hosts compact summary panels — boxplots with beeswarm points for the continuous tracks, stacked proportion bars for the categorical ones — aligned to the same radial scale. It is designed for cohort figures that must show many samples and several variables at once (the reference figure shows 108 participants of a longitudinal multi-omics cohort), so individual-level patterns, group composition and overall distributions can be read in a single glance. This tutorial reproduces the chart type covered by the *顶刊图社* series (issue 094, after Shen et al., *Nature Aging* 2024); see the Reference section below.
+A circular multi-track sample annotation plot arranges every sample of a cohort as one sector of a ring: each sector carries an outer label, concentric tracks encode different variables (continuous variables as lollipop tracks whose dot radius marks the value, categorical variables as colored bands), and the gap of the ring hosts compact summary panels — boxplots with swarm-style points for the continuous tracks, stacked proportion bars for the categorical ones — aligned to the same radial scale. It is designed for cohort figures that must show many samples and several variables at once (the reference figure shows 108 participants of a longitudinal multi-omics cohort), so individual-level patterns, group composition and overall distributions can be read in a single glance. This tutorial reproduces the chart type covered by the *顶刊图社* series (issue 094, after Shen et al., *Nature Aging* 2024); see the Reference section below.
 
 ## Example
 
 ![](../images/Composition/CircularAnnotation_demo.png){fig-alt="CircularAnnotation DEMO" fig-align="center" width="65%"}
 
-This example shows a simulated 108-participant cohort. Samples are sorted by age around the ring; the two outer lollipop tracks show age and BMI (dot radius = value, with circular tick marks), the three inner bands encode insulin response, ethnicity and gender. The upper-left gap contains the summary panels: boxplot + beeswarm for age and BMI (sharing the radius scale of their tracks, so the median line of the box sits exactly at the corresponding radius of the ring) and 100% stacked bars with percentage labels for the three categorical variables.
+This example shows a simulated 108-participant cohort. Samples are sorted by age around the ring; the two outer lollipop tracks show age and BMI (dot radius = value, with circular tick marks), the three inner bands encode insulin response, ethnicity and gender. The upper-left gap contains the summary panels: boxplot with swarm-style points for age and BMI (sharing the radius scale of their tracks, so the median line of the box sits exactly at the corresponding radius of the ring) and 100% stacked proportion bars (percentage labels for segments of at least 6%) for the three categorical variables.
 
 ## Setup
 
@@ -98,16 +98,26 @@ circular_annotation_plot <- function(data, id_col, sort_col,
   auto_palette <- c("#046C9B", "#E5C39C", "#CA9143", "#A8D3D4", "#F33010",
                     "#E2BD6E", "#3C99B0", "#F21901", "#7A5195", "#EF5675", "#FFA600")
 
-  # -- sector polygons for one category track ---------------------------------
-  band_polygons <- function(column, inner, outer) {
-    fill <- category_colors[as.character(data[[column]])]
+  # Resolve colors for a vector of category values: explicit entries from
+  # `category_colors`; remaining categories draw from palette colors not
+  # already used, so auto-assigned colors never collide with explicit ones.
+  resolve_colors <- function(values) {
+    values <- as.character(values)
+    fill <- category_colors[values]
     missing <- is.na(fill)
     if (any(missing)) {
-      lv <- unique(as.character(data[[column]][missing]))
-      extra <- auto_palette[seq_along(lv)]
+      lv <- setdiff(unique(values[missing]), names(category_colors))
+      pool <- setdiff(auto_palette, unname(category_colors))
+      extra <- rep_len(pool, length(lv))
       names(extra) <- lv
-      fill[missing] <- extra[as.character(data[[column]][missing])]
+      fill[missing] <- extra[values[missing]]
     }
+    fill
+  }
+
+  # -- sector polygons for one category track ---------------------------------
+  band_polygons <- function(column, inner, outer) {
+    fill <- resolve_colors(data[[column]])
     map_dfr(seq_len(n), function(k) {
       a <- seq(data$.start[k], data$.end[k], length.out = 8)
       tibble(.group = k,
@@ -144,7 +154,7 @@ circular_annotation_plot <- function(data, id_col, sort_col,
   swarm <- map_dfr(seq_len(nrow(numeric_tracks)), function(j) {
     tb <- numeric_tracks[j, ]; v <- data[[tb$column]]
     o <- order(v); k <- integer(length(v)); k[o] <- seq_along(v)
-    off <- pmin(ceiling(k / 2), 40) * ifelse(k %% 2 == 1, -1, 1) * 0.008
+    off <- ceiling(k / 2) * ifelse(k %% 2 == 1, -1, 1) * 0.008
     tibble(x = slot_x(j) + off, y = value_radius(v, tb$min, tb$max, tb$inner, tb$outer),
            color = tb$color, track = tb$name)
   })
@@ -152,7 +162,7 @@ circular_annotation_plot <- function(data, id_col, sort_col,
   bars <- map_dfr(seq_len(nrow(category_tracks)), function(j) {
     tb <- category_tracks[j, ]; f <- as.character(data[[tb$column]])
     tab <- sort(table(f), decreasing = TRUE); frac <- as.numeric(tab) / sum(tab)
-    fill <- category_colors[names(tab)]
+    fill <- resolve_colors(names(tab))
     y0 <- tb$inner + (tb$outer - tb$inner) * c(0, head(cumsum(frac), -1))
     y1 <- tb$inner + (tb$outer - tb$inner) * cumsum(frac)
     tibble(x = slot_x(j, numeric = FALSE), y0 = y0, y1 = y1,
@@ -164,7 +174,7 @@ circular_annotation_plot <- function(data, id_col, sort_col,
     tb <- tick_values[j, ]
     v <- as.numeric(strsplit(tb$ticks, ",")[[1]])
     r <- value_radius(v, tb$min, tb$max, tb$inner, tb$outer)
-    ang <- 1.52 + 0.16 * (j - 1)   # stagger ticks per track along the gap edge
+    ang <- 1.64 + 0.15 * (j - 1)   # stagger ticks per track along the gap edge
     tibble(value = v, x = cos(ang) * r, y = sin(ang) * r)
   })
 
@@ -211,10 +221,10 @@ circular_annotation_plot <- function(data, id_col, sort_col,
               color = "white", linewidth = 0.35) } +
     { if (show_summary) geom_text(data = bars |> filter(pct >= 6), aes(x, (y0 + y1) / 2, label = pct), size = base_size * 0.2) } +
     # panel titles
-    geom_text(data = numeric_tracks |> mutate(x = slot_x(seq_len(n()), TRUE), y = max(numeric_tracks$outer) + 0.22),
-              aes(x, y, label = title), size = base_size * 0.24, vjust = 0, lineheight = 0.9) +
-    geom_text(data = category_tracks |> mutate(x = slot_x(seq_len(n()), FALSE), y = max(numeric_tracks$outer) + 0.22),
-              aes(x, y, label = title), size = base_size * 0.24, vjust = 0, lineheight = 0.9) +
+    { if (show_summary) geom_text(data = numeric_tracks |> mutate(x = slot_x(seq_len(n()), TRUE), y = max(numeric_tracks$outer) + 0.22),
+              aes(x, y, label = title), size = base_size * 0.24, vjust = 0, lineheight = 0.9) } +
+    { if (show_summary) geom_text(data = category_tracks |> mutate(x = slot_x(seq_len(n()), FALSE), y = max(numeric_tracks$outer) + 0.22),
+              aes(x, y, label = title), size = base_size * 0.24, vjust = 0, lineheight = 0.9) } +
     # ticks
     geom_point(data = ticks, aes(x, y), size = 1.0, color = "grey15") +
     geom_text(data = ticks, aes(x, y, label = value), size = base_size * 0.21, hjust = 1.2) +
@@ -245,7 +255,7 @@ p1
 
 ### 2. Summary Panels in the Gap
 
-With the default `show_summary = TRUE`, the gap of the ring is filled with the cohort summary: boxplot + beeswarm for each continuous track (drawn at the same radial scale as its ring) and 100% stacked proportion bars for each categorical track.
+With the default `show_summary = TRUE`, the gap of the ring is filled with the cohort summary: boxplot with swarm-style points for each continuous track (drawn at the same radial scale as its ring) and 100% stacked proportion bars for each categorical track.
 
 ```{r}
 #| label: fig-1.2FullCircular
@@ -267,7 +277,7 @@ p2
 
 - `sort_col`: the column that defines the sample order around the ring (sorted ascending).
 - `gap_degrees`: angular size of the gap (default 90°) that hosts the summary panels.
-- `show_summary`: draw the boxplot/beeswarm/proportion panels (`TRUE`) or the bare ring (`FALSE`).
+- `show_summary`: draw the boxplot/swarm/proportion panels (`TRUE`) or the bare ring (`FALSE`).
 - `category_colors`: named color vector; unlisted categories are colored automatically.
 - `id_size` / `base_size`: label and text scaling.
 :::

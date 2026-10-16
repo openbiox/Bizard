@@ -5,13 +5,13 @@ author:
   - "**[贡献]** ."
 ---
 
-环形多轨道样本注释图把队列中的每个样本排成圆环上的一个扇区：每个扇区在外缘有一个样本标签，同心圆环轨道编码不同变量（连续变量以棒棒糖轨道呈现、圆点半径表示数值大小，分类变量以彩色色带呈现），圆环的缺口处安放紧凑的汇总面板——连续轨道对应箱线图加蜂群点，分类轨道对应 100% 堆叠比例柱——并与圆环共用同一半径标尺以严格对齐。它专为需要同时展示大量样本与多变量信息的队列图而设计（参考图展示了 108 名纵向多组学队列参与者），个体层面的模式、群体构成与总体分布可在一瞥之间同读。本教程复现《顶刊图社》系列（第094期，复现自 Shen 等发表于 *Nature Aging* 2024 的图）介绍的图表类型，见文末参考文献。
+环形多轨道样本注释图把队列中的每个样本排成圆环上的一个扇区：每个扇区在外缘有一个样本标签，同心圆环轨道编码不同变量（连续变量以棒棒糖轨道呈现、圆点半径表示数值大小，分类变量以彩色色带呈现），圆环的缺口处安放紧凑的汇总面板——连续轨道对应箱线图与蜂群式散点，分类轨道对应 100% 堆叠比例柱——并与圆环共用同一半径标尺以严格对齐。它专为需要同时展示大量样本与多变量信息的队列图而设计（参考图展示了 108 名纵向多组学队列参与者），个体层面的模式、群体构成与总体分布可在一瞥之间同读。本教程复现《顶刊图社》系列（第094期，复现自 Shen 等发表于 *Nature Aging* 2024 的图）介绍的图表类型，见文末参考文献。
 
 ## 示例
 
 ![](../images/Composition/CircularAnnotation_demo.png){fig-alt="CircularAnnotation DEMO" fig-align="center" width="65%"}
 
-这个示例展示了一个模拟的 108 人队列。样本按年龄沿圆环排序；外侧两条棒棒糖轨道分别展示年龄与 BMI（圆点半径 = 数值，并附环形刻度），内侧三条色带依次编码胰岛素反应、族裔与性别。左上方缺口处是汇总面板：年龄与 BMI 的箱线图 + 蜂群图（与其轨道共用半径标尺，因此箱体中线恰好落在圆环对应的半径上），以及三条分类变量的 100% 堆叠比例柱（含百分比标签）。
+这个示例展示了一个模拟的 108 人队列。样本按年龄沿圆环排序；外侧两条棒棒糖轨道分别展示年龄与 BMI（圆点半径 = 数值，并附环形刻度），内侧三条色带依次编码胰岛素反应、族裔与性别。左上方缺口处是汇总面板：年龄与 BMI 的箱线图与蜂群式散点（与其轨道共用半径标尺，因此箱体中线恰好落在圆环对应的半径上），以及三条分类变量的 100% 堆叠比例柱（占比至少 6% 的段带百分比标签）。
 
 ## 环境配置
 
@@ -98,16 +98,26 @@ circular_annotation_plot <- function(data, id_col, sort_col,
   auto_palette <- c("#046C9B", "#E5C39C", "#CA9143", "#A8D3D4", "#F33010",
                     "#E2BD6E", "#3C99B0", "#F21901", "#7A5195", "#EF5675", "#FFA600")
 
-  # -- sector polygons for one category track ---------------------------------
-  band_polygons <- function(column, inner, outer) {
-    fill <- category_colors[as.character(data[[column]])]
+  # Resolve colors for a vector of category values: explicit entries from
+  # `category_colors`; remaining categories draw from palette colors not
+  # already used, so auto-assigned colors never collide with explicit ones.
+  resolve_colors <- function(values) {
+    values <- as.character(values)
+    fill <- category_colors[values]
     missing <- is.na(fill)
     if (any(missing)) {
-      lv <- unique(as.character(data[[column]][missing]))
-      extra <- auto_palette[seq_along(lv)]
+      lv <- setdiff(unique(values[missing]), names(category_colors))
+      pool <- setdiff(auto_palette, unname(category_colors))
+      extra <- rep_len(pool, length(lv))
       names(extra) <- lv
-      fill[missing] <- extra[as.character(data[[column]][missing])]
+      fill[missing] <- extra[values[missing]]
     }
+    fill
+  }
+
+  # -- sector polygons for one category track ---------------------------------
+  band_polygons <- function(column, inner, outer) {
+    fill <- resolve_colors(data[[column]])
     map_dfr(seq_len(n), function(k) {
       a <- seq(data$.start[k], data$.end[k], length.out = 8)
       tibble(.group = k,
@@ -144,7 +154,7 @@ circular_annotation_plot <- function(data, id_col, sort_col,
   swarm <- map_dfr(seq_len(nrow(numeric_tracks)), function(j) {
     tb <- numeric_tracks[j, ]; v <- data[[tb$column]]
     o <- order(v); k <- integer(length(v)); k[o] <- seq_along(v)
-    off <- pmin(ceiling(k / 2), 40) * ifelse(k %% 2 == 1, -1, 1) * 0.008
+    off <- ceiling(k / 2) * ifelse(k %% 2 == 1, -1, 1) * 0.008
     tibble(x = slot_x(j) + off, y = value_radius(v, tb$min, tb$max, tb$inner, tb$outer),
            color = tb$color, track = tb$name)
   })
@@ -152,7 +162,7 @@ circular_annotation_plot <- function(data, id_col, sort_col,
   bars <- map_dfr(seq_len(nrow(category_tracks)), function(j) {
     tb <- category_tracks[j, ]; f <- as.character(data[[tb$column]])
     tab <- sort(table(f), decreasing = TRUE); frac <- as.numeric(tab) / sum(tab)
-    fill <- category_colors[names(tab)]
+    fill <- resolve_colors(names(tab))
     y0 <- tb$inner + (tb$outer - tb$inner) * c(0, head(cumsum(frac), -1))
     y1 <- tb$inner + (tb$outer - tb$inner) * cumsum(frac)
     tibble(x = slot_x(j, numeric = FALSE), y0 = y0, y1 = y1,
@@ -164,7 +174,7 @@ circular_annotation_plot <- function(data, id_col, sort_col,
     tb <- tick_values[j, ]
     v <- as.numeric(strsplit(tb$ticks, ",")[[1]])
     r <- value_radius(v, tb$min, tb$max, tb$inner, tb$outer)
-    ang <- 1.52 + 0.16 * (j - 1)   # stagger ticks per track along the gap edge
+    ang <- 1.64 + 0.15 * (j - 1)   # stagger ticks per track along the gap edge
     tibble(value = v, x = cos(ang) * r, y = sin(ang) * r)
   })
 
@@ -211,10 +221,10 @@ circular_annotation_plot <- function(data, id_col, sort_col,
               color = "white", linewidth = 0.35) } +
     { if (show_summary) geom_text(data = bars |> filter(pct >= 6), aes(x, (y0 + y1) / 2, label = pct), size = base_size * 0.2) } +
     # panel titles
-    geom_text(data = numeric_tracks |> mutate(x = slot_x(seq_len(n()), TRUE), y = max(numeric_tracks$outer) + 0.22),
-              aes(x, y, label = title), size = base_size * 0.24, vjust = 0, lineheight = 0.9) +
-    geom_text(data = category_tracks |> mutate(x = slot_x(seq_len(n()), FALSE), y = max(numeric_tracks$outer) + 0.22),
-              aes(x, y, label = title), size = base_size * 0.24, vjust = 0, lineheight = 0.9) +
+    { if (show_summary) geom_text(data = numeric_tracks |> mutate(x = slot_x(seq_len(n()), TRUE), y = max(numeric_tracks$outer) + 0.22),
+              aes(x, y, label = title), size = base_size * 0.24, vjust = 0, lineheight = 0.9) } +
+    { if (show_summary) geom_text(data = category_tracks |> mutate(x = slot_x(seq_len(n()), FALSE), y = max(numeric_tracks$outer) + 0.22),
+              aes(x, y, label = title), size = base_size * 0.24, vjust = 0, lineheight = 0.9) } +
     # ticks
     geom_point(data = ticks, aes(x, y), size = 1.0, color = "grey15") +
     geom_text(data = ticks, aes(x, y, label = value), size = base_size * 0.21, hjust = 1.2) +
@@ -245,7 +255,7 @@ p1
 
 ### 2. 缺口处的汇总面板
 
-默认 `show_summary = TRUE` 时，圆环缺口处会填充队列汇总：每条连续轨道对应箱线图 + 蜂群图（与其圆环共用同一半径标尺绘制），每条分类轨道对应 100% 堆叠比例柱。
+默认 `show_summary = TRUE` 时，圆环缺口处会填充队列汇总：每条连续轨道对应箱线图与蜂群式散点（与其圆环共用同一半径标尺绘制），每条分类轨道对应 100% 堆叠比例柱。
 
 ```{r}
 #| label: fig-1.2FullCircular
@@ -267,7 +277,7 @@ p2
 
 - `sort_col`：决定样本沿圆环排序的列（升序）。
 - `gap_degrees`：承载汇总面板的缺口角大小（默认 90°）。
-- `show_summary`：是否绘制箱线/蜂群/比例面板（`TRUE`）或仅绘制圆环（`FALSE`）。
+- `show_summary`：是否绘制箱线/散点/比例面板（`TRUE`）或仅绘制圆环（`FALSE`）。
 - `category_colors`：命名颜色向量；未列出的分类自动配色。
 - `id_size` / `base_size`：标签与文字缩放。
 :::
