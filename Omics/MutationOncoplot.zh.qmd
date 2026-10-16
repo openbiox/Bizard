@@ -11,7 +11,7 @@ author:
 
 ![](../images/Omics/MutationOncoplot_demo.png){fig-alt="MutationOncoplot DEMO" fig-align="center" width="80%"}
 
-这张 oncoplot 汇总了一个模拟的 60 个样本、20 个肿瘤驱动基因的队列。样本按两个分子亚型（Subtype A 与 Subtype B）分组，基因按信号通路（`RTK/RAS`、`PI3K`、`p53` 等）分组，顶部条形图显示每个样本的总突变数。Subtype A 以 `TP53`（占全部样本的 35%）和 `EGFR` 突变为主，而 `STK11`、`KEAP1` 与 `KRAS` 的改变大多集中在 Subtype B——这正是 oncoplot 要揭示的亚群特异性模式。突变类型按颜色编码，`TP53` 偶尔出现 `Multi_Hit`（一个基因发生两次以上事件）。
+这张 oncoplot 汇总了一个模拟的 60 个样本、20 个肿瘤驱动基因的队列。样本按两个分子亚型（Subtype A 与 Subtype B）分组，基因按信号通路（`RTK/RAS`、`PI3K`、`p53` 等）分组，顶部条形图显示每个样本的总突变数。Subtype A 以 `TP53`（占全部样本的 35%）和 `EGFR` 突变为主，而 `STK11`、`KEAP1` 与 `KRAS` 的改变大多集中在 Subtype B——这正是 oncoplot 要揭示的亚群特异性模式。突变类型按颜色编码，`TP53` 偶尔出现 `Multi_Hit`（一个基因发生两次以上事件）。同一队列还将在第 4–5 节用 `maftools` 引擎再次绘制。
 
 ## 环境配置
 
@@ -19,7 +19,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`ComplexHeatmap`；`tidyverse`
+-   依赖包：`ComplexHeatmap`；`tidyverse`；`maftools`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages
@@ -29,10 +29,14 @@ if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
 if (!requireNamespace("tidyverse", quietly = TRUE)) {
   install.packages("tidyverse")
 }
+if (!requireNamespace("maftools", quietly = TRUE)) {
+  BiocManager::install("maftools")
+}
 
 # Load packages
 library(ComplexHeatmap)
 library(tidyverse)
+library(maftools)
 ```
 
 ## 数据准备
@@ -113,7 +117,55 @@ alter_fun <- list(
 )
 ```
 
+上方的矩阵是 `ComplexHeatmap` 的原生输入；`maftools` 工作流则消费 **MAF 风格表格**——每行一个变异，包含基因、样本条码与 `Variant_Classification`（如 `Missense_Mutation`、`Nonsense_Mutation`、`Frame_Shift_Del`）。转换时有两个关键细节：
+
+- **Multi_Hit 是推导出来的，而非存储值。** 我们的模拟表用显式类别 `Multi_Hit` 标记 5 个携带两次事件的基因-样本格，但 `read.maf()` 并不把它当作突变类别：凡 `Variant_Classification` 不在其词表内的行都会被移入 silent 集合（`maf@maf.silent`）并排除出图形——如果文件只由这类行组成，还会直接报错 *"No non-synonymous mutations found"*。因此我们把每个 `Multi_Hit` 格展开为两条独立事件（`Missense` + `Nonsense`），再由 maftools 自行推导出 multi-hit 细胞——真实 MAF 文件的行为同样如此（每行一个变异）。
+- **坐标与等位基因**是 MAF 模式的必需列。绘图时只需格式合法；真实文件携带实际基因组位置。
+
+```{r convert maf, message=FALSE}
+# Expand explicit Multi_Hit cells into two individual events
+mutations_long <- bind_rows(
+  mutations |> filter(type != "Multi_Hit"),
+  mutations |> filter(type == "Multi_Hit") |> mutate(type = "Missense"),
+  mutations |> filter(type == "Multi_Hit") |> mutate(type = "Nonsense"))
+
+# Our short type names -> the MAF Variant_Classification vocabulary
+maf_class <- c(Missense = "Missense_Mutation", Nonsense = "Nonsense_Mutation",
+               Frameshift = "Frame_Shift_Del", Splice_Site = "Splice_Site",
+               In_Frame = "In_Frame_Del")
+variant_type <- c(Missense = "SNP", Nonsense = "SNP", Frameshift = "DEL",
+                  Splice_Site = "SNP", In_Frame = "DEL")
+
+set.seed(7)
+maf_data <- mutations_long |>
+  mutate(
+    Hugo_Symbol = gene,
+    Variant_Classification = maf_class[type],
+    Variant_Type = variant_type[type],
+    Chromosome = paste0("chr", (match(gene, genes) %% 22) + 1),
+    Start_Position = 100000L + as.integer(match(gene, genes)) * 54321L +
+      row_number() * 37L + sample(1:99L, n(), replace = TRUE),
+    End_Position = Start_Position,
+    Reference_Allele = "A",
+    Tumor_Seq_Allele2 = "G",
+    Tumor_Sample_Barcode = sample) |>
+  select(Hugo_Symbol, Chromosome, Start_Position, End_Position,
+         Reference_Allele, Tumor_Seq_Allele2, Variant_Classification,
+         Variant_Type, Tumor_Sample_Barcode)
+
+# Sample-level annotation (kept alongside the MAF)
+clin_data <- tibble(Tumor_Sample_Barcode = samples, Subtype = cohort)
+
+# Read everything into a maftools MAF object
+maf <- read.maf(maf = as.data.frame(maf_data),
+                clinicalData = as.data.frame(clin_data), verbose = FALSE)
+
+head(maf_data)
+```
+
 ## 可视化
+
+同一队列将绘制两次：第 1–3 节基于 `ComplexHeatmap::oncoPrint()` 构建全景图——对注释轨道与单元格渲染拥有完全控制；第 4–5 节则在上方准备好的 MAF 表示上使用 `maftools` 引擎——这也是真实变异文件的标配路线。
 
 ### 1. 基础绘图
 
@@ -212,12 +264,68 @@ draw(p3)
 
 图 3 从功能角度呈现了同样的队列结构：Subtype A 富集 `TP53` 事件与 RTK/RAS 通路的 `EGFR` 突变，Subtype B 则集中于 `STK11`/`KEAP1`（PI3K 通路）与 `KRAS` 改变。
 
+
+### 4. maftools 经典 oncoplot
+
+队列此时已作为 MAF 对象（`maf`）就绪，`maftools::oncoplot()` 即可绘制经典的肿瘤基因组学全景图：顶部是每个样本的突变负荷条，右侧是基因频率与变异类型构成，自动百分比标签与 maftools 自带的配色体系。`sortByMutation = TRUE` 把样本排成熟悉的瀑布形态（在二值化突变矩阵上排序）。
+
+```{r}
+#| label: fig-1.4MaftoolsOncoplot
+#| fig-cap: "同一队列的 maftools 基础 oncoplot"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6.5
+
+oncoplot(maf = maf, top = 20, sortByMutation = TRUE)
+```
+
+::: callout-tip
+**关键参数：**
+
+- `top`：绘制突变频率最高的前多少个基因（此处为全部 20 个）。
+- `sortByMutation`：按突变数排序样本（`TRUE`）或保持文件顺序（`FALSE`）。
+- 完全没有突变的样本不会显示：maftools 只知道 MAF 中出现的样本，因此副标题显示 "Altered in 53 (100%) of 53 samples"——即 60 个队列样本中携带至少一个突变的 53 个。
+:::
+
+### 5. maftools 临床注释版
+
+`clinicalFeatures` 从临床表添加注释轨道——与图 2 的 `column_split` 视图一一对应。`sortByAnnotation = TRUE` 按注释对样本分组，于是亚型特异基因再次成块排列（对比左侧的 `TP53` 块与右侧的 `STK11`/`KEAP1` 块）。
+
+```{r}
+#| label: fig-1.5MaftoolsCohortOncoplot
+#| fig-cap: "按分子亚型注释并排序的 maftools oncoplot"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 7
+
+oncoplot(maf = maf, top = 20,
+         clinicalFeatures = "Subtype", sortByAnnotation = TRUE)
+```
+
+::: callout-tip
+**关键参数：**
+
+- `clinicalFeatures`：临床表中作为矩阵下方注释轨道绘制的列。
+- `sortByAnnotation`：在注释分组内对样本排序（`TRUE`）。
+:::
+
+### 6. 如何选择绘图引擎
+
+两条路线描述的是同一个队列——`TP53` 在携带突变的样本中占 40%（全部 60 个样本中占 35%），`STK11`/`KEAP1`/`KRAS` 集中在 Subtype B——但它们各自适合不同的工作流：
+
+- **`ComplexHeatmap::oncoPrint()`**（第 1–3 节）：完全的控制力——自定义单元格渲染、来自任意数据的注释轨道、任意行列分组、与整个热图生态的整合。当 oncoplot 需要与其他热图面板组合或需要定制样式时最为合适。
+- **`maftools::oncoplot()`**（第 4–5 节）：真实 MAF 文件的标准入口——一次调用读取整个队列的变异，获得可直接用于发表的汇总（负荷条、变异类型构成、临床注释、自动推导的 multi-hit 细胞）。适合常规队列图以及 maftools 工具链的后续分析（互斥性、TiTv、驱动基因分析）。
+
 ## 应用场景
 
 -   **队列刻画**：肿瘤基因组学研究的一线总结图，通常按亚型、分期或治疗臂拆分。
 -   **驱动基因发现**：高频突变基因及其共现或互斥模式。
--   **突变负荷**：顶部条形图统计每个样本的突变基因数。
--   `maftools` 包提供了广泛使用的替代实现（`maftools::oncoplot()`），可直接读取 MAF 文件；本教程使用的 `ComplexHeatmap` 方案让图形留在通用热图框架内，并支持任意注释轨道。
+-   **突变负荷**：顶部条形图汇总每个样本的负荷——ComplexHeatmap 路线统计突变基因数，maftools 路线统计独立变异数（仅在 multi-hit 样本上有差异）。
+-   上文展示的两套引擎均可用于真实队列：`ComplexHeatmap` 能与任意热图面板组合；`maftools::read.maf()` 则直接读取变异检测流程输出的 MAF 文件——支持 `clinicalData` 注释轨道（第 4–5 节），并解锁 maftools 工具链的后续分析（互斥性、TiTv、驱动基因分析）。
 
 ## 参考文献
 
