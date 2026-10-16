@@ -30,7 +30,7 @@ Works offline: an npm-shipped content snapshot backs everything up.
 | Tool | Purpose |
 |------|---------|
 | `bizard_search` | Bilingual weighted search over the chart gallery; adjacent-category suggestions on zero hits |
-| `bizard_list_categories` | All 36 chart categories with bilingual names and per-category chart counts |
+| `bizard_list_categories` | All 36 chart categories with per-category chart counts (bilingual names where available) |
 | `bizard_get_tutorial` | Chart metadata: packages, example-data URLs, available languages, tutorial link |
 | `bizard_get_code` | Runnable tutorial code with package list, example-data URLs, and license notice |
 | `bizard_adapt_guidance` | Data-shape checks, dependency prep, parameter mapping, failure modes, alternatives |
