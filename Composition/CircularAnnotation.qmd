@@ -5,13 +5,13 @@ author:
   - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed;"
 ---
 
-A circular multi-track sample annotation plot arranges every sample of a cohort as one sector of a ring: each sector carries an outer label, concentric tracks encode different variables (continuous variables as lollipop tracks whose dot radius marks the value, categorical variables as colored bands), and the gap of the ring hosts compact summary panels — boxplots with swarm-style points for the continuous tracks, stacked proportion bars for the categorical ones — aligned to the same radial scale. It is designed for cohort figures that must show many samples and several variables at once (the reference figure shows 108 participants of a longitudinal multi-omics cohort), so individual-level patterns, group composition and overall distributions can be read in a single glance. This tutorial reproduces the chart type covered by the *顶刊图社* series (issue 094, after Shen et al., *Nature Aging* 2024); see the Reference section below.
+A circular multi-track sample annotation plot arranges every sample of a cohort as one sector of a ring: each sector carries an outer label, concentric tracks encode different variables (continuous variables as lollipop tracks whose dots' distance from the centre marks the value, categorical variables as colored bands), and the gap of the ring hosts the cohort summary — a white panel per continuous track with a boxplot, beeswarm points and quartile labels, a 100% stacked proportion bar per categorical track, and compact value axes for the two continuous scales. Every summary panel sits directly across from *its own* track (same radial position, mirrored to the left) and all panels share one uniform height, so the gap reads as a clean column of statistics; a per-track legend is generated automatically. It is designed for cohort figures that must show many samples and several variables at once (the reference figure shows 108 participants of a longitudinal multi-omics cohort), so individual-level patterns, group composition and overall distributions can be read in a single glance. This tutorial reproduces the chart type covered by the *顶刊图社* series (issue 094, after Shen et al., *Nature Aging* 2024); see the Reference section below.
 
 ## Example
 
 ![](../images/Composition/CircularAnnotation_demo.png){fig-alt="CircularAnnotation DEMO" fig-align="center" width="65%"}
 
-This example shows a simulated 108-participant cohort. Samples are sorted by age around the ring; the two outer lollipop tracks show age and BMI (dot radius = value, with circular tick marks), the three inner bands encode insulin response, ethnicity and gender. The upper-left gap contains the summary panels: boxplot with swarm-style points for age and BMI (sharing the radius scale of their tracks, so the median line of the box sits exactly at the corresponding radius of the ring) and 100% stacked proportion bars (percentage labels for segments of at least 6%) for the three categorical variables.
+This example shows a simulated 108-participant cohort. Samples are sorted by age around the ring (outer labels); the two outer lollipop tracks show age and BMI (a dot's distance from the centre = value), and the three inner bands encode insulin response, ethnicity and gender. In the upper-left gap, each continuous track gets a white panel with a boxplot, beeswarm points and grey labels for the three quartiles, while each categorical track gets a tall 100% stacked bar with percentage labels for every segment; the two numeric value axes (`75 / 51 / 21` for age, `15 / 30 / 41` for BMI) sit at the ring's centre line, and the legend at the top dedicates one row to each categorical track.
 
 ## Setup
 
@@ -19,16 +19,20 @@ This example shows a simulated 108-participant cohort. Samples are sorted by age
 
 -   Programming Language: R
 
--   Dependencies: `tidyverse`
+-   Dependencies: `tidyverse`; `ggbeeswarm`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages
 if (!requireNamespace("tidyverse", quietly = TRUE)) {
   install.packages("tidyverse")
 }
+if (!requireNamespace("ggbeeswarm", quietly = TRUE)) {
+  install.packages("ggbeeswarm")
+}
 
 # Load packages
 library(tidyverse)
+library(ggbeeswarm)
 ```
 
 ## Data Preparation
@@ -40,7 +44,7 @@ set.seed(2026)
 n <- 108
 dat <- tibble(
   id = sprintf("P%03d", 1:n),
-  age = round(pmin(pmax(rnorm(n, 56, 12), 21), 75)),
+  age = round(pmin(pmax(rnorm(n, 56, 12), 21), 74)),
   bmi = round(pmin(pmax(rnorm(n, 28, 4), 15), 41), 1),
   iris = sample(c("IS", "IR", "Unknown"), n, TRUE, prob = c(.52, .33, .15)),
   ethnicity = sample(c("Asian", "Black", "Caucasian", "Hispanics", "Unknown"), n, TRUE,
@@ -55,20 +59,34 @@ The track layout is described declaratively. Each **numeric track** defines its 
 
 ```{r track settings, message=FALSE}
 numeric_tracks <- tribble(
-  ~name,  ~column, ~title,          ~inner, ~outer, ~min, ~max, ~color,    ~ticks,
-  "Age",  "age",   "Age\n(years)",  3.32,   4.16,    21,   75,   "#702083", "21,51,75",
-  "BMI",  "bmi",   "BMI",           2.39,   3.23,    15,   41,   "#F04A22", "15,30,41")
+  ~name,  ~column, ~title,          ~inner, ~outer, ~min, ~max, ~color,
+  "Age",  "age",   "Age\n(years)",  3.32,   4.16,    21,   75,   "#702083",
+  "BMI",  "bmi",   "BMI",           2.39,   3.23,    15,   41,   "#F04A22")
 
 category_tracks <- tribble(
   ~name,               ~column,      ~title,                   ~inner, ~outer,
-  "Gender",            "gender",     "Gender\n(%)",            1.88,   2.30,
-  "Ethnicity",         "ethnicity",  "Ethnicity\n(%)",         1.39,   1.81,
-  "Insulin response",  "iris",       "Insulin\nresponse (%)",  0.90,   1.32)
+  "Insulin response",  "iris",       "Insulin\nresponse (%)",  0.90,   1.32,
+  "Ethnicity",         "ethnicity",  "Ethnicity (%)",          1.39,   1.81,
+  "Gender",            "gender",     "Gender (%)",             1.88,   2.30)
 
 category_colors <- c(
   Female = "#F33010", Male = "#E2BD6E",
   Asian = "#046C9B", Black = "#A8D3D4", Caucasian = "#E5C39C", Hispanics = "#CA9143",
   Unknown = "#BDBDBD", IS = "#F21901", IR = "#3C99B0")
+
+# Stacking order inside each proportion bar (bottom-to-top) and legend order
+bar_order <- list(
+  iris = c("Unknown", "IS", "IR"),
+  ethnicity = c("Unknown", "Hispanics", "Caucasian", "Black", "Asian"),
+  gender = c("Male", "Female"))
+legend_order <- list(
+  iris = c("IS", "IR"),
+  ethnicity = c("Asian", "Black", "Caucasian", "Hispanics"),
+  gender = c("Female", "Male"))
+
+# Display names for short category codes, and the tick values of the axes
+legend_labels <- c(IS = "Insulin sensitivity", IR = "Insulin resistance")
+tick_values <- list(Age = c(21, 51, 75), BMI = c(15, 30, 41))
 ```
 
 ## Visualization
@@ -76,167 +94,196 @@ category_colors <- c(
 The complete figure is produced by one reusable function, `circular_annotation_plot()`. It converts every sample sector into ordinary cartesian coordinates (so the ring and the summary panels live in a single ggplot2 coordinate system and align exactly), then stacks the category bands, the lollipop tracks, the sample labels, the circular ticks and the gap panels.
 
 ```{r define function, message=FALSE}
-# ─────────────────────────────────────────────────────────────────────────────
-# circular_annotation_plot(): ring of samples + multi-track annotation + gap panels
-# ─────────────────────────────────────────────────────────────────────────────
 circular_annotation_plot <- function(data, id_col, sort_col,
                                      numeric_tracks, category_tracks,
-                                     category_colors = c(),
-                                     gap_degrees = 90, show_summary = TRUE,
-                                     id_size = 2.1, base_size = 10) {
-  data <- data |> arrange(.data[[sort_col]])
-  n <- nrow(data)
-  span <- (360 - gap_degrees) * pi / 180
-  step <- span / n
+                                     category_order = list(), legend_order = list(),
+                                     category_colors = c(), legend_labels = c(),
+                                     tick_values = list(), panel_height = 2.95,
+                                     gap_degrees = 90, font_scale = 1,
+                                     show_summary = TRUE, show_unknown = FALSE) {
+  for (column in category_tracks$column) {
+    data[[column]] <- coalesce(na_if(as.character(data[[column]]), ""), "Unknown")
+  }
   data <- data |>
+    arrange(.data[[sort_col]]) |>
     mutate(.i = row_number(),
-           .start = pi / 2 - (.i - 1) * step,
-           .end = pi / 2 - .i * step,
+           .step = (360 - gap_degrees) * pi / 180 / n(),
+           .start = pi / 2 - (.i - 1) * .step,
+           .end = pi / 2 - .i * .step,
            .angle = (.start + .end) / 2)
 
-  # default palette for categories missing a color
-  auto_palette <- c("#046C9B", "#E5C39C", "#CA9143", "#A8D3D4", "#F33010",
-                    "#E2BD6E", "#3C99B0", "#F21901", "#7A5195", "#EF5675", "#FFA600")
-
-  # Resolve colors for a vector of category values: explicit entries from
-  # `category_colors`; remaining categories draw from palette colors not
-  # already used, so auto-assigned colors never collide with explicit ones.
-  resolve_colors <- function(values) {
-    values <- as.character(values)
-    fill <- category_colors[values]
-    missing <- is.na(fill)
-    if (any(missing)) {
-      lv <- setdiff(unique(values[missing]), names(category_colors))
-      pool <- setdiff(auto_palette, unname(category_colors))
-      extra <- rep_len(pool, length(lv))
-      names(extra) <- lv
-      fill[missing] <- extra[values[missing]]
-    }
-    fill
-  }
-
-  # -- sector polygons for one category track ---------------------------------
-  band_polygons <- function(column, inner, outer) {
-    fill <- resolve_colors(data[[column]])
-    map_dfr(seq_len(n), function(k) {
-      a <- seq(data$.start[k], data$.end[k], length.out = 8)
-      tibble(.group = k,
+  sector_polygons <- function(inner, outer) {
+    map_dfr(seq_len(nrow(data)), function(i) {
+      a <- seq(data$.start[i], data$.end[i], length.out = 10)
+      tibble(.i = i,
              x = c(outer * cos(a), inner * cos(rev(a))),
-             y = c(outer * sin(a), inner * sin(rev(a))),
-             fill = fill[k])
+             y = c(outer * sin(a), inner * sin(rev(a))))
     })
   }
+  numeric_rings <- map_dfr(seq_len(nrow(numeric_tracks)), function(i) {
+    tb <- numeric_tracks[i, ]
+    sector_polygons(tb$inner, tb$outer) |> mutate(.track = tb$name)
+  })
+  category_rings <- map_dfr(seq_len(nrow(category_tracks)), function(i) {
+    tb <- category_tracks[i, ]
+    sector_polygons(tb$inner, tb$outer) |>
+      mutate(.track = tb$name, value = data[[tb$column]][.i])
+  })
 
-  value_radius <- function(v, minv, maxv, inner, outer) {
-    inner + (v - minv) / (maxv - minv) * (outer - inner)
+  all_values <- unique(category_rings$value)
+  missing_values <- setdiff(all_values, names(category_colors))
+  if (length(missing_values) > 0) {
+    category_colors <- c(category_colors,
+      rlang::set_names(scales::hue_pal()(length(missing_values)), missing_values))
   }
+  key_colors <- category_rings |>
+    distinct(.track, value) |>
+    mutate(key = paste(.track, value, sep = "::"), color = unname(category_colors[value]))
+  key_pal <- rlang::set_names(key_colors$color, key_colors$key)
 
-  # -- lollipop segments for one numeric track --------------------------------
-  lollipop <- function(column, minv, maxv, inner, outer) {
-    r <- value_radius(data[[column]], minv, maxv, inner, outer)
-    tibble(x0 = cos(data$.angle) * inner, y0 = sin(data$.angle) * inner,
-           x1 = cos(data$.angle) * r,   y1 = sin(data$.angle) * r)
+  lollipops <- map_dfr(seq_len(nrow(numeric_tracks)), function(i) {
+    tb <- numeric_tracks[i, ]
+    r <- scales::rescale(data[[tb$column]], to = c(tb$inner, tb$outer), from = c(tb$min, tb$max))
+    tibble(.track = tb$name,
+           x0 = tb$inner * cos(data$.angle), y0 = tb$inner * sin(data$.angle),
+           x1 = r * cos(data$.angle), y1 = r * sin(data$.angle))
+  })
+
+  # gap summary: numeric points/quartiles
+  numeric_points <- map_dfr(seq_len(nrow(numeric_tracks)), function(i) {
+    tb <- numeric_tracks[i, ]
+    tibble(.track = tb$name, x = -(tb$inner + tb$outer) / 2,
+           y = scales::rescale(data[[tb$column]], to = c(0, panel_height), from = c(tb$min, tb$max)))
+  })
+  quartiles <- map_dfr(seq_len(nrow(numeric_tracks)), function(i) {
+    tb <- numeric_tracks[i, ]
+    q <- quantile(data[[tb$column]], c(.25, .5, .75))
+    tibble(x = rep(-(tb$inner + tb$outer) / 2, 3),
+           y = scales::rescale(q, to = c(0, panel_height), from = c(tb$min, tb$max)),
+           label = sprintf("%.1f", q))
+  })
+  panel_boxes <- numeric_tracks |>
+    transmute(xmin = -outer, xmax = -inner, ymin = 0, ymax = panel_height, .track = name)
+
+  bars <- map_dfr(seq_len(nrow(category_tracks)), function(i) {
+    tb <- category_tracks[i, ]
+    observed <- unique(data[[tb$column]])
+    preferred <- category_order[[tb$column]]
+    if (is.null(preferred)) preferred <- character()
+    lv <- c(preferred[preferred %in% observed], sort(setdiff(observed, preferred)))
+    tibble(value = factor(data[[tb$column]], levels = lv)) |>
+      count(value, .drop = FALSE) |>
+      mutate(fraction = n / sum(n),
+             ymin = lag(cumsum(fraction * panel_height), default = 0),
+             ymax = cumsum(fraction * panel_height),
+             xmin = -tb$outer, xmax = -tb$inner,
+             x = -(tb$inner + tb$outer) / 2, y = (ymin + ymax) / 2,
+             .track = tb$name, key = paste(.track, value, sep = "::"))
+  })
+
+  outer_radius <- max(numeric_tracks$outer, category_tracks$outer) + 0.21
+  sample_labels <- data |>
+    mutate(x = outer_radius * cos(.angle), y = outer_radius * sin(.angle),
+           text_angle = .angle * 180 / pi,
+           flip = text_angle < -90,
+           text_angle = if_else(flip, text_angle + 180, text_angle),
+           hjust = if_else(flip, 1, 0))
+
+  panel_titles <- bind_rows(
+    numeric_tracks |> transmute(x = -(inner + outer) / 2, y = panel_height + .22,
+                                label = title, angle = 0, hjust = .5),
+    if (show_summary) category_tracks |> transmute(x = -outer, y = panel_height + .10,
+                                label = title, angle = 50, hjust = 0))
+
+  axis_labels <- map_dfr(seq_len(nrow(numeric_tracks)), function(i) {
+    tb <- numeric_tracks[i, ]
+    v <- tick_values[[tb$name]]
+    if (is.null(v)) v <- round(seq(tb$min, tb$max, length.out = 3))
+    tibble(label = v, y = scales::rescale(v, to = c(tb$inner, tb$outer), from = c(tb$min, tb$max)))
+  })
+  axis_lines <- numeric_tracks |> transmute(x = 0, xend = 0, y = inner, yend = outer)
+
+  # legend table: one row per category track (header + items + spacers)
+  legend_items <- map_dfr(seq_len(nrow(category_tracks)), function(i) {
+    tb <- category_tracks[i, ]
+    observed <- unique(data[[tb$column]])
+    preferred <- legend_order[[tb$column]]
+    if (is.null(preferred)) preferred <- character()
+    ord <- c(preferred[preferred %in% observed], sort(setdiff(observed, preferred)))
+    tibble(.track = tb$name, .track_no = i, value = ord,
+           key = paste(.track, ord, sep = "::"))
+  })
+  if (!show_unknown) legend_items <- filter(legend_items, value != "Unknown")
+  legend_items <- legend_items |> mutate(label = value)
+  if (length(legend_labels) > 0) {
+    hit <- legend_items$value %in% names(legend_labels)
+    legend_items$label[hit] <- unname(legend_labels[legend_items$value[hit]])
   }
+  legend_cols <- max(count(legend_items, .track_no)$n) + 1
+  legend_table <- map_dfr(seq_len(nrow(category_tracks)), function(i) {
+    tb <- category_tracks[i, ]
+    items <- filter(legend_items, .track_no == i) |>
+      transmute(.track_no, .track, value, key, label)
+    hdr <- tibble(.track_no = i, .track = tb$name, value = NA_character_,
+                  key = paste0(".h", i), label = tb$name)
+    pad <- tibble(.track_no = rep(i, legend_cols - nrow(items) - 1),
+                  .track = tb$name, value = NA_character_,
+                  key = paste0(".s", i, "_", seq_len(legend_cols - nrow(items) - 1)), label = "")
+    bind_rows(hdr, items, pad)
+  })
+  transparent <- legend_table$key[is.na(legend_table$value)]
+  legend_pal <- c(key_pal, rlang::set_names(rep("#00000000", length(transparent)), transparent))
 
-  # -- gap panels -------------------------------------------------------------
-  slot_x <- function(j, numeric = TRUE) {
-    if (numeric) -5.05 + (j - 1) * 1.02
-    else -5.05 + nrow(numeric_tracks) * 1.02 + (j - 1) * 0.86
-  }
-  # boxplot (computed in value space, mapped onto the ring radius)
-  box_stats <- map_dfr(seq_len(nrow(numeric_tracks)), function(j) {
-    tb <- numeric_tracks[j, ]; v <- data[[tb$column]]
-    q <- quantile(v, c(.25, .5, .75)); r <- function(val) value_radius(val, tb$min, tb$max, tb$inner, tb$outer)
-    tibble(x = slot_x(j), ymin = r(min(v)), ymax = r(max(v)), yq1 = r(q[1]), yq2 = r(q[2]), yq3 = r(q[3]),
-           med = format(round(q[2], 1), nsmall = 1))
-  })
-  # deterministic swarm offsets (alternating around the slot)
-  swarm <- map_dfr(seq_len(nrow(numeric_tracks)), function(j) {
-    tb <- numeric_tracks[j, ]; v <- data[[tb$column]]
-    o <- order(v); k <- integer(length(v)); k[o] <- seq_along(v)
-    off <- ceiling(k / 2) * ifelse(k %% 2 == 1, -1, 1) * 0.008
-    tibble(x = slot_x(j) + off, y = value_radius(v, tb$min, tb$max, tb$inner, tb$outer),
-           color = tb$color, track = tb$name)
-  })
-  # stacked proportion bars
-  bars <- map_dfr(seq_len(nrow(category_tracks)), function(j) {
-    tb <- category_tracks[j, ]; f <- as.character(data[[tb$column]])
-    tab <- sort(table(f), decreasing = TRUE); frac <- as.numeric(tab) / sum(tab)
-    fill <- resolve_colors(names(tab))
-    y0 <- tb$inner + (tb$outer - tb$inner) * c(0, head(cumsum(frac), -1))
-    y1 <- tb$inner + (tb$outer - tb$inner) * cumsum(frac)
-    tibble(x = slot_x(j, numeric = FALSE), y0 = y0, y1 = y1,
-           pct = round(frac * 100, 1), fill = fill, cat = names(tab))
-  })
-  # circular ticks for numeric tracks
-  tick_values <- numeric_tracks |> filter(!is.na(.data$ticks))
-  ticks <- map_dfr(seq_len(nrow(tick_values)), function(j) {
-    tb <- tick_values[j, ]
-    v <- as.numeric(strsplit(tb$ticks, ",")[[1]])
-    r <- value_radius(v, tb$min, tb$max, tb$inner, tb$outer)
-    ang <- 1.64 + 0.15 * (j - 1)   # stagger ticks per track along the gap edge
-    tibble(value = v, x = cos(ang) * r, y = sin(ang) * r)
-  })
-
-  # -- assemble ---------------------------------------------------------------
   p <- ggplot() +
-    # guide circles at numeric track boundaries
-    geom_hline(yintercept = 0, linewidth = 0) +
-    lapply(unique(c(numeric_tracks$inner, numeric_tracks$outer)), function(r) {
-      annotate("path", x = cos(seq(-pi, pi, length.out = 200)) * r, y = sin(seq(-pi, pi, length.out = 200)) * r,
-               color = "grey85", linewidth = 0.25)
-    }) +
-    map(seq_len(nrow(category_tracks)), function(j) {
-      tb <- category_tracks[j, ]
-      geom_polygon(data = band_polygons(tb$column, tb$inner, tb$outer),
-                   aes(x, y, group = .group, fill = fill), color = "white", linewidth = 0.12)
-    }) +
-    map(seq_len(nrow(numeric_tracks)), function(j) {
-      tb <- numeric_tracks[j, ]
-      geom_segment(data = lollipop(tb$column, tb$min, tb$max, tb$inner, tb$outer),
-                   aes(x0, y0, xend = x1, yend = y1), color = "grey45", linewidth = 0.2)
-    }) +
-    map(seq_len(nrow(numeric_tracks)), function(j) {
-      tb <- numeric_tracks[j, ]
-      d <- lollipop(tb$column, tb$min, tb$max, tb$inner, tb$outer)
-      geom_point(data = d, aes(x1, y1), color = tb$color, size = 1.25)
-    }) +
-    scale_fill_identity() +
-    # sample ids
-    geom_text(data = data |> mutate(
-                deg = .angle * 180 / pi,
-                lx = cos(.angle) * (max(category_tracks$outer, numeric_tracks$outer) + 0.16),
-                ly = sin(.angle) * (max(category_tracks$outer, numeric_tracks$outer) + 0.16),
-                rot = ifelse(cos(.angle) >= 0, deg, deg + 180),
-                hj = ifelse(cos(.angle) >= 0, 0, 1)),
-              aes(lx, ly, label = .data[[id_col]], angle = rot, hjust = hj), size = id_size, color = "grey15") +
-    # gap panels
-    { if (show_summary) geom_crossbar(data = box_stats, aes(x, yq2, ymin = yq1, ymax = yq3), width = 0.24, color = "grey20", linewidth = 0.40) } +
-    { if (show_summary) geom_segment(data = box_stats, aes(x, ymin, xend = x, yend = ymax), color = "grey20", linewidth = 0.40) } +
-    { if (show_summary) geom_segment(data = box_stats, aes(x - 0.10, ymin, xend = x + 0.10, yend = ymin), color = "grey20", linewidth = 0.40) } +
-    { if (show_summary) geom_segment(data = box_stats, aes(x - 0.10, ymax, xend = x + 0.10, yend = ymax), color = "grey20", linewidth = 0.40) } +
-    { if (show_summary) geom_text(data = box_stats, aes(x, yq2, label = med), size = base_size * 0.22, vjust = -0.55) } +
-    { if (show_summary) geom_point(data = swarm, aes(x, y), color = swarm$color, size = 0.75) } +
-    { if (show_summary) geom_rect(data = bars, aes(xmin = x - 0.24, xmax = x + 0.24, ymin = y0, ymax = y1, fill = fill),
-              color = "white", linewidth = 0.35) } +
-    { if (show_summary) geom_text(data = bars |> filter(pct >= 6), aes(x, (y0 + y1) / 2, label = pct), size = base_size * 0.2) } +
-    # panel titles
-    { if (show_summary) geom_text(data = numeric_tracks |> mutate(x = slot_x(seq_len(n()), TRUE), y = max(numeric_tracks$outer) + 0.22),
-              aes(x, y, label = title), size = base_size * 0.24, vjust = 0, lineheight = 0.9) } +
-    { if (show_summary) geom_text(data = category_tracks |> mutate(x = slot_x(seq_len(n()), FALSE), y = max(numeric_tracks$outer) + 0.22),
-              aes(x, y, label = title), size = base_size * 0.24, vjust = 0, lineheight = 0.9) } +
-    # ticks
-    geom_point(data = ticks, aes(x, y), size = 1.0, color = "grey15") +
-    geom_text(data = ticks, aes(x, y, label = value), size = base_size * 0.21, hjust = 1.2) +
-    coord_fixed(xlim = c(-5.6, 4.9), ylim = c(-5.1, 5.1)) +
-    theme_void(base_size = base_size)
+    if (show_summary) geom_rect(data = panel_boxes, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+        fill = "white", colour = "grey15", linewidth = .52) else NULL
+  p <- p +
+    geom_polygon(data = numeric_rings, aes(x, y, group = interaction(.track, .i)),
+                 fill = "white", colour = "grey15", linewidth = .30) +
+    geom_polygon(data = category_rings, aes(x, y, group = interaction(.track, .i), fill = paste(.track, value, sep = "::")),
+                 colour = "grey15", linewidth = .30) +
+    scale_fill_manual(values = legend_pal,
+                      limits = legend_table$key, breaks = legend_table$key,
+                      labels = legend_table$label, name = NULL, drop = FALSE,
+                      guide = guide_legend(nrow = nrow(category_tracks), byrow = TRUE,
+                                           override.aes = list(colour = NA))) +
+    geom_segment(data = lollipops, aes(x0, y0, xend = x1, yend = y1),
+                 colour = lollipops$.track |> map_chr(~ numeric_tracks$color[numeric_tracks$name == .x]), linewidth = .38) +
+    geom_point(data = lollipops, aes(x1, y1),
+               colour = lollipops$.track |> map_chr(~ numeric_tracks$color[numeric_tracks$name == .x]), size = 1.15) +
+    geom_text(data = sample_labels, aes(x, y, label = .data[[id_col]], angle = text_angle, hjust = hjust),
+              size = 2.5 * font_scale) +
+    if (show_summary) geom_boxplot(data = numeric_points, aes(x, y, group = .track),
+        width = .53, outlier.shape = NA, fill = "white", colour = "grey35", linewidth = .40) else NULL
+  p <- p +
+    { if (show_summary) geom_beeswarm(data = numeric_points, aes(x, y, colour = .track, group = .track),
+                  cex = 0.7, size = 1.15, alpha = .95, show.legend = FALSE) } +
+    scale_colour_manual(values = rlang::set_names(numeric_tracks$color, numeric_tracks$name), guide = "none") +
+    { if (show_summary) geom_label(data = quartiles, aes(x, y, label = label), fill = "grey50", colour = "white",
+               linewidth = 0, size = 2.45 * font_scale) } +
+    { if (show_summary) geom_rect(data = bars, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, fill = key), colour = "grey25", linewidth = .40) } +
+    { if (show_summary) geom_text(data = bars, aes(x, y, label = sprintf("%.1f", 100 * fraction)),
+              colour = "white", fontface = "bold", size = 2.55 * font_scale) } +
+    { if (show_summary) geom_segment(data = axis_lines, aes(x, y, xend = xend, yend = yend), linewidth = .34) } +
+    { if (show_summary) geom_text(data = axis_labels, aes(x = -.07, y, label = label), hjust = 1, size = 2.7 * font_scale) } +
+    { if (show_summary) geom_text(data = panel_titles, aes(x, y, label = label, angle = angle, hjust = hjust),
+              lineheight = .88, size = 4 * font_scale) } +
+    { if (show_summary) annotate("text", x = -max(numeric_tracks$outer) - .51, y = .62, label = "Participant ID",
+             angle = 90, size = 4 * font_scale) } +
+    coord_fixed(xlim = c(-outer_radius - .55, outer_radius + .41),
+                ylim = c(-outer_radius - .31, outer_radius + .28), ratio = 1, clip = "off") +
+    theme_void(base_size = 12 * font_scale) +
+    theme(plot.margin = margin(8, 10, 8, 10), legend.position = "top",
+          legend.justification = "left",
+          legend.text = element_text(size = 11 * font_scale),
+          legend.key.size = grid::unit(.45 * font_scale, "cm"))
   p
 }
 ```
 
 ### 1. Basic Ring
 
-Setting `show_summary = FALSE` draws the ring itself: ordered samples, category bands, value tracks and circular tick marks.
+Setting `show_summary = FALSE` draws only the ring itself: ordered samples, category bands, the lollipop value tracks, the outer sample labels and the category legend.
 
 ```{r}
 #| label: fig-1.1BasicCircular
@@ -255,7 +302,7 @@ p1
 
 ### 2. Summary Panels in the Gap
 
-With the default `show_summary = TRUE`, the gap of the ring is filled with the cohort summary: boxplot with swarm-style points for each continuous track (drawn at the same radial scale as its ring) and 100% stacked proportion bars for each categorical track.
+With the default `show_summary = TRUE`, the gap of the ring is filled with the cohort summary: one white panel per continuous track (boxplot, beeswarm, quartile labels) and one tall 100% stacked proportion bar per categorical track, plus the value axes at the centre line — the full layout shown in the Example figure above.
 
 ```{r}
 #| label: fig-1.2FullCircular
@@ -264,11 +311,13 @@ With the default `show_summary = TRUE`, the gap of the ring is filled with the c
 #| warning: false
 #| message: false
 #| fig-width: 10.4
-#| fig-height: 10.8
+#| fig-height: 11.2
 
 p2 <- circular_annotation_plot(dat, id_col = "id", sort_col = "age",
   numeric_tracks = numeric_tracks, category_tracks = category_tracks,
-  category_colors = category_colors)
+  category_order = bar_order, legend_order = legend_order,
+  category_colors = category_colors, legend_labels = legend_labels,
+  tick_values = tick_values, font_scale = 1.25)
 p2
 ```
 
@@ -276,10 +325,12 @@ p2
 **Key Parameters: **
 
 - `sort_col`: the column that defines the sample order around the ring (sorted ascending).
+- `panel_height`: uniform height of every summary panel in the gap (default `2.95`).
 - `gap_degrees`: angular size of the gap (default 90°) that hosts the summary panels.
-- `show_summary`: draw the boxplot/swarm/proportion panels (`TRUE`) or the bare ring (`FALSE`).
-- `category_colors`: named color vector; unlisted categories are colored automatically.
-- `id_size` / `base_size`: label and text scaling.
+- `tick_values`: named list of axis tick values, e.g. `list(Age = c(21, 51, 75))`.
+- `category_order` / `legend_order`: stacking order (bottom-to-top) inside each proportion bar and the order of legend entries.
+- `legend_labels`: display names for short category codes (e.g. `IS` → "Insulin sensitivity"); `show_unknown` hides the `Unknown` class from the legend.
+- `show_summary` / `font_scale`: draw the gap panels (`TRUE`) or the bare ring (`FALSE`); global text scaling.
 :::
 
 ### 3. Customization
@@ -293,11 +344,13 @@ The track tables and the function parameters make the figure easy to re-target: 
 #| warning: false
 #| message: false
 #| fig-width: 10.4
-#| fig-height: 10.8
+#| fig-height: 11.2
 
 p3 <- circular_annotation_plot(dat, id_col = "id", sort_col = "bmi",
   numeric_tracks = numeric_tracks, category_tracks = category_tracks,
-  category_colors = category_colors, gap_degrees = 120)
+  category_order = bar_order, legend_order = legend_order,
+  category_colors = category_colors, legend_labels = legend_labels,
+  tick_values = tick_values, font_scale = 1.25, gap_degrees = 120)
 p3
 ```
 
