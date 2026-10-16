@@ -55,7 +55,14 @@ skill package above is not the only option — Bizard ships an MCP server,
 adaptation guidance, citation metadata, and template-checked contribution — all
 from a CI-generated snapshot of the same sources as this skill, so they never drift.
 
-Quick start with Claude Code:
+Quick start with Claude Code — no local install needed, connect to the public
+hosted instance run by the Bizard team (may be faster from mainland China):
+
+```bash
+claude mcp add --transport http bizard http://biotree.top:38123/bizard-mcp/mcp
+```
+
+Or run it locally:
 
 ```bash
 claude mcp add bizard -- npx @openbiox/bizard-mcp
@@ -63,7 +70,8 @@ claude mcp add bizard -- npx @openbiox/bizard-mcp
 
 Any other MCP client works too, over stdio (`npx @openbiox/bizard-mcp`) or
 Streamable HTTP (`npx @openbiox/bizard-mcp --http`). Full tool list,
-configuration, and privacy notes: <https://github.com/openbiox/Bizard/tree/main/mcp>
+configuration, and privacy notes:
+<https://openbiox.github.io/Bizard/Skills.html#mcp-docs>
 
 ## Learn More
 
