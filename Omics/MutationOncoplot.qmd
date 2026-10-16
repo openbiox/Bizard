@@ -119,7 +119,7 @@ alter_fun <- list(
 
 The matrix above is the native `ComplexHeatmap` input. The `maftools` workflow instead consumes a **MAF-style table** — one row per variant, with the gene, the sample barcode and the `Variant_Classification` (e.g. `Missense_Mutation`, `Nonsense_Mutation`, `Frame_Shift_Del`). Two details matter when converting:
 
-- **Multi_Hit is derived, not stored.** Our simulated table uses an explicit `Multi_Hit` marker for a single gene-sample cell, but `read.maf()` silently *drops* rows whose `Variant_Classification` it does not recognise. We therefore expand every `Multi_Hit` cell back into two individual events (`Missense` + `Nonsense`); maftools then re-derives the multi-hit cells itself — which is also how real MAF files behave.
+- **Multi_Hit is derived, not stored.** Our simulated table marks the five gene-sample cells that carry two events with the explicit class `Multi_Hit`, but `read.maf()` does not know it as a mutation class: rows whose `Variant_Classification` is outside its vocabulary are moved to the silent set (`maf@maf.silent`) and excluded from the plots — and a file consisting only of such rows fails with *"No non-synonymous mutations found"*. We therefore expand every `Multi_Hit` cell back into two individual events (`Missense` + `Nonsense`); maftools then re-derives the multi-hit cells itself — which is also how real MAF files behave (one row per variant).
 - **Coordinates and alleles** are required by the MAF schema. For plotting they only need to be well-formed; real files carry the actual genomic positions.
 
 ```{r convert maf, message=FALSE}
@@ -267,7 +267,7 @@ Figure 3 reveals the same cohort structure with a functional reading: Subtype A 
 
 ### 4. maftools Oncoplot
 
-With the cohort available as a MAF object (`maf`), `maftools::oncoplot()` draws the classic cancer-genomics landscape: per-sample mutation-burden bars on top, per-gene frequency and variant-class breakdown on the right, automatic percentage labels and its own colour vocabulary. `sortByMutation = TRUE` orders samples by the number of mutated genes, giving the familiar waterfall.
+With the cohort available as a MAF object (`maf`), `maftools::oncoplot()` draws the classic cancer-genomics landscape: per-sample mutation-burden bars on top, per-gene frequency and variant-class breakdown on the right, automatic percentage labels and its own colour vocabulary. `sortByMutation = TRUE` arranges the samples into the familiar waterfall order (they are ordered on the binarised mutation matrix).
 
 ```{r}
 #| label: fig-1.4MaftoolsOncoplot
@@ -286,7 +286,7 @@ oncoplot(maf = maf, top = 20, sortByMutation = TRUE)
 
 - `top`: how many of the most frequently mutated genes to draw (here all 20).
 - `sortByMutation`: order samples by mutation count (`TRUE`) or keep file order (`FALSE`).
-- Samples without a single alteration are not shown: the title counts the 53 of 60 samples that carry at least one mutation.
+- Samples without a single alteration are not shown: maftools only knows the samples present in the MAF, so the subtitle reads "Altered in 53 (100%) of 53 samples" — the 53 of the 60 cohort samples that carry at least one mutation.
 :::
 
 ### 5. maftools with Clinical Annotation
@@ -324,7 +324,7 @@ Both routes describe the same cohort — `TP53` altered in 40% of the mutated sa
 
 -   **Cohort characterization**: first-line summary of a cancer genomics study, usually split by subtype, stage or treatment arm.
 -   **Driver discovery**: recurrently altered genes and their co-occurrence or mutual exclusivity patterns.
--   **Mutation burden**: the top barplot counts the mutated genes of every sample.
+-   **Mutation burden**: the top barplot summarises the per-sample burden — the ComplexHeatmap route counts mutated genes, the maftools route counts individual variants (they differ only for multi-hit samples).
 -   Both engines shown above accept real cohorts: `ComplexHeatmap` composes with any heatmap panel, while `maftools::read.maf()` ingests MAF files from your variant caller directly — it adds `clinicalData` annotation tracks (sections 4–5) and unlocks the wider maftools toolkit (mutual exclusivity, TiTv, driver analysis) downstream.
 
 ## Reference

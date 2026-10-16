@@ -119,7 +119,7 @@ alter_fun <- list(
 
 上方的矩阵是 `ComplexHeatmap` 的原生输入；`maftools` 工作流则消费 **MAF 风格表格**——每行一个变异，包含基因、样本条码与 `Variant_Classification`（如 `Missense_Mutation`、`Nonsense_Mutation`、`Frame_Shift_Del`）。转换时有两个关键细节：
 
-- **Multi_Hit 是推导出来的，而非存储值。** 我们的模拟表用显式 `Multi_Hit` 标记同一个基因-样本格；但 `read.maf()` 会静默*丢弃*它无法识别的 `Variant_Classification` 行。因此我们把每个 `Multi_Hit` 格展开为两条独立事件（`Missense` + `Nonsense`），再由 maftools 自行推导出 multi-hit 细胞——真实 MAF 文件的行为同样如此。
+- **Multi_Hit 是推导出来的，而非存储值。** 我们的模拟表用显式类别 `Multi_Hit` 标记 5 个携带两次事件的基因-样本格，但 `read.maf()` 并不把它当作突变类别：凡 `Variant_Classification` 不在其词表内的行都会被移入 silent 集合（`maf@maf.silent`）并排除出图形——如果文件只由这类行组成，还会直接报错 *"No non-synonymous mutations found"*。因此我们把每个 `Multi_Hit` 格展开为两条独立事件（`Missense` + `Nonsense`），再由 maftools 自行推导出 multi-hit 细胞——真实 MAF 文件的行为同样如此（每行一个变异）。
 - **坐标与等位基因**是 MAF 模式的必需列。绘图时只需格式合法；真实文件携带实际基因组位置。
 
 ```{r convert maf, message=FALSE}
@@ -267,7 +267,7 @@ draw(p3)
 
 ### 4. maftools 经典 oncoplot
 
-队列此时已作为 MAF 对象（`maf`）就绪，`maftools::oncoplot()` 即可绘制经典的肿瘤基因组学全景图：顶部是每个样本的突变负荷条，右侧是基因频率与变异类型构成，自动百分比标签与 maftools 自带的配色体系。`sortByMutation = TRUE` 按突变基因数排序样本，呈现熟悉的瀑布形态。
+队列此时已作为 MAF 对象（`maf`）就绪，`maftools::oncoplot()` 即可绘制经典的肿瘤基因组学全景图：顶部是每个样本的突变负荷条，右侧是基因频率与变异类型构成，自动百分比标签与 maftools 自带的配色体系。`sortByMutation = TRUE` 把样本排成熟悉的瀑布形态（在二值化突变矩阵上排序）。
 
 ```{r}
 #| label: fig-1.4MaftoolsOncoplot
@@ -286,7 +286,7 @@ oncoplot(maf = maf, top = 20, sortByMutation = TRUE)
 
 - `top`：绘制突变频率最高的前多少个基因（此处为全部 20 个）。
 - `sortByMutation`：按突变数排序样本（`TRUE`）或保持文件顺序（`FALSE`）。
-- 完全没有突变的样本不会显示：标题统计的是 60 个样本中携带至少一个突变的 53 个。
+- 完全没有突变的样本不会显示：maftools 只知道 MAF 中出现的样本，因此副标题显示 "Altered in 53 (100%) of 53 samples"——即 60 个队列样本中携带至少一个突变的 53 个。
 :::
 
 ### 5. maftools 临床注释版
@@ -324,7 +324,7 @@ oncoplot(maf = maf, top = 20,
 
 -   **队列刻画**：肿瘤基因组学研究的一线总结图，通常按亚型、分期或治疗臂拆分。
 -   **驱动基因发现**：高频突变基因及其共现或互斥模式。
--   **突变负荷**：顶部条形图统计每个样本的突变基因数。
+-   **突变负荷**：顶部条形图汇总每个样本的负荷——ComplexHeatmap 路线统计突变基因数，maftools 路线统计独立变异数（仅在 multi-hit 样本上有差异）。
 -   上文展示的两套引擎均可用于真实队列：`ComplexHeatmap` 能与任意热图面板组合；`maftools::read.maf()` 则直接读取变异检测流程输出的 MAF 文件——支持 `clinicalData` 注释轨道（第 4–5 节），并解锁 maftools 工具链的后续分析（互斥性、TiTv、驱动基因分析）。
 
 ## 参考文献
