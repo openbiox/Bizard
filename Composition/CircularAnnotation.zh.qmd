@@ -1,0 +1,305 @@
+---
+title: "环形多轨道样本注释图"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** ."
+---
+
+环形多轨道样本注释图把队列中的每个样本排成圆环上的一个扇区：每个扇区在外缘有一个样本标签，同心圆环轨道编码不同变量（连续变量以棒棒糖轨道呈现、圆点半径表示数值大小，分类变量以彩色色带呈现），圆环的缺口处安放紧凑的汇总面板——连续轨道对应箱线图加蜂群点，分类轨道对应 100% 堆叠比例柱——并与圆环共用同一半径标尺以严格对齐。它专为需要同时展示大量样本与多变量信息的队列图而设计（参考图展示了 108 名纵向多组学队列参与者），个体层面的模式、群体构成与总体分布可在一瞥之间同读。本教程复现《顶刊图社》系列（第094期，复现自 Shen 等发表于 *Nature Aging* 2024 的图）介绍的图表类型，见文末参考文献。
+
+## 示例
+
+![](../images/Composition/CircularAnnotation_demo.png){fig-alt="CircularAnnotation DEMO" fig-align="center" width="65%"}
+
+这个示例展示了一个模拟的 108 人队列。样本按年龄沿圆环排序；外侧两条棒棒糖轨道分别展示年龄与 BMI（圆点半径 = 数值，并附环形刻度），内侧三条色带依次编码胰岛素反应、族裔与性别。左上方缺口处是汇总面板：年龄与 BMI 的箱线图 + 蜂群图（与其轨道共用半径标尺，因此箱体中线恰好落在圆环对应的半径上），以及三条分类变量的 100% 堆叠比例柱（含百分比标签）。
+
+## 环境配置
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`tidyverse`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Installing necessary packages
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+  install.packages("tidyverse")
+}
+
+# Load packages
+library(tidyverse)
+```
+
+## 数据准备
+
+示例模拟了一个与参考图规模相当的队列（108 名参与者），使教程无需外部数据即可运行。每行一名参与者；`age` 与 `bmi` 为连续变量，`iris`、`ethnicity` 与 `gender` 为分类变量。
+
+```{r simulate data, message=FALSE}
+set.seed(2026)
+n <- 108
+dat <- tibble(
+  id = sprintf("P%03d", 1:n),
+  age = round(pmin(pmax(rnorm(n, 56, 12), 21), 75)),
+  bmi = round(pmin(pmax(rnorm(n, 28, 4), 15), 41), 1),
+  iris = sample(c("IS", "IR", "Unknown"), n, TRUE, prob = c(.52, .33, .15)),
+  ethnicity = sample(c("Asian", "Black", "Caucasian", "Hispanics", "Unknown"), n, TRUE,
+                     prob = c(.20, .07, .66, .04, .03)),
+  gender = sample(c("Female", "Male"), n, TRUE, prob = c(.52, .48))
+)
+
+head(dat)
+```
+
+轨道布局以声明式方式描述。每条**连续轨道**定义其列名、占用的半径区间（`inner`/`outer`）、映射到该区间的数值范围（`min`/`max`）、轨道颜色与可选刻度值。每条**分类轨道**定义其列名与半径区间；颜色（及顺序）通过命名向量提供，未列出的分类会被自动配色。
+
+```{r track settings, message=FALSE}
+numeric_tracks <- tribble(
+  ~name,  ~column, ~title,          ~inner, ~outer, ~min, ~max, ~color,    ~ticks,
+  "Age",  "age",   "Age\n(years)",  3.32,   4.16,    21,   75,   "#702083", "21,51,75",
+  "BMI",  "bmi",   "BMI",           2.39,   3.23,    15,   41,   "#F04A22", "15,30,41")
+
+category_tracks <- tribble(
+  ~name,               ~column,      ~title,                   ~inner, ~outer,
+  "Gender",            "gender",     "Gender\n(%)",            1.88,   2.30,
+  "Ethnicity",         "ethnicity",  "Ethnicity\n(%)",         1.39,   1.81,
+  "Insulin response",  "iris",       "Insulin\nresponse (%)",  0.90,   1.32)
+
+category_colors <- c(
+  Female = "#F33010", Male = "#E2BD6E",
+  Asian = "#046C9B", Black = "#A8D3D4", Caucasian = "#E5C39C", Hispanics = "#CA9143",
+  Unknown = "#BDBDBD", IS = "#F21901", IR = "#3C99B0")
+```
+
+## 可视化
+
+完整图形由一个可复用函数 `circular_annotation_plot()` 一次调用完成。它把每个样本扇区转换为普通笛卡尔坐标（圆环与汇总面板因此处于同一 ggplot2 坐标系中并严格对齐），随后依次叠加分类色带、棒棒糖轨道、样本标签、环形刻度与缺口面板。
+
+```{r define function, message=FALSE}
+# ─────────────────────────────────────────────────────────────────────────────
+# circular_annotation_plot(): ring of samples + multi-track annotation + gap panels
+# ─────────────────────────────────────────────────────────────────────────────
+circular_annotation_plot <- function(data, id_col, sort_col,
+                                     numeric_tracks, category_tracks,
+                                     category_colors = c(),
+                                     gap_degrees = 90, show_summary = TRUE,
+                                     id_size = 2.1, base_size = 10) {
+  data <- data |> arrange(.data[[sort_col]])
+  n <- nrow(data)
+  span <- (360 - gap_degrees) * pi / 180
+  step <- span / n
+  data <- data |>
+    mutate(.i = row_number(),
+           .start = pi / 2 - (.i - 1) * step,
+           .end = pi / 2 - .i * step,
+           .angle = (.start + .end) / 2)
+
+  # default palette for categories missing a color
+  auto_palette <- c("#046C9B", "#E5C39C", "#CA9143", "#A8D3D4", "#F33010",
+                    "#E2BD6E", "#3C99B0", "#F21901", "#7A5195", "#EF5675", "#FFA600")
+
+  # -- sector polygons for one category track ---------------------------------
+  band_polygons <- function(column, inner, outer) {
+    fill <- category_colors[as.character(data[[column]])]
+    missing <- is.na(fill)
+    if (any(missing)) {
+      lv <- unique(as.character(data[[column]][missing]))
+      extra <- auto_palette[seq_along(lv)]
+      names(extra) <- lv
+      fill[missing] <- extra[as.character(data[[column]][missing])]
+    }
+    map_dfr(seq_len(n), function(k) {
+      a <- seq(data$.start[k], data$.end[k], length.out = 8)
+      tibble(.group = k,
+             x = c(outer * cos(a), inner * cos(rev(a))),
+             y = c(outer * sin(a), inner * sin(rev(a))),
+             fill = fill[k])
+    })
+  }
+
+  value_radius <- function(v, minv, maxv, inner, outer) {
+    inner + (v - minv) / (maxv - minv) * (outer - inner)
+  }
+
+  # -- lollipop segments for one numeric track --------------------------------
+  lollipop <- function(column, minv, maxv, inner, outer) {
+    r <- value_radius(data[[column]], minv, maxv, inner, outer)
+    tibble(x0 = cos(data$.angle) * inner, y0 = sin(data$.angle) * inner,
+           x1 = cos(data$.angle) * r,   y1 = sin(data$.angle) * r)
+  }
+
+  # -- gap panels -------------------------------------------------------------
+  slot_x <- function(j, numeric = TRUE) {
+    if (numeric) -5.05 + (j - 1) * 1.02
+    else -5.05 + nrow(numeric_tracks) * 1.02 + (j - 1) * 0.86
+  }
+  # boxplot (computed in value space, mapped onto the ring radius)
+  box_stats <- map_dfr(seq_len(nrow(numeric_tracks)), function(j) {
+    tb <- numeric_tracks[j, ]; v <- data[[tb$column]]
+    q <- quantile(v, c(.25, .5, .75)); r <- function(val) value_radius(val, tb$min, tb$max, tb$inner, tb$outer)
+    tibble(x = slot_x(j), ymin = r(min(v)), ymax = r(max(v)), yq1 = r(q[1]), yq2 = r(q[2]), yq3 = r(q[3]),
+           med = format(round(q[2], 1), nsmall = 1))
+  })
+  # deterministic swarm offsets (alternating around the slot)
+  swarm <- map_dfr(seq_len(nrow(numeric_tracks)), function(j) {
+    tb <- numeric_tracks[j, ]; v <- data[[tb$column]]
+    o <- order(v); k <- integer(length(v)); k[o] <- seq_along(v)
+    off <- pmin(ceiling(k / 2), 40) * ifelse(k %% 2 == 1, -1, 1) * 0.008
+    tibble(x = slot_x(j) + off, y = value_radius(v, tb$min, tb$max, tb$inner, tb$outer),
+           color = tb$color, track = tb$name)
+  })
+  # stacked proportion bars
+  bars <- map_dfr(seq_len(nrow(category_tracks)), function(j) {
+    tb <- category_tracks[j, ]; f <- as.character(data[[tb$column]])
+    tab <- sort(table(f), decreasing = TRUE); frac <- as.numeric(tab) / sum(tab)
+    fill <- category_colors[names(tab)]
+    y0 <- tb$inner + (tb$outer - tb$inner) * c(0, head(cumsum(frac), -1))
+    y1 <- tb$inner + (tb$outer - tb$inner) * cumsum(frac)
+    tibble(x = slot_x(j, numeric = FALSE), y0 = y0, y1 = y1,
+           pct = round(frac * 100, 1), fill = fill, cat = names(tab))
+  })
+  # circular ticks for numeric tracks
+  tick_values <- numeric_tracks |> filter(!is.na(.data$ticks))
+  ticks <- map_dfr(seq_len(nrow(tick_values)), function(j) {
+    tb <- tick_values[j, ]
+    v <- as.numeric(strsplit(tb$ticks, ",")[[1]])
+    r <- value_radius(v, tb$min, tb$max, tb$inner, tb$outer)
+    ang <- 1.52 + 0.16 * (j - 1)   # stagger ticks per track along the gap edge
+    tibble(value = v, x = cos(ang) * r, y = sin(ang) * r)
+  })
+
+  # -- assemble ---------------------------------------------------------------
+  p <- ggplot() +
+    # guide circles at numeric track boundaries
+    geom_hline(yintercept = 0, linewidth = 0) +
+    lapply(unique(c(numeric_tracks$inner, numeric_tracks$outer)), function(r) {
+      annotate("path", x = cos(seq(-pi, pi, length.out = 200)) * r, y = sin(seq(-pi, pi, length.out = 200)) * r,
+               color = "grey85", linewidth = 0.25)
+    }) +
+    map(seq_len(nrow(category_tracks)), function(j) {
+      tb <- category_tracks[j, ]
+      geom_polygon(data = band_polygons(tb$column, tb$inner, tb$outer),
+                   aes(x, y, group = .group, fill = fill), color = "white", linewidth = 0.12)
+    }) +
+    map(seq_len(nrow(numeric_tracks)), function(j) {
+      tb <- numeric_tracks[j, ]
+      geom_segment(data = lollipop(tb$column, tb$min, tb$max, tb$inner, tb$outer),
+                   aes(x0, y0, xend = x1, yend = y1), color = "grey45", linewidth = 0.2)
+    }) +
+    map(seq_len(nrow(numeric_tracks)), function(j) {
+      tb <- numeric_tracks[j, ]
+      d <- lollipop(tb$column, tb$min, tb$max, tb$inner, tb$outer)
+      geom_point(data = d, aes(x1, y1), color = tb$color, size = 1.25)
+    }) +
+    scale_fill_identity() +
+    # sample ids
+    geom_text(data = data |> mutate(
+                deg = .angle * 180 / pi,
+                lx = cos(.angle) * (max(category_tracks$outer, numeric_tracks$outer) + 0.16),
+                ly = sin(.angle) * (max(category_tracks$outer, numeric_tracks$outer) + 0.16),
+                rot = ifelse(cos(.angle) >= 0, deg, deg + 180),
+                hj = ifelse(cos(.angle) >= 0, 0, 1)),
+              aes(lx, ly, label = .data[[id_col]], angle = rot, hjust = hj), size = id_size, color = "grey15") +
+    # gap panels
+    { if (show_summary) geom_crossbar(data = box_stats, aes(x, yq2, ymin = yq1, ymax = yq3), width = 0.24, color = "grey20", linewidth = 0.40) } +
+    { if (show_summary) geom_segment(data = box_stats, aes(x, ymin, xend = x, yend = ymax), color = "grey20", linewidth = 0.40) } +
+    { if (show_summary) geom_segment(data = box_stats, aes(x - 0.10, ymin, xend = x + 0.10, yend = ymin), color = "grey20", linewidth = 0.40) } +
+    { if (show_summary) geom_segment(data = box_stats, aes(x - 0.10, ymax, xend = x + 0.10, yend = ymax), color = "grey20", linewidth = 0.40) } +
+    { if (show_summary) geom_text(data = box_stats, aes(x, yq2, label = med), size = base_size * 0.22, vjust = -0.55) } +
+    { if (show_summary) geom_point(data = swarm, aes(x, y), color = swarm$color, size = 0.75) } +
+    { if (show_summary) geom_rect(data = bars, aes(xmin = x - 0.24, xmax = x + 0.24, ymin = y0, ymax = y1, fill = fill),
+              color = "white", linewidth = 0.35) } +
+    { if (show_summary) geom_text(data = bars |> filter(pct >= 6), aes(x, (y0 + y1) / 2, label = pct), size = base_size * 0.2) } +
+    # panel titles
+    geom_text(data = numeric_tracks |> mutate(x = slot_x(seq_len(n()), TRUE), y = max(numeric_tracks$outer) + 0.22),
+              aes(x, y, label = title), size = base_size * 0.24, vjust = 0, lineheight = 0.9) +
+    geom_text(data = category_tracks |> mutate(x = slot_x(seq_len(n()), FALSE), y = max(numeric_tracks$outer) + 0.22),
+              aes(x, y, label = title), size = base_size * 0.24, vjust = 0, lineheight = 0.9) +
+    # ticks
+    geom_point(data = ticks, aes(x, y), size = 1.0, color = "grey15") +
+    geom_text(data = ticks, aes(x, y, label = value), size = base_size * 0.21, hjust = 1.2) +
+    coord_fixed(xlim = c(-5.6, 4.9), ylim = c(-5.1, 5.1)) +
+    theme_void(base_size = base_size)
+  p
+}
+```
+
+### 1. 基础环形图
+
+将 `show_summary = FALSE` 即可只绘制圆环本身：排序后的样本、分类色带、数值轨道与环形刻度。
+
+```{r}
+#| label: fig-1.1BasicCircular
+#| fig-cap: "基础环形多轨道样本注释图"
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 9.5
+
+p1 <- circular_annotation_plot(dat, id_col = "id", sort_col = "age",
+  numeric_tracks = numeric_tracks, category_tracks = category_tracks,
+  category_colors = category_colors, show_summary = FALSE)
+p1
+```
+
+### 2. 缺口处的汇总面板
+
+默认 `show_summary = TRUE` 时，圆环缺口处会填充队列汇总：每条连续轨道对应箱线图 + 蜂群图（与其圆环共用同一半径标尺绘制），每条分类轨道对应 100% 堆叠比例柱。
+
+```{r}
+#| label: fig-1.2FullCircular
+#| fig-cap: "带缺口汇总面板的环形注释图"
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 10.4
+#| fig-height: 10.8
+
+p2 <- circular_annotation_plot(dat, id_col = "id", sort_col = "age",
+  numeric_tracks = numeric_tracks, category_tracks = category_tracks,
+  category_colors = category_colors)
+p2
+```
+
+::: callout-tip
+**关键参数：**
+
+- `sort_col`：决定样本沿圆环排序的列（升序）。
+- `gap_degrees`：承载汇总面板的缺口角大小（默认 90°）。
+- `show_summary`：是否绘制箱线/蜂群/比例面板（`TRUE`）或仅绘制圆环（`FALSE`）。
+- `category_colors`：命名颜色向量；未列出的分类自动配色。
+- `id_size` / `base_size`：标签与文字缩放。
+:::
+
+### 3. 自定义
+
+轨道表与函数参数让图形易于改换目标：这里把同一队列改按 BMI 排序，并把缺口加宽到 120°。
+
+```{r}
+#| label: fig-1.3CustomCircular
+#| fig-cap: "自定义示例：按 BMI 排序、缺口 120°"
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 10.4
+#| fig-height: 10.8
+
+p3 <- circular_annotation_plot(dat, id_col = "id", sort_col = "bmi",
+  numeric_tracks = numeric_tracks, category_tracks = category_tracks,
+  category_colors = category_colors, gap_degrees = 120)
+p3
+```
+
+## 应用场景
+
+-   **队列概览图**：多组学与纵向研究开篇图中的参与者特征（人口统计、临床变量、组学分组）——参考论文正是使用这一布局。
+-   **临床试验臂**：样本按生物标志物或入组顺序排序，轨道编码治疗臂、响应与关键测量值。
+-   **单细胞 / 样本级质控**：以连续轨道展示每个样本的质量指标，缺口处给出总体分布。
+-   声明式轨道表意味着新增变量只需追加一行；版式引擎（扇区角度、半径映射、面板对齐）保持不变。
+
+## 参考文献
+
+\[1\] 顶刊图社 | 第094期：环形多轨道样本注释图. 微信公众号文章. <https://mp.weixin.qq.com/s/E2IZKV3eCi9ufdsGOAeE8g>
+
+\[2\] Shen X, Wang C, Zhou X, et al. Nonlinear dynamics of multi-omics profiles during human aging. Nat Aging. 2024;4(11):1619-1634. doi:10.1038/s43587-024-00692-2
