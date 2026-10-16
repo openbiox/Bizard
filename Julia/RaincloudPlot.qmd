@@ -1,0 +1,113 @@
+---
+title: "Raincloud Plot (Julia)"
+author:
+  - "**[Editor]** [Shixiang Wang](https://github.com/ShixiangWang);"
+  - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed;"
+---
+
+A raincloud plot combines a half violin (the "cloud"), a box plot, and jittered raw points (the "rain") in a single display, showing the full distribution, summary statistics, and individual observations at once. In biomedical research it has become the preferred replacement for bar graphs of grouped continuous data — and `CairoMakie` ships it as a single native recipe, `rainclouds`.
+
+## Example
+
+![](../images/Julia/RaincloudPlot_demo.png){fig-align="center" width="80%"}
+
+## Setup
+
+- System Requirements: Cross-platform (Linux/MacOS/Windows)
+- Programming Language: **Julia**
+- Dependencies: `CairoMakie`, `DataFrames`, `Statistics`
+
+```{julia}
+#| label: packages-setup
+#| output: false
+using CairoMakie
+using DataFrames
+using Statistics
+using Random
+```
+
+## Data Preparation
+
+We simulate flow-cytometry response intensities across three stimulation conditions, with enough cells per condition for the half-violin outlines to be informative.
+
+```{julia}
+#| label: data-prep
+Random.seed!(41)
+
+conditions = ["Unstim", "Anti-CD3", "Anti-CD3/28"]
+n_cells = 250
+# Scaled exponential samples mimic positive fluorescence intensities
+response = vcat(
+    2.0 .- 2.0 .* log.(rand(n_cells)),
+    2.5 .- 2.5 .* log.(rand(n_cells)),
+    3.5 .- 3.5 .* log.(rand(n_cells)),
+)
+df = DataFrame(Condition = repeat(conditions, inner = n_cells),
+               Response = response)
+```
+
+## Visualization
+
+### Basic Raincloud Plot
+
+One `rainclouds` call draws the cloud, box, and rain; `side` controls which half holds the violin relative to the points.
+
+```{julia}
+#| label: fig-jl-rain-basic
+#| fig-cap: "Raincloud plot of response intensities across stimulation conditions"
+#| width: 560
+fig = Figure(size = (540, 360))
+ax = Axis(fig[1, 1], xlabel = "Stimulation condition",
+          ylabel = "Response intensity (a.u.)")
+rainclouds!(ax, df.Condition, df.Response; orientation = :vertical,
+            side = :right, cloud_width = 0.6, gap = 0.15,
+            jitter_width = 0.12, markersize = 3, color = :slateblue)
+ax.xticks = (1:3, conditions)
+hidespines!(ax, :t, :r)
+fig
+```
+
+### Horizontal Raincloud Plot
+
+Long category labels read better in the horizontal orientation (`orientation = :horizontal`), with the cloud hanging beside the box.
+
+```{julia}
+#| label: fig-jl-rain-horizontal
+#| fig-cap: "Horizontal raincloud plot with long category labels"
+#| width: 560
+fig = Figure(size = (540, 320))
+ax = Axis(fig[1, 1], xlabel = "Response intensity (a.u.)",
+          ylabel = "Stimulation condition")
+rainclouds!(ax, df.Condition, df.Response; orientation = :horizontal,
+            side = :left, cloud_width = 0.6, gap = 0.15,
+            jitter_width = 0.12, markersize = 3, color = :salmon)
+ax.yticks = (1:3, conditions)
+hidespines!(ax, :t, :r)
+fig
+```
+
+### Histogram Clouds
+
+Setting `clouds = hist` (the plot function object) replaces the smooth violin with stacked bin counts, keeping the discrete sampling visible in smaller cohorts.
+
+```{julia}
+#| label: fig-jl-rain-hist
+#| fig-cap: "Raincloud plot with histogram clouds"
+#| width: 560
+fig = Figure(size = (540, 360))
+ax = Axis(fig[1, 1], xlabel = "Stimulation condition",
+          ylabel = "Response intensity (a.u.)")
+rainclouds!(ax, df.Condition, df.Response; orientation = :vertical,
+            side = :right, clouds = hist, hist_bins = 20,
+            cloud_width = 0.6, gap = 0.15,
+            jitter_width = 0.12, markersize = 3, color = :seagreen)
+ax.xticks = (1:3, conditions)
+hidespines!(ax, :t, :r)
+fig
+```
+
+## References
+
+1. Allen, M., Poggiali, D., Whitaker, K., et al. (2019). Raincloud plots: a multi-platform tool for robust data visualization. *Wellcome Open Research*, 4, 63.
+2. Makie development team. Makie.jl documentation — rainclouds. https://docs.makie.org/stable/reference/plots/rainclouds
+3. Danisch, S., & Krumbiegel, J. (2021). Makie.jl: Flexible high-performance data visualization for Julia. *Journal of Open Source Software*, 6(65), 3349.

@@ -1,0 +1,109 @@
+---
+title: "山脊图（Python）"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** Claude Code —— AI 生成，独立 AI 复核；"
+---
+
+山脊图（joyplot）沿共享 x 轴为每个类别堆叠一条密度曲线，一眼呈现分布在多个分组间的移动。在生物医学研究中，它是比较不同细胞簇的标志物表达分布、或任何令分面直方图不堪重负的多组分布比较的理想选择。Python 中专用的 `joypy` 包构建在 `matplotlib` 之上提供山脊图。
+
+## 示例
+
+![](../images/Python/RidgelinePlot_demo.png){fig-align="center" width="80%"}
+
+## 环境配置
+
+- 系统要求：跨平台（Linux/MacOS/Windows）
+- 编程语言：**Python**
+- 依赖包：`matplotlib`、`seaborn`、`pandas`、`numpy`、`joypy`
+
+```{python}
+#| label: packages-setup
+#| output: false
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import numpy as np
+import joypy
+```
+
+## 数据准备
+
+我们模拟一个表面标志物在八个 PBMC 细胞簇中的表达，各簇均值依次升高，沿堆叠方向形成可见的梯度。
+
+```{python}
+#| label: data-prep
+np.random.seed(31)
+
+clusters = ['CD4 T', 'CD8 T', 'NK', 'B', 'Monocyte', 'DC', 'CD34+', 'Plasma']
+n_per_cluster = 400
+base_means = np.linspace(2.0, 7.5, len(clusters))
+
+records = []
+for cluster, mu in zip(clusters, base_means):
+    records.append(pd.DataFrame({
+        'Cluster': cluster,
+        'Marker': np.random.normal(mu, 1.1, n_per_cluster)
+    }))
+marker = pd.concat(records, ignore_index=True)
+marker['Cluster'] = pd.Categorical(marker['Cluster'], categories=clusters, ordered=True)
+```
+
+## 可视化
+
+### 基础山脊图
+
+`joypy.joyplot` 通过 `by=` 为每组堆叠一条核密度曲线；`overlap` 控制相邻曲线相互覆盖的程度。
+
+```{python}
+#| label: fig-py-ridge-basic
+#| fig-cap: "八个细胞簇的标志物表达分布"
+#| width: 80%
+#| fig-align: center
+fig, axes = joypy.joyplot(marker, by='Cluster', column='Marker',
+                          figsize=(7, 5), overlap=1.2,
+                          linewidth=1.2, linecolor='0.3',
+                          color='#8da0cb', grid=False)
+plt.xlabel('Marker expression (a.u.)')
+plt.show()
+```
+
+### 渐变填充与颜色映射
+
+`fade=True` 使靠后的曲线逐渐变浅，`colormap` 以颜色编码堆叠顺序——分组较多、标签难以追踪时很有帮助。
+
+```{python}
+#| label: fig-py-ridge-fade
+#| fig-cap: "渐变填充并以颜色映射编码顺序的山脊图"
+#| width: 80%
+#| fig-align: center
+fig, axes = joypy.joyplot(marker, by='Cluster', column='Marker',
+                          figsize=(7, 5), overlap=1.5, fade=True,
+                          colormap=plt.cm.viridis,
+                          linewidth=1.0, linecolor='0.2', grid=False)
+plt.xlabel('Marker expression (a.u.)')
+plt.show()
+```
+
+### 直方图山脊
+
+设置 `hist=True` 堆叠分箱计数而非平滑密度，在较小样本量下能保留离散抽样的信息。
+
+```{python}
+#| label: fig-py-ridge-hist
+#| fig-cap: "基于直方图的山脊图（各簇分箱计数）"
+#| width: 80%
+#| fig-align: center
+fig, axes = joypy.joyplot(marker, by='Cluster', column='Marker',
+                          figsize=(7, 5), hist=True, bins=24,
+                          overlap=0.4, grid=False,
+                          color='#66c2a5', linewidth=0.8, linecolor='0.2')
+plt.xlabel('Marker expression (a.u.)')
+plt.show()
+```
+
+## 参考文献
+
+1. Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. *Computing in Science & Engineering*, 9(3), 90-95.
+2. sbebo. joypy: Joyplots in Python. https://github.com/sbebo/joypy
+3. From Data to Viz. Ridgeline. https://www.data-to-viz.com/graph/ridgeline.html
