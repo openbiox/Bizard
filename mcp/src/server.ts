@@ -25,9 +25,16 @@ export interface BundleHolder {
 }
 
 function json(value: unknown, note?: string | null) {
-  const payload: Record<string, unknown> = note === null || note === undefined
-    ? { ...value as object }
-    : { note, ...value as object };
+  // Arrays must be serialized as arrays: spreading an array into an object
+  // literal ({...arr}) yields numeric-string keys and breaks client-side
+  // .map()/.length. Wrap noted arrays as {note, items} so `.note` stays
+  // accessible for the one-time update notice (see notice-wiring tests).
+  let payload: unknown;
+  if (note === null || note === undefined) {
+    payload = Array.isArray(value) ? value : { ...value as object };
+  } else {
+    payload = Array.isArray(value) ? { note, items: value } : { note, ...value as object };
+  }
   return {
     content: [{
       type: "text" as const,
@@ -44,7 +51,7 @@ function bundleError() {
 }
 
 /** Constant server identity — never derives from bundle state. */
-const SERVER_IDENTITY = { name: "bizard-mcp", version: "0.1.2" } as const;
+const SERVER_IDENTITY = { name: "bizard-mcp", version: "0.1.3" } as const;
 
 export function createBizardServer(
   source: Bundle | BundleHolder | null,
