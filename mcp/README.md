@@ -50,15 +50,13 @@ One package, two transports:
 
 ### Public hosted instance (no install required)
 
-A community instance is deployed by the Bizard team — no local install,
-works with any MCP client that supports Streamable HTTP. It may also be
-faster than npm-based setup for users in mainland China:
+A community instance is deployed by the Bizard team. It speaks standard
+Streamable HTTP, so **any MCP-capable agent** can connect — Claude Code,
+Cursor, Cline, Windsurf, VS Code Copilot Chat, custom agent frameworks —
+with no local install. It may also be faster than an npm-based setup for
+users in mainland China.
 
-```bash
-claude mcp add --transport http bizard http://biotree.top:38123/bizard-mcp/mcp
-```
-
-MCP client JSON configuration:
+Most MCP clients accept a JSON server entry:
 
 ```json
 {
@@ -66,6 +64,12 @@ MCP client JSON configuration:
     "bizard": { "type": "http", "url": "http://biotree.top:38123/bizard-mcp/mcp" }
   }
 }
+```
+
+Claude Code accepts it from the CLI too:
+
+```bash
+claude mcp add --transport http bizard http://biotree.top:38123/bizard-mcp/mcp
 ```
 
 Same anonymous, stateless, rate-limited behavior as the self-hosted HTTP
