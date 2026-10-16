@@ -11,7 +11,7 @@ author:
 
 ![](../images/Correlation/BubbleHeatmap_demo.png){fig-alt="BubbleHeatmap DEMO" fig-align="center" width="75%"}
 
-这张气泡热图汇总了 PBMC 数据集的标志基因：九个细胞类群各取前 5 个标志基因（共 45 个基因，按每 5 个一组由浅色分隔线分组）与类群两两组合。气泡大小为该类群中表达该基因的细胞比例（`pct.1`），颜色为该基因相对其余细胞的平均 log2 变化倍数——每个类群最强的标志基因在其所在列中呈深红色，沿对角线排布。
+这张气泡热图汇总了 PBMC 数据集的标志基因：九个细胞类群各取前 5 个标志基因（共 45 行标记——44 个唯一基因，因为 `NKG7` 同时是 CD8 T 与 NK 类群的标志——按每 5 行一组由浅色分隔线分组）与类群两两组合。气泡大小为该类群中表达该基因的细胞比例（`pct.1`），颜色为该基因相对其余细胞的平均 log2 变化倍数——每个类群最强的标志基因在其所在列中呈深红色，沿对角线排布。
 
 ## 环境配置
 
@@ -46,8 +46,9 @@ marker_top <- pbmc.markers |>
   group_by(cluster) |>
   slice_max(avg_log2FC, n = 5) |>
   ungroup() |>
+  arrange(cluster, desc(avg_log2FC)) |>
   mutate(cluster = factor(cluster),
-         gene = factor(gene, levels = unique(gene)))
+         row = row_number())
 
 head(marker_top, 3)
 ```
@@ -69,10 +70,12 @@ head(marker_top, 3)
 #| fig-width: 7
 #| fig-height: 10
 
-ggplot(marker_top, aes(x = cluster, y = gene)) +
+ggplot(marker_top, aes(x = cluster, y = row)) +
   geom_point(aes(size = pct.1, colour = avg_log2FC)) +
   scale_colour_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0) +
   scale_size_continuous(range = c(1, 7)) +
+  scale_y_continuous(breaks = marker_top$row, labels = marker_top$gene,
+                     trans = "reverse", expand = expansion(add = .6)) +
   labs(x = NULL, y = NULL, colour = "avg log2FC", size = "pct.1") +
   theme_bw(base_size = 11) +
   theme(axis.text.y = element_text(face = "italic"),
@@ -92,14 +95,16 @@ ggplot(marker_top, aes(x = cluster, y = gene)) +
 #| fig-width: 7
 #| fig-height: 10
 
-block_separators <- seq(0.5, length(levels(marker_top$gene)) - 0.5, by = 5)
+block_separators <- head(cumsum(table(marker_top$cluster)), -1) + 0.5
 
-ggplot(marker_top, aes(x = cluster, y = gene)) +
+ggplot(marker_top, aes(x = cluster, y = row)) +
   geom_point(aes(size = pct.1, colour = avg_log2FC)) +
   geom_hline(yintercept = block_separators, colour = "grey85", linewidth = .3) +
   scale_colour_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0,
                          name = "Average log2FC") +
-  scale_size_continuous(range = c(1, 7), name = "Fraction expressed\n(pct.1)") +
+  scale_size_continuous(range = c(1, 7), name = "Fraction expressed\nin this cluster") +
+  scale_y_continuous(breaks = marker_top$row, labels = marker_top$gene,
+                     trans = "reverse", expand = expansion(add = .6)) +
   labs(x = NULL, y = NULL) +
   theme_bw(base_size = 11) +
   theme(panel.grid.minor = element_blank(),
@@ -117,7 +122,7 @@ ggplot(marker_top, aes(x = cluster, y = gene)) +
 
 ### 3. 按显著性着色
 
-同一网格也可以编码显著性而非效应量——当表格来自富集分析（`-log10(P)` 跨多个数量级）时这是标准选择。
+同一网格也可以编码显著性而非效应量——当表格来自富集分析（`-log10(P)` 跨多个数量级）时这是标准选择。注意 `pmax()` 保护：最强标志基因的 `p_val_adj` 恰为 0，`-log10(0)` 会得到无穷大——钳位让这些气泡留在色标顶端，而不是被静默丢弃。
 
 ```{r}
 #| label: fig-1.3SignificanceBubbleHeatmap
@@ -128,11 +133,13 @@ ggplot(marker_top, aes(x = cluster, y = gene)) +
 #| fig-width: 7
 #| fig-height: 10
 
-ggplot(marker_top, aes(x = cluster, y = gene)) +
-  geom_point(aes(size = pct.1, colour = -log10(p_val_adj))) +
+ggplot(marker_top, aes(x = cluster, y = row)) +
+  geom_point(aes(size = pct.1, colour = -log10(pmax(p_val_adj, .Machine$double.xmin)))) +
   geom_hline(yintercept = block_separators, colour = "grey85", linewidth = .3) +
   scale_colour_viridis_c(option = "magma", direction = -1, name = expression(-log[10](P[adj]))) +
-  scale_size_continuous(range = c(1, 7), name = "Fraction expressed\n(pct.1)") +
+  scale_size_continuous(range = c(1, 7), name = "Fraction expressed\nin this cluster") +
+  scale_y_continuous(breaks = marker_top$row, labels = marker_top$gene,
+                     trans = "reverse", expand = expansion(add = .6)) +
   labs(x = NULL, y = NULL) +
   theme_bw(base_size = 11) +
   theme(panel.grid.minor = element_blank(),
