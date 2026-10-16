@@ -224,6 +224,11 @@ def main() -> None:
     )
     (out_dir / "llms.txt").write_text(llms_txt(bundle), encoding="utf-8")
 
+    # Root llms.txt: served at https://openbiox.github.io/Bizard/llms.txt so
+    # LLM crawlers discover the atlas per the llms.txt convention (spec §3.5).
+    if out_dir.resolve() == (REPO_ROOT / "files" / "mcp").resolve():
+        (REPO_ROOT / "llms.txt").write_text(llms_txt(bundle), encoding="utf-8")
+
     print(f"✅ bundle: {len(bundle['charts'])} charts, "
           f"{len(bundle['codeSnippets'])} snippets → {out_dir}/bundle.json")
 
