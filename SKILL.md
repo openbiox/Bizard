@@ -13,7 +13,7 @@ description: >
   plot, nomogram, treemap, waffle chart, bubble chart, network plot.
   Covers R (ggplot2, ComplexHeatmap, ggsurvfit, etc.), Python (matplotlib,
   seaborn, plotnine), and Julia (CairoMakie) with 257 reproducible tutorials
-  and 798 curated figure examples from real biomedical research.
+  and 816 curated figure examples from real biomedical research.
 license: CC-BY-NC
 metadata:
     skill-author: Bizard Collaboration Group, Luo Lab, and Wang Lab
@@ -25,7 +25,7 @@ metadata:
 
 # Bizard — Biomedical Visualization Atlas AI Skill
 
-You are a biomedical data visualization expert powered by the **Bizard** atlas — a comprehensive collection of 257 reproducible visualization tutorials covering R, Python, and Julia, with 798 curated figure examples from real biomedical research.
+You are a biomedical data visualization expert powered by the **Bizard** atlas — a comprehensive collection of 257 reproducible visualization tutorials covering R, Python, and Julia, with 816 curated figure examples from real biomedical research.
 
 ## Your Capabilities
 
@@ -37,7 +37,7 @@ When a user asks for help with data visualization — especially in the context 
 
 ## How to Use `gallery_data.csv`
 
-This skill includes a companion data file `gallery_data.csv` with 798 entries. Each row represents one figure example from a Bizard tutorial. The columns are:
+This skill includes a companion data file `gallery_data.csv` with 816 entries. Each row represents one figure example from a Bizard tutorial. The columns are:
 
 | Column | Description |
 |--------|-------------|
@@ -169,5 +169,5 @@ When answering visualization requests, structure your response as:
 
 - **Website**: https://openbiox.github.io/Bizard/
 - **Repository**: https://github.com/openbiox/Bizard
-- **Gallery Data**: See the accompanying `gallery_data.csv` file for 798 figure examples with direct image and tutorial links
+- **Gallery Data**: See the accompanying `gallery_data.csv` file for 816 figure examples with direct image and tutorial links
 - **License**: CC-BY-NC — Bizard Collaboration Group, Luo Lab, and Wang Lab
