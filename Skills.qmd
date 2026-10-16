@@ -49,7 +49,56 @@ Quick start with Claude Code:
 claude mcp add bizard -- npx @openbiox/bizard-mcp
 ```
 
-Or run it with any MCP client over stdio (`npx @openbiox/bizard-mcp`) or Streamable HTTP (`npx @openbiox/bizard-mcp --http`). See the [MCP server docs](https://github.com/openbiox/Bizard/tree/main/mcp) for the full tool list, configuration, and privacy notes.
+Or run it with any MCP client over stdio (`npx @openbiox/bizard-mcp`) or Streamable HTTP (`npx @openbiox/bizard-mcp --http`). See the [MCP server docs](#mcp-docs) below for the full tool list, configuration, and privacy notes.
+
+## MCP Server Details {#mcp-docs}
+
+The full documentation for `@openbiox/bizard-mcp` is maintained in the repository and reproduced here for reference.
+
+### Tools
+
+| Tool | Purpose |
+|------|---------|
+| `bizard_search` | Bilingual weighted search over the chart gallery; adjacent-category suggestions on zero hits |
+| `bizard_list_categories` | Category tree (12 Level-1 categories with Chinese/English aliases and counts) |
+| `bizard_get_tutorial` | Structured tutorial content: sections, setup dependencies, data description, key parameters |
+| `bizard_get_code` | Runnable tutorial code with package list, install guard, and example-data URLs |
+| `bizard_adapt_guidance` | Data-shape checks, dependency prep, parameter mapping, failure modes, alternatives |
+| `bizard_cite` | Bizard paper + tutorial citation (bibtex/text/json) with CC-BY-NC-4.0 license notice |
+| `bizard_contribute_check` | Validate a draft against the contribution template; preview points |
+| `bizard_contribute_submit` | Submit as issue/PR via user credentials, or degrade to draft + deep-link |
+
+Prompts: `recommend`, `adapt`, `troubleshoot`, `contribute`.
+Resources: `bizard://catalog`, `bizard://tutorial/{chartId}`, `bizard://llms-txt`.
+
+### Deployment
+
+One package, two transports:
+
+- **Local (stdio, default)**: `npx @openbiox/bizard-mcp`. Full capability; contribution runs at level 1/2 when local credentials exist.
+- **Hosted (Streamable HTTP)**: `npx @openbiox/bizard-mcp --http`. Port via `BIZARD_HTTP_PORT` (default 3000). Anonymous, stateless. Contribution runs at level 3 (no credentials on the server).
+
+### Contribution credential degradation
+
+`bizard_contribute_submit` probes the environment on every call and states which level it used — never silently failing:
+
+| Level | Condition | Behavior |
+|-------|-----------|----------|
+| 1 | `gh` CLI installed and logged in | Creates issue (or PR when `asPR`) as the user |
+| 2 | No `gh`, but `GITHUB_TOKEN` set | GitHub API submission, limited by token scope |
+| 3 | Neither (typical for hosted) | Returns formatted draft + pre-filled `issues/new?title=&body=` deep-link |
+
+The server itself holds zero credentials. User free text is truncated (single field ≤ 4000 chars) before being assembled into issue bodies.
+
+### Privacy
+
+Usage feedback is local-only, anonymous, and never networked:
+
+- Appended to `~/.cache/bizard-mcp/usage-log.jsonl` as `{ ts, event, chartId, language, queryHash }` — `queryHash` is the first 8 hex chars of the query's SHA-256 (irreversible).
+- Set `BIZARD_USAGE_LOG=off` to disable entirely; set it to a path to relocate the log.
+- No server-side telemetry, ever.
+
+Source code and development instructions: [openbiox/Bizard · mcp/](https://github.com/openbiox/Bizard/tree/main/mcp).
 
 ```{=html}
 <div style="text-align:center;margin:2rem 0;">

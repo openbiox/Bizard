@@ -1,7 +1,8 @@
 # @openbiox/bizard-mcp
 
 A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for
-the [Bizard](https://bizard.app) biomedical visualization atlas. It serves the
+the [Bizard](https://openbiox.github.io/Bizard/) biomedical visualization
+atlas ([GitHub](https://github.com/openbiox/Bizard)). It serves the
 full chart lifecycle over MCP: **query** (bilingual search across 800+ chart
 tutorials), **use** (runnable code, dependencies, data URLs, and structured
 adaptation guidance the host AI executes), **cite** (BibTeX/DOI metadata with
