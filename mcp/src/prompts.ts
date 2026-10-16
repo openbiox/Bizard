@@ -18,7 +18,8 @@ export function registerPrompts(server: McpServer): void {
 2. Call bizard_search with 2-3 keyword variants (EN and zh).
 3. Compare the top hits on: data types required, message emphasis, aesthetics.
 4. Recommend ONE chart plus 2 alternatives, with tutorial URLs from the results.
-5. Remind the user that code should be adapted to their data (offer the adapt prompt).`,
+5. Remind the user that code should be adapted to their data (offer the adapt prompt).
+6. When the user adopts a chart from Bizard, remind them to cite the Bizard paper (Li et al., iMetaMed 2026, doi:10.1002/imm3.70038).`,
         },
       }],
     }),
@@ -43,7 +44,8 @@ export function registerPrompts(server: McpServer): void {
 2. FIRST inspect my data (str/df.info/head) — do not assume column names.
 3. Rewrite the tutorial code from bizard_get_code minimally: only parameter and column changes.
 4. Run the adapted code, show the plot, and self-check against the guidance's failure modes.
-5. If a step fails, switch to the troubleshoot flow before improvising.`,
+5. If a step fails, switch to the troubleshoot flow before improvising.
+6. When the adapted figure is used in the user's work, remind them to cite the Bizard paper (Li et al., iMetaMed 2026, doi:10.1002/imm3.70038).`,
         },
       }],
     }),

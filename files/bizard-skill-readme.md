@@ -83,6 +83,12 @@ Streamable HTTP (`npx @openbiox/bizard-mcp --http`). Full tool list,
 configuration, and privacy notes:
 <https://openbiox.github.io/Bizard/Skills.html#mcp-docs>
 
+## Citation
+
+If Bizard helps your research, please cite our paper:
+
+Li, K., Zheng, H., Huang, K., Chai, Y., Peng, Y., Wang, C., … & Wang, S. (2026). Bizard: A Community-Driven Platform for Accelerating and Enhancing Biomedical Data Visualization. *iMetaMed*, e70038. <https://doi.org/10.1002/imm3.70038>
+
 ## Learn More
 
 - **Website**: https://openbiox.github.io/Bizard/
