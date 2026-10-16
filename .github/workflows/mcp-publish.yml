@@ -1,0 +1,107 @@
+name: MCP Publish
+
+# Publishes @openbiox/bizard-mcp to npm via OIDC trusted publishing
+# (no NPM_TOKEN secret). Requires the trusted publisher configured on
+# npmjs.com: org openbiox, repo Bizard, workflow mcp-publish.yml.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp/package.json'
+      - '.github/workflows/mcp-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the version tag and GitHub Release
+  id-token: write # OIDC token for npm trusted publishing
+  packages: read
+
+concurrency:
+  group: mcp-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest # trusted publishing requires GitHub-hosted runners
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          # Never cache in release builds; registry-url enables the OIDC
+          # publish path and writes .npmrc with the official registry.
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Build content snapshot
+        run: python3 .github/scripts/build-bundle.py --out mcp/src/snapshot
+
+      - name: Install, test, build
+        working-directory: mcp
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Smoke test stdio server
+        working-directory: mcp
+        run: |
+          node -e "
+          const { spawn } = require('child_process');
+          const p = spawn('node', ['dist/index.js']);
+          const msg = JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'smoke',version:'0'}}}) + '\n';
+          p.stdout.on('data', (d) => { if (String(d).includes('serverInfo')) { console.log('OK', String(d).slice(0,120)); p.kill(); process.exit(0); } });
+          p.stderr.on('data', (d) => process.stderr.write(d));
+          p.stdin.write(msg);
+          setTimeout(() => { console.error('no response'); p.kill(); process.exit(1); }, 10000);
+          "
+
+      - name: Skip if version already published
+        id: dedup
+        working-directory: mcp
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if curl -sf "https://registry.npmjs.org/@openbiox%2Fbizard-mcp" | node -e "
+            let body='';
+            process.stdin.on('data', d => body += d);
+            process.stdin.on('end', () => {
+              try {
+                const doc = JSON.parse(body);
+                process.exit(doc.versions && doc.versions[process.argv[1]] ? 0 : 1);
+              } catch { process.exit(1); }
+            });
+          " "$VERSION"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Version $VERSION already on npm; nothing to publish."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Version $VERSION not on npm; publishing."
+          fi
+
+      - name: Publish to npm (trusted publishing / OIDC)
+        if: steps.dedup.outputs.skip != 'true'
+        working-directory: mcp
+        run: npm publish
+        env:
+          # Explicit despite publishConfig: local dev machines often default
+          # to a mirror; CI must always hit the official registry.
+          npm_config_registry: https://registry.npmjs.org
+
+      - name: Tag and release
+        if: steps.dedup.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.dedup.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+          gh release create "v${VERSION}" \
+            --repo openbiox/Bizard \
+            --title "@openbiox/bizard-mcp v${VERSION}" \
+            --notes "Published to npm: https://www.npmjs.com/package/@openbiox/bizard-mcp/v/${VERSION}"
+        env:
+          GH_TOKEN: ${{ github.token }}

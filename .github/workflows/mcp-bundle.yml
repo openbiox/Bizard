@@ -1,0 +1,41 @@
+name: MCP Bundle Build
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**.qmd'
+      - 'files/gallery_data*.csv'
+      - 'files/recommender_keywords*.json'
+      - '.github/scripts/build-bundle.py'
+      - '.github/scripts/bundle_lib.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mcp-bundle
+  cancel-in-progress: false
+
+jobs:
+  build-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: '3.11' }
+      - name: Build bundle
+        run: python3 .github/scripts/build-bundle.py --out files/mcp
+      - name: Commit bundle
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "github-actions[bot]"
+          git add files/mcp/bundle.json files/mcp/llms.txt
+          if git diff --cached --quiet; then
+            echo "No bundle changes."
+          else
+            git commit -m "chore(mcp): regenerate content bundle"
+            git push
+          fi

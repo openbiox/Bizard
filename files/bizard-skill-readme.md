@@ -45,6 +45,26 @@ Once installed, your AI assistant can:
 - **Link** to the full tutorial at https://openbiox.github.io/Bizard/ for detailed customization
 - **Search** the gallery data to find specific figure examples
 
+## Prefer a live connection? Use the Bizard MCP server
+
+For AI **agents** that can call tools (Claude Code, Cursor, Cline, …), the static
+skill package above is not the only option — Bizard ships an MCP server,
+**`@openbiox/bizard-mcp`**, that serves the live chart lifecycle over the
+[Model Context Protocol](https://modelcontextprotocol.io): bilingual search across
+800+ chart tutorials, runnable code with dependencies and data URLs, structured
+adaptation guidance, citation metadata, and template-checked contribution — all
+from a CI-generated snapshot of the same sources as this skill, so they never drift.
+
+Quick start with Claude Code:
+
+```bash
+claude mcp add bizard -- npx @openbiox/bizard-mcp
+```
+
+Any other MCP client works too, over stdio (`npx @openbiox/bizard-mcp`) or
+Streamable HTTP (`npx @openbiox/bizard-mcp --http`). Full tool list,
+configuration, and privacy notes: <https://github.com/openbiox/Bizard/tree/main/mcp>
+
 ## Learn More
 
 - **Website**: https://openbiox.github.io/Bizard/
