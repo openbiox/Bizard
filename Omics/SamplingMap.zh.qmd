@@ -1,0 +1,170 @@
+---
+title: "采样地图"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** Claude Code —— AI 生成，独立 AI 复核；"
+---
+
+采样地图把每个采样地点放到地理底图上，用气泡大小（可选颜色）报告各地的样本量。在基因组学、流行病学与生态学论文中，它通常是开篇第一张图：记录队列从何而来、暴露采样的地理不均衡，并把后续所有分析锚定到真实地点。本教程复现《顶刊图社》系列（第012期）介绍的图表类型，见文末参考文献。
+
+## 示例
+
+![](../images/Omics/SamplingMap_demo.png){fig-alt="SamplingMap DEMO" fig-align="center" width="90%"}
+
+这个示例为一次模拟的全国 15 个采样点（城市坐标为真实值，样本量为模拟值）绘制地图。气泡大小与颜色同时编码每个点的样本数——北京以 148 例居首，西部各点则只有寥寥数个——`ggrepel` 标签保证地名互不重叠。
+
+## 环境配置
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`tidyverse`；`ggrepel`；`maps`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Installing necessary packages
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+  install.packages("tidyverse")
+}
+if (!requireNamespace("ggrepel", quietly = TRUE)) {
+  install.packages("ggrepel")
+}
+if (!requireNamespace("maps", quietly = TRUE)) {
+  install.packages("maps")
+}
+
+# Load packages
+library(tidyverse)
+library(ggrepel)
+```
+
+## 数据准备
+
+两个要素：一张底图（`maps` 包内置世界多边形数据，图形渲染完全离线，无需联网）以及每个采样点一行、含经纬度与样本数的长表。
+
+```{r load map, message=FALSE}
+world_map <- ggplot2::map_data("world")
+
+sampling_sites <- tribble(
+  ~site,       ~lon,   ~lat,   ~n,
+  "Beijing",   116.4,  39.9,   148,
+  "Shanghai",  121.5,  31.2,    96,
+  "Guangzhou", 113.3,  23.1,    84,
+  "Wuhan",     114.3,  30.6,    72,
+  "Chengdu",   104.1,  30.6,    65,
+  "Xi\'an",     108.9,  34.3,    41,
+  "Harbin",    126.6,  45.8,    33,
+  "Kunming",   102.7,  25.0,    29,
+  "Lhasa",      91.1,  29.7,    12,
+  "Urumqi",     87.6,  43.8,    18,
+  "Shenyang",  123.4,  41.8,    27,
+  "Nanjing",   118.8,  32.1,    58,
+  "Chongqing", 106.5,  29.6,    49,
+  "Hohhot",    111.7,  40.8,    15,
+  "Haikou",    110.3,  20.0,    22)
+
+head(sampling_sites, 3)
+```
+
+**注意：** 真实研究中这三列直接来自样本元数据（地点名、GPS 坐标、标本数）。底图可用 `coord_cartesian()` 裁剪到任意区域——不需要任何投影包。
+
+## 可视化
+
+### 1. 基础绘图
+
+多边形图层绘制底图（`group` 必须指定——世界多边形由大量互不相连的碎片组成），散点图层就是普通的地理坐标气泡图。大小与颜色两个标尺都承载计数，形成双重编码。
+
+```{r}
+#| label: fig-1.1BasicSamplingMap
+#| fig-cap: "基础采样地图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6.5
+
+ggplot() +
+  geom_polygon(data = world_map, aes(long, lat, group = group),
+               fill = "grey94", colour = "grey80", linewidth = .2) +
+  geom_point(data = sampling_sites, aes(lon, lat, size = n, colour = n), alpha = .85) +
+  geom_text_repel(data = sampling_sites, aes(lon, lat, label = site),
+                  size = 2.8, colour = "grey25", min.segment.length = .2,
+                  box.padding = .4, point.padding = .3) +
+  scale_size_continuous(range = c(2, 12), name = "Samples") +
+  scale_colour_viridis_c(option = "viridis", direction = -1, name = "Samples") +
+  coord_cartesian(xlim = c(70, 140), ylim = c(15, 55)) +
+  labs(x = NULL, y = NULL) +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank())
+```
+
+::: callout-tip
+**关键参数：**
+
+- `range = c(2, 12)`：气泡的最小与最大尺寸；最小值保持大于 0，让单样本的点仍然可见。
+- `coord_cartesian(xlim, ylim)`：把视野裁剪到研究区域；换成 `coord_fixed(ratio = 1.3)` 可拉伸纬度用于世界视图（约 1.3 倍，中纬度常用的纵横比）。
+- `geom_text_repel(min.segment.length = .2)`：每当标签被推离原点时绘制引线；`point.padding = .3` 让标签不压在自己的气泡上。
+:::
+
+### 2. 仅用大小，计数写入标签
+
+去掉颜色通道、把计数折进标签文字，图形只剩一个图例、读数毫无歧义——当大小编码需要独立成立时，这是审稿人最常要求的版本。
+
+```{r}
+#| label: fig-1.2LabelledSamplingMap
+#| fig-cap: "计数写入标签的采样地图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6.5
+
+ggplot() +
+  geom_polygon(data = world_map, aes(long, lat, group = group),
+               fill = "grey94", colour = "grey80", linewidth = .2) +
+  geom_point(data = sampling_sites, aes(lon, lat, size = n), colour = "#2a6f97", alpha = .85) +
+  geom_text_repel(data = sampling_sites, aes(lon, lat, label = paste0(site, " (", n, ")")),
+                  size = 2.7, colour = "grey25", min.segment.length = .2,
+                  box.padding = .4, point.padding = .3) +
+  scale_size_continuous(range = c(2, 12), name = "Samples") +
+  coord_cartesian(xlim = c(70, 140), ylim = c(15, 55)) +
+  labs(x = NULL, y = NULL) +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank())
+```
+
+### 3. 世界视图
+
+同样的图层不加裁剪即可在全局尺度展示采样活动；`coord_fixed(ratio = 1.3)` 在不引入投影包的前提下近似常用的地图纵横比。
+
+```{r}
+#| label: fig-1.3WorldSamplingMap
+#| fig-cap: "世界视图的采样地图"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5.2
+
+ggplot() +
+  geom_polygon(data = world_map, aes(long, lat, group = group),
+               fill = "grey95", colour = "grey82", linewidth = .15) +
+  geom_point(data = sampling_sites, aes(lon, lat, size = n), colour = "#c1121f", alpha = .9) +
+  scale_size_continuous(range = c(1.5, 10), name = "Samples") +
+  coord_fixed(ratio = 1.3) +
+  labs(x = NULL, y = NULL) +
+  theme_void(base_size = 11)
+```
+
+## 应用场景
+
+-   **队列记录**：多中心研究的开篇图——谁被采样、在哪里采样。
+-   **采样偏倚检查**：地理不均衡在下游统计被其扭曲之前即可看见。
+-   **流行病学与生态学**：疫情聚集、物种分布、野外站点网络。
+-   底图是离线数据、图层就是普通 ggplot2——把 `map_data("world")` 换成 `map_data("state")`、`map_data("county")` 或你自己的多边形图层即可绘制区域地图。
+
+## 参考文献
+
+\[1\] 顶刊图社 | 第012期：采样地图. 微信公众号文章. <http://mp.weixin.qq.com/s?__biz=MzU5NjE2ODU0OQ==&mid=2247483863&idx=1&sn=f9e1f4caca6fd8ee8f6663babd8f5da7>
+
+\[2\] Becker RA, Wilks AR, Brownrigg R, Minka TP, Deckmyn A. maps: Draw Geographical Maps. R package version 3.4.3, 2025. <https://cran.r-project.org/package=maps>
