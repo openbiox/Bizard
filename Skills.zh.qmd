@@ -12,7 +12,7 @@ from: markdown+emoji
 
 - **推荐** 最适合你数据和研究问题的可视化类型
 - **生成** 基于 Bizard 教程的可复现 R / Python / Julia 绑图代码
-- **搜索** 793 个精选图形示例（使用附带的画廊数据）
+- **搜索** 816 个精选图形示例（使用附带的画廊数据）
 - **链接** 到完整教程以获取详细的自定义选项
 
 技能包适用于任何支持自定义指令或知识文件的 AI 工具：
@@ -33,7 +33,7 @@ from: markdown+emoji
 ZIP 包含：
 
 - **`SKILL.md`** — AI 技能指令：教会你的 AI 助手如何使用 Bizard 进行可视化推荐和代码生成
-- **`gallery_data.csv`** — 793 个可视化示例，包含图片 URL、教程链接、描述和分类
+- **`gallery_data.csv`** — 816 个可视化示例，包含图片 URL、教程链接、描述和分类
 - **`gallery_data_zh.csv`** — 画廊数据的中文版本
 - **`README.md`** — 不同 AI 工具的安装指南
 
@@ -43,13 +43,79 @@ ZIP 包含：
 
 与上面的静态技能包不同，MCP 服务器提供的是**实时图表生命周期**——800+ 图表教程的中英双语检索、含依赖和数据 URL 的可运行代码、结构化改编指导、引用元数据，以及经模板校验的投稿——内容来自 CI 从与网站和 `SKILL.md` 相同的源文件生成的快照，三者永不脱节。
 
-使用 Claude Code 快速接入：
+无需本地安装——**任何支持 MCP 的智能体**（Claude Code、Cursor、Cline、Windsurf、VS Code Copilot Chat 等）都可以连接 Bizard 团队部署的公共托管实例。多数客户端直接接受 JSON 服务器条目：
+
+```json
+{
+  "mcpServers": {
+    "bizard": { "type": "http", "url": "http://biotree.top:38123/bizard-mcp/mcp" }
+  }
+}
+```
+
+在 Claude Code 中一行即可接入：
+
+```bash
+claude mcp add --transport http bizard http://biotree.top:38123/bizard-mcp/mcp
+```
+
+希望完全本地运行？改为安装软件包：
 
 ```bash
 claude mcp add bizard -- npx @openbiox/bizard-mcp
 ```
 
-也可以通过任意 MCP 客户端以 stdio（`npx @openbiox/bizard-mcp`）或 Streamable HTTP（`npx @openbiox/bizard-mcp --http`）方式运行。完整工具列表、配置说明与隐私声明见 [MCP 服务器文档](https://github.com/openbiox/Bizard/tree/main/mcp)。
+也可以通过任意 MCP 客户端以 stdio（`npx @openbiox/bizard-mcp`）或自建 Streamable HTTP 实例（`npx @openbiox/bizard-mcp --http`）方式运行。完整工具列表、配置说明与隐私声明见下方 [MCP 服务器详情](#mcp-docs)。
+
+## MCP 服务器详情 {#mcp-docs}
+
+`@openbiox/bizard-mcp` 的完整文档维护在仓库中，此处同步展示以供查阅。
+
+### 工具
+
+| 工具 | 用途 |
+|------|---------|
+| `bizard_search` | 对图表库进行中英双语加权检索；零命中时给出邻近分类建议 |
+| `bizard_list_categories` | 全部 36 个图表分类，含各类图表数量（有中文名的显示中文名） |
+| `bizard_get_tutorial` | 图表元数据：依赖包、示例数据 URL、可用语言、教程链接 |
+| `bizard_get_code` | 可运行的教程代码，含依赖包列表、示例数据 URL 及许可声明 |
+| `bizard_adapt_guidance` | 数据结构检查、依赖准备、参数映射、失败模式、替代方案 |
+| `bizard_cite` | Bizard 论文 + 教程引用（bibtex/text/json），附 CC-BY-NC-4.0 许可声明 |
+| `bizard_contribute_check` | 按投稿模板校验草稿；预览获得积分 |
+| `bizard_contribute_submit` | 通过用户凭据提交 issue/PR，或降级为草稿 + 深链接 |
+
+提示词（Prompts）：`recommend`、`adapt`、`troubleshoot`、`contribute`。
+资源（Resources）：`bizard://catalog`、`bizard://tutorial/{chartId}`、`bizard://llms-txt`。
+
+### 部署方式
+
+同一个包，两种传输方式：
+
+- **本地（stdio，默认）**：`npx @openbiox/bizard-mcp`。功能完整；当本地存在凭据时，投稿以第 1/2 级运行。
+- **托管（Streamable HTTP）**：`npx @openbiox/bizard-mcp --http`。端口通过 `BIZARD_HTTP_PORT` 设置（默认 3000）。匿名、无状态。投稿以第 3 级运行（服务器上无凭据）。
+- **公共托管实例**：`claude mcp add --transport http bizard http://biotree.top:38123/bizard-mcp/mcp` —— 由 Bizard 团队部署，无需安装，中国大陆访问可能更快。行为一致：匿名、无状态、限速，投稿以第 3 级运行。
+
+### 投稿凭据降级
+
+`bizard_contribute_submit` 每次调用都会探测环境，并明确说明所用级别——绝不静默失败：
+
+| 级别 | 条件 | 行为 |
+|-------|-----------|----------|
+| 1 | 已安装并登录 `gh` CLI | 以你的 GitHub 用户身份创建 issue（PR 提交计划在未来版本中提供） |
+| 2 | 无 `gh`，但设置了 `GITHUB_TOKEN` | 通过 GitHub API 提交，受令牌权限范围限制 |
+| 3 | 两者皆无（托管环境的典型情况） | 返回格式化草稿 + 预填 `issues/new?title=&body=` 深链接 |
+
+服务器本身不持有任何凭据。用户自由文本在组装进 issue 正文前会被截断（单字段 ≤ 4000 字符）。
+
+### 隐私
+
+使用反馈仅限本地、匿名，绝不联网：
+
+- 追加写入 `~/.cache/bizard-mcp/usage-log.jsonl`，格式为 `{ ts, event, chartId, language, queryHash }`——`queryHash` 是查询 SHA-256 的前 8 个十六进制字符（不可逆）。
+- 设置 `BIZARD_USAGE_LOG=off` 可完全禁用；设为路径可将日志迁移到该处。
+- 永远没有服务器端遥测。
+
+源代码与开发说明：[openbiox/Bizard · mcp/](https://github.com/openbiox/Bizard/tree/main/mcp)。
 
 ```{=html}
 <div style="text-align:center;margin:2rem 0;">

@@ -41,7 +41,7 @@ Bizard brings together powerful visualization tools, curated code, and collabora
 Two ways to give your AI assistant access to Bizard:
 
 - **Skill package** (static instructions + gallery data): download the [Bizard unified skill ZIP](https://openbiox.github.io/Bizard/bizard-skill.zip) and load it into ChatGPT, Claude, Copilot Chat, or a local LLM.
-- **MCP server** (live tool access for AI agents): `claude mcp add bizard -- npx @openbiox/bizard-mcp` — bilingual search, runnable code, adaptation guidance, citation, and contribution over the [Model Context Protocol](https://modelcontextprotocol.io). See the [MCP server section in Skills](https://openbiox.github.io/Bizard/Skills.html#mcp-docs) for docs, or [mcp/](mcp/) for source.
+- **MCP server** (live tool access for AI agents): `claude mcp add bizard -- npx @openbiox/bizard-mcp` — bilingual search, runnable code, adaptation guidance, citation, and contribution over the [Model Context Protocol](https://modelcontextprotocol.io). Or connect any MCP-capable agent to the [public hosted instance](http://biotree.top:38123/bizard-mcp/mcp) with zero install (Claude Code: `claude mcp add --transport http bizard http://biotree.top:38123/bizard-mcp/mcp`; other clients use the same URL as a Streamable HTTP server; may be faster from mainland China). See the [MCP server section in Skills](https://openbiox.github.io/Bizard/Skills.html#mcp-docs) for docs, or [mcp/](mcp/) for source.
 
 ## Local Development Environment
 

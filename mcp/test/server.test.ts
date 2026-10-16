@@ -35,6 +35,26 @@ describe("bizard_search", () => {
   });
 });
 
+describe("bizard_list_categories", () => {
+  it("serializes the category list as a JSON array", async () => {
+    const server = createBizardServer(validBundle);
+    const result = await callTool(server, "bizard_list_categories", {});
+    const parsed = JSON.parse(result.content[0].text);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed.length).toBeGreaterThan(0);
+    expect(parsed[0]).toHaveProperty("name");
+    expect(parsed[0]).toHaveProperty("count");
+  });
+
+  it("keeps the update notice accessible alongside array payloads", async () => {
+    const server = createBizardServer({ get: () => validBundle }, ["[update test]"]);
+    const result = await callTool(server, "bizard_list_categories", {});
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.note).toBe("[update test]");
+    expect(Array.isArray(parsed.items)).toBe(true);
+  });
+});
+
 describe("degraded mode (no bundle snapshot)", () => {
   it("returns a structured build hint error from every tool", async () => {
     const server = createBizardServer(null);

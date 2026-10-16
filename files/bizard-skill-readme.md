@@ -5,7 +5,7 @@
 | File | Purpose |
 |------|---------|
 | `SKILL.md` | The AI skill instruction document — load this into your AI assistant |
-| `gallery_data.csv` | 793 visualization examples with image URLs, tutorial links, descriptions, and categories |
+| `gallery_data.csv` | 816 visualization examples with image URLs, tutorial links, descriptions, and categories |
 | `gallery_data_zh.csv` | Chinese version of the gallery data |
 | `README.md` | This file |
 
@@ -55,7 +55,20 @@ skill package above is not the only option — Bizard ships an MCP server,
 adaptation guidance, citation metadata, and template-checked contribution — all
 from a CI-generated snapshot of the same sources as this skill, so they never drift.
 
-Quick start with Claude Code:
+No local install needed — any MCP-capable agent (Claude Code, Cursor,
+Cline, Windsurf, VS Code Copilot Chat, …) can connect to the public hosted
+instance run by the Bizard team (may be faster from mainland China). Most
+clients accept a JSON entry:
+
+```json
+{
+  "mcpServers": {
+    "bizard": { "type": "http", "url": "http://biotree.top:38123/bizard-mcp/mcp" }
+  }
+}
+```
+
+Or run it locally with Claude Code:
 
 ```bash
 claude mcp add bizard -- npx @openbiox/bizard-mcp
@@ -63,7 +76,8 @@ claude mcp add bizard -- npx @openbiox/bizard-mcp
 
 Any other MCP client works too, over stdio (`npx @openbiox/bizard-mcp`) or
 Streamable HTTP (`npx @openbiox/bizard-mcp --http`). Full tool list,
-configuration, and privacy notes: <https://github.com/openbiox/Bizard/tree/main/mcp>
+configuration, and privacy notes:
+<https://openbiox.github.io/Bizard/Skills.html#mcp-docs>
 
 ## Learn More
 
