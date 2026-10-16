@@ -51,7 +51,7 @@ function bundleError() {
 }
 
 /** Constant server identity — never derives from bundle state. */
-const SERVER_IDENTITY = { name: "bizard-mcp", version: "0.1.3" } as const;
+const SERVER_IDENTITY = { name: "bizard-mcp", version: "0.1.4" } as const;
 
 export function createBizardServer(
   source: Bundle | BundleHolder | null,
