@@ -1,0 +1,103 @@
+name: Site Release
+
+# Tag-driven release automation. Push a vX.Y.Z tag (or dispatch with a
+# version) and this workflow:
+#   1. syncs every version string in the repo to the tag (DESCRIPTION,
+#      mcp/package.json, mcp/package-lock.json, MCP server identity),
+#   2. pushes the bump commit to main, which auto-triggers mcp-publish.yml
+#      to publish @openbiox/bizard-mcp to npm,
+#   3. creates the GitHub Release from the tag.
+# Idempotent: re-running on an already-synced tag no-ops cleanly.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release as X.Y.Z (expects a vX.Y.Z tag; one is created on the current main HEAD if missing)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: site-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history: the bump commit is rebased onto the latest main
+          # below, which needs real parent history.
+          fetch-depth: 0
+
+      - name: Derive version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync version strings
+        id: sync
+        run: |
+          set +e
+          python3 .github/scripts/sync-versions.py \
+            --version "${{ steps.version.outputs.version }}"
+          rc=$?
+          set -e
+          # Exit 2 = tag below the current DESCRIPTION version, i.e. an
+          # @openbiox/bizard-mcp release tag sharing the v* namespace. Skip
+          # this release instead of downgrading the R package.
+          if [ "$rc" -eq 2 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit "$rc"
+
+      - name: Commit and push version bump
+        if: steps.sync.outputs.skip != 'true'
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add DESCRIPTION mcp/package.json mcp/package-lock.json mcp/src/server.ts
+          if git diff --cached --quiet; then
+            echo "All version strings already at ${V}; nothing to commit."
+          else
+            git commit -m "chore: bump versions for v${V} release"
+            # Replay ONLY the bump commit onto the latest main (never the
+            # tagged history) so a tag cut from a non-main branch cannot
+            # drag other commits onto main.
+            git fetch origin main
+            git rebase --onto origin/main HEAD~1
+            git push origin HEAD:main
+          fi
+
+      - name: Create GitHub Release
+        if: steps.sync.outputs.skip != 'true'
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          if gh release view "v${V}" --repo openbiox/Bizard >/dev/null 2>&1; then
+            echo "Release v${V} already exists; skipping."
+            exit 0
+          fi
+          gh release create "v${V}" \
+            --repo openbiox/Bizard \
+            --title "Release ${V}" \
+            --target "$(git rev-parse HEAD)" \
+            --notes "Bizard platform release ${V}.
+
+          - Site: https://openbiox.github.io/Bizard/
+          - R package version (DESCRIPTION): ${V}
+          - @openbiox/bizard-mcp ${V}, published to npm by the version bump commit."
+        env:
+          GH_TOKEN: ${{ github.token }}
