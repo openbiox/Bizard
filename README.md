@@ -8,6 +8,10 @@
 DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/openbiox/Bizard)
 [![npm](https://img.shields.io/npm/v/@openbiox/bizard-mcp)](https://www.npmjs.com/package/@openbiox/bizard-mcp)
 
+<a href="https://doi.org/10.1002/imm3.70038"><img src="images/paper/iMetaMed-cover.jpg" alt="iMetaMed Vol 2, Issue 2 cover: Bai Ze, the legendary beast, over an ink-wash landscape, holding a scroll of biomedical data charts" width="260" align="right"/></a>
+
+*Bizard is the cover article of [iMetaMed Vol 2, Issue 2 (2026)](https://onlinelibrary.wiley.com/toc/3066988x/2026/2/2). Cover art by Dr. Shixiang Wang.*
+
 ## Welcome 🎉
 
 Data visualization is a critical tool in biomedical research, enabling intuitive interpretation of complex datasets to advance scientific discovery and inform clinical decisions. The R programming language, with its powerful statistical capabilities and extensive package ecosystem, has become a cornerstone for creating high-quality visualizations. However, the vast and ever-evolving landscape of R plotting packages often poses challenges for researchers, who must select appropriate methods and customize visualizations to meet specific research needs. This process demands advanced coding expertise, interdisciplinary collaboration, and significant time investment, which can hinder progress and impact the accuracy of experimental outcomes.
