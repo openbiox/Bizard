@@ -26,8 +26,10 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: skills-${{ github.ref }}
-  cancel-in-progress: true
+  # serialize with the other main-housekeeping auto-commit workflows
+  # (auto-translate, mcp-bundle) so their pushes cannot race each other
+  group: main-housekeeping-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   generate-skills:
@@ -102,6 +104,10 @@ jobs:
           git commit -m "chore: regenerate AI skill document" \
             -m "Auto-generated SKILL.md from QMD tutorials."
           BRANCH="${PR_BRANCH:-${{ github.ref_name }}}"
+          # another housekeeping workflow may have advanced the branch since
+          # checkout: rebase onto it (retry once) before pushing
+          git pull --rebase origin "${BRANCH}" || \
+            { git rebase --abort; git fetch origin && git rebase origin "${BRANCH}"; }
           git push origin "${BRANCH}"
 
       - name: Post PR comment
