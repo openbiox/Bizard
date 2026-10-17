@@ -37,7 +37,7 @@ library(viridisLite)
 library(ggsci)
 library(patchwork)
 
-# The standard 8-color Okabe-Ito palette (Wong 2011, black variant) — reused below
+# The standard 8-color Okabe-Ito palette (Okabe & Ito 2008; black variant popularized by Wong 2011)
 okabe <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
            "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 ```
@@ -75,7 +75,7 @@ tibble(value = channels, x = 1:3,
   theme_minimal(base_size = 11) + theme(panel.grid = element_blank())
 ```
 
-RGB is a *device* description, not a *perceptual* one: equal steps in RGB are not equal steps in perceived color. That mismatch is the root cause of most bad palettes — and the reason modern palettes are designed in perceptual spaces (HCL/CIELAB, and more recently OKLab), which Part II develops.
+RGB is a *device* description, not a *perceptual* one: equal steps in RGB are not equal steps in perceived color. That mismatch is the root cause of most bad palettes — and the reason modern palettes are designed in perceptual spaces (HCL — polar CIELUV — CIELAB, and more recently OKLab), which Part II develops.
 
 ## Example · Part I — three jobs, three palette types
 
@@ -127,7 +127,7 @@ flowchart TD
     accTitle: Palette type decision tree
     accDescr: Choose qualitative, sequential or diverging by unordered categories, group count and signed values, then check colour-vision deficiency and greyscale before export.
     B -- yes --> C{How many groups?}
-    C -- "<= 12" --> D["CVD-vetted qualitative set<br/>Okabe-Ito / Set2"]
+    C -- "<= 12" --> D["CVD-vetted qualitative set<br/>Okabe-Ito / Set2 (<= 8)<br/>Paired (<= 12)"]
     C -- "journal house style" --> D2["Journal palette (aesthetic,<br/>not CVD-validated): ggsci / Set3 — keep direct labels"]
     C -- "13-50" --> E["Luminance tiers<br/>10 hues x 5 lightness"]
     C -- "> 50 or focus needed" --> F["Highlight: colour the few,<br/>grey the rest; facet for the rest"]
@@ -180,10 +180,10 @@ p_q1 + p_q2
 
 Palettes should vary **hue** (which color) and **luminance** (how light) in perceptual spaces, not in RGB:
 
-- **Sequential ramps must be luminance-monotone** — every step visibly lighter or darker than the last, so values survive greyscale printing and colorblind readers. `viridis`, `scico` and `colorspace::sequential_hcl()` are designed this way; most RGB gradients are not.
-- **Qualitative palettes should keep roughly constant luminance** — equal visual weight — unless you deliberately add luminance tiers to multiply the number of distinguishable colors.
+- **Sequential ramps must be monotone in lightness** — each step is lighter or darker than the last at the step counts actually used, so values survive greyscale printing and colorblind readers. `viridis`, `scico` and `colorspace::sequential_hcl()` are designed this way; naive RGB hue gradients are not.
+- **Qualitative palettes should keep roughly constant luminance** — equal visual weight — unless you deliberately add luminance tiers to multiply the number of distinguishable colors. CVD-optimized palettes such as Okabe-Ito are the deliberate exception: they use lightness as an additional cue.
 
-R's HCL tools make the geometry explicit: `hcl()` builds a color from Hue (0–360°), Chroma (colorfulness) and Luminance (0–100); `colorspace::qualitative_hcl()`, `sequential_hcl()` and `diverging_hcl()` generate whole families within these constraints. The wheel below is that space: hue runs around the circle, luminance across the three rings — and the *path* of a sequential ramp should always travel radially, never around.
+R's HCL tools make the geometry explicit: `hcl()` builds a color from Hue (0–360°), Chroma (colorfulness) and Luminance (0–100; perceptual lightness, not the relative luminance used by WCAG contrast ratios); `colorspace::qualitative_hcl()`, `sequential_hcl()` and `diverging_hcl()` generate whole families within these constraints. The wheel below is that space: hue runs around the circle, luminance across the three rings — and the *path* of a sequential ramp should always travel radially, never around.
 
 ```{r}
 #| label: pal-wheel
@@ -219,7 +219,7 @@ OKLab/OKLCH (CSS Color 4) is the newer, even more uniform space; `farver::conver
 
 ## Going deeper · Part II — accessibility: color-vision deficiency
 
-About 8% of men of Northern European descent have a red–green color-vision deficiency (deuteranopia/protanopia); tritanopia (blue–yellow) is far rarer, and women are affected roughly an order of magnitude less often (Wong 2011). Three rules follow:
+About 8% of men of Northern European descent have a red–green color-vision deficiency (including deuteranopia, protanopia and anomalous trichromacy); about 0.5% of women are affected — roughly one-sixteenth — and tritanopia (blue–yellow) is far rarer (Wong 2011). Three rules follow:
 
 1. **Never encode a distinction in red vs green alone.** Prefer the 8-color Okabe–Ito palette, or luminance-separated palettes.
 2. **Add redundant encoding** — shape, line type, direct labels — once the group count exceeds ~5.
@@ -253,12 +253,12 @@ mk_panel <- function(cols, title) {
 
 ## Going deeper · Part II — the rainbow is (still) harmful
 
-The rainbow spectrum is the default of many legacy tools and the most common bad choice in science. It is not perceptually uniform: it introduces **artificial band boundaries** where the data are smooth, has non-monotone luminance, and creates false landmarks. Crameri, Shephard & Heron (2020) document how such maps mislead readers. A rainbow built from `rainbow()` has an extra defect: it is cyclic, so the lowest and highest values receive the *same* red. For continuous data use a perceptually uniform, colorblind-safe ramp — `viridis` (matplotlib's default since version 2.0, and a common choice in R), `cividis` (optimized for color-vision deficiency; Nuñez et al. 2018), `scico` (the Crameri maps), or `colorspace::sequential_hcl()`.
+The rainbow spectrum is the default of many legacy tools and the most common bad choice in science. It is not perceptually uniform: it introduces **artificial band boundaries** where the data are smooth, has non-monotone luminance, and creates false landmarks. Crameri, Shephard & Heron (2020) document how such maps mislead readers. A rainbow built from `rainbow()` has an extra defect: it is cyclic, so both ends are red. For continuous data use a perceptually uniform, colorblind-safe ramp — `viridis` (matplotlib's default since version 2.0, and a common choice in R), `cividis` (optimized for color-vision deficiency; Nuñez et al. 2018), `scico` (the Crameri maps), or `colorspace::sequential_hcl()`.
 
 ```{r}
 #| label: pal-rainbow
 #| fig-cap: "The same smooth field with viridis (left) and a cyclic rainbow ramp (right) — the rainbow invents band boundaries that do not exist, and both ends are red."
-#| fig-alt: "Two heatmaps of the same smooth density field: viridis renders a continuous ramp; rainbow renders hard bands, with the same red at low and high values."
+#| fig-alt: "Two heatmaps of the same smooth density field: viridis renders a continuous ramp; rainbow renders hard bands, with red at both ends."
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -353,7 +353,7 @@ Two numbers worth internalizing. `RColorBrewer` deliberately caps its qualitativ
 
 ```{r}
 #| label: pal-brewer
-#| fig-cap: "Maximum palette size per ColorBrewer family — qualitative schemes stop at 12 colors."
+#| fig-cap: "Number of ColorBrewer palettes by maximum color count, by family — qualitative schemes stop at 12 colors."
 #| fig-alt: "Grouped bar chart of the number of ColorBrewer palettes by maximum color count, split into diverging, qualitative and sequential families."
 #| out.width: "80%"
 #| warning: false
@@ -365,8 +365,8 @@ brewer.pal.info |>
   tibble::rownames_to_column("palette") |>
   count(category, maxcolors) |>
   ggplot(aes(factor(maxcolors), n, fill = category)) +
-  geom_col(position = "dodge", colour = "grey20", linewidth = .3) +
-  geom_text(aes(label = n), position = position_dodge(width = .9), vjust = -.4, size = 3.2) +
+  geom_col(position = position_dodge(preserve = "single"), colour = "grey20", linewidth = .3) +
+  geom_text(aes(label = n), position = position_dodge(width = .9, preserve = "single"), vjust = -.4, size = 3.2) +
   scale_fill_manual(values = c(div = "#7B3294", qual = "#008837", seq = "#2C7BB6"),
                     labels = c("diverging", "qualitative", "sequential"), name = NULL) +
   labs(x = "maximum colors in a ColorBrewer palette", y = "number of palettes") +
@@ -375,22 +375,22 @@ brewer.pal.info |>
 ```
 
 ```{.r}
-# Optional survey-tier packages (install.packages("cols4all") / ("colorblindcheck")):
+# Optional survey-tier packages (pak::pak("cols4all") / pak::pak("colorblindcheck")):
 library(cols4all)
 c4a("brewer.set2", 8)                 # exact hex colors from the 689-palette catalog (v0.10)
 c4a_palettes(type = "div") |> head()  # browse by type: cat / seq / div / cyc / bivs / bivc / bivd / bivg
 c4a_plot("brewer.set2")               # palette overview figure
 c4a_scores(palette = "brewer.set2")   # scores: cbfriendly, fairness, contrastWT, contrastBK
 
-# quantitative CVD distances (install.packages("colorblindcheck")):
+# quantitative CVD distances (pak::pak("colorblindcheck")):
 okabe <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
            "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 pc <- colorblindcheck::palette_check(okabe, plot = FALSE)
 pc[, c("name", "min_dist")]           # minimum pairwise distance per simulated vision type
 
 # Crameri maps and Kovesi palettes via the survey-tier packages:
-scico::scico(10, palette = "batlow")  # install.packages("scico")
-pals::cols25(10)                      # install.packages("pals")
+scico::scico(10, palette = "batlow")  # pak::pak("scico")
+pals::cols25(10)                      # pak::pak("pals")
 ```
 
 For high-count qualitative palettes, see the Polychrome paper; for palette scoring, see the cols4all package. The broader scientific arguments are Zeileis et al. (2009) for statistical palettes and Crameri et al. (2020) for colormaps.
@@ -475,7 +475,7 @@ sns.color_palette(okabe_ito).as_hex()
 
 ## Visualization · Part III — the workflow
 
-Every figure palette goes through the same six steps; skipping the checks (3 and 4) is what produces the figures criticized in Crameri et al. (2020).
+Every figure palette goes through the same six steps; skipping the checks in step D is what produces the figures criticized in Crameri et al. (2020).
 
 ```{mermaid}
 flowchart LR
@@ -484,14 +484,14 @@ flowchart LR
     accDescr: Pick a palette type, construct it in a perceptual space, check colour-vision deficiency, greyscale and print, apply it consistently, and export hex codes.
     B --> C[Construct in a perceptual space<br/>HCL / OKLab or a vetted library]
     C --> D[Check: CVD simulation<br/>+ greyscale + print]
-    D --> E[Apply consistently<br/>one palette per figure family]
+    D --> E[Apply consistently<br/>one palette per meaning]
     E --> F[Export hex codes<br/>into the methods/legend]
     D -- fails --> B
 ```
 
 ## Visualization · Part III — grouped comparisons
 
-The classic bar/box/violin comparison with 2–6 groups. The journal palette below (ggsci npg) is aesthetic, **not** CVD-vetted: its luminance varies by a factor of ~4.6 and its red/green pair is the canonical deutan confusion. That is acceptable here because the x-axis labels carry identity; when color is the only cue, switch to Okabe-Ito. Four groups is comfortably inside the reliable range.
+The classic bar/box/violin comparison with 2–6 groups. The journal palette below (ggsci npg) is aesthetic, **not** CVD-vetted: its luminance varies by a factor of ~4.6, and its closest pair under deuteranopia is green vs light blue (ΔE ≈ 19), with smaller gaps under tritanopia. That is acceptable here because the x-axis labels carry identity; when color is the only cue, switch to Okabe-Ito. Four groups is comfortably inside the reliable range.
 
 ```{r}
 #| label: pal-grouped
@@ -520,11 +520,11 @@ ggplot(groups, aes(group, value, fill = group)) +
 
 ## Visualization · Part III — heatmaps and matrices
 
-For a heatmap the palette follows the data, not the package: unsigned magnitudes get a sequential ramp; signed values get a diverging ramp **centred and symmetric at a meaningful midpoint** — zero for a z-score, one for a ratio on a log scale, zero for a percentage change, and an assay-specific reference otherwise. Four practical rules:
+For a heatmap the palette follows the data, not the package: unsigned magnitudes get a sequential ramp; signed values get a diverging ramp **centred and symmetric at a meaningful midpoint** — zero for a z-score or a log ratio (e.g., log2 fold change), one for an untransformed ratio, zero for a percentage change, and an assay-specific reference otherwise. Four practical rules:
 
 - **Centre on the meaning, not the data range.** Use `scale_fill_gradient2(midpoint = ...)`, `scales::rescale_mid()`, or `TwoSlopeNorm` in Python.
 - **Check the midpoint against the background.** The RdBu centre `#F7F7F7` is only 1.07:1 on white, so zero cells look like holes; add tile borders, a slightly darker neutral, or a light grey panel.
-- **Document clipping.** `oob = scales::squish` silently clamps outliers — state the chosen limits, or use `censored` with an explicit out-of-range color.
+- **Document clipping.** `oob = scales::squish` silently clamps outliers — state the chosen limits, or use `oob = scales::censor` with `na.value`.
 - **Handle missing values and bins explicitly.** Give `na.value` a distinct neutral; when binning, use 5–7 classes and an odd number for diverging scales with a neutral middle class.
 
 With `ComplexHeatmap`, anchor the scale at meaningful values: `colorRamp2(c(0, 5, 10), viridis(3))`.
@@ -600,19 +600,19 @@ ggplot(km, aes(time, surv, colour = group)) +
 
 ## Visualization · Part III — genomic tracks and enrichment figures
 
-Genomics has its own conventions: each chromosome gets one stable color; the figure below generates 24 distinct, rainbow-free colors with `hcl.colors(24, "Dark 3")`, and mutation-type legends follow the same logic at 5–10 categories. Enrichment bar/dot plots are a hybrid: a sequential scale carries significance (`-log10(P)`) while categories stay near-neutral — tempting to rainbow, but the sequential rule wins.
+Genomics has its own conventions: each chromosome gets one stable color; the figure below uses 24 HCL hue-wheel colors from `hcl.colors(24, "Dark 3")`; adjacent hues can be similar and several pairs collapse under CVD, so the x-axis labels — not color — carry identity, and mutation-type legends follow the same logic at 5–10 categories. Enrichment bar/dot plots are a hybrid: a sequential scale carries significance (`-log10(P)`) while categories stay near-neutral — tempting to rainbow, but the sequential rule wins.
 
 ```{r}
 #| label: pal-chrom
-#| fig-cap: "A 24-color HCL scheme (hcl.colors(24, \"Dark 3\")) applied to a schematic gene-count track."
-#| fig-alt: "Bar chart of schematic gene counts for chromosomes 1 to 22, X and Y, with each bar assigned one of 24 distinct HCL colors."
+#| fig-cap: "A 24-color HCL hue wheel (hcl.colors(24, \"Dark 3\")) applied to a schematic gene-count track; the chromosome labels carry identity."
+#| fig-alt: "Bar chart of schematic gene counts for chromosomes 1 to 22, X and Y, with each bar assigned one of 24 HCL colors; the chromosome labels carry identity."
 #| out.width: "95%"
 #| warning: false
 #| message: false
 #| fig-width: 8.5
 #| fig-height: 3.6
 
-chrom_cols <- hcl.colors(24, "Dark 3")   # one distinct, rainbow-free HCL color per chromosome
+chrom_cols <- hcl.colors(24, "Dark 3")   # hue-wheel colors; labels, not hues, carry identity
 chrom <- tibble(
   chr = factor(paste0("chr", c(1:22, "X", "Y")), levels = paste0("chr", c(1:22, "X", "Y"))),
   col = chrom_cols,
@@ -666,7 +666,7 @@ p_tiers <- map_base() + scale_colour_manual(values = pal50) +
 p_default + p_tiers
 ```
 
-Even a well-built 50-color palette is at the edge of human discrimination. The published strategies, in order of reliability:
+Even a well-built 50-color palette is at the edge of human discrimination, and luminance tiers do not make it CVD-safe: several pairs still collapse under deuteranopia and protanopia. Use labels or the highlighting strategy below when groups must be told apart. The published strategies, in order of reliability:
 
 1. **Highlight** — colour the clusters you discuss, grey the rest. This is what real papers do when a panel carries more than ~15 groups and only a few of them matter.
 2. **Luminance tiers** — 10 hues × 5 lightness levels is a practical ceiling; reuse the *same* palette across every plot (`DimPlot(cols = ...)` / `scale_colour_manual(values = ...)`).
@@ -676,13 +676,14 @@ Even a well-built 50-color palette is at the edge of human discrimination. The p
 ```{r}
 #| label: pal-highlight
 #| fig-cap: "The highlighting strategy: focal clusters coloured and labeled, everything else grey."
-#| fig-alt: "A UMAP-like point cloud: three focal clusters (C07, C23, C41) in blue, orange and green with text labels, all other clusters in light grey."
+#| fig-alt: "A UMAP-like point cloud: three focal clusters (C07 in orange, C23 in blue, C41 in green) with text labels, all other clusters in light grey."
 #| out.width: "65%"
 #| warning: false
 #| message: false
 #| fig-width: 6.2
 #| fig-height: 5.6
 
+# `embed` is created in the previous chunk; regenerate it if you copy this chunk alone.
 focal <- c("C07", "C23", "C41")
 focal_lab <- embed |>
   filter(cl %in% focal) |>
@@ -726,7 +727,7 @@ cons <- expand_grid(g = factor(names(cons_cols), levels = names(cons_cols)), t =
   mutate(v = cons_means[as.character(g)] + .35 * t + rnorm(n(), 0, .6))
 counts <- tibble(g = factor(names(cons_cols), levels = names(cons_cols)),
                  n = c(10, 14, 9, 12))
-c1 <- ggplot(cons, aes(g, v, fill = g)) + geom_boxplot(width = .55, outlier.shape = NA) +
+c1 <- ggplot(cons, aes(g, v, fill = g)) + geom_boxplot(width = .55, outlier.shape = NA, show.legend = FALSE) +
   scale_fill_manual(values = cons_cols) + labs(title = "box", x = NULL, y = "value") +
   theme_minimal(base_size = 11) +
   theme(legend.position = "none", panel.grid.minor = element_blank())
@@ -735,11 +736,12 @@ c2 <- ggplot(cons, aes(t, v, colour = g, group = g)) + geom_line(linewidth = .8)
   labs(title = "line", x = "time", y = NULL) +
   theme_minimal(base_size = 11) +
   theme(legend.position = "bottom", panel.grid.minor = element_blank())
-c3 <- ggplot(counts, aes(g, n, fill = g)) + geom_col(width = .6) +
+c3 <- ggplot(counts, aes(g, n, fill = g)) + geom_col(width = .6, show.legend = FALSE) +
   scale_fill_manual(values = cons_cols) + labs(title = "bar", x = NULL, y = "n") +
   theme_minimal(base_size = 11) +
   theme(legend.position = "none", panel.grid.minor = element_blank())
-c1 + c2 + c3
+(c1 + c2 + c3) + plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
 ```
 
 ## Rules of thumb
@@ -750,7 +752,7 @@ c1 + c2 + c3
 1. **Match the palette type to the job**: qualitative ≠ sequential ≠ diverging.
 2. **Continuous values get luminance-monotone ramps**; never the rainbow.
 3. **Signed data gets a diverging scale centred and symmetric at a meaningful midpoint** (zero is not universal); check that the midpoint is visible on the background.
-4. **Categorical data**: ≤ 12 colors from a CVD-vetted set (Okabe-Ito, Set2). Journal palettes (`ggsci`) are aesthetic, not CVD-validated — keep direct labels when you use them. Beyond 12, use luminance tiers, redundant encodings, highlighting or facets.
+4. **Categorical data**: ≤ 8 colors from Okabe-Ito or Set2; 9–12 from Paired (the CVD-safe 12-color ColorBrewer set) with redundant encoding. Journal palettes (`ggsci`) are aesthetic, not CVD-validated — keep direct labels when you use them. Beyond 12, use luminance tiers, redundant encodings, highlighting or facets.
 5. **Check colorblind readability** (`colorspace::deutan()`, `colorblindcheck::palette_check()`); prefer Okabe-Ito / viridis / cividis / scico.
 6. **One palette per meaning, everywhere** in the paper; document the hex codes.
 7. **Never rely on color alone** for a categorical decision.
@@ -777,7 +779,7 @@ c1 + c2 + c3
 
 \[8\] Tennekes M. cols4all: Colors for all. R package version 0.10. 2025. doi:10.32614/CRAN.package.cols4all
 
-\[9\] Puts M. colorblindcheck: Check Color Palettes for Colorblind Problems. R package. doi:10.32614/CRAN.package.colorblindcheck
+\[9\] Puts M. colorblindcheck: Check Color Palettes for Problems with Color Vision Deficiency. R package version 1.0.4. doi:10.32614/CRAN.package.colorblindcheck
 
 \[10\] Wilke CO. Fundamentals of Data Visualization. O'Reilly Media, 2019. <https://clauswilke.com/dataviz/>
 
