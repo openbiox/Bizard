@@ -1,0 +1,95 @@
+---
+title: "Faceted Plots (Julia)"
+author:
+  - "**[Editor]** [Shixiang Wang](https://github.com/ShixiangWang);"
+  - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed;"
+---
+
+Faceting splits one dataset into a grid of panels by categorical variables, holding every panel on identical axes so group differences read as shape differences. In Julia the grammar-of-graphics layer **AlgebraOfGraphics** composes faceted specifications from a `mapping` — the closest Julia equivalent to ggplot faceting or seaborn's `relplot`.
+
+## Example
+
+![](../images/Julia/FacetPlot_demo.png){fig-align="center" width="80%"}
+
+## Setup
+
+- System Requirements: Cross-platform (Linux/MacOS/Windows)
+- Programming Language: **Julia**
+- Dependencies: `CairoMakie`, `AlgebraOfGraphics`, `DataFrames`, `Statistics`
+
+```{julia}
+#| label: packages-setup
+#| output: false
+using CairoMakie
+using AlgebraOfGraphics
+using DataFrames
+using Statistics
+using Random
+```
+
+## Data Preparation
+
+We simulate a longitudinal treatment study in long format — 4 genotypes × 2 arms × 6 weekly measurements — one row per observation, the shape AlgebraOfGraphics expects.
+
+```{julia}
+#| label: data-prep
+Random.seed!(201)
+
+genotypes = ["WT", "HET", "KO", "RES"]
+rates = Dict(g => 0.10 + 0.08 * (3 - i) for (i, g) in enumerate(genotypes))
+rows = []
+for geno in genotypes
+    for arm in ["Vehicle", "Treatment"]
+        rate = rates[geno] + (arm == "Treatment" ? 0.0 : -0.05)
+        for mouse in 1:8, week in 0:5
+            push!(rows, (Genotype = geno, Arm = arm, Week = week,
+                         Score = 1 + 2.4 * rate * week / 5 + 0.12 * randn()))
+        end
+    end
+end
+long = DataFrame(rows)
+```
+
+## Visualization
+
+### Faceted Trajectories
+
+`mapping` carries the aesthetic assignment (`layout` facets the grid); combining with a smoothed `visual` line layer builds the panel in one pipeline.
+
+```{julia}
+#| label: fig-jl-facet-line
+#| fig-cap: "Response trajectories faceted by genotype, coloured by arm"
+#| width: 560
+spec = data(long) * mapping(:Week, :Score, color = :Arm,
+                            layout = :Genotype) *
+       visual(Scatter) +
+       data(long) * mapping(:Week, :Score, color = :Arm,
+                            layout = :Genotype) * linear()
+
+fg = draw(spec; figure = (size = (560, 400),))
+fg
+```
+
+### Distribution Facets
+
+The same grammar swaps layers for a histogram + density analysis; `mapping` decides *what*, the analysis decides *how*.
+
+```{julia}
+#| label: fig-jl-facet-hist
+#| fig-cap: "Final-week score distributions faceted by genotype"
+#| width: 560
+final = long[long.Week .== 5, :]
+
+hist_spec = data(final) * mapping(:Score, layout = :Genotype, color = :Genotype) *
+            histogram(bins = 14) +
+            data(final) * mapping(:Score, layout = :Genotype, color = :Genotype) *
+            AlgebraOfGraphics.density()
+
+fg = draw(hist_spec; figure = (size = (560, 380),))
+fg
+```
+
+## References
+
+1. AlgebraOfGraphics development team. AlgebraOfGraphics.jl documentation. https://aog.makie.org/
+2. Danisch, S., & Krumbiegel, J. (2021). Makie.jl: Flexible high-performance data visualization for Julia. *Journal of Open Source Software*, 6(65), 3349.
