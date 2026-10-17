@@ -1,0 +1,383 @@
+---
+title: "Colors & Palettes"
+author:
+  - "**[Editor]** [Shixiang Wang](https://github.com/ShixiangWang);"
+  - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed;"
+---
+
+Color is the most-used — and most-abused — encoding channel in scientific figures. Its job is narrower than intuition suggests: **make categories distinguishable** (qualitative palettes), **encode an ordered magnitude** (sequential palettes), or **encode a signed deviation around a meaningful centre** (diverging palettes). Everything else — hex codes, package names, RGB vs HCL — is machinery in service of those three jobs. This page is a complete, self-contained guide: the principles, the R toolkit (with Python equivalents), the failure modes, and the practical recipes for real figures, including the hardest case — single-cell data with dozens to hundreds of categories.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming Language: R
+
+-   Dependencies: `tidyverse`; `colorspace`; `RColorBrewer`; `viridisLite`; `ggsci`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Installing necessary packages
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+  install.packages("tidyverse")
+}
+if (!requireNamespace("colorspace", quietly = TRUE)) {
+  install.packages("colorspace")
+}
+if (!requireNamespace("RColorBrewer", quietly = TRUE)) {
+  install.packages("RColorBrewer")
+}
+if (!requireNamespace("viridisLite", quietly = TRUE)) {
+  install.packages("viridisLite")
+}
+if (!requireNamespace("ggsci", quietly = TRUE)) {
+  install.packages("ggsci")
+}
+if (!requireNamespace("patchwork", quietly = TRUE)) {
+  install.packages("patchwork")
+}
+
+# Load packages
+library(tidyverse)
+library(colorspace)
+library(RColorBrewer)
+library(viridisLite)
+library(ggsci)
+library(patchwork)
+```
+
+## Data Preparation: colors are data
+
+On screen every color is a triple of channel intensities — red, green and blue, each 0–255 — written as a six-digit hex string. `#3A86FF` means R = 58, G = 134, B = 255. Hex codes are the *lingua franca*: R, Python, Inkscape, Illustrator and every journal's figure checker understand the same strings, which is why this page expresses every palette as hex.
+
+```{r}
+#| label: pal-hex
+#| fig-cap: "Anatomy of a hex color: #RRGGBB decomposes into three 0-255 channels."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 4.2
+
+hex <- "#3A86FF"
+channels <- strtoi(substring(hex, c(2, 4, 6), c(3, 5, 7)), 16)
+
+tibble(channel = c("R (red)", "G (green)", "B (blue)"), value = channels, x = 1:3,
+       color = c("#E63946", "#2A9D8F", "#3A86FF")) |>
+  ggplot() +
+  annotate("text", x = 2, y = 3.4, label = hex, size = 9, family = "mono", fontface = "bold") +
+  annotate("text", x = 2, y = 2.85, label = "= #RRGGBB  (0-255 per channel)", size = 3.6, colour = "grey30") +
+  geom_col(aes(x = x, y = value, fill = color), width = .62) +
+  geom_text(aes(x = x, y = value + 12, label = value), fontface = "bold", size = 4) +
+  scale_fill_identity() +
+  scale_x_continuous(breaks = 1:3, labels = c("R (red)", "G (green)", "B (blue)"), limits = c(.4, 3.6)) +
+  scale_y_continuous(limits = c(0, 4.1)) +
+  labs(x = NULL, y = "channel value (0-255)") +
+  theme_minimal(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+RGB is a *device* description, not a *perceptual* one: equal steps in RGB are not equal steps in perceived color. That mismatch is the root cause of most bad palettes, and the reason modern palettes are designed in perceptual spaces (HCL / CIELAB, and more recently OKLab).
+
+## Example: three jobs, three palette types
+
+| Job | Type | Encodes | Examples |
+|---|---|---|---|
+| Distinguish categories | **Qualitative** | unordered labels | cluster IDs, cell types, treatment arms |
+| Show magnitude | **Sequential** | ordered low → high | expression, density, -log10(P) |
+| Show deviation | **Diverging** | signed value around a centre | z-scores, log fold changes, correlations |
+
+```{r}
+#| label: pal-types
+#| fig-cap: "The three palette jobs: qualitative (Set3), diverging (RdBu) and sequential (viridis)."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 3.4
+
+strip <- function(colors, label) tibble(col = colors, x = seq_along(colors), pal = label)
+bind_rows(
+  strip(RColorBrewer::brewer.pal(12, "Set3"), "Qualitative - ColorBrewer Set3 (12)"),
+  strip(RColorBrewer::brewer.pal(11, "RdBu"),  "Diverging - ColorBrewer RdBu (11)"),
+  strip(viridisLite::viridis(9),               "Sequential - viridis (9)")
+) |>
+  mutate(pal = factor(pal, levels = c("Qualitative - ColorBrewer Set3 (12)",
+                                      "Diverging - ColorBrewer RdBu (11)",
+                                      "Sequential - viridis (9)"))) |>
+  ggplot(aes(x, 1, fill = col)) +
+  geom_tile(width = 1, height = .82, colour = "white", linewidth = .3) +
+  facet_wrap(~pal, ncol = 1, strip.position = "left") +
+  scale_fill_identity() + scale_y_continuous(expand = c(0, 0)) +
+  theme_minimal(base_size = 11) +
+  theme(axis.text = element_blank(), axis.title = element_blank(),
+        panel.grid = element_blank(),
+        strip.text.y.left = element_text(angle = 0, hjust = 0, size = 9.5),
+        strip.background = element_blank(), panel.spacing.y = unit(4, "mm"))
+```
+
+::: callout-important
+Matching the type to the job is non-negotiable: a sequential ramp on unordered categories manufactures a false ordering, and a qualitative rainbow on a continuous variable hides the structure (section 5). The scientific reference for this taxonomy is Zeileis, Hornik & Murrell (2009), *Escaping RGBland* — see the References.
+:::
+
+## 3. Perception first: perceptual uniformity, HCL and OKLab
+
+Palettes should vary **hue** (which color) and **luminance** (how light) in perceptual spaces, not in RGB. Two practical consequences:
+
+- **Sequential ramps must be luminance-monotone** — each step visibly lighter or darker than the last, so the value can be read even in greyscale print or by a colorblind reader. `viridis` and `colorspace::sequential_hcl()` are designed this way; RGB gradients are not.
+- **Qualitative palettes should keep roughly constant luminance** — equal "visual weight" — unless you deliberately add luminance tiers to multiply the number of distinguishable colors (section 8).
+
+R's HCL tools make this explicit: `grDevices::hcl()` builds a color from Hue (0–360°), Chroma (colorfulness) and Luminance (0–100), and `colorspace::qualitative_hcl()` / `sequential_hcl()` / `diverging_hcl()` generate whole families under these constraints. OKLab/OKLCH (CSS Color 4) is the newer, even more uniform space; `farver::convert_colour()` can convert between representations when needed.
+
+## 4. Accessibility: ~8% of men cannot rely on red vs green
+
+About 8% of men of Northern European descent have a red–green color-vision deficiency (deuteranopia/protanopia), with tritanopia (blue–yellow) far rarer; women are affected roughly an order of magnitude less (Wong 2011). The practical rules:
+
+1. **Never encode a distinction in red vs green alone.** Prefer the 8-color Okabe–Ito palette in the figure below, or luminance-separated palettes.
+2. **Add redundant encoding** — shape, line type, direct labels — whenever the group count exceeds ~5.
+3. **Check with a simulator**: `colorspace::deutan()` / `protan()` / `tritan()` transform hex colors directly, so you can render your own figure as a colorblind reader sees it.
+
+```{r}
+#| label: pal-cvd
+#| fig-cap: "The Okabe-Ito palette under normal vision, deuteranopia and protanopia (colorspace::deutan/protan)."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 3.6
+
+okabe <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442",
+           "#0072B2", "#D55E00", "#CC79A7", "#999999")
+mk_panel <- function(cols, title) {
+  tibble(x = 1:8, y = c(3, 5, 4, 7, 6, 8, 5.5, 4.5), g = factor(1:8), col = cols) |>
+    ggplot(aes(x, y, colour = g)) +
+    geom_point(size = 5) +
+    geom_segment(aes(xend = x, yend = y - .8), linewidth = .8) +
+    scale_colour_manual(values = cols) + labs(title = title, x = NULL, y = NULL) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "none", axis.text = element_blank(), axis.ticks = element_blank())
+}
+(mk_panel(okabe, "normal vision") +
+   mk_panel(colorspace::deutan(okabe), "deuteranopia (red-green)") +
+   mk_panel(colorspace::protan(okabe), "protanopia (red-green)")) * plot_layout(ncol = 3)
+```
+
+## 5. The rainbow is (still) harmful
+
+The rainbow spectrum is the default of many legacy tools and the most common bad choice in science. It is not perceptually uniform: it introduces **artificial band boundaries** where the data are smooth, has non-monotone luminance (so nothing reads in greyscale), and creates false landmarks. Crameri, Shephard & Heron (2020, *Nature Communications*) document how such maps mislead readers across the geosciences and beyond. For continuous data use a perceptually uniform, colorblind-safe ramp — `viridis` (the R/Python default), `cividis` (optimized for color-vision deficiency; Nuñez et al. 2018), or `colorspace::sequential_hcl()`.
+
+```{r}
+#| label: pal-rainbow
+#| fig-cap: "The same smooth field with viridis (left) and a rainbow ramp (right) — the rainbow invents band boundaries that do not exist."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.2
+
+field <- expand.grid(x = seq(-3, 3, length.out = 120), y = seq(-3, 3, length.out = 120)) |>
+  mutate(z = exp(-(x^2 + y^2)) + 0.5 * exp(-((x - 1.6)^2 + (y + 1.2)^2) / .6))
+base_map <- function() {
+  ggplot(field, aes(x, y, fill = z)) + geom_raster() +
+    theme_minimal(base_size = 11) +
+    theme(axis.text = element_blank(), axis.ticks = element_blank(),
+          panel.grid = element_blank(), axis.title = element_blank())
+}
+(base_map() + scale_fill_viridis_c() + labs(title = "viridis (perceptually uniform)") +
+   base_map() + scale_fill_gradientn(colours = rainbow(30)) + labs(title = "rainbow (artificial bands)")) *
+  plot_layout(ncol = 2)
+```
+
+## 6. The R toolbox
+
+| Package | What it gives you | Use it for |
+|---|---|---|
+| `grDevices` (base) | `hcl.colors()`, `hcl()`, `colorRampPalette()`, `adjustcolor()` | zero-dependency palettes and expansion |
+| `RColorBrewer` | ColorBrewer: 35 qualitative/sequential/diverging schemes | classic map/journal palettes |
+| `scales` | `hue_pal()`, `gradient_n_pal()`, `show_col()`, `viridis_pal()` | ggplot internals, quick checks |
+| `colorspace` | `qualitative_hcl()`, `sequential_hcl()`, `diverging_hcl()`, `deutan()`, `protan()` | principled HCL palettes, CVD simulation |
+| `viridisLite` / `viridis` | `viridis()`, `cividis()`, `magma()`, ... | the default continuous ramps |
+| `ggsci` | journal palettes: `pal_npg()`, `pal_lancet()`, `pal_jama()`, `pal_nejm()` | submission-ready categorical colors |
+| `Polychrome` | `createPalette()` for dozens–hundreds of qualitative colors | very high category counts (see section 8) |
+
+### ColorBrewer's ceiling
+
+`RColorBrewer` also encodes a useful empirical fact: its sequential and diverging families scale to 9–18 steps, but **qualitative families stop at 12** — beyond that, reliable hue discrimination is simply not available.
+
+```{r}
+#| label: pal-brewer
+#| fig-cap: "Maximum palette size per ColorBrewer family — qualitative schemes stop at 12 colors."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 4
+
+RColorBrewer::brewer.pal.info |>
+  tibble::rownames_to_column("palette") |>
+  count(category, maxcolors) |>
+  ggplot(aes(factor(maxcolors), n, fill = category)) +
+  geom_col(position = "dodge", colour = "grey20", linewidth = .3) +
+  geom_text(aes(label = n), position = position_dodge(width = .9), vjust = -.4, size = 3.2) +
+  scale_fill_manual(values = c(div = "#7B3294", qual = "#008837", seq = "#2C7BB6"),
+                    labels = c("diverging", "qualitative", "sequential"), name = NULL) +
+  labs(x = "maximum colors in a ColorBrewer palette", y = "number of palettes") +
+  scale_y_continuous(expand = expansion(mult = c(0, .12))) +
+  theme_minimal(base_size = 11) + theme(panel.grid.minor = element_blank())
+```
+
+### Journal palettes with ggsci
+
+When the target is a specific journal, `ggsci` ships its house colors; the hex codes then work in ggplot2, ComplexHeatmap or any other device.
+
+```{r}
+#| label: pal-ggsci
+#| fig-cap: "Journal palettes from ggsci: Nature (npg), Lancet, JAMA, NEJM and JCO."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.2
+
+journal_pals <- list(
+  "Nature (npg, 10)" = ggsci::pal_npg("nrc")(10),
+  "Lancet (9)"       = ggsci::pal_lancet("lanonc")(9),
+  "JAMA (7)"         = ggsci::pal_jama("default")(7),
+  "NEJM (8)"         = ggsci::pal_nejm("default")(8),
+  "JCO (10)"         = ggsci::pal_jco("default")(10))
+purrr::imap_dfr(journal_pals, ~ tibble(col = .x, x = seq_along(.x), pal = .y)) |>
+  mutate(pal = factor(pal, levels = names(journal_pals))) |>
+  ggplot(aes(x, 1, fill = col)) +
+  geom_tile(width = 1, height = .8, colour = "white", linewidth = .3) +
+  facet_wrap(~pal, ncol = 1, strip.position = "left") +
+  scale_fill_identity() + scale_y_continuous(expand = c(0, 0)) +
+  theme_minimal(base_size = 11) +
+  theme(axis.text = element_blank(), axis.title = element_blank(), panel.grid = element_blank(),
+        strip.text.y.left = element_text(angle = 0, hjust = 0, size = 9),
+        strip.background = element_blank(), panel.spacing.y = unit(3, "mm"))
+```
+
+### The Python side
+
+The same principles and mostly the same palettes exist in Python; hex codes are portable, so a palette chosen in R works unchanged in matplotlib:
+
+```{.python}
+import matplotlib as mpl
+import seaborn as sns
+
+sns.color_palette("colorblind", 8)      # Okabe-Ito, CVD-safe categorical
+mpl.colormaps["viridis"]                 # perceptually uniform sequential
+mpl.colormaps["cividis"]                 # CVD-optimized sequential
+sns.color_palette("deep")                # seaborn qualitative
+# colorcet / cmasher / palettable additionally ship hundreds of scientific maps
+# every matplotlib/seaborn palette can be dumped as hex: mpl.colors.to_hex(rgb)
+```
+
+## Visualization: single-cell data with dozens to hundreds of categories
+
+A scRNA-seq UMAP routinely has 20–50 clusters. This is where naive palettes fail hardest: ggplot2's default discrete scale generates one hue per level, so 50 classes land ~7° apart on the hue wheel — all distinct hex codes, yet perceptually one continuous blur:
+
+```{r}
+#| label: pal-50-clusters
+#| fig-cap: "50 simulated clusters: the ggplot default hue palette (left) vs 10 hues x 5 luminance tiers (right)."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 5
+
+set.seed(2026)
+n_cl <- 50
+centres <- tibble(cl = 1:n_cl,
+                  cx = cos(seq(0, 2 * pi, length.out = n_cl)) * 10 + rnorm(n_cl, 0, 1.2),
+                  cy = sin(seq(0, 2 * pi, length.out = n_cl)) * 10 + rnorm(n_cl, 0, 1.2))
+embed <- purrr::map_dfr(1:n_cl, function(i) {
+  tibble(cl = i, x = rnorm(45, centres$cx[i], .55), y = rnorm(45, centres$cy[i], .55))
+}) |> mutate(cl = factor(sprintf("C%02d", cl)))
+
+# 50 colours = 10 hues x 5 luminance tiers, built in HCL
+pal50 <- hcl(h = rep(seq(15, 375, length.out = 10), times = 5),
+             c = rep(c(75, 85, 75, 65, 55), each = 10),
+             l = rep(c(78, 68, 58, 48, 38), each = 10))
+names(pal50) <- levels(embed$cl)
+
+map_base <- function() {
+  ggplot(embed, aes(x, y, colour = cl)) + geom_point(size = .55, alpha = .9) +
+    coord_fixed() + theme_minimal(base_size = 11) +
+    theme(axis.text = element_blank(), axis.ticks = element_blank(),
+          legend.position = "none", axis.title = element_blank(), panel.grid = element_blank())
+}
+(map_base() + labs(title = "ggplot default hue palette (50 classes)") +
+   map_base() + scale_colour_manual(values = pal50) +
+   labs(title = "10 hues x 5 luminance tiers")) * plot_layout(ncol = 2)
+```
+
+Even a well-built 50-color palette is at the edge of human discrimination. For real single-cell figures, combine three strategies:
+
+1. **Luminance tiers** (the right panel above): 10 hues × 5 lightness levels is a practical ceiling — and reuse the *same* palette across every plot (define it once, pass it to `DimPlot(cols = ...)` / `scale_colour_manual(values = ...)`).
+2. **Highlight**: colour the clusters you discuss, grey the rest — the figure below is the most reliable solution for "show all clusters but talk about three".
+3. **Split**: facet the UMAP by condition (or use `split.by` in Seurat) so each panel carries ~10 categories instead of 50. For programmatic maximally-distinct generation, `Polychrome::createPalette()` optimizes hue, chroma and luminance jointly for up to hundreds of colors.
+
+```{r}
+#| label: pal-highlight
+#| fig-cap: "The highlighting strategy: focal clusters coloured, everything else grey."
+#| out.width: "65%"
+#| warning: false
+#| message: false
+#| fig-width: 6.2
+#| fig-height: 5.6
+
+focal <- c("C07", "C23", "C41")
+embed |>
+  mutate(col = if_else(cl %in% focal, as.character(cl), "other")) |>
+  ggplot(aes(x, y, colour = col)) +
+  geom_point(size = .55, alpha = .9) +
+  scale_colour_manual(values = c(set_names(c("#D55E00", "#0072B2", "#009E73"), focal),
+                                 other = "grey85"),
+                      breaks = focal) +
+  coord_fixed() + labs(colour = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(axis.text = element_blank(), axis.ticks = element_blank(),
+        axis.title = element_blank(), panel.grid = element_blank(),
+        legend.position = "bottom")
+```
+
+## Visualization: heatmaps and signed matrices
+
+For a heatmap the palette choice follows the data, not the package:
+
+- **Unsigned magnitudes** (expression, counts): sequential ramp (`viridis`, `colorspace::sequential_hcl`). With `ComplexHeatmap`, anchor the scale at meaningful values: `colorRamp2(c(0, 5, 10), viridis(3))`.
+- **Signed values** (z-scores, log fold changes, correlations): diverging ramp centred on 0, with **symmetric limits** (`limits = c(-m, m)`), otherwise the neutral color sits off-centre and the reader misreads the sign structure.
+- **Clustered rows/columns**: keep the palette stable across panels so colors mean the same thing everywhere in the figure.
+
+## Rules of thumb
+
+::: callout-tip
+**A checklist for every figure**
+
+1. **Match the palette type to the job**: qualitative ≠ sequential ≠ diverging.
+2. **Continuous values get luminance-monotone ramps**; never the rainbow (section 5).
+3. **Signed data gets a diverging scale centred and symmetric at zero**.
+4. **Categorical data**: ≤ 12 colors from a vetted set (Set3, Okabe-Ito, ggsci); beyond that add luminance tiers, shapes, direct labels, highlighting or facets.
+5. **Check colorblind readability** (`colorspace::deutan()`); prefer Okabe-Ito / viridis / cividis.
+6. **Reuse one palette everywhere** in the paper; document the hex codes (they are the portable artifact).
+7. **Never rely on color alone** for a categorical decision — add redundancy.
+:::
+
+## References
+
+\[1\] Zeileis A, Hornik K, Murrell P. Escaping RGBland: Selecting colors for statistical graphics. Comput Stat Data Anal. 2009;53(9):3259-3270. doi:10.1016/j.csda.2008.11.033
+
+\[2\] Zeileis A, Fisher JC, Hornik K, Ihaka R, McWhite CD, Murrell P, Stauffer R, Wilke CO. colorspace: A Toolbox for Manipulating and Assessing Colors and Palettes. J Stat Softw. 2020;96(1):1-49. doi:10.18637/jss.v096.i01
+
+\[3\] Crameri F, Shephard GE, Heron PJ. The misuse of colour in science communication. Nat Commun. 2020;11:5444. doi:10.1038/s41467-020-19160-7
+
+\[4\] Wong B. Points of view: Color blindness. Nat Methods. 2011;8(6):441. doi:10.1038/nmeth.1618
+
+\[5\] Nuñez JR, Anderton CR, Renslow RS. Optimizing colormaps with consideration for color vision deficiency to enable accurate interpretation of scientific data. PLoS ONE. 2018;13(7):e0199239. doi:10.1371/journal.pone.0199239
+
+\[6\] Harrower M, Brewer CA. ColorBrewer.org: An Online Tool for Selecting Colour Schemes for Maps. Cartogr J. 2003;40(1):27-37. doi:10.1179/000870403235002042
+
+\[7\] Coombes KR, Brock G, Abrams ZB, Abruzzo LV. Polychrome: Creating and Assessing Qualitative Palettes with Many Colors. J Stat Softw. 2019;90(Code Snippet 1). doi:10.18637/jss.v090.c01
+
+\[8\] Wilke CO. Fundamentals of Data Visualization. O'Reilly Media, 2019. <https://clauswilke.com/dataviz/>
+
+\[9\] Crameri F. Scientific colour maps. 2023. <https://www.fabiocrameri.ch/colourmaps/>
