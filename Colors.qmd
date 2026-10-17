@@ -46,7 +46,7 @@ okabe <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
 
 ## Data Preparation · Part I — colors are data
 
-On screen every color is a triple of channel intensities — red, green and blue, each 0–255 — written as a six-digit hex string. `#3A86FF` means R = 58, G = 134, B = 255. Hex codes are the lingua franca: R, Python, Inkscape, Illustrator and every journal's figure checker understand the same strings.
+On screen every color is a triple of channel intensities — red, green and blue, each 0–255 — written as a six-digit hex string. `#3A86FF` means R = 58, G = 134, B = 255. Hex codes are the lingua franca: R, Python, Inkscape, Illustrator and most journal production systems understand the same strings.
 
 ```{r}
 #| label: pal-hex
@@ -117,19 +117,25 @@ bind_rows(
         strip.background = element_blank(), panel.spacing.y = unit(4, "mm"))
 ```
 
+A fourth case is easy to overlook: **ordered categories** (dose levels, risk strata) are categorical but not unordered. Use an ordered ramp or a qualitative palette whose legend follows the order, and keep that order everywhere.
+
 The decision tree below is the entire taxonomy on one page; Part II explains *why* each branch exists, and Part III walks through each scenario.
 
 ```{mermaid}
 flowchart TD
     A[What does the color encode?] --> B{Unordered categories?}
+    accTitle: Palette type decision tree
+    accDescr: Choose qualitative, sequential or diverging by unordered categories, group count and signed values, then check colour-vision deficiency and greyscale before export.
     B -- yes --> C{How many groups?}
-    C -- "<= 12" --> D["Vetted qualitative set<br/>Okabe-Ito / Set2 / Set3 / ggsci"]
+    C -- "<= 12" --> D["CVD-vetted qualitative set<br/>Okabe-Ito / Set2"]
+    C -- "journal house style" --> D2["Journal palette (aesthetic,<br/>not CVD-validated): ggsci / Set3 — keep direct labels"]
     C -- "13-50" --> E["Luminance tiers<br/>10 hues x 5 lightness"]
     C -- "> 50 or focus needed" --> F["Highlight: colour the few,<br/>grey the rest; facet for the rest"]
     B -- no --> G{Signed around a<br/>meaningful centre?}
     G -- yes --> H["Diverging ramp,<br/>symmetric limits at the centre"]
     G -- no --> I["Sequential ramp:<br/>viridis / cividis / scico"]
     D --> J[Check: colorblind simulation + greyscale]
+    D2 --> J
     E --> J
     F --> J
     H --> J
@@ -174,7 +180,7 @@ p_q1 + p_q2
 
 Palettes should vary **hue** (which color) and **luminance** (how light) in perceptual spaces, not in RGB:
 
-- **Sequential ramps must be luminance-monotone** — every step visibly lighter or darker than the last, so values survive greyscale printing and colorblind readers. `viridis`, `scico` and `colorspace::sequential_hcl()` are designed this way; RGB gradients are not.
+- **Sequential ramps must be luminance-monotone** — every step visibly lighter or darker than the last, so values survive greyscale printing and colorblind readers. `viridis`, `scico` and `colorspace::sequential_hcl()` are designed this way; most RGB gradients are not.
 - **Qualitative palettes should keep roughly constant luminance** — equal visual weight — unless you deliberately add luminance tiers to multiply the number of distinguishable colors.
 
 R's HCL tools make the geometry explicit: `hcl()` builds a color from Hue (0–360°), Chroma (colorfulness) and Luminance (0–100); `colorspace::qualitative_hcl()`, `sequential_hcl()` and `diverging_hcl()` generate whole families within these constraints. The wheel below is that space: hue runs around the circle, luminance across the three rings — and the *path* of a sequential ramp should always travel radially, never around.
@@ -202,6 +208,7 @@ expand.grid(hue = 1:36, ring = 1:3) |>
   annotate("text", x = 0, y = 1.32, label = "H = 90°", size = 3.2, colour = "grey30") +
   annotate("text", x = -1.32, y = 0, label = "H = 180°", size = 3.2, colour = "grey30") +
   annotate("text", x = 0, y = -1.32, label = "H = 270°", size = 3.2, colour = "grey30") +
+  annotate("text", x = 0, y = -1.52, label = "rings: inner L = 75 · middle L = 60 · outer L = 45", size = 3, colour = "grey30") +
   coord_fixed() + labs(title = "hue angle (H) around the wheel; luminance (L) across rings") +
   theme_minimal(base_size = 11) +
   theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(),
@@ -286,8 +293,8 @@ Simultaneous contrast is the perceptual side: the same hex looks lighter on blac
 
 ```{r}
 #| label: pal-contrast
-#| fig-cap: "Simultaneous contrast: the same grey (#777777) on black, mid-grey and white grounds."
-#| fig-alt: "Three panels, each with an identical mid-grey square, on black, mid-grey and white backgrounds; the square appears lighter on black and darker on white."
+#| fig-cap: "Simultaneous contrast: the same grey (#777777) on black, mid-grey and white grounds — it nearly vanishes on the matching mid-grey."
+#| fig-alt: "Three panels, each with an identical mid-grey square, on black, mid-grey and white backgrounds; the square appears lighter on black, darker on white, and nearly disappears on the mid-grey ground."
 #| out.width: "80%"
 #| warning: false
 #| message: false
@@ -382,11 +389,11 @@ pc <- colorblindcheck::palette_check(okabe, plot = FALSE)
 pc[, c("name", "min_dist")]           # minimum pairwise distance per simulated vision type
 
 # Crameri maps and Kovesi palettes via the survey-tier packages:
-scico::scico(10, palette = "roma")    # install.packages("scico")
+scico::scico(10, palette = "batlow")  # install.packages("scico")
 pals::cols25(10)                      # install.packages("pals")
 ```
 
-The canonical citation for the scoring idea is the Polychrome paper for high-count palettes and the cols4all package itself (see References); the broader scientific arguments are Zeileis et al. (2009) for statistical palettes and Crameri et al. (2020) for colormaps.
+For high-count qualitative palettes, see the Polychrome paper; for palette scoring, see the cols4all package. The broader scientific arguments are Zeileis et al. (2009) for statistical palettes and Crameri et al. (2020) for colormaps.
 
 ### Living examples across packages
 
@@ -424,7 +431,7 @@ The same principles exist in Python, and hex codes are portable — but the corr
 | R | Python | Note |
 |---|---|---|
 | `RColorBrewer` | `palettable.colorbrewer` / `sns.color_palette("Set2", 8)` | exact hex available |
-| `viridisLite` | `matplotlib.colormaps` | same design; sampled hex may differ by one channel step |
+| `viridisLite` | `matplotlib.colormaps` | same design; sampled hex may differ by one or two channel steps |
 | `scico` (Crameri) | **`cmcrameri`** | official port; `palettable.scientific` also bundles 10-class variants |
 | `pals` (Kovesi CET) | `colorcet` | CET maps |
 | `paletteer` | `palettable` + `colorcet` + `cmcrameri` | no single meta-package; the stack covers the families above |
@@ -435,6 +442,7 @@ The same principles exist in Python, and hex codes are portable — but the corr
 | `cols4all` | no equivalent | R-side scoring catalog |
 
 ```{.python}
+# Requires matplotlib >= 3.5 (mpl.colormaps) and seaborn
 import matplotlib as mpl
 import numpy as np
 import seaborn as sns
@@ -472,6 +480,8 @@ Every figure palette goes through the same six steps; skipping the checks (3 and
 ```{mermaid}
 flowchart LR
     A[Data + question] --> B[Pick palette type<br/>qual / seq / div]
+    accTitle: Palette selection workflow
+    accDescr: Pick a palette type, construct it in a perceptual space, check colour-vision deficiency, greyscale and print, apply it consistently, and export hex codes.
     B --> C[Construct in a perceptual space<br/>HCL / OKLab or a vetted library]
     C --> D[Check: CVD simulation<br/>+ greyscale + print]
     D --> E[Apply consistently<br/>one palette per figure family]
@@ -536,7 +546,7 @@ hm_panel <- function(m, title, fill, limits, legend) {
     mutate(gene = factor(gene, levels = rev(paste0("G", 1:12)))) |>
     pivot_longer(-gene, names_to = "sample") |>
     mutate(sample = factor(sample, levels = paste0("S", 1:10))) |>
-    ggplot(aes(sample, gene, fill = value)) + geom_tile() +
+    ggplot(aes(sample, gene, fill = value)) + geom_tile(colour = "grey90", linewidth = .2) +
     scale_fill_gradientn(colours = fill, limits = limits,
                          oob = scales::squish, name = legend) +
     labs(title = title, x = NULL, y = NULL) +
@@ -576,7 +586,8 @@ km <- purrr::map_dfr(1:3, function(g) {
 ends <- km |> slice_max(time, by = group)
 ggplot(km, aes(time, surv, colour = group)) +
   geom_step(linewidth = .9) +
-  geom_text(data = ends, aes(label = group), hjust = -.15, size = 3.4, show.legend = FALSE) +
+  geom_text(data = ends, aes(label = group), hjust = -.15, size = 3.4,
+            colour = "grey20", show.legend = FALSE) +
   scale_colour_manual(values = c("Low risk" = "#0072B2",
                                  "Intermediate" = "#E69F00",
                                  "High risk" = "#D55E00")) +
@@ -631,7 +642,7 @@ A scRNA-seq UMAP routinely has 20–50 clusters — the hardest case for color. 
 
 set.seed(2026)
 n_cl <- 50
-centres <- tibble(cl = 1:n_cl,
+centres <- tibble(
                   cx = cos(2 * pi * (0:(n_cl - 1)) / n_cl) * 10 + rnorm(n_cl, 0, 1.2),
                   cy = sin(2 * pi * (0:(n_cl - 1)) / n_cl) * 10 + rnorm(n_cl, 0, 1.2))
 embed <- purrr::map_dfr(1:n_cl, function(i) {
@@ -660,7 +671,7 @@ Even a well-built 50-color palette is at the edge of human discrimination. The p
 1. **Highlight** — colour the clusters you discuss, grey the rest. This is what real papers do when a panel carries more than ~15 groups and only a few of them matter.
 2. **Luminance tiers** — 10 hues × 5 lightness levels is a practical ceiling; reuse the *same* palette across every plot (`DimPlot(cols = ...)` / `scale_colour_manual(values = ...)`).
 3. **Split** — facet the UMAP by condition (or Seurat's `split.by`) so each panel carries ~10 categories.
-4. **Programmatic generation** — `Polychrome::createPalette()` optimizes hue, chroma and luminance jointly for hundreds of colors.
+4. **Programmatic generation** — `Polychrome::createPalette()` optimizes hue, chroma and luminance jointly for dozens of distinguishable colors.
 
 ```{r}
 #| label: pal-highlight
@@ -681,8 +692,9 @@ embed |>
   mutate(col = if_else(cl %in% focal, as.character(cl), "other")) |>
   ggplot(aes(x, y, colour = col)) +
   geom_point(size = .7, alpha = .9) +
-  geom_text(data = focal_lab, aes(x, y, label = cl), inherit.aes = FALSE,
-            size = 3.2, fontface = "bold", colour = "grey20") +
+  geom_label(data = focal_lab, aes(x, y, label = cl), inherit.aes = FALSE,
+             size = 3.1, fontface = "bold", colour = "grey20",
+             fill = "white", alpha = .85, linewidth = 0, nudge_y = .8) +
   scale_colour_manual(values = c(set_names(c("#D55E00", "#0072B2", "#009E73"), focal),
                                  other = "#B3B3B3"),
                       breaks = focal) +

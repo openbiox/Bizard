@@ -47,7 +47,7 @@ okabe <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
 
 ## Data Preparation · 第一部分 — 颜色即数据
 
-屏幕上的每一种颜色都是三个通道强度的组合——红、绿、蓝各取 0–255——写作六位十六进制字符串。`#3A86FF` 表示 R = 58、G = 134、B = 255。十六进制码是通用语言：R、Python、Inkscape、Illustrator 以及各家期刊的图形检查工具都认识同一串字符。
+屏幕上的每一种颜色都是三个通道强度的组合——红、绿、蓝各取 0–255——写作六位十六进制字符串。`#3A86FF` 表示 R = 58、G = 134、B = 255。十六进制码是通用语言：R、Python、Inkscape、Illustrator 以及大多数期刊的生产系统都认识同一串字符。
 
 ```{r}
 #| label: pal-hex
@@ -118,20 +118,26 @@ bind_rows(
         strip.background = element_blank(), panel.spacing.y = unit(4, "mm"))
 ```
 
+还有一个容易忽略的情形：**有序类别**（剂量层级、风险分层）属于类别数据，但并非无序。请使用有序渐变，或使用图例顺序与类别顺序一致的定性调色板，并在全文保持该顺序。
+
 下图把整套分类体系浓缩成一页决策树；第二部分解释每个分支*为什么*存在，第三部分逐一走通各个场景。
 
 
 ```{mermaid}
 flowchart TD
     A[颜色要编码什么？] --> B{无序类别？}
+    accTitle: 调色板类型决策树
+    accDescr: 按无序类别、组数与是否带符号选择定性、顺序或发散调色板，并在导出前做色盲与灰度检查。
     B -- 是 --> C{组数？}
-    C -- "≤ 12" --> D["经过验证的定性集合<br/>Okabe-Ito / Set2 / Set3 / ggsci"]
+    C -- "≤ 12" --> D["经色盲验证的定性集合<br/>Okabe-Ito / Set2"]
+    C -- "期刊风格" --> D2["期刊配色（审美选择，<br/>非色盲验证）：ggsci / Set3——保留直接标注"]
     C -- "13–50" --> E["亮度层级<br/>10 色相 × 5 亮度"]
     C -- "> 50 或需聚焦" --> F["高亮：少数上色、<br/>其余置灰；必要时分面"]
     B -- 否 --> G{围绕有意义中心<br/>的带符号值？}
     G -- 是 --> H["发散渐变，<br/>上下限围绕中心对称"]
     G -- 否 --> I["顺序渐变：<br/>viridis / cividis / scico"]
     D --> J[检查：色盲模拟 + 灰度]
+    D2 --> J
     E --> J
     F --> J
     H --> J
@@ -176,7 +182,7 @@ p_q1 + p_q2
 
 调色板应在感知空间中调整**色相**（哪种颜色）与**亮度**（多亮），而不是在 RGB 中：
 
-- **顺序渐变必须亮度单调**——每一步都比上一步明显更亮或更暗，这样数值在灰度打印与色盲读者面前仍然可读。`viridis`、`scico` 与 `colorspace::sequential_hcl()` 按此设计；RGB 渐变则不是。
+- **顺序渐变必须亮度单调**——每一步都比上一步明显更亮或更暗，这样数值在灰度打印与色盲读者面前仍然可读。`viridis`、`scico` 与 `colorspace::sequential_hcl()` 按此设计；大多数 RGB 渐变则不是。
 - **定性调色板应保持大致恒定的亮度**——视觉重量相当——除非你有意加入亮度层级来成倍增加可区分颜色数。
 
 R 的 HCL 工具让这一几何变得显式：`hcl()` 从色相（0–360°）、彩度（鲜艳度）与亮度（0–100）构造颜色；`colorspace::qualitative_hcl()`、`sequential_hcl()` 与 `diverging_hcl()` 在这些约束下生成整套方案。下图就是这一空间：色相绕圆一周，亮度横跨三个圆环——而顺序渐变的*路径*永远应沿半径方向走，而不是绕圈。
@@ -204,6 +210,7 @@ expand.grid(hue = 1:36, ring = 1:3) |>
   annotate("text", x = 0, y = 1.32, label = "H = 90°", size = 3.2, colour = "grey30") +
   annotate("text", x = -1.32, y = 0, label = "H = 180°", size = 3.2, colour = "grey30") +
   annotate("text", x = 0, y = -1.32, label = "H = 270°", size = 3.2, colour = "grey30") +
+  annotate("text", x = 0, y = -1.52, label = "rings: inner L = 75 · middle L = 60 · outer L = 45", size = 3, colour = "grey30") +
   coord_fixed() + labs(title = "hue angle (H) around the wheel; luminance (L) across rings") +
   theme_minimal(base_size = 11) +
   theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(),
@@ -214,7 +221,7 @@ OKLab/OKLCH（CSS Color 4）是更新、更为均匀的空间；当需要计算�
 
 ## Going deeper · 第二部分 — 可及性：色觉缺陷
 
-约 8% 的北欧裔男性患有红绿型色觉缺陷（红绿色盲/红绿色弱）；蓝色异常（tritanopia）要罕见得多，女性的患病率约低一个数量级（Wong 2011）。由此有三条规则：
+约 8% 的北欧裔男性患有红绿型色觉缺陷（红绿色盲/红绿色弱）；蓝黄色盲（tritanopia）要罕见得多，女性的患病率约低一个数量级（Wong 2011）。由此有三条规则：
 
 1. **绝不把区分只建立在红与绿上。** 优先使用八色 Okabe–Ito 方案，或按亮度分离的调色板。
 2. **加入冗余编码**——形状、线型、直接标注——只要组数超过约 5。
@@ -288,8 +295,8 @@ p_uniform + p_rainbow
 
 ```{r}
 #| label: pal-contrast
-#| fig-cap: "同时对比：同一个灰色（#777777）置于黑、中灰与白底上。"
-#| fig-alt: "三个面板，各有一个相同的中灰色方块，背景分别为黑、中灰与白；方块在黑底上显得更亮，在白底上显得更暗。"
+#| fig-cap: "同时对比：同一个灰色（#777777）置于黑、中灰与白底上——在相近的中灰底上几乎消失。"
+#| fig-alt: "三个面板，各有一个相同的中灰色方块，背景分别为黑、中灰与白；方块在黑底上显得更亮，在白底上显得更暗，在中灰底上几乎消失。"
 #| out.width: "80%"
 #| warning: false
 #| message: false
@@ -384,11 +391,11 @@ pc <- colorblindcheck::palette_check(okabe, plot = FALSE)
 pc[, c("name", "min_dist")]           # minimum pairwise distance per simulated vision type
 
 # Crameri maps and Kovesi palettes via the survey-tier packages:
-scico::scico(10, palette = "roma")    # install.packages("scico")
+scico::scico(10, palette = "batlow")  # install.packages("scico")
 pals::cols25(10)                      # install.packages("pals")
 ```
 
-高类别数配色的文献依据是 Polychrome 论文，评分机制的依据是 cols4all 包本身（见参考文献）；更宏观的科学论证来自 Zeileis 等（2009，统计图形调色板）与 Crameri 等（2020，色图）。
+高类别数定性调色板可参考 Polychrome 论文；调色板评分可参考 cols4all 包。更宏观的科学论证来自 Zeileis 等（2009，统计图形调色板）与 Crameri 等（2020，色图）。
 
 ### 跨包实例
 
@@ -426,7 +433,7 @@ purrr::imap_dfr(pkg_rows, ~ tibble(col = .x, x = seq_along(.x), pal = .y)) |>
 | R | Python | 说明 |
 |---|---|---|
 | `RColorBrewer` | `palettable.colorbrewer` / `sns.color_palette("Set2", 8)` | 可获得精确十六进制码 |
-| `viridisLite` | `matplotlib.colormaps` | 同一设计；采样得到的十六进制码可能相差一个通道步长 |
+| `viridisLite` | `matplotlib.colormaps` | 同一设计；采样得到的十六进制码可能相差一到两个通道步长 |
 | `scico`（Crameri） | **`cmcrameri`** | 官方移植；`palettable.scientific` 也内置 10 级变体 |
 | `pals`（Kovesi CET） | `colorcet` | CET 色图 |
 | `paletteer` | `palettable` + `colorcet` + `cmcrameri` | 没有单一元包；这个组合覆盖上述家族 |
@@ -437,6 +444,7 @@ purrr::imap_dfr(pkg_rows, ~ tibble(col = .x, x = seq_along(.x), pal = .y)) |>
 | `cols4all` | 无等价物 | R 侧的评分目录 |
 
 ```{.python}
+# Requires matplotlib >= 3.5 (mpl.colormaps) and seaborn
 import matplotlib as mpl
 import numpy as np
 import seaborn as sns
@@ -475,6 +483,8 @@ sns.color_palette(okabe_ito).as_hex()
 ```{mermaid}
 flowchart LR
     A[数据 + 问题] --> B[选择调色板类型<br/>定性 / 顺序 / 发散]
+    accTitle: 配色工作流
+    accDescr: 选择调色板类型，在感知空间中构造，检查色盲、灰度与印刷，全文一致地应用并导出十六进制码。
     B --> C[在感知空间中构造<br/>HCL / OKLab 或经过验证的库]
     C --> D[检查：色盲模拟<br/>+ 灰度 + 印刷]
     D --> E[一致地应用<br/>同一图形家族只用一套配色]
@@ -539,7 +549,7 @@ hm_panel <- function(m, title, fill, limits, legend) {
     mutate(gene = factor(gene, levels = rev(paste0("G", 1:12)))) |>
     pivot_longer(-gene, names_to = "sample") |>
     mutate(sample = factor(sample, levels = paste0("S", 1:10))) |>
-    ggplot(aes(sample, gene, fill = value)) + geom_tile() +
+    ggplot(aes(sample, gene, fill = value)) + geom_tile(colour = "grey90", linewidth = .2) +
     scale_fill_gradientn(colours = fill, limits = limits,
                          oob = scales::squish, name = legend) +
     labs(title = title, x = NULL, y = NULL) +
@@ -579,7 +589,8 @@ km <- purrr::map_dfr(1:3, function(g) {
 ends <- km |> slice_max(time, by = group)
 ggplot(km, aes(time, surv, colour = group)) +
   geom_step(linewidth = .9) +
-  geom_text(data = ends, aes(label = group), hjust = -.15, size = 3.4, show.legend = FALSE) +
+  geom_text(data = ends, aes(label = group), hjust = -.15, size = 3.4,
+            colour = "grey20", show.legend = FALSE) +
   scale_colour_manual(values = c("Low risk" = "#0072B2",
                                  "Intermediate" = "#E69F00",
                                  "High risk" = "#D55E00")) +
@@ -634,7 +645,7 @@ scRNA-seq 的 UMAP 常有 20–50 个类群——颜色的最困难情形。ggpl
 
 set.seed(2026)
 n_cl <- 50
-centres <- tibble(cl = 1:n_cl,
+centres <- tibble(
                   cx = cos(2 * pi * (0:(n_cl - 1)) / n_cl) * 10 + rnorm(n_cl, 0, 1.2),
                   cy = sin(2 * pi * (0:(n_cl - 1)) / n_cl) * 10 + rnorm(n_cl, 0, 1.2))
 embed <- purrr::map_dfr(1:n_cl, function(i) {
@@ -684,8 +695,9 @@ embed |>
   mutate(col = if_else(cl %in% focal, as.character(cl), "other")) |>
   ggplot(aes(x, y, colour = col)) +
   geom_point(size = .7, alpha = .9) +
-  geom_text(data = focal_lab, aes(x, y, label = cl), inherit.aes = FALSE,
-            size = 3.2, fontface = "bold", colour = "grey20") +
+  geom_label(data = focal_lab, aes(x, y, label = cl), inherit.aes = FALSE,
+             size = 3.1, fontface = "bold", colour = "grey20",
+             fill = "white", alpha = .85, linewidth = 0, nudge_y = .8) +
   scale_colour_manual(values = c(set_names(c("#D55E00", "#0072B2", "#009E73"), focal),
                                  other = "#B3B3B3"),
                       breaks = focal) +
