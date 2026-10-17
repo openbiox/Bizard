@@ -194,11 +194,25 @@ jobs:
             echo "julia_frozen=$JULIA_FROZEN" >> "$GITHUB_OUTPUT"
             echo "python_frozen=$PYTHON_FROZEN" >> "$GITHUB_OUTPUT"
             echo "   Julia frozen: $JULIA_FROZEN | Python frozen: $PYTHON_FROZEN"
+
+            # Per-file coverage: a Julia tutorial with no freeze entry will
+            # be executed live during the full render, which requires the
+            # Julia environment even when no Julia qmd changed in this diff
+            JULIA_MISSING=false
+            for qmd in Julia/*.qmd; do
+              base="$(basename "$qmd" .qmd)"
+              if ! find _freeze -path "*/Julia/${base}/*" -name "*.json" 2>/dev/null | grep -q .; then
+                JULIA_MISSING=true
+                echo "   ⚠️ no freeze entry for $qmd"
+              fi
+            done
+            echo "julia_missing=$JULIA_MISSING" >> "$GITHUB_OUTPUT"
           else
             echo "⚠️ No freeze cache – full execution required"
             echo "has_freeze=false" >> "$GITHUB_OUTPUT"
             echo "julia_frozen=0" >> "$GITHUB_OUTPUT"
             echo "python_frozen=0" >> "$GITHUB_OUTPUT"
+            echo "julia_missing=true" >> "$GITHUB_OUTPUT"
           fi
 
       # ── Render environment (shared composite action) ─────────
@@ -209,6 +223,7 @@ jobs:
           gh_token: ${{ secrets.GITHUB_TOKEN }}
           need_julia: ${{ steps.changes.outputs.need_julia }}
           julia_frozen: ${{ steps.freeze-check.outputs.julia_frozen }}
+          julia_missing: ${{ steps.freeze-check.outputs.julia_missing }}
           force_full_rebuild: ${{ inputs.force_full_rebuild }}
 
       # ── Dependency Scanning ──────────────────────────────────
