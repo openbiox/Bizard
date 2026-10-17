@@ -1,0 +1,103 @@
+---
+title: "相关矩阵图（Julia）"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** Claude Code —— AI 生成，独立 AI 复核；"
+---
+
+相关矩阵图把特征面板的两两相关系数编码为彩色矩阵单元格，一眼读出共表达模块与冗余标志物。在生物医学研究中，它是标志物面板的常规 QC。Julia 的 `Statistics.cor` 计算矩阵，`CairoMakie.heatmap!` 渲染，并通过 `text!` 逐格标注数值。
+
+## 示例
+
+![](../images/Julia/CorrelogramPlot_demo.png){fig-align="center" width="80%"}
+
+## 环境配置
+
+- 系统要求：跨平台（Linux/MacOS/Windows）
+- 编程语言：**Julia**
+- 依赖包：`CairoMakie`、`DataFrames`、`Statistics`
+
+```{julia}
+#| label: packages-setup
+#| output: false
+using CairoMakie
+using DataFrames
+using Statistics
+using Random
+```
+
+## 数据准备
+
+我们模拟一个含两个相关模块（T 细胞标志物与髓系标志物）加一个弱相关增殖评分的 8 标志物免疫面板，并计算 Pearson 矩阵。
+
+```{julia}
+#| label: data-prep
+Random.seed!(101)
+
+n = 250
+latent_t = randn(n)
+latent_m = randn(n)
+panel = DataFrame(
+    CD3   = latent_t .+ 0.4 .* randn(n),
+    CD4   = latent_t .+ 0.5 .* randn(n),
+    CD8   = latent_t .+ 0.5 .* randn(n),
+    IL7R  = latent_t .+ 0.6 .* randn(n),
+    CD14  = latent_m .+ 0.4 .* randn(n),
+    CD68  = latent_m .+ 0.5 .* randn(n),
+    LYZ   = latent_m .+ 0.5 .* randn(n),
+    MKI67 = randn(n))
+markers = names(panel)
+corr = Matrix(cor(Matrix(panel)))
+```
+
+## 可视化
+
+### 带标注的相关热图
+
+使用反转的发散色图（红=正相关）、固定 ±1 的 `colorrange` 保证跨研究可比，并用 `text!` 逐格标注数值。
+
+```{julia}
+#| label: fig-jl-corr-heatmap
+#| fig-cap: "标志物面板相关矩阵图（标注系数）"
+#| width: 560
+fig = Figure(size = (540, 440))
+ax = Axis(fig[1, 1]; xticks = (1:8, markers), yticks = (1:8, markers),
+          xticklabelrotation = 0.6)
+hm = heatmap!(ax, corr; colormap = Reverse(:RdBu), colorrange = (-1, 1))
+for i in 1:8, j in 1:8
+    text!(ax, j, i; text = string(round(corr[i, j]; digits = 2)),
+          align = (:center, :center), fontsize = 9,
+          color = abs(corr[i, j]) > 0.55 ? :white : :black)
+end
+Colorbar(fig[1, 2], hm; label = "Pearson r")
+fig
+```
+
+### 下三角相关矩阵图
+
+用 `NaN` 掩掉镜像上三角去除冗余；`nan_color` 让空格保持不可见。
+
+```{julia}
+#| label: fig-jl-corr-masked
+#| fig-cap: "下三角相关矩阵图（上三角掩膜）"
+#| width: 500
+corr_masked = [i < j ? NaN : corr[i, j] for i in 1:8, j in 1:8]
+
+fig = Figure(size = (460, 420))
+ax = Axis(fig[1, 1]; xticks = (1:8, markers), yticks = (1:8, markers),
+          xticklabelrotation = 0.6)
+heatmap!(ax, corr_masked; colormap = Reverse(:RdBu), colorrange = (-1, 1),
+         nan_color = :white)
+for i in 1:8, j in 1:i
+    text!(ax, j, i; text = string(round(corr[i, j]; digits = 2)),
+          align = (:center, :center), fontsize = 9,
+          color = abs(corr[i, j]) > 0.55 ? :white : :black)
+end
+hidespines!(ax)
+fig
+```
+
+## 参考文献
+
+1. Makie development team. Makie.jl documentation — heatmap. https://docs.makie.org/stable/reference/plots/heatmap
+2. Danisch, S., & Krumbiegel, J. (2021). Makie.jl: Flexible high-performance data visualization for Julia. *Journal of Open Source Software*, 6(65), 3349.

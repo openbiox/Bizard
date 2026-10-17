@@ -1,0 +1,94 @@
+---
+title: "UpSet 图（Python）"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** Claude Code —— AI 生成，独立 AI 复核；"
+---
+
+UpSet 图以「点阵矩阵 + 柱状图」的组合展示多个集合的交集：上方柱高为交集大小，下方点阵标明参与交集的集合，轻松扩展到 Venn 图无法胜任的多于三个集合的场景。在生物医学研究中，它是跨队列、跨平台、跨亚型的突变或基因列表交集的标准视图。`upsetplot` 包可直接从成员计数矩阵构建。
+
+## 示例
+
+![](../images/Python/UpSetPlot_demo.png){fig-align="center" width="80%"}
+
+## 环境配置
+
+- 系统要求：跨平台（Linux/MacOS/Windows）
+- 编程语言：**Python**
+- 依赖包：`matplotlib`、`pandas`、`upsetplot`
+
+```{python}
+#| label: packages-setup
+#| output: false
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import upsetplot
+```
+
+## 数据准备
+
+我们汇总 500 基因 panel 中每个基因被四种组学平台（WES、RNA-seq、甲基化芯片、蛋白质组学）覆盖的情况，再聚合为成员计数——`upsetplot` 期望的输入即是以布尔成员元组为索引的级数。
+
+```{python}
+#| label: data-prep
+rng = np.random.default_rng(81)
+
+platforms = ['WES', 'RNA-seq', 'Methylation', 'Proteomics']
+p_present = [0.85, 0.70, 0.55, 0.35]
+n_genes = 500
+
+membership = (rng.random((n_genes, 4)) < p_present)
+# 让配对平台略有相关性，贴近真实 panel 覆盖
+membership[:, 3] &= membership[:, 0]
+
+counts = pd.Series(1, index=pd.MultiIndex.from_arrays(
+    membership.T.tolist(), names=platforms)).groupby(level=list(range(4))).sum()
+```
+
+## 可视化
+
+### 基础 UpSet 图
+
+`upsetplot.plot` 在一张图中绘制交集柱、成员矩阵与各集合大小柱；`show_counts` 为柱子标注数值。
+
+```{python}
+#| label: fig-py-upset-basic
+#| fig-cap: "四个组学平台基因覆盖的交集"
+#| width: 90%
+#| fig-align: center
+fig = plt.figure(figsize=(9, 5))
+upsetplot.plot(counts, fig=fig, show_counts='%d',
+               facecolor='#8da0cb', other_dots_color='#d5dae2',
+               shading_color='0.96')
+plt.suptitle('Gene coverage by omics platform', y=1.02, fontsize=12)
+plt.show()
+```
+
+### 按覆盖度排序
+
+对成员索引预排序即可把交集按覆盖平台数分组，`show_percentages` 让每根柱都成为数据完整性的陈述。
+
+```{python}
+#| label: fig-py-upset-degree
+#| fig-cap: "按覆盖度排序并标注百分比的 UpSet 图"
+#| width: 90%
+#| fig-align: center
+degree = np.asarray(counts.index.to_frame(index=False).sum(axis=1))
+order = np.argsort(-degree, kind='stable')
+counts_by_degree = counts.iloc[order]
+
+fig = plt.figure(figsize=(9, 5))
+upsetplot.plot(counts_by_degree, fig=fig, sort_categories_by='cardinality',
+               show_percentages=True, facecolor='#8da0cb',
+               other_dots_color='#d5dae2', shading_color='0.96',
+               element_size=32)
+plt.suptitle('Sorted by coverage degree; percentages = share of panel genes',
+             y=1.02, fontsize=12)
+plt.show()
+```
+
+## 参考文献
+
+1. Lex, A., Gehlenborg, N., Strobelt, H., Vuillemot, R., & Pfister, H. (2014). UpSet: Visualization of Intersecting Sets. *IEEE Transactions on Visualization and Computer Graphics*, 20(12), 1983-1992.
+2. Mohr, F. upsetplot: Draw Interacting Sets. https://github.com/jnooree/upsetplot
