@@ -1,0 +1,145 @@
+---
+title: "Survival Curve (Julia)"
+author:
+  - "**[Editor]** [Shixiang Wang](https://github.com/ShixiangWang);"
+  - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed;"
+---
+
+The Kaplan–Meier estimator reads out survival probability over time from right-censored follow-up data. There is no maintained Kaplan–Meier package in the Julia ecosystem (registry-checked 2026-10), so this tutorial implements the estimator and its Greenwood confidence band directly — twenty lines of base Julia — and renders the step curves with `stairs!`. The mechanics ARE the tutorial.
+
+## Example
+
+![](../images/Julia/SurvivalPlot_demo.png){fig-align="center" width="80%"}
+
+## Setup
+
+- System Requirements: Cross-platform (Linux/MacOS/Windows)
+- Programming Language: **Julia**
+- Dependencies: `CairoMakie`, `DataFrames`, `Statistics`
+
+```{julia}
+#| label: packages-setup
+#| output: false
+using CairoMakie
+using DataFrames
+using Statistics
+using Random
+```
+
+## Data Preparation
+
+We simulate 60 patients per arm (Control, Treatment) with exponential survival — median 12 vs 24 months — and uniform administrative censoring between 10 and 72 months.
+
+```{julia}
+#| label: data-prep
+function simulate_arm(rng, median; n = 60)
+    true_time = -median / log(2) .* log.(rand(rng, n))
+    censor = 10 .+ 62 .* rand(rng, n)
+    DataFrame(Months = min.(true_time, censor),
+              Event = true_time .<= censor)
+end
+rng = Xoshiro(141)
+control = simulate_arm(rng, 12)
+treat = simulate_arm(rng, 24)
+control.Arm = fill("Control", nrow(control))
+treat.Arm = fill("Treatment", nrow(treat))
+surv = vcat(control, treat)
+```
+
+## Visualization
+
+### Kaplan–Meier Estimator, Step by Step
+
+At each distinct event time the survival multiplies by the at-risk-adjusted survival fraction; `stairs!` renders the characteristic step curve.
+
+```{julia}
+#| label: fig-jl-km-basic
+#| fig-cap: "Kaplan–Meier overall survival for the two arms"
+#| width: 480
+function km_fit(times, events)
+    order = sortperm(times)
+    t = times[order]; e = events[order]
+    n = length(t)
+    s = 1.0
+    ts = Float64[0.0]; ss = Float64[1.0]
+    for tt in sort(unique(t))
+        d = count(j -> t[j] == tt && e[j], 1:n)
+        atrisk = count(j -> t[j] >= tt, 1:n)
+        if d > 0
+            s *= 1 - d / atrisk
+            push!(ts, tt); push!(ss, s)
+        end
+    end
+    (ts, ss)
+end
+
+arm_styles = Dict("Control" => :steelblue, "Treatment" => :tomato)
+fig = Figure(size = (460, 360))
+ax = Axis(fig[1, 1], xlabel = "Months since treatment",
+          ylabel = "Survival probability")
+for arm in ["Control", "Treatment"]
+    sub = surv[surv.Arm .== arm, :]
+    ts, ss = km_fit(sub.Months, sub.Event)
+    stairs!(ax, ts, ss; step = :post, color = arm_styles[arm],
+            linewidth = 1.8, label = "$arm (n=$(nrow(sub)))")
+end
+hlines!(ax, [0.5]; color = :gray60, linestyle = :dot, linewidth = 0.8)
+axislegend(ax; framevisible = false, position = :lb)
+ylims!(ax, 0, 1.02)
+hidespines!(ax, :t, :r)
+fig
+```
+
+### Greenwood Confidence Band
+
+The Greenwood variance `S² Σ dᵢ / (nᵢ(nᵢ − dᵢ))` gives pointwise 95% bands; plotting the band behind the step curve completes the publication layout.
+
+```{julia}
+#| label: fig-jl-km-ci
+#| fig-cap: "Kaplan–Meier curve with the Greenwood 95% confidence band"
+#| width: 480
+function km_fit_ci(times, events)
+    order = sortperm(times)
+    t = times[order]; e = events[order]
+    n = length(t)
+    s = 1.0; cum = 0.0
+    ts = Float64[0.0]; ss = Float64[1.0]; lo = Float64[1.0]; hi = Float64[1.0]
+    for tt in sort(unique(t))
+        d = count(j -> t[j] == tt && e[j], 1:n)
+        atrisk = count(j -> t[j] >= tt, 1:n)
+        if d > 0
+            s *= 1 - d / atrisk
+            cum += d / (atrisk * (atrisk - d))
+            se = s * sqrt(cum)
+            push!(ts, tt); push!(ss, s)
+            push!(lo, max(s - 1.96 * se, 0.0)); push!(hi, min(s + 1.96 * se, 1.0))
+        end
+    end
+    (ts, ss, lo, hi)
+end
+
+sub = surv[surv.Arm .== "Control", :]
+ts, ss, lo, hi = km_fit_ci(sub.Months, sub.Event)
+# Band has no step attribute: repeat points to build the step outline
+xs_step = Float64[]; lo_step = Float64[]; hi_step = Float64[]
+for i in eachindex(ts)
+    if i > 1
+        push!(xs_step, ts[i]); push!(lo_step, lo[i-1]); push!(hi_step, hi[i-1])
+    end
+    push!(xs_step, ts[i]); push!(lo_step, lo[i]); push!(hi_step, hi[i])
+end
+fig = Figure(size = (460, 360))
+ax = Axis(fig[1, 1], xlabel = "Months since treatment",
+          ylabel = "Survival probability")
+band!(ax, xs_step, lo_step, hi_step; color = (:steelblue, 0.15))
+stairs!(ax, ts, ss; step = :post, color = :steelblue, linewidth = 1.8)
+hlines!(ax, [0.5]; color = :gray60, linestyle = :dot, linewidth = 0.8)
+ylims!(ax, 0, 1.02)
+hidespines!(ax, :t, :r)
+fig
+```
+
+## References
+
+1. Kaplan, E. L., & Meier, P. (1958). Nonparametric Estimation from Incomplete Observations. *Journal of the American Statistical Association*, 53(282), 457-481.
+2. Borgan, Ø., & Liestøl, K. (1990). A Note on Confidence Intervals and Bands for the Kaplan-Meier Estimator. *Scandinavian Journal of Statistics*, 17(1), 35-41.

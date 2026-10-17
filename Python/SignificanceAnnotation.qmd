@@ -1,0 +1,126 @@
+---
+title: "Significance Annotation (Python)"
+author:
+  - "**[Editor]** [Shixiang Wang](https://github.com/ShixiangWang);"
+  - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed;"
+---
+
+Reviewers expect pairwise significance marks — brackets with p-values or stars — directly on distribution plots. Neither `matplotlib` nor `seaborn` ships a bracket primitive, so this tutorial builds a small reusable helper from `annotate`, tests two groups with Mann–Whitney U, and stacks brackets for several comparisons with Bonferroni-adjusted stars. The same helper attaches to bars, boxes, or violins.
+
+## Example
+
+![](../images/Python/SignificanceAnnotation_demo.png){fig-align="center" width="80%"}
+
+## Setup
+
+- System Requirements: Cross-platform (Linux/MacOS/Windows)
+- Programming Language: **Python**
+- Dependencies: `matplotlib`, `seaborn`, `pandas`, `numpy`, `scipy`
+
+```{python}
+#| label: packages-setup
+#| output: false
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import numpy as np
+from scipy.stats import mannwhitneyu
+```
+
+## Data Preparation
+
+We reuse the drug-dose response experiment: raw replicate measurements for four groups, with the analysis comparing each dose against the vehicle control.
+
+```{python}
+#| label: data-prep
+np.random.seed(41)
+
+groups = ['Vehicle', 'Low dose', 'Mid dose', 'High dose']
+raw = pd.DataFrame({
+    'Group': pd.Categorical(np.repeat(groups, 40), categories=groups, ordered=True),
+    'Response': np.concatenate([
+        np.random.normal(2.0, 0.9, 40),
+        np.random.normal(2.6, 0.9, 40),
+        np.random.normal(4.6, 0.9, 40),
+        np.random.normal(6.2, 0.9, 40),
+    ])
+})
+
+def stars(p):
+    return '***' if p < 0.001 else '**' if p < 0.01 else '*' if p < 0.05 else 'ns'
+```
+
+## Visualization
+
+### Bracket Helper and a Pairwise Mark
+
+The helper draws a bracket with `annotate` in axes coordinates; vertical space must be reserved by extending the y-limit before drawing.
+
+```{python}
+#| label: fig-py-sig-pair
+#| fig-cap: "Box plot with one Mann–Whitney comparison marked by a bracket"
+#| width: 62%
+#| fig-align: center
+def add_p_bracket(ax, x1, x2, y, h, text):
+    ax.annotate('', xy=(x1, y), xytext=(x2, y),
+                arrowprops=dict(arrowstyle='-', color='0.15', lw=1.1))
+    ax.plot([x1, x1], [y, y + h], color='0.15', lw=1.1)
+    ax.plot([x2, x2], [y, y + h], color='0.15', lw=1.1)
+    ax.text((x1 + x2) / 2, y + h, text, ha='center', va='bottom',
+            fontsize=10, color='0.1')
+
+fig, ax = plt.subplots(figsize=(5.4, 4.4))
+sns.boxplot(data=raw, x='Group', y='Response', color='#dddddd',
+            width=0.5, linewidth=1.0, showfliers=False, ax=ax)
+sns.stripplot(data=raw, x='Group', y='Response', color='#2b2b2b',
+              size=3, alpha=0.5, jitter=0.12, ax=ax)
+
+u, p = mannwhitneyu(raw.loc[raw.Group == 'Vehicle', 'Response'],
+                    raw.loc[raw.Group == 'High dose', 'Response'])
+add_p_bracket(ax, 0, 3, raw.Response.max() + 0.4, 0.15, stars(p))
+ax.set_ylim(None, raw.Response.max() + 1.1)
+ax.set_xlabel('Treatment group')
+ax.set_ylabel('Response (a.u.)')
+ax.spines[['top', 'right']].set_visible(False)
+plt.tight_layout()
+plt.show()
+```
+
+### Multiple Comparisons vs Control
+
+Loop over the dose arms, Bonferroni-adjust the raw p-values, and stack the brackets at increasing heights so they never overlap.
+
+```{python}
+#| label: fig-py-sig-multiple
+#| fig-cap: "Dose arms vs vehicle with Bonferroni-adjusted significance stars"
+#| width: 70%
+#| fig-align: center
+comparisons = [(0, 1), (0, 2), (0, 3)]
+pvals = [mannwhitneyu(raw.loc[raw.Group == groups[a], 'Response'],
+                      raw.loc[raw.Group == groups[b], 'Response']).pvalue
+         for a, b in comparisons]
+padj = np.minimum(np.array(pvals) * len(comparisons), 1.0)
+
+fig, ax = plt.subplots(figsize=(5.8, 4.6))
+sns.boxplot(data=raw, x='Group', y='Response', color='#dddddd',
+            width=0.5, linewidth=1.0, showfliers=False, ax=ax)
+sns.stripplot(data=raw, x='Group', y='Response', color='#2b2b2b',
+              size=3, alpha=0.5, jitter=0.12, ax=ax)
+
+y_max = raw.Response.max()
+for level, ((a, b), p) in enumerate(zip(comparisons, padj), start=1):
+    y = y_max + 0.5 + 0.55 * (level - 1)
+    add_p_bracket(ax, a, b, y, 0.15, stars(p))
+ax.set_ylim(None, y_max + 2.3)
+ax.set_xlabel('Treatment group')
+ax.set_ylabel('Response (a.u.)')
+ax.spines[['top', 'right']].set_visible(False)
+plt.tight_layout()
+plt.show()
+```
+
+## References
+
+1. Mann, H. B., & Whitney, D. R. (1947). On a Test of Whether one of Two Random Variables is Stochastically Larger than the Other. *The Annals of Mathematical Statistics*, 18(1), 50-60.
+2. Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. *Computing in Science & Engineering*, 9(3), 90-95.
+3. Waskom, M. L. (2021). seaborn: statistical data visualization. *Journal of Open Source Software*, 6(60), 3021.

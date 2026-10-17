@@ -1,0 +1,112 @@
+---
+title: "多面板组合图（Julia）"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** Claude Code —— AI 生成，独立 AI 复核；"
+---
+
+期刊图形是复合体：带 (a)(b)(c) 字母标签的面板组装进一个导出文件，坐标轴对齐、图例共享。`CairoMakie` 的 Figure + GridLayout 系统是其最强特性——面板贴合网格单元、坐标轴一次调用联动、区块标签就是放在图坐标上的 `Label`。
+
+## 示例
+
+![](../images/Julia/GridLayoutPlot_demo.png){fig-align="center" width="80%"}
+
+## 环境配置
+
+- 系统要求：跨平台（Linux/MacOS/Windows）
+- 编程语言：**Julia**
+- 依赖包：`CairoMakie`、`DataFrames`、`Statistics`
+
+```{julia}
+#| label: packages-setup
+#| output: false
+using CairoMakie
+using DataFrames
+using Statistics
+using Random
+using LinearAlgebra
+```
+
+## 数据准备
+
+我们模拟一份两标志物流式检测数据（三个细胞群），在两种面板布局中复用。
+
+```{julia}
+#| label: data-prep
+Random.seed!(211)
+
+n = 3000
+pop = rand(1:3, n)
+centers = [(-0.5, -0.3), (0.6, 0.5), (1.3, -0.7)]
+covs = [Float64[0.14 0.03; 0.03 0.12], Float64[0.10 -0.02; -0.02 0.09],
+        Float64[0.12 0.01; 0.01 0.10]]
+xy = zeros(n, 2)
+for i in 1:n
+    L = cholesky(Symmetric(covs[pop[i]])).L
+    xy[i, :] = centers[pop[i]] .+ L * randn(2)
+end
+pop_names = ["P1", "P2", "P3"]
+colors = [:seagreen, :steelblue, :tomato]
+```
+
+## 可视化
+
+### 联动双面板组合
+
+行面板通过 `linkxaxes!` 共享 x 轴；面板字母是固定在图网格上的 Makie `Label`（用 `TopLeft()` 角落放置在面板左上）。
+
+```{julia}
+#| label: fig-jl-grid-linked
+#| fig-cap: "共享群体排序的联动双面板"
+#| width: 520
+fig = Figure(size = (500, 430))
+ax_a = Axis(fig[1, 1]; ylabel = "CD4 intensity (a.u.)", xticklabelsvisible = false)
+ax_b = Axis(fig[2, 1]; ylabel = "CD8 intensity (a.u.)")
+for i in 1:3
+    scatter!(ax_a, fill(i, count(==(i), pop)), view(xy, pop .== i, 1);
+             markersize = 5, color = (colors[i], 0.35), strokewidth = 0)
+    scatter!(ax_b, fill(i, count(==(i), pop)), view(xy, pop .== i, 2);
+             markersize = 5, color = (colors[i], 0.35), strokewidth = 0)
+end
+linkxaxes!(ax_a, ax_b)
+ax_a.xticks = 1:3; ax_b.xticks = (1:3, pop_names)
+Label(fig[1, 1, TopLeft()], "(a) CD4 by population"; fontsize = 12, font = :bold,
+      padding = (8, 0, 4, 0))
+Label(fig[2, 1, TopLeft()], "(b) CD8 by population"; fontsize = 12, font = :bold,
+      padding = (8, 0, 4, 0))
+rowgap!(fig.layout, 2)
+hidespines!(ax_a, :t, :r)
+hidespines!(ax_b, :t, :r)
+fig
+```
+
+### 带横跨标题的 2×2 组合
+
+面板可以跨越网格单元（GridSpec 风格），一列 `Label` 作为共享图例条。
+
+```{julia}
+#| label: fig-jl-grid-spanning
+#| fig-cap: "带横跨图例条的四面板组合"
+#| width: 560
+fig = Figure(size = (560, 420))
+fig[1, 1:2] = Label(fig, "Cytometry summary — 3 populations",
+                    fontsize = 14, font = :bold, tellwidth = false)
+for (i, marker) in enumerate(["CD4", "CD8"])
+    ax = Axis(fig[2, i], title = marker, titlesize = 11)
+    for p in 1:3
+        subset = view(xy, pop .== p, i)
+        hist!(ax, subset; bins = 25, normalization = :pdf,
+              color = (colors[p], 0.5), strokewidth = 0)
+    end
+    hidespines!(ax, :t, :r)
+end
+elements = [PolyElement(polycolor = colors[p]) for p in 1:3]
+Legend(fig[3, 1:2], elements, pop_names; orientation = :horizontal,
+       framevisible = false, tellheight = true)
+fig
+```
+
+## 参考文献
+
+1. Makie development team. Makie.jl documentation — layouts. https://docs.makie.org/stable/tutorials/layout-tutorial
+2. Danisch, S., & Krumbiegel, J. (2021). Makie.jl: Flexible high-performance data visualization for Julia. *Journal of Open Source Software*, 6(65), 3349.

@@ -1,0 +1,131 @@
+---
+title: "生存曲线（Python）"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** Claude Code —— AI 生成，独立 AI 复核；"
+---
+
+Kaplan–Meier 估计从右删失的随访数据中读出随时间变化的生存概率，log-rank 检验比较两臂。生存曲线是临床研究的核心图形——肿瘤、移植、器械研究皆然——审稿人期望删失刻度、置信带与明确的检验方法。`lifelines` 提供估计器、置信带与检验。
+
+## 示例
+
+![](../images/Python/SurvivalPlot_demo.png){fig-align="center" width="80%"}
+
+## 环境配置
+
+- 系统要求：跨平台（Linux/MacOS/Windows）
+- 编程语言：**Python**
+- 依赖包：`matplotlib`、`seaborn`、`pandas`、`numpy`、`lifelines`
+
+```{python}
+#| label: packages-setup
+#| output: false
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import numpy as np
+from lifelines import KaplanMeierFitter
+from lifelines.statistics import logrank_test
+```
+
+## 数据准备
+
+我们模拟每臂 60 名患者（Control、Treatment）的指数生存——中位 12 对 24 个月——管理删失在 10 到 72 个月之间均匀分布，随访足够长以使两臂中位生存均可估计。
+
+```{python}
+#| label: data-prep
+np.random.seed(141)
+
+n = 60
+def simulate_arm(median):
+    true_time = np.random.exponential(median / np.log(2), n)
+    censor = np.random.uniform(10, 72, n)
+    return pd.DataFrame({
+        'Months': np.minimum(true_time, censor),
+        'Event': (true_time <= censor).astype(int),
+    })
+
+surv = pd.concat([
+    simulate_arm(12).assign(Arm='Control'),
+    simulate_arm(24).assign(Arm='Treatment'),
+], ignore_index=True)
+
+lr = logrank_test(
+    surv.loc[surv.Arm == 'Control', 'Months'],
+    surv.loc[surv.Arm == 'Treatment', 'Months'],
+    event_observed_A=surv.loc[surv.Arm == 'Control', 'Event'],
+    event_observed_B=surv.loc[surv.Arm == 'Treatment', 'Event'])
+arm_styles = {'Control': ('#457b9d', 'o'), 'Treatment': ('#e63946', 's')}
+```
+
+## 可视化
+
+### 带置信带的 Kaplan–Meier 曲线
+
+`plot_survival_function` 绘制阶梯曲线、置信区间与删失刻度；每臂样本量应写入图注或图例。
+
+```{python}
+#| label: fig-py-km-basic
+#| fig-cap: "Kaplan–Meier 总生存曲线（含 95% 置信带）"
+#| width: 68%
+#| fig-align: center
+fig, ax = plt.subplots(figsize=(6, 4.4))
+kmf = KaplanMeierFitter()
+for arm, (color, marker) in arm_styles.items():
+    sub = surv[surv.Arm == arm]
+    kmf.fit(sub.Months, sub.Event, label=f'{arm} (n={len(sub)})')
+    kmf.plot_survival_function(ax=ax, ci_show=True, ci_alpha=0.12,
+                               color=color, marker=marker,
+                               show_censors=True, censor_styles=dict(ms=5, alpha=0.7))
+ax.axhline(0.5, color='0.6', linewidth=0.8, linestyle=':')
+ax.set_ylim(0, 1.02)
+ax.set_xlabel('Months since treatment')
+ax.set_ylabel('Survival probability')
+ax.legend(frameon=False, loc='lower left')
+ax.spines[['top', 'right']].set_visible(False)
+plt.tight_layout()
+plt.show()
+```
+
+### 标注 Log-Rank 检验与中位生存
+
+log-rank p 值与各臂中位生存是读者最关心的两个数字；放在图内，并把中位点标在 0.5 参考线上。
+
+```{python}
+#| label: fig-py-km-annotated
+#| fig-cap: "标注中位生存与 log-rank 检验的 KM 曲线"
+#| width: 68%
+#| fig-align: center
+fig, ax = plt.subplots(figsize=(6, 4.4))
+medians = {}
+for arm, (color, marker) in arm_styles.items():
+    sub = surv[surv.Arm == arm]
+    kmf.fit(sub.Months, sub.Event, label=f'{arm} (n={len(sub)})')
+    kmf.plot_survival_function(ax=ax, ci_show=True, ci_alpha=0.12,
+                               color=color, marker=marker,
+                               show_censors=True, censor_styles=dict(ms=5, alpha=0.7))
+    medians[arm] = kmf.median_survival_time_
+    ax.plot([kmf.median_survival_time_], [0.5], marker=marker, color=color,
+            markersize=7, clip_on=False)
+
+SUP = str.maketrans('0123456789', '⁰¹²³⁴⁵⁶⁷⁸⁹')
+mantissa, exponent = f'{lr.p_value:.1e}'.split('e-')
+ax.text(0.98, 0.96, f'Log-rank p = {mantissa} × 10⁻{exponent.translate(SUP)}',
+        transform=ax.transAxes, ha='right', va='top', fontsize=10)
+ax.text(0.98, 0.88,
+        'Median: ' + ', '.join(f'{k} {v:.0f} mo' for k, v in medians.items()),
+        transform=ax.transAxes, ha='right', va='top', fontsize=9, color='0.3')
+ax.axhline(0.5, color='0.6', linewidth=0.8, linestyle=':')
+ax.set_ylim(0, 1.02)
+ax.set_xlabel('Months since treatment')
+ax.set_ylabel('Survival probability')
+ax.legend(frameon=False, loc='lower left')
+ax.spines[['top', 'right']].set_visible(False)
+plt.tight_layout()
+plt.show()
+```
+
+## 参考文献
+
+1. Kaplan, E. L., & Meier, P. (1958). Nonparametric Estimation from Incomplete Observations. *Journal of the American Statistical Association*, 53(282), 457-481.
+2. Davidson-Pilon, C. (2019). lifelines: survival analysis in Python. *Journal of Open Source Software*, 4(40), 1317.

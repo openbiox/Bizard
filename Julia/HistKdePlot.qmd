@@ -1,0 +1,120 @@
+---
+title: "Histogram & Density Plot (Julia)"
+author:
+  - "**[Editor]** [Shixiang Wang](https://github.com/ShixiangWang);"
+  - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed;"
+---
+
+Histograms and kernel density estimates (KDE) reveal the shape of a distribution — modality, skewness, and spread that summary statistics conceal. In biomedical research they are routinely used to inspect gene expression distributions, fluorescence intensity profiles, and quality-control metrics before statistical modeling. `CairoMakie` provides `hist`, `density`, and `ecdfplot` in one consistent style.
+
+## Example
+
+![](../images/Julia/HistKdePlot_demo.png){fig-align="center" width="80%"}
+
+## Setup
+
+- System Requirements: Cross-platform (Linux/MacOS/Windows)
+- Programming Language: **Julia**
+- Dependencies: `CairoMakie`, `DataFrames`, `Statistics`
+
+```{julia}
+#| label: packages-setup
+#| output: false
+using CairoMakie
+using DataFrames
+using Statistics
+using Random
+```
+
+## Data Preparation
+
+We simulate the expression of one gene measured in control and stimulated conditions. The stimulated condition is a mixture of two cell subpopulations, producing the bimodality that histograms and KDE are designed to expose.
+
+```{julia}
+#| label: data-prep
+Random.seed!(11)
+
+n = 800
+control = 4.0 .+ 0.8 .* randn(n)
+stimulated = vcat(4.2 .+ 0.8 .* randn(n ÷ 2),     # subpopulation A
+                  7.5 .+ 0.9 .* randn(n ÷ 2))     # subpopulation B
+```
+
+## Visualization
+
+### Histogram
+
+Bin width controls the bias–variance trade-off: too few bins hide structure, too many amplify noise. Compare `bins = 15` with finer settings when in doubt.
+
+```{julia}
+#| label: fig-jl-hist-basic
+#| fig-cap: "Histogram of simulated expression values"
+#| width: 480
+fig = Figure(size = (460, 340))
+ax = Axis(fig[1, 1], xlabel = "Gene expression (log2 counts)", ylabel = "Count")
+hist!(ax, control; bins = 30, color = :skyblue,
+      strokecolor = :white, strokewidth = 0.6)
+hidespines!(ax, :t, :r)
+fig
+```
+
+### Histogram with KDE Overlay
+
+A kernel density estimate drawn on the count axis outlines the distribution while the bars keep the raw counts visible.
+
+```{julia}
+#| label: fig-jl-hist-kde
+#| fig-cap: "Histogram with a kernel density overlay"
+#| width: 480
+fig = Figure(size = (460, 340))
+ax = Axis(fig[1, 1], xlabel = "Gene expression (log2 counts)", ylabel = "Count")
+hist!(ax, control; bins = 30, color = :seagreen,
+      strokecolor = :white, strokewidth = 0.6)
+density!(ax, control; color = (:seagreen, 0.0), strokecolor = :darkgreen,
+         strokewidth = 2, offset = 0)
+hidespines!(ax, :t, :r)
+fig
+```
+
+### Comparing Groups with Density Curves
+
+For two or more groups, overlaid semi-transparent density curves make the bimodality of the stimulated sample directly visible.
+
+```{julia}
+#| label: fig-jl-kde-groups
+#| fig-cap: "Overlaid density curves for control vs stimulated conditions"
+#| width: 480
+fig = Figure(size = (460, 340))
+ax = Axis(fig[1, 1], xlabel = "Gene expression (log2 counts)", ylabel = "Density")
+density!(ax, control; color = (:steelblue, 0.35), strokecolor = :steelblue, strokewidth = 1.8)
+density!(ax, stimulated; color = (:tomato, 0.35), strokecolor = :tomato, strokewidth = 1.8)
+hidespines!(ax, :t, :r)
+Legend(fig[1, 2], [LineElement(color = :steelblue, linewidth = 2),
+                   LineElement(color = :tomato, linewidth = 2)],
+       ["Control", "Stimulated"], framevisible = false)
+fig
+```
+
+### Empirical Cumulative Distribution Function
+
+The ECDF shows every observation without binning or smoothing, making it ideal for auditing distributional shift between cohorts.
+
+```{julia}
+#| label: fig-jl-ecdf
+#| fig-cap: "Empirical cumulative distribution functions by condition"
+#| width: 480
+fig = Figure(size = (460, 340))
+ax = Axis(fig[1, 1], xlabel = "Gene expression (log2 counts)", ylabel = "Proportion")
+ecdfplot!(ax, control; color = :steelblue, linewidth = 2)
+ecdfplot!(ax, stimulated; color = :tomato, linewidth = 2)
+hidespines!(ax, :t, :r)
+Legend(fig[1, 2], [LineElement(color = :steelblue, linewidth = 2),
+                   LineElement(color = :tomato, linewidth = 2)],
+       ["Control", "Stimulated"], framevisible = false)
+fig
+```
+
+## References
+
+1. Makie development team. Makie.jl documentation — hist, density, ecdfplot. https://docs.makie.org/stable/reference/plots/hist
+2. Danisch, S., & Krumbiegel, J. (2021). Makie.jl: Flexible high-performance data visualization for Julia. *Journal of Open Source Software*, 6(65), 3349.
