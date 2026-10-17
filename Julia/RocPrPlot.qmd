@@ -1,0 +1,103 @@
+---
+title: "ROC & PR Curve (Julia)"
+author:
+  - "**[Editor]** [Shixiang Wang](https://github.com/ShixiangWang);"
+  - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed;"
+---
+
+The ROC curve trades sensitivity against (1 − specificity) across every score threshold, summarized by AUC; the precision–recall curve shows the same ranking from the positive-class perspective and is the honest display under class imbalance. Julia's MLJ has MLJBase receivers for metrics, but the curves themselves are a threshold sweep — fifteen lines of base Julia plus `CairoMakie`.
+
+## Example
+
+![](../images/Julia/RocPrPlot_demo.png){fig-align="center" width="80%"}
+
+## Setup
+
+- System Requirements: Cross-platform (Linux/MacOS/Windows)
+- Programming Language: **Julia**
+- Dependencies: `CairoMakie`, `DataFrames`, `Statistics`
+
+```{julia}
+#| label: packages-setup
+#| output: false
+using CairoMakie
+using DataFrames
+using Statistics
+using Random
+```
+
+## Data Preparation
+
+We simulate diagnostic scores for 2,000 patients with 10% prevalence: healthy scores centred at 0, diseased scores shifted upward.
+
+```{julia}
+#| label: data-prep
+Random.seed!(161)
+
+n = 2000; prevalence = 0.10
+label = rand(n) .< prevalence
+scores = ifelse.(label, 0.9 .+ 0.55 .* randn(n), 0.65 .* randn(n))
+
+function roc_pr_curve(label, scores)
+    order = sortperm(scores; rev = true)
+    y = label[order]
+    tp = cumsum(y); fp = cumsum(.!y)
+    P = sum(y); N = length(y) - P
+    tpr = tp ./ P
+    fpr = fp ./ N
+    recall = tpr
+    precision = tp ./ (tp .+ fp)
+    auc = sum(diff(fpr) .* (tpr[1:end-1] .+ tpr[2:end]) ./ 2)
+    ap = sum(precision[i] * (recall[i-1] - recall[i]) for i in 2:length(recall))
+    (tpr, fpr, auc, precision, recall, ap)
+end
+tpr, fpr, auc_value, precision, recall, ap = roc_pr_curve(label, scores)
+```
+
+## Visualization
+
+### ROC Curve with AUC
+
+The AUC here uses the trapezoid rule over the swept (FPR, TPR) path; the diagonal is the chance classifier.
+
+```{julia}
+#| label: fig-jl-roc
+#| fig-cap: "ROC curve with the chance diagonal and trapezoid AUC"
+#| width: 460
+fig = Figure(size = (450, 430))
+ax = Axis(fig[1, 1], xlabel = "False positive rate",
+          ylabel = "True positive rate")
+lines!(ax, fpr, tpr; color = :tomato, linewidth = 1.9,
+       label = "AUC = $(round(auc_value; digits = 3))")
+lines!(ax, [0, 1], [0, 1]; color = :gray50, linewidth = 0.9,
+       linestyle = :dash, label = "Chance")
+axislegend(ax; framevisible = false, position = :rb)
+ylims!(ax, 0, 1.02)
+hidespines!(ax, :t, :r)
+fig
+```
+
+### Precision–Recall Curve
+
+With 10% prevalence the chance precision sits at 0.10 (dashed) — a strong ROC can look far less flattering here, which is the point.
+
+```{julia}
+#| label: fig-jl-pr
+#| fig-cap: "Precision-recall curve with average precision and prevalence baseline"
+#| width: 460
+fig = Figure(size = (450, 430))
+ax = Axis(fig[1, 1], xlabel = "Recall", ylabel = "Precision")
+lines!(ax, recall, precision; color = :steelblue, linewidth = 1.9,
+       label = "AP = $(round(ap; digits = 3))")
+hlines!(ax, [prevalence]; color = :gray50, linewidth = 0.9,
+        linestyle = :dash, label = "Prevalence = 0.10")
+axislegend(ax; framevisible = false, position = :rt)
+ylims!(ax, 0, 1.02)
+hidespines!(ax, :t, :r)
+fig
+```
+
+## References
+
+1. Fawcett, T. (2006). An introduction to ROC analysis. *Pattern Recognition Letters*, 27(8), 861-874.
+2. Saito, T., & Rehmsmeier, M. (2015). The Precision-Recall Plot Is More Informative than the ROC Plot When Evaluating Binary Classifiers on Imbalanced Datasets. *PLoS ONE*, 10(3), e0118432.
