@@ -4,8 +4,9 @@ name: Site Release
 # version) and this workflow:
 #   1. syncs every version string in the repo to the tag (DESCRIPTION,
 #      mcp/package.json, mcp/package-lock.json, MCP server identity),
-#   2. pushes the bump commit to main, which auto-triggers mcp-publish.yml
-#      to publish @openbiox/bizard-mcp to npm,
+#   2. pushes the bump commit to main and dispatches mcp-publish.yml to
+#      publish @openbiox/bizard-mcp to npm (pushes made with GITHUB_TOKEN
+#      do not trigger downstream workflows),
 #   3. creates the GitHub Release from the tag.
 # Idempotent: re-running on an already-synced tag no-ops cleanly.
 
@@ -21,6 +22,7 @@ on:
 
 permissions:
   contents: write
+  actions: write # dispatch mcp-publish.yml after the version bump
 
 concurrency:
   group: site-release
@@ -81,6 +83,17 @@ jobs:
             git rebase --onto origin/main HEAD~1
             git push origin HEAD:main
           fi
+
+      - name: Trigger MCP publish
+        if: steps.sync.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The version bump push above uses GITHUB_TOKEN, and GitHub does
+          # not start downstream workflows for such pushes. Dispatch the
+          # publish explicitly; mcp-publish.yml is idempotent and skips
+          # versions already present on npm.
+          gh workflow run mcp-publish.yml --ref main
 
       - name: Create GitHub Release
         if: steps.sync.outputs.skip != 'true'
