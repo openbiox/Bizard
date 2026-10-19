@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { runCli } from "../src/entry.js";
 import { connect } from "./client.js";
 import { validBundle } from "./fixtures.js";
+import { ResourceListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 const NO_CHECK = { startUpdateCheck: vi.fn() };
+let serverRef: McpServer | undefined;
 
 describe("runCli", () => {
   it("starts degraded when the snapshot is missing: server connects, stderr notes the build hint", async () => {
@@ -54,6 +57,29 @@ describe("runCli", () => {
     expect(holder.bundle).toBe(validBundle);
     expect(holder.etag).toBeNull();
     expect(notices).toEqual([]);
+  });
+
+  it("emits notifications/resources/list_changed when a mid-session swap lands", async () => {
+    let changed: string | null = null;
+    await runCli([], {
+      loadSnapshotFn: () => validBundle,
+      stderr: () => {},
+      startUpdateCheck: (_holder, _notices, notifySwap) => {
+        // Defer until connect() has stored the server ref (real flow: swap
+        // lands long after startup, so deferral mirrors production timing).
+        setImmediate(() => { void notifySwap(serverRef!); });
+      },
+      connect: async (server) => {
+        serverRef = server;
+        const client = await connect(server);
+        client.setNotificationHandler(ResourceListChangedNotificationSchema, (n) => {
+          changed = n.method;
+        });
+        await new Promise((r) => setTimeout(r, 30));
+        await client.close();
+      },
+    });
+    expect(changed).toBe("notifications/resources/list_changed");
   });
 
   it("hands the server a live holder view: a mid-session swap reaches the next tool result", async () => {

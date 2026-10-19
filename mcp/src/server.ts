@@ -114,7 +114,7 @@ export function createBizardServer(
   registerTutorialTools(server, lazyBundle, track);
   registerAdaptTools(server, lazyBundle, track);
   registerContributeTools(server, opts?.credentialEnv);
-  registerPrompts(server);
+  registerPrompts(server, getBundle);
   registerResources(server, getBundle);
 
   return server;
