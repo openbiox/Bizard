@@ -15,7 +15,14 @@ export interface CliDeps {
   startHttp?: (makeServer: () => ReturnType<typeof createBizardServer>, port: number) => void;
   env?: Record<string, string | undefined>;
   stderr?: (line: string) => void;
-  startUpdateCheck?: (holder: MutableHolder, notices: NoticeQueue) => void;
+  /** Receives the hot-swap trigger so tests (or hosts) can fire a swap manually. */
+  startUpdateCheck?: (holder: MutableHolder, notices: NoticeQueue,
+                      notifySwap: (server: ReturnType<typeof createBizardServer>) => Promise<void>) => void;
+}
+
+/** Fire-and-forget list_changed ping after a hot swap; silent when unconnected. */
+async function notifyResourceSwap(server: ReturnType<typeof createBizardServer>): Promise<void> {
+  server.sendResourceListChanged();
 }
 
 /**
@@ -36,10 +43,11 @@ export async function runCli(argv: string[], deps: CliDeps = {}): Promise<void> 
   const server = createBizardServer({ get: () => holder.bundle }, notices);
 
   const startCheck = deps.startUpdateCheck
-    ?? ((h: MutableHolder, ns: NoticeQueue) => {
-      void checkForUpdate(h, { notices: ns });
+    ?? ((h: MutableHolder, ns: NoticeQueue,
+         notifySwap: (server: ReturnType<typeof createBizardServer>) => Promise<void>) => {
+      void checkForUpdate(h, { notices: ns, onSwap: () => { void notifySwap(server); } });
     });
-  startCheck(holder, notices);
+  startCheck(holder, notices, notifyResourceSwap);
 
   if (argv.includes("--http")) {
     const port = Number(env.BIZARD_HTTP_PORT ?? DEFAULT_HTTP_PORT);

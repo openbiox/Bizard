@@ -1,7 +1,20 @@
 import { z } from "zod";
+import { completable } from "@modelcontextprotocol/sdk/server/completable.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Bundle } from "./types.js";
+import { completeChartId } from "./resources.js";
 
-export function registerPrompts(server: McpServer): void {
+/** Prompt-argument completer over the live bundle; empty suggestions in degraded mode. */
+const chartIdArg = (getBundle: () => Bundle | null) =>
+  completable(z.string().describe("Chart id from bizard_search"), (value) => {
+    const bundle = getBundle();
+    return bundle ? completeChartId(bundle, value) : [];
+  });
+
+export function registerPrompts(server: McpServer, getBundle?: () => Bundle | null): void {
+  // With a bundle accessor, chartId prompt args autocomplete from the catalog
+  // (completion/complete); without one (legacy callers) they stay plain strings.
+  const chartId = getBundle ? chartIdArg(getBundle) : z.string().describe("Chart id from bizard_search");
   server.registerPrompt(
     "recommend",
     {
@@ -31,7 +44,7 @@ export function registerPrompts(server: McpServer): void {
       title: "Adapt tutorial code",
       description: "Drive data-aware adaptation of a Bizard tutorial to the user's dataset.",
       argsSchema: {
-        chartId: z.string().describe("Chart id from bizard_search"),
+        chartId,
         language: z.enum(["r", "python", "julia"]).default("r"),
       },
     },
@@ -57,7 +70,7 @@ export function registerPrompts(server: McpServer): void {
       title: "Troubleshoot reproduction",
       description: "Classify and fix a chart reproduction failure.",
       argsSchema: {
-        chartId: z.string().describe("Chart id whose reproduction failed"),
+        chartId,
         error: z.string().max(4000).describe("The error output"),
       },
     },

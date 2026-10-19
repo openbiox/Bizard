@@ -51,8 +51,8 @@ claude mcp add --transport http bizard http://biotree.top:38123/bizard-mcp/mcp
 | `bizard_contribute_check` | Validate a draft against the contribution template; preview points (issue #4) |
 | `bizard_contribute_submit` | Submit as issue/PR via user credentials, or degrade to draft + deep-link |
 
-Prompts: `recommend`, `adapt`, `troubleshoot`, `contribute`.
-Resources: `bizard://catalog`, `bizard://tutorial/{chartId}`, `bizard://llms-txt`.
+Prompts: `recommend`, `adapt`, `troubleshoot`, `contribute` — `chartId` arguments autocomplete via `completion/complete`.
+Resources: `bizard://catalog`, `bizard://tutorial/{chartId}` (enumerable via `resources/list`), `bizard://llms-txt`. A mid-session content-pack hot-swap emits `notifications/resources/list_changed`.
 
 ## Deployment
 
