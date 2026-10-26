@@ -177,8 +177,17 @@ jobs:
 
       # ── Snapshot → renv.lock ───────────────────────────────────
       # The lockfile covers the full recursive closure of Imports +
-      # Suggests (anything a QMD chunk may load at render time) plus
-      # renv/jsonlite tooling.  Passing `packages` explicitly keeps renv
+      # Suggests (anything a QMD chunk may load at render time), plus
+      # jsonlite tooling.  renv itself is deliberately NOT a lockfile
+      # package: snapshotting it produced a Source=any self-entry
+      # (RemotePkgRef "any::renv"), and when the setup-renv package
+      # cache lacks that pinned binary, renv::restore() takes the
+      # download path, mis-parses the entry's Imports vector and aborts
+      # the whole restore with a bogus "package 'utils.1' is not
+      # available" (run 40279900028).  The render workflows get the renv
+      # tooling from r-lib/actions/setup-renv, which installs it into
+      # the user library outside the lockfile.
+      # Passing `packages` explicitly keeps renv
       # from crawling 500+ qmd files to discover dependencies; renv
       # still records the complete transitive closure of those roots.
       # `library` hands renv the full .libPaths(): a single-library view
@@ -199,7 +208,7 @@ jobs:
           packages <- unique(c(
             pkgs_from_field("Imports"),
             pkgs_from_field("Suggests"),
-            "renv", "jsonlite"
+            "jsonlite"
           ))
 
           # Every library on the search path – pak's library first, then
