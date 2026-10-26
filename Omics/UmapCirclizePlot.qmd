@@ -5,19 +5,15 @@ author:
   - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed."
 ---
 
-The scRNA-seq UMAP Circles Plot ("circles within circles") places a single-cell UMAP embedding at the centre of the figure and wraps it with concentric circular annotation tracks — one track per cell type, plus additional rings for condition groups and original samples. The sector order of the outer rings follows the clusters of the central embedding, so readers can read the "continuous cell atlas plane" and the "discrete cluster-level annotations" from a single figure.
+The scRNA-seq UMAP Circles Plot ("circles within circles") places a single-cell UMAP embedding at the centre of the figure and wraps it with concentric circular annotation tracks — an inner ring with one sector per cell type, plus additional rings for condition groups and original samples. The sector order of the outer rings follows the clusters of the central embedding, so readers can read the "continuous cell atlas plane" and the "discrete cluster-level annotations" from a single figure.
 
 The design was popularised by the Linnarsson lab's Nature paper on the molecular architecture of the developing mouse brain, where a central t-SNE is surrounded by a radial dendrogram and colour rings annotating cluster classes, brain region, age, and cell cycle. The [plot1cell](https://github.com/TheHumphreysLab/plot1cell) R package turns this style into a few callable functions for any Seurat object, and it is routinely used for high-impact single-cell atlas figures.
 
 In this tutorial we use **plot1cell** to draw the classic three-ring layout: a central UMAP coloured by cell type with density contours, a `Cluster` ring with per-cluster axes, and outer rings mapping disease/time-point groups and sequencing samples onto each cluster.
 
 ::: callout-note
-**If you want to reproduce this tutorial locally**: all code chunks are set to `eval: false` because the plot1cell package is installed from GitHub and pulls several heavy dependencies (including a large human genome annotation package) that are not part of the Bizard build environment. The rendered figure above was produced by running exactly this code on a simulated dataset; simply copy the chunks into an R session where plot1cell is installed.
+**If you want to reproduce this tutorial locally**: all code chunks are set to `eval: false` because the plot1cell package is installed from GitHub and pulls several heavy dependencies (including a large human genome annotation package) that are not part of the Bizard build environment. The rendered figure above was produced by running exactly this code on a simulated dataset; simply copy the chunks into an R session where plot1cell is installed. The next section gives a fast, reproducible way to build that environment with **micromamba**.
 :::
-
-## Example
-
-![](../images/Omics/UmapCirclizePlot_demo.png){fig-alt="scRNA-seq UMAP Circles Plot DEMO" fig-align="center" width="70%"}
 
 ## Setup
 
@@ -26,6 +22,80 @@ In this tutorial we use **plot1cell** to draw the classic three-ring layout: a c
 -   Programming Language: R
 
 -   Dependent packages: `plot1cell`, `Seurat`, `circlize`, `randomcoloR`, `dplyr`, `ggplot2`
+
+### Fast environment setup with micromamba (recommended)
+
+plot1cell declares heavy `Imports`, and the standard `install.packages()` route compiles them all from source — the human gene annotation `EnsDb.Hsapiens.v86` alone is a ~2 GB build. [micromamba](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html) (a single-file, `sudo`-free package manager) resolves this from prebuilt conda binaries instead: the recipe below was verified end-to-end on a clean machine — the environment (R 4.5, `Seurat`, `circlize`, and the real `EnsDb.Hsapiens.v86`) installs in one transaction, and after adding the three GitHub-only packages the complete circlize pipeline of this tutorial runs without a single source compilation.
+
+Save the following as `plot1cell-env.yml`:
+
+```yaml
+name: plot1cell
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base>=4.3
+  - r-seurat
+  - r-circlize
+  - r-randomcoloR
+  - r-ggplot2
+  - r-dplyr
+  - r-mass
+  - r-scales
+  - r-data.table
+  - r-matrixstats
+  - r-cowplot
+  - r-plotly
+  - r-progress
+  - r-reshape2
+  - r-ggbeeswarm
+  - r-ggh4x
+  - r-fields
+  - r-itertools
+  - r-hdf5r
+  - r-complexupset
+  - bioconductor-biomart
+  - bioconductor-geoquery
+  - r-wordcloud
+  - bioconductor-ensdb.hsapiens.v86
+  - bioconductor-genomeinfodb
+  - bioconductor-genomicranges
+  - r-remotes
+  - r-rmarkdown
+```
+
+Then create the environment and add the four pieces conda cannot provide: three GitHub-only packages (`plot1cell`, `DoubletFinder`, `loomR`) and the lightweight CRAN/Bioconductor package `simplifyEnrichment` (its conda build currently has unresolvable constraints):
+
+```{bash}
+#| eval: false
+# Download micromamba (single binary, no sudo needed); on macOS use
+# osx-arm64 (Apple Silicon) or osx-64 instead of linux-64
+curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj bin/micromamba
+
+# Create the environment from the spec (prebuilt binaries)
+./bin/micromamba create -n plot1cell -f plot1cell-env.yml -y
+
+# Add the GitHub-only packages. Install them with `R CMD INSTALL` on git
+# clones rather than remotes::install_github(): the latter can abort inside
+# conda R on macOS (curl library clash). R_LIBS_USER is pinned to the env
+# library so nothing leaks into (or from) your system R user library.
+for repo in TheHumphreysLab/plot1cell chris-mcginnis-ucsf/DoubletFinder mojaveazure/loomR; do
+  git clone --depth 1 "https://github.com/$repo.git"
+done
+./bin/micromamba run -n plot1cell bash -c '
+export R_LIBS_USER=$CONDA_PREFIX/lib/R/library
+Rscript -e "options(repos = c(CRAN = \"https://cloud.r-project.org\"));
+            if (!requireNamespace(\"BiocManager\", quietly = TRUE)) install.packages(\"BiocManager\");
+            BiocManager::install(c(\"simplifyEnrichment\"), update = FALSE, ask = FALSE)"
+R CMD INSTALL --no-multiarch plot1cell DoubletFinder loomR
+'
+
+# Run R inside the environment the same way
+./bin/micromamba run -n plot1cell bash -c 'export R_LIBS_USER=$CONDA_PREFIX/lib/R/library; Rscript -e "library(plot1cell)"'
+```
+
+Without conda, the plain-R route below still works — it just compiles everything from source.
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 #| eval: false
@@ -41,7 +111,7 @@ if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
 # Note: plot1cell declares heavy Imports (DoubletFinder, loomR, EnsDb.Hsapiens.v86,
 # simplifyEnrichment, ...). The UMAP circles workflow below only needs its circlize
 # functions, but a standard installation pulls all of them — allow extra time and
-# disk space for EnsDb.Hsapiens.v86 (~2 GB).
+# disk space for EnsDb.Hsapiens.v86 (~2 GB), or use the micromamba recipe above.
 if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
 remotes::install_github("TheHumphreysLab/plot1cell")
 
@@ -53,6 +123,10 @@ library(randomcoloR)
 library(dplyr)
 library(ggplot2)
 ```
+
+## Example
+
+![](../images/Omics/UmapCirclizePlot_demo.png){fig-alt="scRNA-seq UMAP Circles Plot DEMO" fig-align="center" width="70%"}
 
 ## Data Preparation
 
@@ -208,7 +282,7 @@ Key parameters worth tuning:
 | `scale` | `prepare_circlize_data()` | Shrinks/expands the central UMAP relative to the rings (0.6–0.9 works well) |
 | `pt.size` | `plot_circlize()` | Point size of the central UMAP; lower it for >50k cells |
 | `kde2d.n` | `plot_circlize()` | Grid resolution of the density contours; raise for large atlases |
-| `contour.levels` | `plot_circlize()` | Which contour quantiles to draw (default `c(0.2, 0.3)`) |
+| `contour.levels` | `plot_circlize()` | Absolute density thresholds passed to `contour()` (default `c(0.2, 0.3)`; values in 0–1) |
 | `bg.color` | `plot_circlize()` | Canvas colour; `"#F9F2E4"` gives the warm paper look of the original paper |
 | `repel`, `label.cex` | `plot_circlize()` | Cluster label repelling and font size |
 | `track_lwd` | `add_track()` | Thickness of each annotation ring segment |

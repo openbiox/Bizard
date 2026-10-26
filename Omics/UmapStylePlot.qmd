@@ -26,7 +26,7 @@ All four schemes draw from one simulated PBMC-style Seurat object, so every pane
 
 -   Programming Language: R
 
--   Dependent packages: `Seurat`, `ggplot2`, `dplyr`, `stringr`, `patchwork`, `RColorBrewer`, `ggrepel`, `tidydr`, `scRNAtoolVis`, `ggunchull`, `mascarade`, `plotly`
+-   Dependent packages: `Seurat`, `ggplot2`, `dplyr`, `stringr`, `patchwork`, `RColorBrewer`, `ggrepel`, `tidydr`, `scRNAtoolVis`, `ggunchull`, `mascarade`, `sessioninfo`, `plotly`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # CRAN dependencies
@@ -173,7 +173,7 @@ names(selCols) <- levels(sce$celltype)
 
 ### Baseline panels
 
-A labelled UMAP by cell type, the same embedding split by tissue site, and a patchwork composite combining cell-type and t-SNE views with journal letter tags (`tag_levels = "A"`). UMAP emphasizes local similarity between related populations; t-SNE separates distinct populations, so the two together make a stronger quality check.
+A labelled UMAP by cell type, the embedding coloured by condition group and by original sample (batch-structure checks), the same embedding split by tissue site, and a patchwork composite combining cell-type and t-SNE views with journal letter tags (`tag_levels = "A"`). UMAP emphasizes local similarity between related populations; t-SNE separates distinct populations, so the two together make a stronger quality check.
 
 ```{r}
 #| label: fig-umap-baseline
@@ -189,6 +189,21 @@ p_split <- DimPlot(sce, reduction = "umap", split.by = "site", group.by = "cellt
                    label = FALSE, cols = selCols, ncol = 3) +
   theme(panel.grid = element_blank(), legend.position = "none")
 p_base + p_split + plot_layout(widths = c(1, 1.4))
+```
+
+```{r}
+#| label: fig-umap-batches
+#| fig-cap: "UMAP coloured by condition group (left) and by original sample (right)"
+#| out-width: "100%"
+# A large palette keeps many samples distinguishable
+sample_cols <- colorRampPalette(brewer.pal(n = 12, name = "Set3"))(length(unique(sce$orig.ident_raw)))
+p_group <- DimPlot(sce, reduction = "umap", group.by = "Group",
+                   label = TRUE, label.size = 4, repel = TRUE) +
+  theme(panel.grid = element_blank())
+p_sample <- DimPlot(sce, reduction = "umap", group.by = "orig.ident_raw",
+                    label = FALSE, cols = sample_cols) +
+  theme(panel.grid = element_blank())
+p_group | p_sample
 ```
 
 ```{r}
@@ -230,7 +245,7 @@ p_tidydr
 
 ### Scheme 2: scRNAtoolVis cloud outlines — CNS sub-journal style
 
-`clusterCornerAxes()` draws corner axes plus translucent circular halos (`addCircle = TRUE`) around each cluster. Key parameters: `cicAlpha` (halo transparency), `cicDelta` (grid granularity of the halo), and `nbin` (resolution of the underlying density estimate).
+`clusterCornerAxes()` draws corner axes plus translucent circular halos (`addCircle = TRUE`) around each cluster. Key parameters: `cicAlpha` (halo transparency) and `cicDelta` (how far the halo extends beyond the cell cloud, in data units). Note that `nbin` only takes effect in the legacy circle mode (`addCircle.legacy = TRUE`); with the current default it is ignored. Loosely packed populations yield softer, more cloud-like halos — decrease `cicDelta` for tighter outlines.
 
 ```{r}
 #| label: fig-umap-corneraxes
@@ -253,7 +268,8 @@ p_corneraxes <- clusterCornerAxes(
   cicAlpha = 0.1,
   cicDelta = 0.5,
   nbin = 200
-) + scale_color_manual(values = selCols)
+) + scale_color_manual(values = selCols) +
+  scale_fill_manual(values = selCols)
 p_corneraxes
 ```
 
@@ -332,29 +348,60 @@ p_mascarade
 ```
 
 ::: callout-note
-`generateMask()` changed its API across versions: older releases used `cluster =` and `minDensity =`, while the current CRAN version (≥ 0.4) uses `clusters =` and deprecates `minDensity`/`kernel`/`type` in favour of automatic bandwidth selection (`smoothSigma = NA` by default). The chunk above uses the current API.
+`generateMask()` changed its interface in mascarade 0.2.0: `minDensity`/`kernel`/`type` were deprecated in favour of automatic bandwidth selection (`smoothSigma = NA` by default), and the cluster argument is now `clusters` — older examples passing `cluster =` only worked through R's partial argument matching. The chunk above uses the current API.
 :::
 
 ### Bonus: 3D density landscape
 
-The viral "three-dimensional kernel-density landscape" stacks one density surface per cell type over the shared UMAP plane. It is an interactive `plotly` widget — drag to rotate and inspect; for static export install the Python `kaleido` package and use `plotly::save_image()`.
+The viral "three-dimensional kernel-density landscape" builds one density terrain per cell type over the shared UMAP plane — a 3-D mountain scene where height is kernel density. Each terrain is a `plotly` surface with a shared white→blue→red colour scale, trimmed to the region where it is non-negligible; labels hover above the summits. It is an interactive widget — drag to rotate; for static export install the Python `kaleido` package and use `plotly::save_image()`.
 
 ```{r plotly-3d-density, message=FALSE, warning=FALSE}
-dens <- do.call(rbind, lapply(split(df, df$celltype), function(d) {
-  kd <- MASS::kde2d(d$umap_1, d$umap_2, n = 60,
-                    lims = c(range(df$umap_1), range(df$umap_2)))
-  out <- expand.grid(x = kd$x, y = kd$y)
-  out$z <- as.vector(kd$z)
-  out$celltype <- d$celltype[1]
-  out
-}))
+n_grid <- 80
+lims <- c(range(df$umap_1), range(df$umap_2))
+kd_list <- lapply(split(df, df$celltype), function(d) {
+  MASS::kde2d(d$umap_1, d$umap_2, n = n_grid, lims = lims)
+})
+zmax <- max(sapply(kd_list, function(k) max(k$z))) * 1.05
 
-fig <- plot_ly(dens, x = ~x, y = ~y, z = ~z, color = ~celltype,
-               type = "scatter3d", mode = "lines", line = list(width = 6),
-               colors = selCols) %>%
-  layout(scene = list(xaxis = list(title = "UMAP_1"),
-                      yaxis = list(title = "UMAP_2"),
-                      zaxis = list(title = "Density")))
+# One shared white -> blue -> red density scale across all terrains
+terrain <- list(c(0, "#f7f6f1"), c(0.35, "#9fc4dd"), c(0.65, "#33506e"), c(1, "#b2182b"))
+fig <- plot_ly()
+for (ct in levels(df$celltype)) {
+  k <- kd_list[[ct]]
+  # Trim the grid to the region where this terrain is non-negligible
+  keep_x <- which(apply(k$z, 1, max) > zmax * 0.01)
+  keep_y <- which(apply(k$z, 2, max) > zmax * 0.01)
+  pad <- 3
+  keep_x <- seq(max(1, min(keep_x) - pad), min(nrow(k$z), max(keep_x) + pad))
+  keep_y <- seq(max(1, min(keep_y) - pad), min(ncol(k$z), max(keep_y) + pad))
+  fig <- add_surface(fig, x = k$x[keep_x], y = k$y[keep_y],
+                     z = k$z[keep_x, keep_y, drop = FALSE],
+                     colorscale = terrain, cmin = 0, cmax = zmax,
+                     showscale = (ct == levels(df$celltype)[1]),
+                     colorbar = list(title = list(text = "Density"), x = 1.02, len = 0.7),
+                     opacity = 0.95, name = ct,
+                     hovertemplate = paste0(ct, "<br>UMAP_1: %{x:.2f}<br>UMAP_2: %{y:.2f}<br>Density: %{z:.4f}<extra></extra>"))
+}
+
+# Cell-type labels hovering above each summit
+centroids <- df %>%
+  group_by(celltype) %>%
+  summarise(x = median(umap_1), y = median(umap_2), .groups = "drop")
+kd_at <- function(ct, xx, yy) {
+  k <- kd_list[[ct]]
+  k$z[cbind(findInterval(xx, k$x), findInterval(yy, k$y))]
+}
+centroids$z <- mapply(kd_at, centroids$celltype, centroids$x, centroids$y) + zmax * 0.12
+fig <- add_text(fig, data = centroids, x = ~x, y = ~y, z = ~z, text = ~celltype,
+                textfont = list(color = "black", size = 12), showlegend = FALSE,
+                hoverinfo = "skip")
+
+no_bg <- list(showbackground = FALSE, zeroline = FALSE, showline = FALSE)
+fig <- fig %>% layout(
+  scene = list(xaxis = c(list(title = "UMAP_1"), no_bg),
+               yaxis = c(list(title = "UMAP_2"), no_bg),
+               zaxis = c(list(title = "Density"), no_bg))
+)
 fig
 ```
 

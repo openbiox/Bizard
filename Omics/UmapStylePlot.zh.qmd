@@ -26,7 +26,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`Seurat`、`ggplot2`、`dplyr`、`stringr`、`patchwork`、`RColorBrewer`、`ggrepel`、`tidydr`、`scRNAtoolVis`、`ggunchull`、`mascarade`、`plotly`
+-   依赖包：`Seurat`、`ggplot2`、`dplyr`、`stringr`、`patchwork`、`RColorBrewer`、`ggrepel`、`tidydr`、`scRNAtoolVis`、`ggunchull`、`mascarade`、`sessioninfo`、`plotly`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # CRAN 依赖
@@ -173,7 +173,7 @@ names(selCols) <- levels(sce$celltype)
 
 ### 基础面板
 
-按细胞类型着色的带标签 UMAP、按组织来源分面的 UMAP，以及组合细胞类型与 t-SNE 视图、带期刊字母标注（`tag_levels = "A"`）的 patchwork 组合图。UMAP 强调相近亚群的聚集，t-SNE 强调不同亚群的区分，两图互补验证分群逻辑。
+按细胞类型着色的带标签 UMAP、按条件分组与原始样本着色的 UMAP（批次结构检查）、按组织来源分面的 UMAP，以及组合细胞类型与 t-SNE 视图、带期刊字母标注（`tag_levels = "A"`）的 patchwork 组合图。UMAP 强调相近亚群的聚集，t-SNE 强调不同亚群的区分，两图互补验证分群逻辑。
 
 ```{r}
 #| label: fig-umap-baseline
@@ -189,6 +189,21 @@ p_split <- DimPlot(sce, reduction = "umap", split.by = "site", group.by = "cellt
                    label = FALSE, cols = selCols, ncol = 3) +
   theme(panel.grid = element_blank(), legend.position = "none")
 p_base + p_split + plot_layout(widths = c(1, 1.4))
+```
+
+```{r}
+#| label: fig-umap-batches
+#| fig-cap: "按条件分组（左）与按原始样本（右）着色的 UMAP"
+#| out-width: "100%"
+# 大调色板保证多样本可辨识
+sample_cols <- colorRampPalette(brewer.pal(n = 12, name = "Set3"))(length(unique(sce$orig.ident_raw)))
+p_group <- DimPlot(sce, reduction = "umap", group.by = "Group",
+                   label = TRUE, label.size = 4, repel = TRUE) +
+  theme(panel.grid = element_blank())
+p_sample <- DimPlot(sce, reduction = "umap", group.by = "orig.ident_raw",
+                    label = FALSE, cols = sample_cols) +
+  theme(panel.grid = element_blank())
+p_group | p_sample
 ```
 
 ```{r}
@@ -230,7 +245,7 @@ p_tidydr
 
 ### 方案二：scRNAtoolVis 云朵包围圈——CNS 子刊风格
 
-`clusterCornerAxes()` 绘制角轴，并为每个亚群添加半透明圆形"云朵"轮廓（`addCircle = TRUE`）。关键参数：`cicAlpha`（轮廓透明度）、`cicDelta`（轮廓网格粒度）与 `nbin`（底层密度估计分辨率）。
+`clusterCornerAxes()` 绘制角轴，并为每个亚群添加半透明圆形"云朵"轮廓（`addCircle = TRUE`）。关键参数：`cicAlpha`（轮廓透明度）与 `cicDelta`（晕圈相对点云的外扩距离，数据单位）。注意 `nbin` 仅在旧版圆形模式（`addCircle.legacy = TRUE`）下生效，当前默认路径下会被忽略。亚群分布越松散，晕圈越接近朦胧云朵——想要更贴合的轮廓可调小 `cicDelta`。
 
 ```{r}
 #| label: fig-umap-corneraxes
@@ -253,7 +268,8 @@ p_corneraxes <- clusterCornerAxes(
   cicAlpha = 0.1,
   cicDelta = 0.5,
   nbin = 200
-) + scale_color_manual(values = selCols)
+) + scale_color_manual(values = selCols) +
+  scale_fill_manual(values = selCols)
 p_corneraxes
 ```
 
@@ -332,29 +348,60 @@ p_mascarade
 ```
 
 ::: callout-note
-`generateMask()` 的 API 在版本间有变化：旧版本使用 `cluster =` 和 `minDensity =`，当前 CRAN 版本（≥ 0.4）使用 `clusters =`，并弃用 `minDensity`/`kernel`/`type`，改为自动带宽选择（默认 `smoothSigma = NA`）。上面的代码块使用的是当前 API。
+`generateMask()` 在 mascarade 0.2.0 版本更改了接口：`minDensity`/`kernel`/`type` 被弃用，改为自动带宽选择（默认 `smoothSigma = NA`），cluster 参数更名为 `clusters`——旧示例中的 `cluster =` 只是靠 R 的部分参数匹配侥幸可用。上面的代码块使用当前 API。
 :::
 
 ### 附加：三维核密度景观图
 
-网红"三维核密度景观图"在共享的 UMAP 平面上为每种细胞类型叠加一层密度曲面。这是一个可交互的 `plotly` 组件——可拖拽旋转查看；如需静态导出，安装 Python 的 `kaleido` 包后调用 `plotly::save_image()`。
+网红"三维核密度景观图"在共享的 UMAP 平面上为每种细胞类型构建一层密度"地形"——高度为核密度、配色为 白→蓝→红 的三维山景。每层地形是一个 `plotly` surface，共享同一色阶并裁剪到密度可忽略区域之外；标签悬浮在山峰上方。这是一个可交互的组件——可拖拽旋转查看；如需静态导出，安装 Python 的 `kaleido` 包后调用 `plotly::save_image()`。
 
 ```{r plotly-3d-density, message=FALSE, warning=FALSE}
-dens <- do.call(rbind, lapply(split(df, df$celltype), function(d) {
-  kd <- MASS::kde2d(d$umap_1, d$umap_2, n = 60,
-                    lims = c(range(df$umap_1), range(df$umap_2)))
-  out <- expand.grid(x = kd$x, y = kd$y)
-  out$z <- as.vector(kd$z)
-  out$celltype <- d$celltype[1]
-  out
-}))
+n_grid <- 80
+lims <- c(range(df$umap_1), range(df$umap_2))
+kd_list <- lapply(split(df, df$celltype), function(d) {
+  MASS::kde2d(d$umap_1, d$umap_2, n = n_grid, lims = lims)
+})
+zmax <- max(sapply(kd_list, function(k) max(k$z))) * 1.05
 
-fig <- plot_ly(dens, x = ~x, y = ~y, z = ~z, color = ~celltype,
-               type = "scatter3d", mode = "lines", line = list(width = 6),
-               colors = selCols) %>%
-  layout(scene = list(xaxis = list(title = "UMAP_1"),
-                      yaxis = list(title = "UMAP_2"),
-                      zaxis = list(title = "Density")))
+# 所有地形共享 白->蓝->红 的密度色阶
+terrain <- list(c(0, "#f7f6f1"), c(0.35, "#9fc4dd"), c(0.65, "#33506e"), c(1, "#b2182b"))
+fig <- plot_ly()
+for (ct in levels(df$celltype)) {
+  k <- kd_list[[ct]]
+  # 把网格裁剪到该地形不可忽略的区域
+  keep_x <- which(apply(k$z, 1, max) > zmax * 0.01)
+  keep_y <- which(apply(k$z, 2, max) > zmax * 0.01)
+  pad <- 3
+  keep_x <- seq(max(1, min(keep_x) - pad), min(nrow(k$z), max(keep_x) + pad))
+  keep_y <- seq(max(1, min(keep_y) - pad), min(ncol(k$z), max(keep_y) + pad))
+  fig <- add_surface(fig, x = k$x[keep_x], y = k$y[keep_y],
+                     z = k$z[keep_x, keep_y, drop = FALSE],
+                     colorscale = terrain, cmin = 0, cmax = zmax,
+                     showscale = (ct == levels(df$celltype)[1]),
+                     colorbar = list(title = list(text = "Density"), x = 1.02, len = 0.7),
+                     opacity = 0.95, name = ct,
+                     hovertemplate = paste0(ct, "<br>UMAP_1: %{x:.2f}<br>UMAP_2: %{y:.2f}<br>Density: %{z:.4f}<extra></extra>"))
+}
+
+# 亚群标签悬浮在各自山峰上方
+centroids <- df %>%
+  group_by(celltype) %>%
+  summarise(x = median(umap_1), y = median(umap_2), .groups = "drop")
+kd_at <- function(ct, xx, yy) {
+  k <- kd_list[[ct]]
+  k$z[cbind(findInterval(xx, k$x), findInterval(yy, k$y))]
+}
+centroids$z <- mapply(kd_at, centroids$celltype, centroids$x, centroids$y) + zmax * 0.12
+fig <- add_text(fig, data = centroids, x = ~x, y = ~y, z = ~z, text = ~celltype,
+                textfont = list(color = "black", size = 12), showlegend = FALSE,
+                hoverinfo = "skip")
+
+no_bg <- list(showbackground = FALSE, zeroline = FALSE, showline = FALSE)
+fig <- fig %>% layout(
+  scene = list(xaxis = c(list(title = "UMAP_1"), no_bg),
+               yaxis = c(list(title = "UMAP_2"), no_bg),
+               zaxis = c(list(title = "Density"), no_bg))
+)
 fig
 ```
 

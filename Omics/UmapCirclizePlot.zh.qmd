@@ -12,12 +12,8 @@ author:
 本教程使用 **plot1cell** 绘制经典的三环布局：中心 UMAP 按细胞类型着色并绘制密度轮廓线，`Cluster` 环带每个细胞类型的扇区与坐标轴，外圈轨道将分组与样本信息映射到每个细胞类型上。
 
 ::: callout-note
-**如需在本地复现本教程**：所有代码块均设为 `eval: false`，因为 plot1cell 需从 GitHub 安装且会拉取多个重依赖（包括体积庞大的人类基因组注释包），不属于 Bizard 的构建环境。上方渲染图正是用这份代码在模拟数据上运行的产物；将各代码块复制到装有 plot1cell 的 R 会话中即可复现。
+**如需在本地复现本教程**：所有代码块均设为 `eval: false`，因为 plot1cell 需从 GitHub 安装且会拉取多个重依赖（包括体积庞大的人类基因组注释包），不属于 Bizard 的构建环境。上方渲染图正是用这份代码在模拟数据上运行的产物；将各代码块复制到装有 plot1cell 的 R 会话中即可复现。下一节给出用 **micromamba** 快速、可复现地搭建该环境的方法。
 :::
-
-## 示例
-
-![](../images/Omics/UmapCirclizePlot_demo.png){fig-alt="单细胞 UMAP 圈中圈图 DEMO" fig-align="center" width="70%"}
 
 ## 环境配置
 
@@ -26,6 +22,80 @@ author:
 -   编程语言：R
 
 -   依赖包：`plot1cell`、`Seurat`、`circlize`、`randomcoloR`、`dplyr`、`ggplot2`
+
+### 用 micromamba 快速搭建环境（推荐）
+
+plot1cell 声明了较多 `Imports`，标准 `install.packages()` 路线需要全部从源码编译——仅人类基因注释包 `EnsDb.Hsapiens.v86` 就是一个约 2 GB 的大工程。[micromamba](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html)（单文件、无需 `sudo` 的包管理器）可以直接用预编译的 conda 二进制解决：下面的配方已在干净机器上端到端验证——环境（R 4.5、`Seurat`、`circlize` 以及真实的 `EnsDb.Hsapiens.v86`）一次事务装完，补上三个 GitHub-only 包后，本教程的完整圈图流程无需任何源码编译即可运行。
+
+将以下内容保存为 `plot1cell-env.yml`：
+
+```yaml
+name: plot1cell
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base>=4.3
+  - r-seurat
+  - r-circlize
+  - r-randomcoloR
+  - r-ggplot2
+  - r-dplyr
+  - r-mass
+  - r-scales
+  - r-data.table
+  - r-matrixstats
+  - r-cowplot
+  - r-plotly
+  - r-progress
+  - r-reshape2
+  - r-ggbeeswarm
+  - r-ggh4x
+  - r-fields
+  - r-itertools
+  - r-hdf5r
+  - r-complexupset
+  - bioconductor-biomart
+  - bioconductor-geoquery
+  - r-wordcloud
+  - bioconductor-ensdb.hsapiens.v86
+  - bioconductor-genomeinfodb
+  - bioconductor-genomicranges
+  - r-remotes
+  - r-rmarkdown
+```
+
+然后创建环境，并补装四个 conda 提供不了的组件：三个仅发布在 GitHub 的包（`plot1cell`、`DoubletFinder`、`loomR`）与轻量级的 Bioconductor 包 `simplifyEnrichment`（其 conda 构建目前存在无法满足的版本约束）：
+
+```{bash}
+#| eval: false
+# 下载 micromamba（单个二进制文件，无需 sudo）；macOS 上把 linux-64
+# 换成 osx-arm64（Apple Silicon）或 osx-64
+curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj bin/micromamba
+
+# 按规格创建环境（预编译二进制）
+./bin/micromamba create -n plot1cell -f plot1cell-env.yml -y
+
+# 补装 GitHub-only 包。请用 git clone + R CMD INSTALL，而不是
+# remotes::install_github()：后者在 macOS 的 conda R 中可能崩溃
+# （curl 库冲突）。把 R_LIBS_USER 固定到环境库，避免与系统 R
+# 用户库互相污染。
+for repo in TheHumphreysLab/plot1cell chris-mcginnis-ucsf/DoubletFinder mojaveazure/loomR; do
+  git clone --depth 1 "https://github.com/$repo.git"
+done
+./bin/micromamba run -n plot1cell bash -c '
+export R_LIBS_USER=$CONDA_PREFIX/lib/R/library
+Rscript -e "options(repos = c(CRAN = \"https://cloud.r-project.org\"));
+            if (!requireNamespace(\"BiocManager\", quietly = TRUE)) install.packages(\"BiocManager\");
+            BiocManager::install(c(\"simplifyEnrichment\"), update = FALSE, ask = FALSE)"
+R CMD INSTALL --no-multiarch plot1cell DoubletFinder loomR
+'
+
+# 之后都按同样方式在环境内运行 R
+./bin/micromamba run -n plot1cell bash -c 'export R_LIBS_USER=$CONDA_PREFIX/lib/R/library; Rscript -e "library(plot1cell)"'
+```
+
+不使用 conda 的话，下面的纯 R 路线依然可用——只是需要从源码编译全部依赖。
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 #| eval: false
@@ -40,7 +110,8 @@ if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
 # 从 GitHub 安装 plot1cell。
 # 注意：plot1cell 声明了较多 Imports（DoubletFinder、loomR、EnsDb.Hsapiens.v86、
 # simplifyEnrichment 等）。下面的圈图流程只用其 circlize 系列函数，但标准安装会
-# 拉取全部依赖——请为 EnsDb.Hsapiens.v86（约 2 GB）预留额外的时间和磁盘空间。
+# 拉取全部依赖——请为 EnsDb.Hsapiens.v86（约 2 GB）预留额外的时间和磁盘空间，
+# 或者使用上面的 micromamba 方案。
 if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
 remotes::install_github("TheHumphreysLab/plot1cell")
 
@@ -52,6 +123,10 @@ library(randomcoloR)
 library(dplyr)
 library(ggplot2)
 ```
+
+## 示例
+
+![](../images/Omics/UmapCirclizePlot_demo.png){fig-alt="单细胞 UMAP 圈中圈图 DEMO" fig-align="center" width="70%"}
 
 ## 数据准备
 
@@ -207,7 +282,7 @@ dev.off()
 | `scale` | `prepare_circlize_data()` | 缩放中心 UMAP 相对圆环的大小（0.6–0.9 较合适） |
 | `pt.size` | `plot_circlize()` | 中心 UMAP 点大小；超过 5 万细胞时建议调小 |
 | `kde2d.n` | `plot_circlize()` | 密度轮廓线网格分辨率；大型图谱可调高 |
-| `contour.levels` | `plot_circlize()` | 绘制哪些轮廓分位数（默认 `c(0.2, 0.3)`） |
+| `contour.levels` | `plot_circlize()` | 传给 `contour()` 的绝对密度阈值（默认 `c(0.2, 0.3)`；取值范围 0–1） |
 | `bg.color` | `plot_circlize()` | 画布颜色；`"#F9F2E4"` 可复现原文的暖纸色背景 |
 | `repel`、`label.cex` | `plot_circlize()` | 细胞类型标签避让与字号 |
 | `track_lwd` | `add_track()` | 注释环分段的线宽 |
