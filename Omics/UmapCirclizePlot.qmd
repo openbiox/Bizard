@@ -1,0 +1,224 @@
+---
+title: "scRNA-seq UMAP Circles Plot"
+author:
+  - "**[Editor]** [Shixiang Wang](https://github.com/ShixiangWang);"
+  - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed."
+---
+
+The scRNA-seq UMAP Circles Plot ("circles within circles") places a single-cell UMAP embedding at the centre of the figure and wraps it with concentric circular annotation tracks — one track per cell type, plus additional rings for condition groups and original samples. The sector order of the outer rings follows the clusters of the central embedding, so readers can read the "continuous cell atlas plane" and the "discrete cluster-level annotations" from a single figure.
+
+The design was popularised by the Linnarsson lab's Nature paper on the molecular architecture of the developing mouse brain, where a central t-SNE is surrounded by a radial dendrogram and colour rings annotating cluster classes, brain region, age, and cell cycle. The [plot1cell](https://github.com/TheHumphreysLab/plot1cell) R package turns this style into a few callable functions for any Seurat object, and it is routinely used for high-impact single-cell atlas figures.
+
+In this tutorial we use **plot1cell** to draw the classic three-ring layout: a central UMAP coloured by cell type with density contours, a `Cluster` ring with per-cluster axes, and outer rings mapping disease/time-point groups and sequencing samples onto each cluster.
+
+::: callout-note
+**If you want to reproduce this tutorial locally**: all code chunks are set to `eval: false` because the plot1cell package is installed from GitHub and pulls several heavy dependencies (including a large human genome annotation package) that are not part of the Bizard build environment. The rendered figure above was produced by running exactly this code on a simulated dataset; simply copy the chunks into an R session where plot1cell is installed.
+:::
+
+## Example
+
+![](../images/Omics/UmapCirclizePlot_demo.png){fig-alt="scRNA-seq UMAP Circles Plot DEMO" fig-align="center" width="70%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming Language: R
+
+-   Dependent packages: `plot1cell`, `Seurat`, `circlize`, `randomcoloR`, `dplyr`, `ggplot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+#| eval: false
+
+# Install CRAN dependencies
+if (!requireNamespace("Seurat", quietly = TRUE)) install.packages("Seurat")
+if (!requireNamespace("circlize", quietly = TRUE)) install.packages("circlize")
+if (!requireNamespace("randomcoloR", quietly = TRUE)) install.packages("randomcoloR")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+
+# Install plot1cell from GitHub.
+# Note: plot1cell declares heavy Imports (DoubletFinder, loomR, EnsDb.Hsapiens.v86,
+# simplifyEnrichment, ...). The UMAP circles workflow below only needs its circlize
+# functions, but a standard installation pulls all of them — allow extra time and
+# disk space for EnsDb.Hsapiens.v86 (~2 GB).
+if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
+remotes::install_github("TheHumphreysLab/plot1cell")
+
+# Load packages
+library(plot1cell)
+library(Seurat)
+library(circlize)
+library(randomcoloR)
+library(dplyr)
+library(ggplot2)
+```
+
+## Data Preparation
+
+### Reference data: mouse acute kidney injury atlas
+
+The plot1cell vignette ships an installer that downloads the mouse ischemia-reperfusion injury (IRI) single-cell dataset (GSE139107, published in PNAS 2020, "Cell profiling of mouse acute kidney injury reveals conserved cellular responses to injury"), integrates the six time-point samples with Seurat RPCA integration, and caches the result as an RDS file (more than 120,000 cells across 26 cell types):
+
+```{r download example data, message=FALSE, warning=FALSE}
+#| eval: false
+
+library(plot1cell)
+iri.integrated <- Install.example()
+
+dir.create("data", showWarnings = FALSE)
+saveRDS(iri.integrated, file = "data/iri.integrated.rds")
+```
+
+### Simulated PBMC-style data (used for the demo figure)
+
+To keep the tutorial self-contained, the demo figure is drawn from a simulated PBMC-style dataset: 3,360 cells across 8 cell types with marker-gene block structure, 6 sample groups, and 3 tissue sites. If you already have an integrated Seurat object, skip this block and read your own `rds` file instead.
+
+```{r simulate data, message=FALSE, warning=FALSE}
+#| eval: false
+
+library(Seurat)
+set.seed(2026)
+
+n_per_type <- 420
+cell_types <- c("CD4 T cell", "CD8 T cell", "NK cell", "B cell",
+                "Monocyte", "DC", "Fibroblast", "Epithelial")
+n_type <- length(cell_types)
+n_cell <- n_per_type * n_type
+n_gene <- 1200
+markers_per <- 40
+
+gene_names <- paste0("Gene", 1:n_gene)
+counts <- matrix(rnbinom(n_cell * n_gene, size = 4, prob = 0.25), n_gene, n_cell)
+counts <- matrix(as.integer(pmin(counts, 30)), n_gene, n_cell)
+
+# Add a marker block for each cell type
+cell_idx <- rep(seq_len(n_type), each = n_per_type)
+for (i in seq_len(n_type)) {
+  block <- ((i - 1) * markers_per + 1):(i * markers_per)
+  boost <- rnbinom(length(block) * sum(cell_idx == i), size = 8, prob = 0.2)
+  counts[block, cell_idx == i] <- pmin(counts[block, cell_idx == i] + as.integer(boost), 120)
+}
+rownames(counts) <- gene_names
+colnames(counts) <- paste0("Cell_", 1:n_cell)
+
+# Sample-level metadata: 6 samples map to 6 injury time-point groups
+groups <- c("Control", "4hours", "12hours", "2days", "14days", "6weeks")
+site_lv <- c("Tumor", "Normal", "Margin")
+orig.ident <- factor(sample(paste0("Sample_", 1:6), n_cell, TRUE))
+lut <- setNames(rep(groups, length.out = 6), levels(orig.ident))
+Group <- factor(lut[as.character(orig.ident)], levels = groups)
+site <- factor(sample(site_lv, n_cell, TRUE), levels = site_lv)
+celltype <- factor(rep(cell_types, each = n_per_type), levels = cell_types)
+
+meta <- data.frame(
+  celltype = celltype, Group = Group, orig.ident = orig.ident, site = site,
+  row.names = colnames(counts)
+)
+
+sce <- CreateSeuratObject(counts = counts, meta.data = meta)
+sce <- NormalizeData(sce, verbose = FALSE)
+sce <- FindVariableFeatures(sce, nfeatures = 800, verbose = FALSE)
+sce <- ScaleData(sce, verbose = FALSE)
+sce <- RunPCA(sce, npcs = 20, verbose = FALSE)
+sce <- RunUMAP(sce, dims = 1:15, verbose = FALSE)
+Idents(sce) <- "celltype"
+
+saveRDS(sce, "data/sce_sim.rds")
+```
+
+### Data requirements of the circles plot
+
+Three properties of the Seurat object drive the figure:
+
+1. **Cell identities (`Idents`)** define both the colour of the central UMAP and the sectors of the circular layout. Give the identity factor meaningful levels in a sensible order.
+2. **Active identity levels** determine the number of sectors, gaps, and colour count — `prepare_circlize_data()` reads `levels(seu_obj)` directly.
+3. **Metadata columns** for the outer tracks (`Group`, `orig.ident`, ...) must exist in `seu_obj@meta.data`; factors are recommended so that track segment colours map consistently.
+
+```{r inspect object, message=FALSE, warning=FALSE}
+#| eval: false
+
+iri.integrated <- readRDS("data/iri.integrated.rds")
+# Group needs to be a factor with meaningful level order
+iri.integrated@meta.data$Group <- factor(
+  iri.integrated@meta.data$Group,
+  levels = c("Control", "4hours", "12hours", "2days", "14days", "6weeks")
+)
+
+dim(iri.integrated)
+DefaultAssay(iri.integrated)
+names(iri.integrated@reductions)
+levels(iri.integrated)
+levels(iri.integrated$Group)
+colnames(iri.integrated@meta.data)
+```
+
+## Visualization
+
+### Figure structure
+
+-   **Centre**: the UMAP; each point is a cell, coloured by cell type, with KDE density contours separating major populations.
+-   **Ring 1 (`Cluster`)**: a circular track with one sector per cell type; each cell is assigned to the sector of its cluster, ordered by polar coordinate, with per-sector axes.
+-   **Outer rings (`add_track`)**: additional annotation rings (here `Group` and `orig.ident`) laid on top of ring 1, so every cluster arc is subdivided into condition/sample segments.
+
+### Build the circlize data and draw the three-ring figure
+
+```{r circlize plot, message=FALSE, warning=FALSE}
+#| eval: false
+
+library(plot1cell)
+sce <- readRDS("data/sce_sim.rds")
+
+# 1. Transform the Seurat object: extract metadata + UMAP coordinates and
+#    map every cell to its polar position on the circle
+circ_data <- prepare_circlize_data(sce, scale = 0.8)
+
+# 2. Colors. Fix the random seed so the random palette is reproducible.
+set.seed(1234)
+cluster_colors <- rand_color(length(levels(sce)))
+group_colors <- rand_color(length(names(table(sce$Group))))
+rep_colors <- rand_color(length(names(table(sce$orig.ident))))
+
+# 3. Draw into a 6-inch square PNG at 300 dpi
+png(filename = "circlize_plot.png", width = 6, height = 6, units = "in", res = 300)
+
+# Central UMAP: points + density contours + cluster labels
+plot_circlize(
+  circ_data,
+  do.label = TRUE,
+  pt.size = 0.4,
+  col.use = cluster_colors,
+  bg.color = "white",
+  kde2d.n = 200,
+  repel = TRUE,
+  label.cex = 0.6
+)
+
+# Ring 2: injury/time-point group track; Ring 3: sample track
+add_track(circ_data, group = "Group", colors = group_colors, track_num = 2)
+add_track(circ_data, group = "orig.ident", colors = rep_colors, track_num = 3)
+
+dev.off()
+```
+
+Key parameters worth tuning:
+
+| Parameter | Where | Effect |
+|-----------|-------|--------|
+| `scale` | `prepare_circlize_data()` | Shrinks/expands the central UMAP relative to the rings (0.6–0.9 works well) |
+| `pt.size` | `plot_circlize()` | Point size of the central UMAP; lower it for >50k cells |
+| `kde2d.n` | `plot_circlize()` | Grid resolution of the density contours; raise for large atlases |
+| `contour.levels` | `plot_circlize()` | Which contour quantiles to draw (default `c(0.2, 0.3)`) |
+| `bg.color` | `plot_circlize()` | Canvas colour; `"#F9F2E4"` gives the warm paper look of the original paper |
+| `repel`, `label.cex` | `plot_circlize()` | Cluster label repelling and font size |
+| `track_lwd` | `add_track()` | Thickness of each annotation ring segment |
+
+## References
+
+\[1\] Wu H. plot1cell: A package for single cell data visualization. <https://github.com/TheHumphreysLab/plot1cell>
+
+\[2\] La Manno G, Siletti K, Furlan A, et al. Molecular architecture of the developing mouse brain. *Nature*. 2021;596(7870):92–96. <https://doi.org/10.1038/s41586-021-03775-x> (source of the circles-within-circles design)
+
+\[3\] Kirita Y, Wu H, Uchimura K, Wilson PC, Humphreys BD. Cell profiling of mouse acute kidney injury reveals conserved cellular responses to injury. *PNAS*. 2020;117(27):15874–15883. <https://doi.org/10.1073/pnas.2005477117> (GSE139107 example data)
+
+\[4\] 新叶910. plot1cell：绘制不一样的单细胞umap圈中圈. WeChat article. <https://mp.weixin.qq.com/s/IxwniDMSju02R2wGMC9EvQ>

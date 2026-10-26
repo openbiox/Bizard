@@ -1,0 +1,382 @@
+---
+title: "期刊风格 UMAP 精修图"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang);"
+  - "**[贡献]** Claude Code — AI 生成，独立 AI 复核。"
+---
+
+朴素的 `DimPlot` 往往达不到期刊插图的要求。审稿人期待 UMAP 嵌入图具备精确的亚群标签、一致的因子排序、克制的坐标轴，以及高分单细胞论文常见的"包裹细胞群体的柔和轮廓"。本教程汇总一套面向 Seurat 对象的出版级 UMAP 完整流程：
+
+1. **基础面板**：带标签 UMAP、分面 UMAP，以及带期刊字母标注的 patchwork 组合图。
+2. **方案一 — tidydr 箭头坐标轴**：L 型箭头坐标轴、无网格；通用性最强的常规 SCI 款。
+3. **方案二 — 云朵包围圈**（`scRNAtoolVis::clusterCornerAxes`）：角轴 + 半透明"云朵"轮廓；CNS 子刊热门风格。
+4. **方案三 — 虚线包围圈**（`ggunchull::stat_unchull`）：清晰的非凸虚线轮廓 + 居中加粗标签；精致综述风。
+5. **方案四 — 精细轮廓**（`mascarade::generateMask`）：基于核密度、贴合细胞分布的轮廓线；适合高密度、大型图谱。
+6. **附加 — 三维核密度景观图**：用 `plotly` 绘制可交互的降维密度"地形图"。
+
+四个方案共用一个模拟 PBMC 风格 Seurat 对象，所有面板均可在线复现。
+
+## 示例
+
+![](../images/Omics/UmapStylePlot_demo.png){fig-alt="期刊风格 UMAP 精修方案 DEMO：tidydr、scRNAtoolVis、ggunchull、mascarade" fig-align="center" width="90%"}
+
+## 环境配置
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`Seurat`、`ggplot2`、`dplyr`、`stringr`、`patchwork`、`RColorBrewer`、`ggrepel`、`tidydr`、`scRNAtoolVis`、`ggunchull`、`mascarade`、`plotly`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# CRAN 依赖
+if (!requireNamespace("Seurat", quietly = TRUE)) install.packages("Seurat")
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("stringr", quietly = TRUE)) install.packages("stringr")
+if (!requireNamespace("patchwork", quietly = TRUE)) install.packages("patchwork")
+if (!requireNamespace("RColorBrewer", quietly = TRUE)) install.packages("RColorBrewer")
+if (!requireNamespace("ggrepel", quietly = TRUE)) install.packages("ggrepel")
+if (!requireNamespace("tidydr", quietly = TRUE)) install.packages("tidydr")
+if (!requireNamespace("mascarade", quietly = TRUE)) install.packages("mascarade")
+if (!requireNamespace("plotly", quietly = TRUE)) install.packages("plotly")
+
+# GitHub 依赖
+if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
+if (!requireNamespace("scRNAtoolVis", quietly = TRUE)) {
+  remotes::install_github("junjunlab/scRNAtoolVis")
+}
+if (!requireNamespace("ggunchull", quietly = TRUE)) {
+  remotes::install_github("sajuukLyu/ggunchull")
+}
+
+# 载入包
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(patchwork)
+library(RColorBrewer)
+library(ggrepel)
+library(tidydr)
+library(scRNAtoolVis)
+library(ggunchull)
+library(mascarade)
+library(plotly)
+```
+
+```{r session info}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+### 模拟 PBMC 风格 Seurat 对象
+
+我们模拟 8 种细胞类型共 3,360 个细胞，群体大小不等（每种 200–660 个），带有 marker 基因块结构，6 个测序样本对应 6 个条件分组、3 种组织来源。细胞条形码携带样本名（`0001-1_Sample_3`），与合并后的 Seurat 对象命名方式一致。真实数据的 标准化 → PCA → UMAP/t-SNE 流程在此完整执行，保证降维效果逼真。
+
+```{r simulate data, message=FALSE, warning=FALSE}
+set.seed(2026)
+
+type_sizes <- c("CD4 T cell" = 500, "CD8 T cell" = 460, "NK cell" = 300,
+                "B cell" = 420, "Monocyte" = 460, "DC" = 200,
+                "Fibroblast" = 360, "Epithelial" = 660)
+cell_types <- names(type_sizes)
+n_type <- length(cell_types)
+n_cell <- sum(type_sizes)
+n_gene <- 1200
+markers_per <- 40
+
+gene_names <- paste0("Gene", 1:n_gene)
+counts <- matrix(rnbinom(n_cell * n_gene, size = 4, prob = 0.25), n_gene, n_cell)
+counts <- matrix(as.integer(pmin(counts, 30)), n_gene, n_cell)
+
+# 为每种细胞类型添加 marker 基因块
+celltype <- factor(rep(cell_types, times = type_sizes), levels = cell_types)
+for (i in seq_len(n_type)) {
+  block <- ((i - 1) * markers_per + 1):(i * markers_per)
+  idx_i <- which(celltype == cell_types[i])
+  boost <- rnbinom(length(block) * length(idx_i), size = 8, prob = 0.2)
+  counts[block, idx_i] <- pmin(counts[block, idx_i] + as.integer(boost), 120)
+}
+rownames(counts) <- gene_names
+
+# 样本级元数据：6 个样本对应 6 个条件分组
+groups <- c("Control", "4hours", "12hours", "2days", "14days", "6weeks")
+site_lv <- c("Tumor", "Normal", "Margin")
+orig.ident_raw <- sample(paste0("Sample_", 1:6), n_cell, TRUE)
+lut <- setNames(rep(groups, length.out = 6), sort(unique(orig.ident_raw)))
+Group <- factor(lut[orig.ident_raw], levels = groups)
+site <- factor(sample(site_lv, n_cell, TRUE), levels = site_lv)
+
+# 细胞条形码携带样本名，与合并后的 Seurat 对象一致
+colnames(counts) <- paste0(sprintf("%04d", seq_len(n_cell)), "-1_", orig.ident_raw)
+
+meta <- data.frame(
+  celltype = celltype, Group = Group, orig.ident_raw = orig.ident_raw, site = site,
+  row.names = colnames(counts)
+)
+
+sce <- CreateSeuratObject(counts = counts, meta.data = meta)
+sce <- NormalizeData(sce, verbose = FALSE)
+sce <- FindVariableFeatures(sce, nfeatures = 800, verbose = FALSE)
+sce <- ScaleData(sce, verbose = FALSE)
+sce <- RunPCA(sce, npcs = 20, verbose = FALSE)
+sce <- RunUMAP(sce, dims = 1:15, verbose = FALSE)
+sce <- RunTSNE(sce, dims = 1:15, verbose = FALSE)
+Idents(sce) <- "celltype"
+```
+
+### 期刊实践一：按细胞数量统一亚群排序
+
+各面板亚群顺序不一致会破坏图形美感。按细胞数量从大到小对身份因子排序一次，后续所有图形自动继承相同顺序（源自原文"数据预处理"一节的关键步骤）。由于上面模拟的群体大小不等，排序效果肉眼可见：`Epithelial`（660 个细胞）排第一，`DC`（200 个细胞）排最后。
+
+```{r order clusters}
+# 按细胞数量从大到小排序细胞类型
+celltype_counts <- table(sce$celltype)
+ord <- names(sort(celltype_counts, decreasing = TRUE))
+sce$celltype <- factor(sce$celltype, levels = ord)
+Idents(sce) <- "celltype"
+celltype_counts
+```
+
+### 期刊实践二：修复 `SeuratProject` 异常样本标签
+
+多数据集合并时丢失身份信息的细胞会带上默认的 `SeuratProject` 来源标签，导致样本分组错乱。按原文思路，用正则表达式从细胞条形码中恢复真实样本名：
+
+```{r fix seuratproject labels}
+# 为演示注入异常标签
+idx_bad <- sample(seq_len(ncol(sce)), 60)
+sce$orig.ident_raw[idx_bad] <- "SeuratProject"
+
+idx_to_fix <- which(sce$orig.ident_raw == "SeuratProject")
+if (length(idx_to_fix) > 0) {
+  message(paste("Found", length(idx_to_fix), "cells with a SeuratProject label"))
+  cell_names <- colnames(sce)[idx_to_fix]
+  new_idents <- str_extract(cell_names, "[^_]+_[^_]+$")
+  if (any(is.na(new_idents))) {
+    new_idents[is.na(new_idents)] <- cell_names[is.na(new_idents)]
+  }
+  sce$orig.ident_raw[idx_to_fix] <- new_idents
+}
+table(sce$orig.ident_raw)
+```
+
+### 共享配色
+
+```{r palette}
+selCols <- colorRampPalette(brewer.pal(n = 10, name = "Paired"))(8)
+names(selCols) <- levels(sce$celltype)
+```
+
+## 可视化
+
+### 基础面板
+
+按细胞类型着色的带标签 UMAP、按组织来源分面的 UMAP，以及组合细胞类型与 t-SNE 视图、带期刊字母标注（`tag_levels = "A"`）的 patchwork 组合图。UMAP 强调相近亚群的聚集，t-SNE 强调不同亚群的区分，两图互补验证分群逻辑。
+
+```{r}
+#| label: fig-umap-baseline
+#| fig-cap: "按细胞类型着色的带标签 UMAP，并按组织来源分面"
+#| out-width: "100%"
+p_base <- DimPlot(sce, reduction = "umap", group.by = "celltype",
+                  label = TRUE, label.size = 4, repel = TRUE, cols = selCols) +
+  theme_dr() +
+  theme(panel.grid = element_blank(),
+        legend.text = element_text(size = 10, color = "black")) +
+  guides(color = guide_legend(title = "", override.aes = list(size = 3, alpha = 1)))
+p_split <- DimPlot(sce, reduction = "umap", split.by = "site", group.by = "celltype",
+                   label = FALSE, cols = selCols, ncol = 3) +
+  theme(panel.grid = element_blank(), legend.position = "none")
+p_base + p_split + plot_layout(widths = c(1, 1.4))
+```
+
+```{r}
+#| label: fig-umap-composite
+#| fig-cap: "Patchwork 组合图：细胞类型 UMAP（A）与 t-SNE（B），带期刊字母标注"
+#| out-width: "85%"
+p1_umap <- DimPlot(sce, reduction = "umap", group.by = "celltype",
+                   label = TRUE, label.size = 4, repel = TRUE, cols = selCols) +
+  theme(panel.grid = element_blank())
+p3_tsne <- DimPlot(sce, reduction = "tsne", group.by = "celltype",
+                   label = TRUE, label.size = 4, repel = TRUE, cols = selCols) +
+  theme(panel.grid = element_blank())
+combined_plot <- p1_umap + p3_tsne +
+  plot_annotation(tag_levels = "A") &
+  theme(text = element_text(family = "Arial"),
+        plot.tag = element_text(family = "Arial", size = 16, face = "bold"))
+combined_plot
+```
+
+组合图按标准方式导出：`ggsave(combined_plot, filename = "combined_umap.pdf", width = 16, height = 9)`。
+
+### 方案一：tidydr 箭头坐标轴——常规 SCI 通用款
+
+`theme_dr()` 用 L 型箭头坐标轴替换灰色网格，去除标题，保留单列图例。容错率高，适合大多数 SCI 期刊正文主图。
+
+```{r}
+#| label: fig-umap-tidydr
+#| fig-cap: "tidydr 箭头坐标轴 UMAP"
+#| out-width: "70%"
+p_tidydr <- DimPlot(sce, reduction = "umap", group.by = "celltype",
+                    label = TRUE, repel = TRUE, cols = selCols) +
+  theme_dr() +
+  theme(panel.grid = element_blank(),
+        legend.text = element_text(size = 12, face = "plain", color = "black"),
+        plot.title = element_blank()) +
+  guides(color = guide_legend(title = "", override.aes = list(size = 4, alpha = 1), ncol = 1))
+p_tidydr
+```
+
+### 方案二：scRNAtoolVis 云朵包围圈——CNS 子刊风格
+
+`clusterCornerAxes()` 绘制角轴，并为每个亚群添加半透明圆形"云朵"轮廓（`addCircle = TRUE`）。关键参数：`cicAlpha`（轮廓透明度）、`cicDelta`（轮廓网格粒度）与 `nbin`（底层密度估计分辨率）。
+
+```{r}
+#| label: fig-umap-corneraxes
+#| fig-cap: "scRNAtoolVis 角轴 + 云朵包围圈 UMAP"
+#| out-width: "70%"
+p_corneraxes <- clusterCornerAxes(
+  object = sce,
+  reduction = "umap",
+  clusterCol = "celltype",
+  pSize = 0.3,
+  arrowType = "open",
+  lineTextcol = "grey50",
+  cornerTextSize = 3.5,
+  keySize = 1.5,
+  show.legend = FALSE,
+  cellLabel = TRUE,
+  cellLabelSize = 5,
+  noSplit = TRUE,
+  addCircle = TRUE,
+  cicAlpha = 0.1,
+  cicDelta = 0.5,
+  nbin = 200
+) + scale_color_manual(values = selCols)
+p_corneraxes
+```
+
+### 方案三：ggunchull 虚线包围圈——精致综述风
+
+`stat_unchull()` 用平滑非凸虚线轮廓包裹每个亚群，标签通过 `geom_text_repel()` 放在偏移后的中位数位置，无需图例即可读图。
+
+```{r}
+#| label: fig-umap-unchull
+#| fig-cap: "ggunchull 虚线包围圈 + 居中标签 UMAP"
+#| out-width: "70%"
+meta <- cbind(sce@meta.data, sce@reductions$umap@cell.embeddings)
+main_type_med <- meta %>%
+  group_by(celltype) %>%
+  summarise(umap_1 = median(umap_1) - 1, umap_2 = median(umap_2) - 1, .groups = "drop")
+
+p_unchull <- ggplot(meta, aes(x = umap_1, y = umap_2)) +
+  stat_unchull(aes(fill = celltype, color = celltype),
+               alpha = 0.05, size = 1, lty = 2, delta = 0.25, show.legend = FALSE) +
+  geom_point(aes(color = celltype), size = 0.2, show.legend = FALSE) +
+  scale_color_manual(values = selCols) +
+  scale_fill_manual(values = selCols) +
+  geom_text_repel(data = main_type_med, aes(label = celltype),
+                  fontface = "bold", color = "black", size = 4,
+                  show.legend = FALSE, seed = 42) +
+  coord_equal() +
+  theme_classic() +
+  theme(aspect.ratio = 1,
+        panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+        axis.line = element_blank(),
+        axis.ticks = element_line(color = "black"),
+        axis.title = element_text(size = 12))
+p_unchull
+```
+
+### 方案四：mascarade 精细轮廓——高密度图谱风
+
+`generateMask()` 将每个亚群的核密度转换为贴合细胞分布的轮廓蒙版。蒙版表自带 `group` 列，因此一层 `geom_path(group = group)` 即可绘制所有轮廓线。亚群标签放在各自中位数位置。
+
+```{r}
+#| label: fig-umap-mascarade
+#| fig-cap: "mascarade 精细轮廓 + 质心标签 UMAP"
+#| out-width: "70%"
+df <- FetchData(object = sce, vars = c("umap_1", "umap_2", "celltype"))
+celltype_counts <- table(df$celltype)
+valid_celltypes <- names(celltype_counts)[celltype_counts >= 2]
+df_filtered <- df[df$celltype %in% valid_celltypes, ]
+rownames(df_filtered) <- NULL
+
+# 生成精细轮廓蒙版
+maskTable <- generateMask(
+  dims = df_filtered[, 1:2],
+  clusters = df_filtered$celltype
+)
+
+p <- ggplot(df, aes(x = umap_1, y = umap_2)) +
+  geom_point(aes(color = celltype), size = 0.05) +
+  geom_path(data = maskTable, aes(group = group), linewidth = 0.3, linetype = 2) +
+  coord_fixed(ratio = 1) +
+  theme_classic() +
+  scale_color_manual(values = selCols) +
+  theme_dr(xlength = 0.22, ylength = 0.22,
+           arrow = grid::arrow(length = unit(0.15, "inches"), type = "closed")) +
+  theme(panel.grid = element_blank())
+
+centroids <- df %>%
+  group_by(celltype) %>%
+  summarise(centroid_x = median(umap_1, na.rm = TRUE),
+            centroid_y = median(umap_2, na.rm = TRUE), .groups = "drop")
+
+p_mascarade <- p + geom_text(data = centroids,
+                             aes(label = celltype, x = centroid_x, y = centroid_y),
+                             size = 3.5, vjust = -0.2, hjust = 0.5,
+                             color = "black", fontface = "bold")
+p_mascarade
+```
+
+::: callout-note
+`generateMask()` 的 API 在版本间有变化：旧版本使用 `cluster =` 和 `minDensity =`，当前 CRAN 版本（≥ 0.4）使用 `clusters =`，并弃用 `minDensity`/`kernel`/`type`，改为自动带宽选择（默认 `smoothSigma = NA`）。上面的代码块使用的是当前 API。
+:::
+
+### 附加：三维核密度景观图
+
+网红"三维核密度景观图"在共享的 UMAP 平面上为每种细胞类型叠加一层密度曲面。这是一个可交互的 `plotly` 组件——可拖拽旋转查看；如需静态导出，安装 Python 的 `kaleido` 包后调用 `plotly::save_image()`。
+
+```{r plotly-3d-density, message=FALSE, warning=FALSE}
+dens <- do.call(rbind, lapply(split(df, df$celltype), function(d) {
+  kd <- MASS::kde2d(d$umap_1, d$umap_2, n = 60,
+                    lims = c(range(df$umap_1), range(df$umap_2)))
+  out <- expand.grid(x = kd$x, y = kd$y)
+  out$z <- as.vector(kd$z)
+  out$celltype <- d$celltype[1]
+  out
+}))
+
+fig <- plot_ly(dens, x = ~x, y = ~y, z = ~z, color = ~celltype,
+               type = "scatter3d", mode = "lines", line = list(width = 6),
+               colors = selCols) %>%
+  layout(scene = list(xaxis = list(title = "UMAP_1"),
+                      yaxis = list(title = "UMAP_2"),
+                      zaxis = list(title = "Density")))
+fig
+```
+
+### 方案选择建议
+
+| 方案 | 风格 | 适用场景 |
+|------|------|----------|
+| tidydr | 箭头坐标轴、无网格 | 大多数 SCI 期刊正文主图 |
+| scRNAtoolVis | 角轴 + 云朵轮廓 | 高分原创研究配图 |
+| ggunchull | 虚线轮廓 + 加粗标签 | 综述文章与精修主图 |
+| mascarade | 密度贴合的精细轮廓 | 高密度、大型单细胞图谱 |
+
+## 参考文献
+
+\[1\] Hao Y, Hao S, Andersen-Nissen E, et al. Integrated analysis of multimodal single-cell data. *Cell*. 2021;184(13):3573–3587. <https://doi.org/10.1016/j.cell.2021.04.048>（Seurat）
+
+\[2\] Yu G. tidydr: an R package to create dimension reduction plots with styled axes. <https://cran.r-project.org/package=tidydr>
+
+\[3\] Zhang J. scRNAtoolVis: Making single-cell RNA-seq visualization easier and better. <https://github.com/junjunlab/scRNAtoolVis>
+
+\[4\] Lyu Y. ggunchull: A ggplot extension for drawing smooth non-convex circles around a set of points. <https://github.com/sajuukLyu/ggunchull>
+
+\[5\] Sergushichev A. mascarade: Generating Cluster Masks for Single-Cell Dimensional Reduction Plots. <https://github.com/alserglab/mascarade>
+
+\[6\] 罗小黑. AI分析单细胞+空转：umap大合集（三）. 微信公众号文章. <https://mp.weixin.qq.com/s/ItyeGIJRhSFEaibw9KUbgw>
