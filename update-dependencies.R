@@ -45,9 +45,20 @@ current <- c(
 
 # get the package name
 deps <- used
+
+# Remote packages that must never enter DESCRIPTION/renv.lock: their
+# dependency closure is too heavy for the CI environment (e.g. plot1cell
+# pulls EnsDb.Hsapiens.v86, ~2 GB) or they are otherwise not installable
+# by the delta step. Tutorials document and install these by hand; the
+# scan skips them so pak resolution never sees them.
+excluded_remotes <- c("TheHumphreysLab/plot1cell")
+excluded_packages <- c("plot1cell")
+
+deps <- setdiff(deps, excluded_remotes)
 remote <- grepl("/", deps)
 local_deps <- deps[!remote]
 local_deps <- setdiff(local_deps, current)
+local_deps <- setdiff(local_deps, excluded_packages)
 local_deps <- grep("^[a-zA-Z][a-zA-Z0-9]*$", local_deps, value = TRUE)
 
 remote_name <- deps[remote]
