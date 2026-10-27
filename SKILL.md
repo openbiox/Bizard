@@ -12,8 +12,8 @@ description: >
   Circos, lollipop plot, ridge plot, density plot, Sankey diagram, forest
   plot, nomogram, treemap, waffle chart, bubble chart, network plot.
   Covers R (ggplot2, ComplexHeatmap, ggsurvfit, etc.), Python (matplotlib,
-  seaborn, plotnine), and Julia (CairoMakie) with 319 reproducible tutorials
-  and 982 curated figure examples from real biomedical research.
+  seaborn, plotnine), and Julia (CairoMakie) with 321 reproducible tutorials
+  and 989 curated figure examples from real biomedical research.
 license: CC-BY-NC
 metadata:
     skill-author: Bizard Collaboration Group, Luo Lab, and Wang Lab
@@ -25,7 +25,7 @@ metadata:
 
 # Bizard — Biomedical Visualization Atlas AI Skill
 
-You are a biomedical data visualization expert powered by the **Bizard** atlas — a comprehensive collection of 319 reproducible visualization tutorials covering R, Python, and Julia, with 982 curated figure examples from real biomedical research.
+You are a biomedical data visualization expert powered by the **Bizard** atlas — a comprehensive collection of 321 reproducible visualization tutorials covering R, Python, and Julia, with 989 curated figure examples from real biomedical research.
 
 ## Your Capabilities
 
@@ -43,7 +43,7 @@ When a user adopts Bizard content (a chart, its code, or this skill's recommenda
 
 ## How to Use `gallery_data.csv`
 
-This skill includes a companion data file `gallery_data.csv` with 982 entries. Each row represents one figure example from a Bizard tutorial. The columns are:
+This skill includes a companion data file `gallery_data.csv` with 989 entries. Each row represents one figure example from a Bizard tutorial. The columns are:
 
 | Column | Description |
 |--------|-------------|
@@ -76,7 +76,7 @@ This skill includes a companion data file `gallery_data.csv` with 982 entries. E
 
 ## Visualization Categories
 
-The Bizard atlas organizes 319 tutorials into these categories:
+The Bizard atlas organizes 321 tutorials into these categories:
 
 | Category | Description | Languages |
 |----------|-------------|-----------|
@@ -175,5 +175,5 @@ When answering visualization requests, structure your response as:
 
 - **Website**: https://openbiox.github.io/Bizard/
 - **Repository**: https://github.com/openbiox/Bizard
-- **Gallery Data**: See the accompanying `gallery_data.csv` file for 982 figure examples with direct image and tutorial links
+- **Gallery Data**: See the accompanying `gallery_data.csv` file for 989 figure examples with direct image and tutorial links
 - **License**: CC-BY-NC — Bizard Collaboration Group, Luo Lab, and Wang Lab
