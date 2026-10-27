@@ -32,6 +32,15 @@
 # ║  replaces PR CI for the generated lockfile: a package version that   ║
 # ║  exists only on CRAN (ahead of PPM's sync) would otherwise fail the  ║
 # ║  full restore after merge (PR #407).                                 ║
+# ║                                                                      ║
+# ║  The weekly schedule exists because pins go stale without any        ║
+# ║  DESCRIPTION change: PPM's rolling index advances, a lockfile pin    ║
+# ║  drops out of the index, and renv::restore() then resolves that      ║
+# ║  exact version via crandb — whose JSON can carry corrupted dep       ║
+# ║  keys (duplicate deps renamed "utils.1"), aborting the whole         ║
+# ║  restore (run 40279900028, fixed by repinning partykit in PR         ║
+# ║  #413).  Refreshing the lockfile weekly keeps pins current, so       ║
+# ║  restore resolves from clean index metadata instead of crandb.       ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 
 name: Generate renv.lock
@@ -43,6 +52,10 @@ on:
     paths:
       - 'DESCRIPTION'
       - '.github/workflows/generate-renv-lock.yml'
+  schedule:
+    # Weekly, ahead of the Monday 01:23 UTC full render: refresh stale
+    # pins (PR with any changes; clean no-op when the lockfile is current).
+    - cron: '23 21 * * 0'
 
 permissions:
   contents: write
