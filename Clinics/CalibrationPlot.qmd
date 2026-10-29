@@ -2,7 +2,7 @@
 title: "Calibration Curve"
 author:
   - "**[Editor]** [Shixiang Wang](https://github.com/ShixiangWang);"
-  - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed."
+  - "**[Contributors]** ZCode (GLM) — AI-generated, independently AI-reviewed."
 ---
 
 A calibration curve assesses the *accuracy* of a prediction model: among patients predicted to have a given risk, how often does the event actually occur? A perfectly calibrated model lies on the 45° line of a plot of observed versus predicted probabilities. Discrimination (see the ROC curve tutorial) and calibration answer different questions — a model can rank patients well yet systematically over- or under-estimate absolute risks \[1\]. Together with decision curve analysis, calibration is part of the standard evaluation suite of clinical prediction models.
@@ -54,6 +54,7 @@ set.seed(2026)
 lung2 <- lung %>%
   filter(complete.cases(age, sex, ph.ecog, ph.karno, pat.karno, meal.cal, wt.loss)) %>%
   mutate(y1y = as.integer(time < 365 & status == 2))  # death within 365 days
+  # Caveat: patients censored before day 365 are counted as non-events.
 
 idx <- sample(seq_len(nrow(lung2)), size = round(0.7 * nrow(lung2)))
 train <- lung2[idx, ]
@@ -96,7 +97,7 @@ The "apparent" line is the in-sample fit; the "bias-corrected" line adjusts for 
 
 ```{r}
 #| label: fig-2.1ValProb
-#| fig-cap: "External validation of the logistic model on the held-out sample with val.prob."
+#| fig-cap: "Split-sample validation of the logistic model on the held-out sample with val.prob."
 #| out.width: "70%"
 #| fig-width: 6.5
 #| fig-height: 6
@@ -109,7 +110,7 @@ val.prob(pred_valid, valid$y1y,
          xlab = "Predicted probability of 1-year death")
 ```
 
-The dashed diagonal is ideal calibration; the triangles mark the grouped observed rates (20 per group). The printed statistics include the calibration intercept (ideally 0) and calibration slope (ideally 1).
+The thick grey diagonal is ideal calibration; the triangles mark the grouped observed rates (20 per group). The printed statistics include the calibration intercept (ideally 0) and calibration slope (ideally 1).
 
 ### 3. Cox-Model Calibration of Survival Probabilities
 
@@ -138,12 +139,14 @@ plot(cal_cph, xlab = "Predicted 1-year survival",
 
 ```{r}
 #| label: fig-4.1GroupedCalibration
-#| fig-cap: "Observed versus predicted 1-year death risk in decile groups (validation sample)."
+#| fig-cap: "Observed versus predicted 1-year death risk in quintile groups (validation sample)."
 #| out.width: "70%"
 #| fig-width: 6
 #| fig-height: 6
 #| warning: false
 #| message: false
+
+valid$pred_valid <- pred_valid  # needed so each group uses its own predictions
 
 grouped <- valid %>%
   mutate(pred_group = ntile(pred_valid, n = 5)) %>%

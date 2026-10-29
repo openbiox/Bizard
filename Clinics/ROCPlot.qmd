@@ -2,7 +2,7 @@
 title: "ROC Curve"
 author:
   - "**[Editor]** [Shixiang Wang](https://github.com/ShixiangWang);"
-  - "**[Contributors]** Claude Code — AI-generated, independently AI-reviewed."
+  - "**[Contributors]** ZCode (GLM) — AI-generated, independently AI-reviewed."
 ---
 
 The receiver operating characteristic (ROC) curve evaluates the discrimination of a binary classifier — most commonly a clinical prediction model — across all possible decision thresholds. It plots sensitivity (true-positive rate) against 1 − specificity (false-positive rate), and is summarized by the area under the curve (AUC): 0.5 indicates discrimination no better than chance and 1.0 indicates perfect discrimination. In clinical research, ROC analysis is one of the standard tools for reporting the performance of diagnostic and prognostic models, together with calibration curves and decision curve analysis (see the companion tutorials).
@@ -62,6 +62,9 @@ data(lung, package = "survival")
 lung2 <- lung %>%
   filter(complete.cases(age, sex, ph.ecog, ph.karno, pat.karno, meal.cal, wt.loss)) %>%
   mutate(y1y = as.integer(time < 365 & status == 2))  # death within 365 days
+  # Caveat: patients censored before day 365 are counted as non-events; for
+  # real analyses prefer restricting to >=365 days of follow-up or using
+  # censoring-aware methods (cf. the time-dependent ROC below).
 
 cat("Patients:", nrow(lung2), " 1-year deaths:", sum(lung2$y1y), "\n")
 
@@ -157,7 +160,7 @@ The Youden index picks the threshold maximizing sensitivity + specificity − 1.
 
 ```{r}
 #| label: fig-4.1PlotROC
-#| fig-cap: "ggplot2-based ROC curves with automatically calculated and displayed AUCs."
+#| fig-cap: "ggplot2-based ROC curves with AUCs reported in the legend."
 #| out.width: "70%"
 #| fig-width: 6
 #| fig-height: 6
@@ -167,19 +170,18 @@ The Youden index picks the threshold maximizing sensitivity + specificity − 1.
 longdf <- melt_roc(lung2, d = "y1y", m = c("risk_full", "risk_ecog")) |>
   mutate(name = ifelse(name == "risk_full", "Full model", "ECOG only"))
 
-auc_labels <- c(
-  paste0("Full model (AUC = ", round(auc(roc_full), 2), ")"),
-  paste0("ECOG only (AUC = ", round(auc(roc_simple), 2), ")")
-)
+# Named vectors: match colors/labels to models regardless of level ordering
+model_colors <- c("Full model" = "#2166AC", "ECOG only" = "#B2182B")
+model_labels <- c("Full model" = paste0("Full model (AUC = ", round(auc(roc_full), 2), ")"),
+                  "ECOG only"  = paste0("ECOG only (AUC = ", round(auc(roc_simple), 2), ")"))
 ggplot(longdf, aes(d = D, m = M, color = name)) +
   geom_roc(labels = FALSE, linewidth = 1) +
   style_roc(theme = theme_grey()) +
-  scale_color_manual(values = c("#2166AC", "#B2182B"),
-                     name = "Model", labels = auc_labels) +
+  scale_color_manual(values = model_colors, labels = model_labels, name = "Model") +
   labs(title = "ROC curves built with ggplot2")
 ```
 
-`melt_roc()` converts the data to long format and `geom_roc()` draws the curves; the AUC annotations are computed and placed automatically.
+`melt_roc()` converts the data to long format and `geom_roc()` draws the curves; the AUCs are computed with pROC and reported in the legend.
 
 ### 5. Time-Dependent ROC with timeROC
 

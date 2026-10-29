@@ -2,7 +2,7 @@
 title: "ROC 曲线"
 author:
   - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
-  - "**[贡献]** Claude Code — AI 生成，独立 AI 复核"
+  - "**[贡献]** ZCode (GLM) — AI 生成，独立 AI 复核"
 ---
 
 受试者工作特征（Receiver Operating Characteristic，ROC）曲线用于评估二元分类器——最常见的是临床预测模型——在所有可能决策阈值下的区分能力（discrimination）。它以灵敏度（真阳性率）对 1 − 特异度（假阳性率）作图，并用曲线下面积（AUC）概括：0.5 表示区分能力不优于随机猜测，1.0 表示完美区分。在临床研究中，ROC 分析是报告诊断与预后模型性能的标准工具之一，通常与校准曲线、决策曲线分析配合使用（见配套教程）。
@@ -62,6 +62,8 @@ data(lung, package = "survival")
 lung2 <- lung %>%
   filter(complete.cases(age, sex, ph.ecog, ph.karno, pat.karno, meal.cal, wt.loss)) %>%
   mutate(y1y = as.integer(time < 365 & status == 2))  # 365 天内死亡
+  # 注意：365 天内删失的患者在此被计为非事件；实际分析中建议仅纳入随访
+  # 满 365 天的患者，或使用删失感知的方法（见下文 time-dependent ROC）。
 
 cat("样本量:", nrow(lung2), " 1年死亡数:", sum(lung2$y1y), "\n")
 
@@ -157,7 +159,7 @@ Youden 指数选取使灵敏度 + 特异度 − 1 最大化的阈值。注意“
 
 ```{r}
 #| label: fig-4.1PlotROC
-#| fig-cap: "基于 ggplot2 的 ROC 曲线，自动计算并显示 AUC。"
+#| fig-cap: "基于 ggplot2 的 ROC 曲线，图例中报告 AUC。"
 #| out.width: "70%"
 #| fig-width: 6
 #| fig-height: 6
@@ -167,19 +169,18 @@ Youden 指数选取使灵敏度 + 特异度 − 1 最大化的阈值。注意“
 longdf <- melt_roc(lung2, d = "y1y", m = c("risk_full", "risk_ecog")) |>
   mutate(name = ifelse(name == "risk_full", "Full model", "ECOG only"))
 
-auc_labels <- c(
-  paste0("Full model (AUC = ", round(auc(roc_full), 2), ")"),
-  paste0("ECOG only (AUC = ", round(auc(roc_simple), 2), ")")
-)
+# 命名向量：无论水平顺序如何都能正确匹配颜色与标签
+model_colors <- c("Full model" = "#2166AC", "ECOG only" = "#B2182B")
+model_labels <- c("Full model" = paste0("Full model (AUC = ", round(auc(roc_full), 2), ")"),
+                  "ECOG only"  = paste0("ECOG only (AUC = ", round(auc(roc_simple), 2), ")"))
 ggplot(longdf, aes(d = D, m = M, color = name)) +
   geom_roc(labels = FALSE, linewidth = 1) +
   style_roc(theme = theme_grey()) +
-  scale_color_manual(values = c("#2166AC", "#B2182B"),
-                     name = "Model", labels = auc_labels) +
+  scale_color_manual(values = model_colors, labels = model_labels, name = "Model") +
   labs(title = "ROC curves built with ggplot2")
 ```
 
-`melt_roc()` 将数据转换为长格式，`geom_roc()` 绘制曲线，AUC 注释自动计算并放置。
+`melt_roc()` 将数据转换为长格式，`geom_roc()` 绘制曲线；AUC 由 pROC 计算并在图例中显示。
 
 ### 5. 使用 timeROC 的 Time-dependent ROC
 

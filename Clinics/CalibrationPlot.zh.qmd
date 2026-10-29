@@ -2,7 +2,7 @@
 title: "校准曲线"
 author:
   - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
-  - "**[贡献]** Claude Code — AI 生成，独立 AI 复核"
+  - "**[贡献]** ZCode (GLM) — AI 生成，独立 AI 复核"
 ---
 
 校准曲线（Calibration curve）评估预测模型的*准确性*（accuracy）：在预测风险相近的患者群体中，事件的实际发生率是否与预测值一致？校准完美的模型在校准图（预测概率 vs 观察概率）上应落在 45° 对角线上。区分度（见 ROC 曲线教程）与校准回答的是不同的问题——一个模型可能把患者排序排得很好，却系统性高估或低估绝对风险 \[1\]。与决策曲线分析一样，校准曲线是临床预测模型标准评估套件的组成部分。
@@ -54,6 +54,7 @@ set.seed(2026)
 lung2 <- lung %>%
   filter(complete.cases(age, sex, ph.ecog, ph.karno, pat.karno, meal.cal, wt.loss)) %>%
   mutate(y1y = as.integer(time < 365 & status == 2))  # 365 天内死亡
+  # 注意：365 天内删失的患者在此被计为非事件。
 
 idx <- sample(seq_len(nrow(lung2)), size = round(0.7 * nrow(lung2)))
 train <- lung2[idx, ]
@@ -96,7 +97,7 @@ plot(cal_lrm, xlab = "Predicted probability of 1-year death",
 
 ```{r}
 #| label: fig-2.1ValProb
-#| fig-cap: "在留出样本上用 val.prob 对 logistic 模型进行外部验证。"
+#| fig-cap: "用 val.prob 在留出样本上对 logistic 模型做拆分样本验证。"
 #| out.width: "70%"
 #| fig-width: 6.5
 #| fig-height: 6
@@ -109,7 +110,7 @@ val.prob(pred_valid, valid$y1y,
          xlab = "Predicted probability of 1-year death")
 ```
 
-虚线对角线是理想校准；三角形标记分组的观察发生率（每组 20 例）。打印的统计量包括校准截距（理想为 0）和校准斜率（理想为 1）。
+粗灰对角线是理想校准；三角形标记分组的观察发生率（每组 20 例）。打印的统计量包括校准截距（理想为 0）和校准斜率（理想为 1）。
 
 ### 3. Cox 模型生存概率的校准
 
@@ -138,12 +139,14 @@ plot(cal_cph, xlab = "Predicted 1-year survival",
 
 ```{r}
 #| label: fig-4.1GroupedCalibration
-#| fig-cap: "验证集中各分位组的观察率与预测 1 年死亡风险对比。"
+#| fig-cap: "验证集中各五分位组的观察率与预测 1 年死亡风险对比。"
 #| out.width: "70%"
 #| fig-width: 6
 #| fig-height: 6
 #| warning: false
 #| message: false
+
+valid$pred_valid <- pred_valid  # 每组必须使用自己的预测值
 
 grouped <- valid %>%
   mutate(pred_group = ntile(pred_valid, n = 5)) %>%
