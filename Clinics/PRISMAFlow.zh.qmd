@@ -1,0 +1,182 @@
+---
+title: "PRISMA 流程图"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+每篇系统综述与 Meta 分析都必须报告**检索、筛选、排除和最终纳入了多少文献**——即 PRISMA 2020 流程图 \[1\]。图的主体是两列方框：通过数据库与试验注册库进行文献识别和筛选（新研究），以及可选的、来自综述旧版本的研究和通过其他方法（引文、网站、机构）识别的研究。期刊对 2020 版模板的要求日益严格；手工绘制或格式不符的流程图是综述稿件被直接拒稿的常见原因。
+
+`PRISMA2020` R 包 \[2\] 从计数模板生成符合 2020 版规范的流程图，支持交互式悬停提示、逐数据库明细和 Meta 分析方框。由于流程图由代码生成，计数可以*程序化验证*——每个阶段必须与下一阶段在算术上对账一致——这正是编辑和审稿人首先核查的性质。
+
+本教程涵盖三种工作流：
+
+1. 带对账检查的标准新综述流程图；
+2. 列出具体数据库与注册库的明细版本；
+3. 带悬停提示、可作在线补充材料的交互版本。
+
+## Example
+
+![](../images/Clinics/PRISMAFlow_demo.png){fig-alt="PRISMAFlow DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`PRISMA2020`（经 `DiagrammeR` 渲染）
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装必要的包
+if (!requireNamespace("PRISMA2020", quietly = TRUE)) {
+  install.packages("PRISMA2020")
+}
+
+# 加载包
+library(PRISMA2020)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+包自带 CSV 模板，每行对应图中一个方框。我们读取模板，覆盖一篇示例肿瘤学综述的计数，并清空提示 URL（仅交互模式使用）。示例流程：数据库 1,200 条 + 注册库 210 条记录，去重 233 条，筛 1,177 条，题目/摘要排除 1,050 条，寻找全文 127 篇，未获取 4 篇，评估 123 篇，附理由排除 88 篇，最终纳入 35 项研究，其中 28 项进入 Meta 分析。
+
+```{r load data, message=FALSE, warning=FALSE}
+tpl <- read.csv(system.file("extdata", "PRISMA.csv", package = "PRISMA2020"),
+                stringsAsFactors = FALSE)
+
+counts <- c(
+  previous_studies = 0, previous_reports = 0,
+  database_results = 1200, database_specific_results = 0,
+  register_results = 210, register_specific_results = 0,
+  website_results = 0, organisation_results = 0, citations_results = 0,
+  duplicates = 233,
+  excluded_automatic = 0, excluded_other = 0,
+  records_screened = 1177, records_excluded = 1050,
+  dbr_sought_reports = 127, dbr_notretrieved_reports = 4,
+  other_sought_reports = 0, other_notretrieved_reports = 0,
+  dbr_assessed = 123, dbr_excluded = 88,
+  other_assessed = 0, other_excluded = 0,
+  new_studies = 35, new_reports = 35,
+  total_studies = 35, total_reports = 35,
+  total_studies_ma = 28, total_reports_ma = 28
+)
+for (k in names(counts)) {
+  idx <- which(tpl$data == k)
+  if (length(idx)) tpl$n[idx] <- as.character(counts[[k]])
+}
+tpl$url[!is.na(tpl$url)] <- ""   # 提示超链接：仅交互模式使用
+
+prisma_counts <- PRISMA_data(tpl)
+```
+
+绘图前先验证数字对账——PRISMA 审稿意见中最常见的批评就是方框数字加不上 \[1\]：
+
+```{r reconcile, message=FALSE, warning=FALSE}
+# 对账基于原始计数（PRISMA_data() 会把数字渲染为显示格式，如 "1,177"，
+# 因此算术应在原始 counts 上进行）
+stopifnot(
+  counts[["database_results"]] + counts[["register_results"]] - counts[["duplicates"]] == counts[["records_screened"]],
+  counts[["records_screened"]] - counts[["records_excluded"]] == counts[["dbr_sought_reports"]],
+  counts[["dbr_sought_reports"]] - counts[["dbr_notretrieved_reports"]] == counts[["dbr_assessed"]],
+  counts[["dbr_assessed"]] - counts[["dbr_excluded"]] == counts[["new_studies"]]
+)
+cat("各阶段对账通过：1,200 + 210 - 233 = 1,177 筛选；",
+    "123 篇评估；35 项纳入；28 项进 Meta 分析。\n")
+```
+
+## Visualization
+
+### 1. 标准新综述流程图
+
+```{r}
+#| label: fig-1.1BasicPrisma
+#| fig-cap: "新系统综述的 PRISMA 2020 流程图，含 Meta 分析方框。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+
+p1 <- PRISMA_flowdiagram(prisma_counts,
+                         interactive = FALSE,
+                         previous = FALSE, other = FALSE,
+                         meta_analysis = TRUE,
+                         side_boxes = TRUE,
+                         fontsize = 9)
+p1
+```
+
+两个蓝色侧框标注综述阶段（identification、screening、included）；若 `previous = TRUE`，金黄色的标题框会标注综述的旧版本。计数打印在每个方框内，被去除的记录向右分支展示。
+
+### 2. 明细版本：逐数据库分解
+
+试验报告和综述指南常要求说明记录*来自哪里*。填好 `database_specific_results` / `register_specific_results` 行并打开明细开关后重新绘图，即可列出每个检索来源：
+
+```{r}
+#| label: fig-2.1DetailedPrisma
+#| fig-cap: "列出每个检索数据库与试验注册库的明细流程图。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+
+tpl_d <- tpl
+# 逐来源明细写入 *_specific_results 行的 n 列，格式 "来源, 条数; …"
+tpl_d$n[tpl_d$data == "database_specific_results"] <- "PubMed, 520; Embase, 400; Web of Science, 280"
+tpl_d$n[tpl_d$data == "register_specific_results"] <- "Cochrane Register, 120; ClinicalTrials.gov, 90"
+prisma_detailed <- PRISMA_data(tpl_d)
+
+p2 <- PRISMA_flowdiagram(prisma_detailed,
+                         interactive = FALSE,
+                         previous = FALSE, other = FALSE,
+                         detail_databases = TRUE,
+                         detail_registers = TRUE,
+                         meta_analysis = FALSE,
+                         side_boxes = TRUE,
+                         fontsize = 9)
+p2
+```
+
+逐来源条目继承上面的 `来源, 条数` 对——替换成你的综述实际检索的来源即可，保持相同的 `来源, 条数; …` 格式。
+
+### 3. 带悬停提示的交互版本
+
+```{r}
+#| label: fig-3.1InteractivePrisma
+#| fig-cap: "交互渲染：悬停方框会显示其定义与承载的计数。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+
+p3 <- PRISMA_flowdiagram(prisma_counts,
+                         interactive = TRUE,
+                         previous = FALSE, other = FALSE,
+                         meta_analysis = TRUE,
+                         side_boxes = TRUE,
+                         fontsize = 9)
+p3
+```
+
+在渲染出的 HTML 页面中，方框会对鼠标悬停作出响应，使在线补充材料中的流程图自带说明；同一流程图导出为 PDF 后仍是完全静态的。
+
+::: callout-tip
+## 实践要点
+
+-   投稿前*程序化*对账（见 Data Preparation）：检索 − 去重 = 筛选；筛选 − 排除 = 找全文；评估 − 排除 = 纳入。
+-   排除全文必须*附理由*——若排除理由多于几类，2020 版声明要求逐一列举（模板的 `dbr_excluded` 行）。
+-   仅在更新版综述中设 `previous = TRUE`；误用会生成与 2020 模板不符的图。
+:::
+
+## Application
+
+PRISMA 流程图出现在每篇系统综述稿件、注册方案（PROSPERO 更新）以及随时间刷新检索的 living review 中。下图模拟典型论文版式：(A) 标准新综述流程图，(B) 逐数据库明细版本。
+
+![](../images/Clinics/PRISMAFlow_app1.png){fig-alt="PRISMAFlow Application" fig-align="center" width="60%"}
+
+## Reference
+
+\[1\] Page MJ, McKenzie JE, Bossuyt PM, et al. The PRISMA 2020 statement: an updated guideline for reporting systematic reviews. BMJ. 2021;372:n71. doi:10.1136/bmj.n71
+
+\[2\] Haddaway NR, Page MJ, Pritchard CC, McGuinness LA. PRISMA2020: An R package and Shiny app for producing PRISMA 2020-compliant flow diagrams, with interactivity for optimised digital transparency and Open Synthesis. Campbell Syst Rev. 2022;18(2):e1230. doi:10.1002/cl2.1230

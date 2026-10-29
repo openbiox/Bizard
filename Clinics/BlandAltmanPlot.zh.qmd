@@ -1,0 +1,211 @@
+---
+title: "Bland-Altman 一致性图"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+Bland-Altman 图（一致性分析图）是评估**两种定量测量方法一致性**的标准图形工具——例如新的床旁快检（POCT）方法与检验科参考方法、可穿戴设备与诊室血压测量 \[1\]。每位受试者同时用两种方法测量，图中将两次读数的*差值*对*均值*作图。三条水平参考线锚定解读：均数之差（**偏倚 bias**，方法的系统偏移）与 **95% 一致性界限**（bias ± 1.96 × 差值的标准差，即 95% 的方法间差异预期落入的范围）\[2\]。
+
+该图揭示的核心问题是：Pearson 相关系数很高**并不等于**一致性好——相关衡量的是*线性关联强度*，即便新方法读数系统性偏高，相关系数依然会很大。一致性应根据差值相对临床意义的大小判断，而非 r。
+
+本教程涵盖 R 中四种实用工作流：
+
+1. 配对散点图：说明为什么相关不等于一致；
+2. 手绘 Bland-Altman 图（ggplot2）：偏倚、95% 一致性界限及其置信区间；
+3. 用 `blandr` 包完成同样的分析 \[3\]；
+4. *百分比*差值图：当测量误差随测量值增大（比例偏倚）时稳定方差。
+
+## Example
+
+![](../images/Clinics/BlandAltmanPlot_demo.png){fig-alt="BlandAltmanPlot DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`blandr`；`ggplot2`；`dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装必要的包
+if (!requireNamespace("blandr", quietly = TRUE)) {
+  install.packages("blandr")
+}
+
+# 加载包
+library(ggplot2)
+library(dplyr)
+library(blandr)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+我们模拟一项方法学比较研究：$n = 120$ 份血清样本的生物标志物（mg/L）分别由参考实验室方法（`ref`）与新的床旁方法（`new`）测定。模拟中嵌入了真实方法比较研究常见的两个特征：新方法的轻度*比例性*高估，以及随浓度增大而增大的测量误差（异方差）。两者都会在下面的 Bland-Altman 图中直观呈现。
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(2026)
+
+n <- 120
+# 右偏的浓度分布，与肿瘤标志物的典型分布一致
+true_conc <- rgamma(n, shape = 2, scale = 20)
+
+method_data <- data.frame(
+  ref = true_conc * (1 + rnorm(n, 0, 0.05)),      # 参考方法，约 5% CV
+  new = true_conc * (1 + rnorm(n, 0.06, 0.09))    # 新方法：+6% 比例偏倚，约 9% CV
+) |>
+  mutate(
+    avg  = (ref + new) / 2,   # 真值的最佳可得估计
+    diff = ref - new          # 参考法 − 新方法
+  )
+
+head(method_data)
+```
+
+## Visualization
+
+### 1. 为什么相关不等于一致
+
+```{r}
+#| label: fig-1.1PairedScatter
+#| fig-cap: "两种方法的配对测量结果；尽管新方法系统性偏低，Pearson 相关系数依然很高。"
+#| out.width: "70%"
+#| fig-width: 6
+#| fig-height: 5.5
+#| warning: false
+#| message: false
+
+r <- cor(method_data$ref, method_data$new)
+
+ggplot(method_data, aes(x = ref, y = new)) +
+  geom_point(color = "#2166AC", alpha = 0.7, size = 2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey40") +
+  annotate("text", x = max(method_data$ref) * 0.72, y = min(method_data$new) * 1.6,
+           label = sprintf("Pearson r = %.2f", r), size = 4.2) +
+  labs(x = "参考方法 (mg/L)", y = "新方法 (mg/L)",
+       title = "高相关并不意味着好的一致性")
+```
+
+两种方法几乎完全相关（r ≈ 0.99），但随着浓度升高，点逐渐*低于*恒等线——新方法在高浓度时系统性低估。相关系数对这一行为完全"失明"，因此一致性需要专门的图形。
+
+### 2. 手绘带置信区间的 Bland-Altman 图
+
+```{r}
+#| label: fig-2.1ManualBA
+#| fig-cap: "同一数据的 Bland-Altman 图：均数之差（偏倚）及其 95% CI（灰色带）与 95% 一致性界限（虚线）。"
+#| out.width: "70%"
+#| fig-width: 6.5
+#| fig-height: 5.5
+#| warning: false
+#| message: false
+
+bias    <- mean(method_data$diff)
+sd_diff <- sd(method_data$diff)
+loa     <- c(bias - 1.96 * sd_diff, bias + 1.96 * sd_diff)
+n       <- nrow(method_data)
+
+# 精确标准误（Bland & Altman 1986）：界限本身是估计量，带有自身的不确定性，
+# 在小样本研究中尤为明显。
+se_bias <- sd_diff / sqrt(n)
+se_loa  <- sqrt(sd_diff^2 * (1 / n + 1.96^2 / (2 * (n - 1))))
+
+ggplot(method_data, aes(x = avg, y = diff)) +
+  geom_point(color = "#2166AC", alpha = 0.7, size = 2) +
+  geom_ribbon(aes(ymin = bias - 1.96 * se_bias, ymax = bias + 1.96 * se_bias),
+              alpha = 0.2, color = NA) +
+  geom_hline(yintercept = bias, color = "black") +
+  geom_hline(yintercept = loa, color = "#B2182B", linetype = "dashed") +
+  annotate("text", x = max(method_data$avg), y = bias, vjust = -1, hjust = 1,
+           label = sprintf("Bias = %.2f", bias), size = 3.6) +
+  annotate("text", x = max(method_data$avg), y = loa[2], vjust = -0.8, hjust = 1,
+           label = sprintf("+1.96 SD = %.2f", loa[2]), size = 3.6, color = "#B2182B") +
+  annotate("text", x = max(method_data$avg), y = loa[1], vjust = 1.7, hjust = 1,
+           label = sprintf("-1.96 SD = %.2f", loa[1]), size = 3.6, color = "#B2182B") +
+  labs(x = "两方法均值 (mg/L)", y = "差值 (参考法 − 新方法)",
+       title = "带 95% 一致性界限的 Bland-Altman 图")
+```
+
+约 −3 mg/L 的平均差值即*偏倚*：新方法平均比参考方法读数偏低。虚线为 95% 一致性界限——两种方法差值的 95% 预期落入的区间。该区间是否*可接受*是临床判断而非统计判断：对判定阈值为 50 mg/L 的标志物，±10 mg/L 的一致性界限无关紧要；若阈值为 5 mg/L 则完全不可接受。
+
+注意图中的喇叭形：高浓度处差值的离散度更大，这是第 4 节要解决的问题。
+
+### 3. 用 blandr 完成同样的分析
+
+```{r}
+#| label: fig-3.1Blandr
+#| fig-cap: "blandr 绘图并为偏倚和两条界限分别叠加置信区域。"
+#| out.width: "70%"
+#| fig-width: 6.5
+#| fig-height: 5.5
+#| warning: false
+#| message: false
+
+blandr.draw(method_data$ref, method_data$new,
+            plotTitle = "blandr 包输出")
+```
+
+`blandr.draw()` 复现了手绘分析的结果：相同的偏倚与一致性界限，并像上图的灰色带一样为每条线给出置信区间（阴影区域）。包中 `blandr.output.text()` 还可输出用于报告的数值摘要。
+
+### 4. 针对比例偏倚的百分比差值图
+
+当差值的离散度随测量值增大（第 2 节的喇叭形）时，把差值表示为均值的*百分比*——或对两次测量先做对数变换再分析 \[2\]——可以恢复恒定的离散度，使一致性界限在整个测量范围内都可解释。
+
+```{r}
+#| label: fig-4.1PercentageBA
+#| fig-cap: "百分比差值图：差值按均值标准化后喇叭形消失，得到全范围适用的单一偏倚（−6.4%）与一对界限。"
+#| out.width: "70%"
+#| fig-width: 6.5
+#| fig-height: 5.5
+#| warning: false
+#| message: false
+
+method_data <- method_data |>
+  mutate(pct_diff = diff / avg * 100)
+
+pct_bias <- mean(method_data$pct_diff)
+pct_loa  <- c(pct_bias - 1.96 * sd(method_data$pct_diff),
+              pct_bias + 1.96 * sd(method_data$pct_diff))
+
+ggplot(method_data, aes(x = avg, y = pct_diff)) +
+  geom_point(color = "#2166AC", alpha = 0.7, size = 2) +
+  geom_hline(yintercept = pct_bias, color = "black") +
+  geom_hline(yintercept = pct_loa, color = "#B2182B", linetype = "dashed") +
+  annotate("text", x = max(method_data$avg), y = pct_bias, vjust = -1, hjust = 1,
+           label = sprintf("Bias = %.1f%%", pct_bias), size = 3.6) +
+  annotate("text", x = max(method_data$avg), y = pct_loa[2], vjust = -0.8, hjust = 1,
+           label = sprintf("+1.96 SD = %.1f%%", pct_loa[2]), size = 3.6, color = "#B2182B") +
+  annotate("text", x = max(method_data$avg), y = pct_loa[1], vjust = 1.7, hjust = 1,
+           label = sprintf("-1.96 SD = %.1f%%", pct_loa[1]), size = 3.6, color = "#B2182B") +
+  labs(x = "两方法均值 (mg/L)", y = "差值 (占均值的百分比)",
+       title = "百分比差值图")
+```
+
+在百分比尺度上，偏倚为 −6.4%，界限约为 −25% 至 +13%：一条适用于低浓度与高浓度的简洁一致性陈述。
+
+::: callout-tip
+## 实践要点
+
+-   x 轴应使用两种方法的*均值*（真值的最佳估计），切勿只用其中一种方法——以单一方法为横轴会在差值中引入虚假相关。
+-   同时报告偏倚*和*两条界限的置信区间；只报点估计会夸大小样本一致性研究的精确性。
+-   引用原始单位界限前先检查喇叭形。若离散度随量值增大，改用百分比差值或对数变换。
+-   不要用配对 t 检验替代本图：t 检验不显著不能证明一致，显著也不必然否定一致。
+:::
+
+## Application
+
+方法比较图是实验室引入新检测方法或设备的必备图表：临床化学（新分析仪对比旧分析仪）、生理学（可穿戴设备对比导管血压）、影像定量（AI 分割对比人工勾画）。下图模拟典型论文版式：(A) 引出问题的配对散点图，(B) 带偏倚与界限的 Bland-Altman 图，(C) 带置信区域的包输出图，(D) 处理比例偏倚的百分比图。
+
+![](../images/Clinics/BlandAltmanPlot_app1.png){fig-alt="BlandAltmanPlot Application" fig-align="center" width="60%"}
+
+## Reference
+
+\[1\] Bland JM, Altman DG. Statistical methods for assessing agreement between two methods of clinical measurement. Lancet. 1986;327(8476):307-310. doi:10.1016/S0140-6736(86)90837-8
+
+\[2\] Bland JM, Altman DG. Measuring agreement in method comparison studies. Stat Methods Med Res. 1999;8(2):135-160. doi:10.1177/096228029900800204
+
+\[3\] Datta S. blandr: a Bland-Altman method comparison package for R. 2018. doi:10.5281/zenodo.824522
