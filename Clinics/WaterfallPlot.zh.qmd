@@ -1,0 +1,190 @@
+---
+title: "瀑布图"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** Claude Code — AI 生成，独立 AI 复核"
+---
+
+瀑布图（Waterfall plot）是肿瘤临床试验中展示每例患者最佳肿瘤应答的标准图形。每根柱代表一名患者，按靶病灶直径总和相对基线的最佳百分比变化排序，柱子通常按 RECIST 应答类别（CR、PR、SD、PD）着色 \[1\]。瀑布图直观回答“应答有多深？”，与 Kaplan-Meier 生存曲线（回答“患者活了多久？”）互为补充，并常与展示每例患者肿瘤大小纵向轨迹的*蜘蛛图*（spider plot）搭配出现。
+
+::: callout-note
+瀑布图可能在视觉上高估应答率，因为它只显示最佳变化，且不可测量的进展可能被低估 \[2\]。请将瀑布图与蜘蛛图配合使用，并以数字形式报告应答率。
+:::
+
+## 示例
+
+![](../images/Clinics/WaterfallPlot_demo.png){fig-alt="WaterfallPlot DEMO" fig-align="center" width="60%"}
+
+## 环境配置
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`dplyr`；`forcats`；`ggplot2`；`patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 加载包
+library(dplyr)
+library(forcats)
+library(ggplot2)
+library(patchwork)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+所需输入是每例患者一行的数据，至少包含靶病灶的最佳百分比变化和 RECIST 类别。由于 R 没有内置临床试验的患者级数据集，我们模拟一个贴近 II 期临床试验的队列：40 例患者的最佳变化遵循中等活性方案的预期分布（RECIST 阈值：PR 要求缩小 ≥30%，PD 要求增长 ≥20%）\[1\]。分析真实数据时，将模拟部分替换为 `read.csv("your_recist_data.csv")` 即可——列结构完全相同。
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(2026)
+n <- 40
+
+response <- sample(c("CR", "PR", "SD", "PD"), n,
+                   prob = c(0.05, 0.40, 0.30, 0.25), replace = TRUE)
+best_change <- round(case_when(
+  response == "CR" ~ -runif(n, 95, 100),   # 完全缓解：几乎完全缩小
+  response == "PR" ~ -runif(n, 30, 92),    # 部分缓解：缩小 30-90%
+  response == "SD" ~ runif(n, -25, 18),    # 疾病稳定
+  response == "PD" ~ runif(n, 22, 120)     # 疾病进展
+), 1)
+
+wf <- data.frame(
+  patient     = paste0("P", sprintf("%02d", seq_len(n))),
+  best_change = best_change,
+  response    = response
+)
+
+head(wf)
+```
+
+再为配套的蜘蛛图模拟纵向轨迹：从基线到最佳变化的近似直线漂移叠加较小的周间噪声，进展者的病情在后期加速。
+
+```{r spider data, message=FALSE, warning=FALSE}
+set.seed(2027)
+weeks <- seq(0, 48, 6)
+
+spider <- do.call(rbind, lapply(seq_len(nrow(wf)), function(i) {
+  k <- length(weeks)
+  endpoint <- wf$best_change[i]
+  base <- approx(x = c(1, k), y = c(0, endpoint), xout = 1:k)$y
+  noise <- runif(k, -4, 4)
+  if (wf$response[i] == "PD") noise <- noise + seq(0, 12, length.out = k)  # 后期加速
+  data.frame(patient = wf$patient[i], week = weeks,
+             change = round(pmin(base + noise, 130), 1),
+             response = wf$response[i])
+}))
+
+head(spider)
+```
+
+## 可视化
+
+### 1. 基础瀑布图
+
+按最佳变化排序患者并翻转坐标轴，得到经典的发表级版式。
+
+```{r}
+#| label: fig-1.1BasicWaterfall
+#| fig-cap: "每例患者最佳肿瘤变化的基础瀑布图。"
+#| out.width: "80%"
+#| fig-width: 8
+#| fig-height: 6
+#| warning: false
+#| message: false
+
+p1 <- wf %>%
+  mutate(patient = fct_reorder(patient, best_change)) %>%
+  ggplot(aes(patient, best_change)) +
+  geom_col(fill = "#4393C3", width = 0.75) +
+  coord_flip() +
+  labs(x = NULL, y = "Best % change from baseline") +
+  theme_bw()
+p1
+```
+
+### 2. 按 RECIST 着色并带参考线的瀑布图
+
+按应答类别为柱子着色，并添加 RECIST 参考线：−30% 是部分缓解的边界，+20% 是进展的边界。
+
+```{r}
+#| label: fig-2.1RecistWaterfall
+#| fig-cap: "按 RECIST 应答着色并带 -30% 与 +20% 参考线的瀑布图。"
+#| out.width: "80%"
+#| fig-width: 8
+#| fig-height: 6
+#| warning: false
+#| message: false
+
+recist_colors <- c(CR = "#1B7837", PR = "#66BD63", SD = "#FFB300", PD = "#C51B7D")
+
+p2 <- wf %>%
+  mutate(patient = fct_reorder(patient, best_change)) %>%
+  ggplot(aes(patient, best_change, fill = response)) +
+  geom_col(width = 0.75) +
+  geom_hline(yintercept = c(-30, 20), linetype = "dashed", color = "grey35") +
+  scale_fill_manual(values = recist_colors, name = "RECIST") +
+  coord_flip() +
+  labs(x = NULL, y = "Best % change from baseline") +
+  theme_bw() +
+  theme(legend.position = "top")
+p2
+```
+
+两条虚线使应答率（低于 −30% 的柱子）与疾病控制率（低于 +20% 的所有柱子）一目了然。
+
+### 3. 配套蜘蛛图
+
+```{r}
+#| label: fig-3.1SpiderPlot
+#| fig-cap: "肿瘤变化的纵向蜘蛛图；瀑布图展示终点，蜘蛛图展示轨迹。"
+#| out.width: "80%"
+#| fig-width: 8
+#| fig-height: 6
+#| warning: false
+#| message: false
+
+p3 <- spider %>%
+  ggplot(aes(week, change, group = patient, color = response)) +
+  geom_hline(yintercept = c(-30, 20), linetype = "dashed", color = "grey35") +
+  geom_line(alpha = 0.75, linewidth = 0.6) +
+  scale_color_manual(values = recist_colors, name = "RECIST") +
+  labs(x = "Weeks on treatment", y = "% change from baseline") +
+  theme_bw() +
+  theme(legend.position = "top")
+p3
+```
+
+### 4. 组合图
+
+```{r}
+#| label: fig-4.1Combined
+#| fig-cap: "瀑布图（左）与蜘蛛图（右）用 patchwork 组合。"
+#| out.width: "95%"
+#| fig-width: 12
+#| fig-height: 5.5
+#| warning: false
+#| message: false
+
+p2 + p3 + plot_annotation(
+  title = "Best tumor response and its longitudinal trajectories",
+  tag_levels = "A"
+)
+```
+
+两图对照阅读：柱子给出应答深度，折线给出应答的形态——早期缩小者、晚期进展者和原发难治者只有通过蜘蛛图才能区分。
+
+## 应用
+
+瀑布图在临床肿瘤学论文和 FDA/EMA 申报材料中无处不在，用于总结某方案抗肿瘤活性；下方的"瀑布图 + 蜘蛛图"组合即为典型呈现形式。
+
+![](../images/Clinics/WaterfallPlot_app1.png){fig-alt="WaterfallPlot Application" fig-align="center" width="60%"}
+
+## 参考文献
+
+\[1\] Eisenhauer EA, Therasse P, Bogaerts J, et al. New response evaluation criteria in solid tumours: revised RECIST guideline (version 1.1). Eur J Cancer. 2009;45(2):228-247. doi:10.1016/j.ejca.2008.10.026
+
+\[2\] Kim MS, Lee J, Ha J, et al. Assessment of accuracy of waterfall plot representations of response rate in cancer clinical trials. Am J Ther. 2019;26(2):e217-e222. doi:10.1097/MJT.0000000000000654
