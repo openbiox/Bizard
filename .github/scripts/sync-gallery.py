@@ -119,6 +119,8 @@ NO_PNG_FUNCTIONS = (
     "d3wordcloud",
     "regplot",
     "PRISMA_flowdiagram",
+    "plot_ly",
+    "Sunburst",
 )
 
 # These python chunks emit `-output-2.png` (a seaborn palette warning
