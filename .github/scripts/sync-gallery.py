@@ -120,6 +120,7 @@ NO_PNG_FUNCTIONS = (
     "regplot",
     "PRISMA_flowdiagram",
     "plot_ly",
+    "Sunburst",
 )
 
 # These python chunks emit `-output-2.png` (a seaborn palette warning

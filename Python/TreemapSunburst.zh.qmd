@@ -1,0 +1,130 @@
+---
+title: "树图与旭日图 (Python)"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+[树图](../zh/Composition/Treemap.html)与[旭日图](../zh/Composition/Sunburst.html)的 Python 对应版本：两种**层次组成**的展示。树图以矩形面积编码数值嵌套——一两个层级的最佳静态总览；旭日图径向嵌套环形且保持交互——层级结构与点击缩放。临床数据中凡能自然分解的队列（癌种 → 疗效）、费用树与物种丰度都适用。
+
+本教程用 `squarify` \[1\]（matplotlib）构建静态树图，用 `plotly.graph_objects` \[2\] 构建交互式旭日图，两者使用同一队列以便直接对比设计。
+
+本教程涵盖两种工作流：
+
+1. 队列组成的静态树图（`squarify`）；
+2. 交互式两层旭日图（`plotly`）。
+
+## Example
+
+![](../images/Python/TreemapSunburst_demo.png){fig-align="center" width="60%"}
+
+## Setup
+
+- 系统要求：跨平台（Linux/MacOS/Windows）
+- 编程语言：**Python**
+- 依赖包：`matplotlib`、`pandas`、`squarify`、`plotly`
+
+```{python}
+#| label: packages-setup
+#| output: false
+import matplotlib.pyplot as plt
+import pandas as pd
+import squarify
+import plotly.graph_objects as go
+```
+
+## Data Preparation
+
+270 例患者的肿瘤队列：三个癌种（120/90/60）各有三类疗效。使用 `branchvalues="total"` 时父节点 value 必须等于子节点之和——绘图前程序化验证。
+
+```{python}
+#| label: data-prep
+counts = {"Breast": (55, 25, 40),          # (PR, SD, PD)
+          "Lung (NSCLC)": (30, 35, 25),
+          "Colorectal": (18, 24, 18)}
+cnt = pd.DataFrame(
+    [{"cancer": c, "response": r, "n": n}
+     for c, resp in counts.items() for r, n in zip(["PR", "SD", "PD"], resp)])
+cnt["id"] = cnt.cancer + "-" + cnt.response
+
+agg = cnt.groupby("cancer", as_index=False)["n"].sum()
+
+# 父节点 value 必须等于子节点之和
+parents_ok = all(int(agg.loc[agg.cancer == c, "n"].iloc[0])
+                 == int(cnt.loc[cnt.cancer == c, "n"].sum())
+                 for c in counts)
+assert parents_ok
+cnt
+```
+
+## Visualization
+
+### 1. squarify 静态树图
+
+```{python}
+#| label: fig-py-treemap
+#| fig-cap: "队列组成的 squarify 树图：矩形面积编码患者数；标签带计数与队列占比。每次调用展示一个层级。"
+#| fig-width: 8
+#| fig-height: 5
+
+colors = {"Breast": "#4E79A7", "Lung (NSCLC)": "#F28E2B", "Colorectal": "#E15759"}
+total = agg.n.sum()
+
+fig, ax = plt.subplots(figsize=(8, 5))
+squarify.plot(
+    sizes=agg.n,
+    label=[f"{r.cancer}\n{r.n} ({r.n / total:.0%})" for r in agg.itertuples()],
+    color=[colors[r.cancer] for r in agg.itertuples()],
+    ax=ax, alpha=0.85, pad=True)
+ax.axis("off")
+ax.set_title("Cohort composition treemap (squarify)")
+fig.tight_layout()
+plt.show()
+```
+
+`squarify` 只排一个扁平矩形列表；要展示两层，先画父矩形再把子项裁剪进父矩形内（或把整个层级交给 plotly 的 `treemap` trace，自动嵌套）。
+
+### 2. plotly 交互式旭日图
+
+```{python}
+#| label: fig-py-sunburst
+#| fig-cap: "同一队列的两层旭日图：内环 = 癌种，外 = 疗效；悬停显示计数，点击分段缩放到其子树。"
+
+roots = agg.cancer.tolist()          # groupby sorts alphabetically: use ITS order
+rcolors = {"Breast": "#4E79A7", "Lung (NSCLC)": "#F28E2B", "Colorectal": "#E15759"}
+lcolors = {"PR": "#7fa8cc", "SD": "#f5b767", "PD": "#e98a8a"}
+
+fig = go.Figure(go.Sunburst(
+    ids=roots + cnt.id.tolist(),
+    labels=roots + cnt.response.tolist(),
+    parents=[""] * len(roots) + cnt.cancer.tolist(),
+    values=agg.n.tolist() + cnt.n.tolist(),
+    branchvalues="total",
+    marker=dict(colors=[rcolors[c] for c in roots]
+                + [lcolors[r] for r in cnt.response]),
+    hovertemplate="%{id}<br>n = %{value}<extra></extra>"))
+fig.update_layout(width=800, height=800,
+                  title="Cohort hierarchy: cancer → response")
+fig
+```
+
+::: callout-tip
+## 实践要点
+
+-   `branchvalues="total"` 要求父节点 `value` = 子节点之和——像 Data Preparation 一样断言它，否则 plotly 会画出重叠扇形；备选 `"remainder"`（父节点只填自身值）。
+-   `squarify` 不帮你排序：把 `sizes` 按降序传入得到经典的大到小布局，并加 `pad=True` 让相邻矩形保持可读。
+-   两类图都会隐藏小类别：低于约 2% 的类别先折叠为 "Other"。
+-   plotly 图形是 HTML 部件——渲染页面可交互；印刷用静态导出需要截图（本环境无 kaleido）。
+:::
+
+## Application
+
+树图与旭日图用于队列报告（注册研究组成）、费用/使用分解与宏基因组（门 → 种）。下图模拟典型报告版式：(A) 静态树图与 (B) 交互式旭日图。
+
+![](../images/Python/TreemapSunburst_app1.png){fig-align="center" width="60%"}
+
+## Reference
+
+\[1\] Lambrechts G. squarify: pure Python implementation of the squarified treemap layout. https://github.com/gregorl/squarify
+
+\[2\] Sievert C. Interactive Web-Based Data Visualization with R, plotly, and shiny. Chapman and Hall/CRC; 2020. doi:10.1201/9780429447273
