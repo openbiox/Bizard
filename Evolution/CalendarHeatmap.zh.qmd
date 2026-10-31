@@ -1,0 +1,169 @@
+---
+title: "日历热图"
+author:
+  - "**[编辑]** [王诗翔](https://github.com/ShixiangWang)"
+  - "**[贡献]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+日历热图把日历铺成格子——列 = 星期几，行 = 第几周，每个月一个分面（或全年一张大网格）——并把每日数值映射到格子颜色 \[1\]。它是对带有周节律与季节节律的数据（住院人次、急诊量、检验通量、任何想画在挂历上的计数器）的自然展示。这一版式让周内效应（纵向条纹）与季节漂移（跨分面）同时可见——在同类时间序列的折线图中二者都不可见。
+
+本教程先用 ggplot2 手工构建版式（`geom_tile` + 月份分面），再展示 `calendR` 包的一行代码替代方案 \[2\]。Bizard 已有一篇 `calendR` 高亮薄教程（见 [Calend Highlight](../zh/DataOverTime/CalendHighlight.html)）；本教程聚焦*数据驱动*的热图版本。
+
+本教程涵盖三种工作流：
+
+1. 手工逐月日历热图（完全可控的版本）；
+2. `calendR` 一行代码全年热图；
+3. `calendR` 单月细节视图。
+
+## Example
+
+![](../images/Evolution/CalendarHeatmap_demo.png){fig-alt="CalendarHeatmap DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`；`dplyr`；`lubridate`；`calendR`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装必要的包
+if (!requireNamespace("calendR", quietly = TRUE)) {
+  install.packages("calendR")
+}
+
+# 加载包
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(calendR)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+我们模拟一整年的每日住院人次：冬季高峰（季节性正弦）、周末低谷、1 月下旬至 2 月的 3 周流感激增，以及日常噪声。手工版式需要三个派生列：星期几的编号（列）、该日在其月网格中的行号（（月内第几日 + 月首的星期偏移）/ 7 向上取整）、月份标签（分面）。
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(251)
+
+dates <- seq(as.Date("2025-01-01"), as.Date("2025-12-31"), by = "day")
+base_adm <- 42 + 12 * sin(2 * pi * (yday(dates) - 15) / 365)  # 冬季高峰
+weekend  <- ifelse(wday(dates) %in% c(1, 7), -8, 0)           # 周末低谷
+flu      <- ifelse(dates >= as.Date("2025-01-20") &
+                   dates <= as.Date("2025-02-10"), 18, 0)     # 流感激增
+
+adm <- data.frame(date = dates,
+                  admissions = pmax(5, round(base_adm + weekend + flu +
+                                               rnorm(length(dates), 0, 5)))) |>
+  mutate(wday_n    = wday(date, week_start = 1),
+         dom       = day(date),
+         month_n   = month(date),
+         month_lab = month(date, label = TRUE, abbr = TRUE))
+
+# 每月 1 号是星期几（以周一为首），平移使 1 号落在真实的列上
+offsets <- sapply(1:12, function(m) wday(as.Date(sprintf("2025-%02d-01", m)),
+                                         week_start = 1) - 1)
+adm <- adm |>
+  mutate(week_row = ceiling((dom + offsets[month_n]) / 7))
+
+cat("Days:", nrow(adm), "| range:", min(adm$admissions), "-", max(adm$admissions), "\n")
+```
+
+## Visualization
+
+### 1. 手工逐月热图
+
+```{r}
+#| label: fig-1.1GgplotCalendar
+#| fig-cap: "2025 年每日住院人次：周末列在每个分面中都明显更浅，冬季月份更深，2 月流感激增在第 1-3 周形成深色块。"
+#| out.width: "95%"
+#| fig-width: 9
+#| fig-height: 6
+#| warning: false
+#| message: false
+
+wd_lab <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+ggplot(adm, aes(wday_n, week_row, fill = admissions)) +
+  geom_tile(color = "white", linewidth = 0.6) +
+  scale_x_continuous(breaks = 1:7, labels = wd_lab, expand = c(0, 0)) +
+  scale_y_reverse(breaks = NULL, name = NULL) +
+  scale_fill_gradient(low = "#F7FBFF", high = "#08306B", name = "Admissions") +
+  facet_wrap(~month_lab, ncol = 4) +
+  coord_fixed(ratio = 1) +
+  labs(x = NULL, y = NULL,
+       title = "Daily hospital admissions, 2025 (simulated)") +
+  theme_bw(base_size = 10) +
+  theme(strip.text = element_text(face = "bold"),
+        panel.grid = element_blank(),
+        axis.text.y = element_blank(), axis.ticks.y = element_blank())
+```
+
+所有月份共享同一行网格（只有 5 周的月份让第 6 行留空），这使各分面保持可比。`coord_fixed(ratio = 1)` 把格子摆成正方形；标签空间不足时可去掉。
+
+### 2. calendR 一行代码全年热图
+
+```{r}
+#| label: fig-2.1CalendRYear
+#| fig-cap: "calendR 画的同一年：把每日数值传给 special.days 并设 gradient = TRUE（一年每天一个值），日历自动画好。"
+#| out.width: "90%"
+#| fig-width: 9
+#| fig-height: 6.5
+#| warning: false
+#| message: false
+
+calendR(year = 2025,
+        special.days = adm$admissions,   # 一年每天一个值
+        gradient = TRUE,
+        low.col = "#F7FBFF", special.col = "#08306B",
+        legend.pos = "right",
+        title = "Daily hospital admissions, 2025",
+        start = "M")
+```
+
+### 3. 单月细节视图
+
+```{r}
+#| label: fig-3.1CalendRMonth
+#| fig-cap: "2 月细节：日期数字保持可读，同时渐变编码人次。"
+#| out.width: "70%"
+#| fig-width: 6.5
+#| fig-height: 4.5
+#| warning: false
+#| message: false
+
+calendR(year = 2025, month = 2,
+        special.days = adm$admissions[adm$month_n == 2],
+        gradient = TRUE,
+        low.col = "#F7FBFF", special.col = "#08306B",
+        legend.pos = "right",
+        title = "February 2025 admissions")
+```
+
+::: callout-tip
+## 实践要点
+
+-   选择带明确锚点的顺序色标（浅 = 常态、深 = 繁忙）；发散色标适用于对目标的异常检测，而非原始计数。
+-   手工版式的 `week_row = ceiling((dom + offset)/7)` 保证 1 号落在真实的星期列——改用 `isoweek()` 计算行号会让月份之间互相串周。
+-   `calendR` 的 `gradient = TRUE` 要求**一年每天一个值**且按日历顺序；请用 `length(special.days) == ifelse(leap_year(year), 366, 365)` 验证。
+-   已知事件（疫情、罢工、节假日）应直接标注，不要让读者去猜深色块。
+:::
+
+## Application
+
+日历热图是卫生服务与运营仪表盘（急诊量、择期手术排程、床位占用）、数字健康参与面板和环境暴露时间序列的标准图表。下图模拟典型报告版式：(A) 手工十二月网格，(B) calendR 全年视图。
+
+![](../images/Evolution/CalendarHeatmap_app1.png){fig-alt="CalendarHeatmap Application" fig-align="center" width="60%"}
+
+## Reference
+
+\[1\] Data-to-Viz. Calendar. https://www.data-to-viz.com/graph/calendar.html
+
+\[2\] Soage González JC. calendR: create ready to print monthly and yearly calendars built with ggplot2. R package version 1.2. 2021. https://CRAN.R-project.org/package=calendR
+
+\[3\] Grolemund G, Wickham H. Dates and times made easy with lubridate. J Stat Softw. 2011;40(3):1-25. doi:10.18637/jss.v040.i03
