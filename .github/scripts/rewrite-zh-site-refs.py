@@ -13,6 +13,7 @@ else is left untouched and reported.  Run BEFORE deleting the duplicate
 trees (deletion is done by prune-zh-duplicates.sh).
 """
 import os
+import shutil
 import re
 import sys
 
@@ -32,10 +33,11 @@ REF_RE = re.compile(
 rewritten = 0
 missing = 0
 files_touched = 0
+migrated = 0
 
 
 def repl(match, rel_dir):
-    global rewritten, missing
+    global rewritten, missing, migrated
     dots = match.group("dots") or ""
     path = match.group("path")
     # Resolve the reference against the page directory (zh-relative).
@@ -46,8 +48,17 @@ def repl(match, rel_dir):
         return match.group(0)
     root_target = os.path.join(SITE, rel_to_zh_root)
     if not os.path.isfile(root_target):
-        missing += 1
-        return match.group(0)
+        # Asset used only by zh pages (e.g. a JS lib pulled in by a widget
+        # whose root-side render failed): migrate the zh copy to the root
+        # tree so the reference can be rewritten and the duplicate zh
+        # trees can still be pruned.
+        if os.path.isfile(zh_target):
+            os.makedirs(os.path.dirname(root_target), exist_ok=True)
+            shutil.copy2(zh_target, root_target)
+            migrated += 1
+        else:
+            missing += 1
+            return match.group(0)
     fixed = os.path.relpath(root_target, os.path.join(SITE, rel_dir))
     rewritten += 1
     return match.group("prefix") + fixed
@@ -74,5 +85,5 @@ for dirpath, _dirnames, filenames in os.walk(ZH_ROOT):
 
 print(
     f"Rewrote {rewritten} reference(s) across {files_touched} zh page(s); "
-    f"{missing} unresolved left as-is"
+    f"migrated {migrated} zh-only asset(s); {missing} unresolved left as-is"
 )
