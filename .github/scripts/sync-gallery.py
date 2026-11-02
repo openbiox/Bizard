@@ -121,6 +121,7 @@ NO_PNG_FUNCTIONS = (
     "PRISMA_flowdiagram",
     "plot_ly",
     "Sunburst",
+    "Scatterpolar",
 )
 
 # These python chunks emit `-output-2.png` (a seaborn palette warning

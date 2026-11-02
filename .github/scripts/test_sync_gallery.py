@@ -447,6 +447,31 @@ def test_collect_missing_routes_known_multi_output_chunks_to_manual():
         assert row["manual_reason"]
 
 
+def test_collect_missing_routes_plotly_scatterpolar_to_manual():
+    """plotly Scatterpolar renders an interactive widget (no kaleido in the
+    render env), so the chunk must be manual, never a guessed PNG URL."""
+    collect_missing = sync_gallery.collect_missing
+    en = """---
+title: "Radar"
+---
+
+```{python}
+#| label: fig-py-radar-plotly
+#| fig-cap: "Interactive radar"
+fig = go.Figure(go.Scatterpolar(r=[1, 2, 3], theta=["a", "b", "c"]))
+fig
+```
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        write_qmd_page(tmp, "Python", "RadarPlot", en, en)
+        write_gallery_csvs(tmp)
+        missing = collect_missing(tmp)
+
+    assert [m["label"] for m in missing] == ["fig-py-radar-plotly"]
+    assert missing[0]["image_url"] is None
+    assert missing[0]["manual_reason"]
+
+
 def test_check_exits_0_when_only_manual_cases_remain():
     """Permanent manual cases must not fail CI --check forever."""
     check = sync_gallery.check
