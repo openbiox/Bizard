@@ -61,14 +61,21 @@ The data were downloaded from the [Phenotype](https://xenabrowser.net/datapages/
 ## Loading data
 clinical <- readr::read_tsv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/TCGA-LIHC.clinical.tsv")
 LIHC <- cbind(clinical$sample,clinical[,c('gender.demographic',
-                                             'vital_status.demographic',
-                                             'days_to_death.demographic',
-                                             'age_at_index.demographic',
-                                             'ajcc_pathologic_stage.diagnoses')])
-colnames(LIHC) <- c('bcr_patient_barcode','gender','status','time','age','stage')
+                                          'vital_status.demographic',
+                                          'days_to_death.demographic',
+                                          'days_to_last_follow_up.diagnoses',
+                                          'age_at_index.demographic',
+                                          'ajcc_pathologic_stage.diagnoses')])
+colnames(LIHC) <- c('bcr_patient_barcode','gender','status','time_death','time_followup','age','stage')
 table(LIHC$status)
 LIHC <- LIHC[LIHC$status != 'Not Reported',]
 LIHC$status <- as.numeric(ifelse(LIHC$status=='Dead','2','1') ) # Death is 2 in nomogram
+## Analysis time: dead patients use days_to_death, censored patients use
+## days_to_last_follow_up. Fitting on days_to_death alone silently drops
+## every censored patient (NA time), which also removes factor levels that
+## regplot's model.frame re-evaluation then reports as "new levels".
+LIHC$time <- ifelse(LIHC$status == 2, LIHC$time_death, LIHC$time_followup)
+LIHC <- LIHC[!is.na(LIHC$time) & LIHC$time > 0, ]
 ```
 
 ## Visualization
@@ -174,7 +181,14 @@ The figure below shows the construction and drawing of the model using the gener
 #| fig-width: 10
 #| fig-height: 5
 
-lihccox <- coxph(formula = Surv(time,status) ~ age+gender+stage , data = LIHC)
+## model=TRUE stores the model frame so regplot's added.obs() can score a new
+## observation; without it, newer survival re-evaluates the call in the
+## formula's environment (set by rms::datadist) where the data is not found.
+lihccox <- coxph(formula = Surv(time,status) ~ age+gender+stage , data = LIHC, model = TRUE)
+## regplot's added.obs() relies on survival's model.frame.coxph finding this
+## exact symbol in the global environment (survival 3.8 evaluates the model
+## call there, bypassing the function's own scope), so name it exactly "app".
+app <- rbind(LIHC[2, ], LIHC)
 regplot(lihccox,
         observation=LIHC[2,], # Scoring and displaying the indicators of observation 2 on the nomogram
         failtime = c(1095,1825),# Predict 3-year and 5-year mortality risk, the unit here is day

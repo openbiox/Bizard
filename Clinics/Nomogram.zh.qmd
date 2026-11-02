@@ -61,14 +61,21 @@ sessioninfo::session_info("attached")
 ## 载入数据
 clinical <- readr::read_tsv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/TCGA-LIHC.clinical.tsv")
 LIHC <- cbind(clinical$sample,clinical[,c('gender.demographic',
-                                             'vital_status.demographic',
-                                             'days_to_death.demographic',
-                                             'age_at_index.demographic',
-                                             'ajcc_pathologic_stage.diagnoses')])
-colnames(LIHC) <- c('bcr_patient_barcode','gender','status','time','age','stage')
+                                          'vital_status.demographic',
+                                          'days_to_death.demographic',
+                                          'days_to_last_follow_up.diagnoses',
+                                          'age_at_index.demographic',
+                                          'ajcc_pathologic_stage.diagnoses')])
+colnames(LIHC) <- c('bcr_patient_barcode','gender','status','time_death','time_followup','age','stage')
 table(LIHC$status)
 LIHC <- LIHC[LIHC$status != 'Not Reported',]
 LIHC$status <- as.numeric(ifelse(LIHC$status=='Dead','2','1') ) # 在nomogram中死亡为2
+## 分析时间：死亡患者用 days_to_death，删失患者用 days_to_last_follow_up。
+## 若只用 days_to_death 建模，所有删失患者（time 为 NA）会被 coxph/psm
+## 静默剔除，其因子水平也随之丢失，导致 regplot 重估 model.frame 时
+## 报 "factor has new levels" 错误。
+LIHC$time <- ifelse(LIHC$status == 2, LIHC$time_death, LIHC$time_followup)
+LIHC <- LIHC[!is.na(LIHC$time) & LIHC$time > 0, ]
 ```
 
 ## 可视化
@@ -175,7 +182,14 @@ regplot(lihcglm,
 #| fig-height: 5
 #| eval: false
 
-lihccox <- coxph(formula = Surv(time,status) ~ age+gender+stage , data = LIHC)
+## model=TRUE 存储模型框架，使 regplot 的 added.obs() 能为新观测计分；
+## 否则新版 survival 会在公式环境（由 rms::datadist 设置）中重新求值，
+## 导致找不到数据。
+lihccox <- coxph(formula = Surv(time,status) ~ age+gender+stage , data = LIHC, model = TRUE)
+## regplot 的 added.obs() 依赖 survival 的 model.frame.coxph 在全局环境中
+## 找到这个符号（survival 3.8 会在那里求值模型调用，绕过函数自身作用域），
+## 因此必须命名为 "app"。
+app <- rbind(LIHC[2, ], LIHC)
 regplot(lihccox,
         observation=LIHC[2,], #对观测2的指标在列线图上进行计分展示
         failtime = c(1095,1825),#预测3年和5年的死亡风险，此处单位是day
