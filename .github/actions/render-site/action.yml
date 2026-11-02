@@ -59,6 +59,9 @@ runs:
       run: |
         echo "Pre-rendering Julia tutorials (no R process = lower peak memory)..."
         failed=0
+        # Sequential on purpose: concurrent quarto render processes race on
+        # site_libs maintenance in the shared workspace and drop pages
+        # silently (see the worker-clone rationale below).
         for qmd in Julia/*.qmd; do
           echo "  → $qmd"
           if quarto render "$qmd" 2>&1; then
@@ -211,14 +214,18 @@ runs:
         wdir=$(mktemp -d "$WORKROOT/w.XXXXXX") || { echo "❌ mktemp failed: $rel"; exit 9; }
         key=$(echo "$rel" | tr '/' '_')
 
-        # Isolated clone: .git/_site/_freeze/.quarto are excluded (other
-        # files' freeze entries aren't needed to render one file; the
-        # rendered file gets a fresh _freeze/<rel>/ here which is synced
-        # back below). images/ is the bulk (~49 MB) but a real copy keeps
-        # this free of hardlink write-through risk.
+        # Isolated clone: .git/_site/_freeze/.quarto/mcp are excluded
+        # (other files' freeze entries aren't needed to render one file;
+        # the rendered file gets a fresh _freeze/<rel>/ here which is
+        # synced back below). mcp/ alone is ~109 MB of node assets no
+        # render touches; a full copy of it per file used to add ~200 GB
+        # of I/O across a 668-file cold run. images/ (~42 MB) stays a
+        # real copy, free of hardlink write-through risk.
         mkdir -p "$wdir/proj"
         (cd "$REPO_DIR" && tar --exclude=./.git --exclude=./_site \
-             --exclude=./_freeze --exclude=./.quarto \
+             --exclude=./_freeze --exclude=./.quarto --exclude=./mcp \
+             --exclude=./.claude --exclude=./.superpowers \
+             --exclude=./.pytest_cache \
              -cf - .) | (cd "$wdir/proj" && tar -xf -)
         mkdir -p "$wdir/proj/_freeze"
 

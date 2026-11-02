@@ -105,7 +105,46 @@ runs:
           echo "No additional system requirements needed"
         fi
 
-    - uses: r-lib/actions/setup-renv@v2
+    # Pull-request runs restore the renv cache but never save it: caches
+    # saved on a PR merge ref are visible only to that same PR, so every
+    # saved ~1 GB entry is dead weight in the repo-wide 10 GB cache pool
+    # and evicts the _freeze cache that warm builds depend on. This
+    # mirrors setup-renv's internal key format so PRs can hit the entries
+    # saved by main-branch runs.
+    - name: Get R and OS version
+      id: renv-version
+      shell: bash
+      run: |
+        Rscript - <<'RS' >> "$GITHUB_OUTPUT"
+        cat("os-version=", sessionInfo()$running, "\n", sep = "")
+        cat("r-version=", R.Version()$version.string, "\n", sep = "")
+        RS
+
+    - name: Restore renv package cache (pull requests, restore-only)
+      if: github.event_name == 'pull_request'
+      uses: actions/cache/restore@v6
+      with:
+        path: |
+          ${{ runner.temp }}/renv
+          renv/library
+        key: ${{ steps.renv-version.outputs.os-version }}-${{ steps.renv-version.outputs.r-version }}-1-${{ hashFiles('renv.lock') }}
+        restore-keys: |
+          ${{ steps.renv-version.outputs.os-version }}-${{ steps.renv-version.outputs.r-version }}-1-
+
+    - name: Set up renv (pull requests, cache handled above)
+      if: github.event_name == 'pull_request'
+      uses: r-lib/actions/setup-renv@v2
+      env:
+        # renv's install sandbox copies packages into a private library
+        # before promoting them; on ephemeral CI runners it doubles
+        # install time for no benefit, so switch it off.
+        RENV_CONFIG_SANDBOX_ENABLED: false
+      with:
+        bypass-cache: 'true'
+
+    - name: Set up renv
+      if: github.event_name != 'pull_request'
+      uses: r-lib/actions/setup-renv@v2
       env:
         # renv's install sandbox copies packages into a private library
         # before promoting them; on ephemeral CI runners it doubles
