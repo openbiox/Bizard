@@ -41,18 +41,18 @@ We simulate one year of daily emergency-department visits with a winter influenz
 #| label: data-prep
 rng = np.random.default_rng(3)
 days = pd.date_range("2025-01-01", "2025-12-31", freq="D")
-season = 6 * np.exp(-((days.dayofyear - 40) / 25) ** 2)   # flu spike
-dow = np.array([-3 if d.weekday() >= 5 else 1 for d in days])
-visits = (22 + season + dow + rng.normal(0, 3.2, len(days))).clip(2).round()
+dayofyear = days.day_of_year.to_numpy()
+weekday_row = days.day_of_week.to_numpy()        # Mon=0 .. Sun=6
+season = 6 * np.exp(-((dayofyear - 40) / 25) ** 2)   # flu spike
+dow = np.where(weekday_row >= 5, -3, 1)
+visits = np.clip(22 + season + dow + rng.normal(0, 3.2, len(days)),
+                 2, None).round()
 df = pd.DataFrame({"date": days, "visits": visits})
 
-# Week-offset algorithm: column = whole weeks since the week containing
-# Jan 1 started, after shifting Jan 1 to its Monday. Rows stay aligned
-# as calendar weekdays across the whole year.
-week_idx = ((df.date - df.date[0]
-             - pd.Timedelta(days=int(df.date[0].dayofweek)))
-            // pd.Timedelta(weeks=1)).astype(int)
-weekday_row = df.date.dt.dayofweek            # Mon=0 .. Sun=6
+# Week-offset algorithm: column = whole weeks since the Monday of the week
+# containing Jan 1. Rows stay aligned as calendar weekdays across the year.
+first_monday = days[0] - pd.Timedelta(days=int(days[0].day_of_week))
+week_idx = np.array([(d - first_monday).days // 7 for d in days])
 df.head()
 ```
 
@@ -78,8 +78,7 @@ ax.set_yticklabels(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
                    fontsize=8)
 ax.invert_yaxis()
 for d in df.date[df.date.dt.day == 1]:        # month labels at week columns
-    w = (d - df.date[0] - pd.Timedelta(days=int(df.date[0].dayofweek))) \
-        // pd.Timedelta(weeks=1)
+    w = (d - first_monday).days // 7
     ax.text(w + 0.2, -0.3, d.strftime("%b"), fontsize=8)
 ax.set_title("Daily ER visits, 2025 (GitHub-style calendar)", pad=24)
 ax.set_xticks([]); ax.set_aspect("equal")
