@@ -34,6 +34,8 @@ PYTHON_STDLIB = {
     'hashlib', 'copy', 'warnings', 'logging', 'argparse',
     'subprocess', 'shutil', 'glob', 'tempfile', 'textwrap',
     'unittest', 'dataclasses', 'enum', 'contextlib', 'statistics',
+    'calendar', 'base64', 'decimal', 'fractions', 'inspect', 'types',
+    'uuid', 'html', 'zipfile', 'tarfile', 'platform', 'signal',
 }
 
 JULIA_STDLIB = {
