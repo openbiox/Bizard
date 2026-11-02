@@ -61,14 +61,21 @@ sessioninfo::session_info("attached")
 ## 载入数据
 clinical <- readr::read_tsv("https://bizard-1301043367.cos.ap-guangzhou.myqcloud.com/TCGA-LIHC.clinical.tsv")
 LIHC <- cbind(clinical$sample,clinical[,c('gender.demographic',
-                                             'vital_status.demographic',
-                                             'days_to_death.demographic',
-                                             'age_at_index.demographic',
-                                             'ajcc_pathologic_stage.diagnoses')])
-colnames(LIHC) <- c('bcr_patient_barcode','gender','status','time','age','stage')
+                                          'vital_status.demographic',
+                                          'days_to_death.demographic',
+                                          'days_to_last_follow_up.diagnoses',
+                                          'age_at_index.demographic',
+                                          'ajcc_pathologic_stage.diagnoses')])
+colnames(LIHC) <- c('bcr_patient_barcode','gender','status','time_death','time_followup','age','stage')
 table(LIHC$status)
 LIHC <- LIHC[LIHC$status != 'Not Reported',]
 LIHC$status <- as.numeric(ifelse(LIHC$status=='Dead','2','1') ) # 在nomogram中死亡为2
+## 分析时间：死亡患者用 days_to_death，删失患者用 days_to_last_follow_up。
+## 若只用 days_to_death 建模，所有删失患者（time 为 NA）会被 coxph/psm
+## 静默剔除，其因子水平也随之丢失，导致 regplot 重估 model.frame 时
+## 报 "factor has new levels" 错误。
+LIHC$time <- ifelse(LIHC$status == 2, LIHC$time_death, LIHC$time_followup)
+LIHC <- LIHC[!is.na(LIHC$time) & LIHC$time > 0, ]
 ```
 
 ## 可视化
