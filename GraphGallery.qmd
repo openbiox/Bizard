@@ -684,6 +684,14 @@ function tokenize(text) {
   return text.toLowerCase().split(/[\s,.!?;:'"()\[\]]+/).filter(t => t.length > 0 && !/[\u4e00-\u9fa5]/.test(t));
 }
 
+function matchesPhrase(haystack, phrase) {
+  const normalizedHaystack = haystack.toLowerCase().replace(/[\s_-]+/g, ' ');
+  const needle = phrase.toLowerCase().replace(/[\s_-]+/g, ' ');
+  if (/[\u4e00-\u9fa5]/.test(needle)) return normalizedHaystack.includes(needle);
+  const escapedNeedle = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  return new RegExp(`\\b${escapedNeedle}\\b`).test(normalizedHaystack);
+}
+
 function extractKeywords(text, synonyms) {
   // Scan the text for all known keywords (handles Chinese without tokenization)
   const found = new Set();
@@ -692,13 +700,13 @@ function extractKeywords(text, synonyms) {
   // Check all synonym keys and their values
   Object.keys(synonyms).forEach(key => {
     // Check if key appears in text
-    if (text.includes(key) || textLower.includes(key.toLowerCase())) {
+    if (matchesPhrase(textLower, key)) {
       found.add(key);
       synonyms[key].forEach(syn => found.add(syn));
     }
     // Check if any synonym value appears in text
     synonyms[key].forEach(syn => {
-      if (text.includes(syn) || textLower.includes(syn.toLowerCase())) {
+      if (matchesPhrase(textLower, syn)) {
         found.add(syn);
         found.add(key);
         synonyms[key].forEach(s => found.add(s));
@@ -744,10 +752,9 @@ function expandSynonyms(tokens, synonyms) {
 
 function matchIntents(text, intentKeywords) {
   const matched = [];
-  const haystack = text.toLowerCase();
   Object.keys(intentKeywords).forEach(intent => {
     const keywords = intentKeywords[intent];
-    if (keywords.some(kw => haystack.includes(kw.toLowerCase()))) {
+    if (keywords.some(kw => matchesPhrase(text, kw))) {
       matched.push(intent);
     }
   });
