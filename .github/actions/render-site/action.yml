@@ -43,6 +43,56 @@ runs:
         sudo mkdir -p ${{ inputs.tmp_dir }}
         sudo chown -R $USER:$USER ${{ inputs.tmp_dir }}
 
+    # Frozen pages record their site_libs references in
+    # execute-results/html.json, and babelquarto copies the dependency
+    # files from _freeze/site_libs during the frozen render. A freeze
+    # entry whose references are missing from _freeze/site_libs (e.g.
+    # written before a repinned R package started emitting a new
+    # dependency version) renders with dangling asset links — drop it so
+    # the worker pre-render below re-executes the page and repopulates
+    # both.
+    - name: Self-heal freeze entries with missing site_libs assets
+      shell: bash
+      run: |
+        python3 - <<'PY'
+        import glob
+        import os
+        import re
+        import shutil
+
+        freeze = "_freeze"
+        site_libs = os.path.join(freeze, "site_libs")
+        if not os.path.isdir(freeze) or not os.path.isdir(site_libs):
+            print("No freeze cache or site_libs; nothing to heal")
+            raise SystemExit(0)
+
+        ref_re = re.compile(r"site_libs/[A-Za-z0-9._/-]+")
+        dropped = []
+        for meta in glob.glob(
+            os.path.join(freeze, "**", "execute-results", "html.json"),
+            recursive=True,
+        ):
+            with open(meta, encoding="utf-8", errors="ignore") as fh:
+                content = fh.read()
+            missing = {
+                m.group(0)[len("site_libs/"):]
+                for m in ref_re.finditer(content)
+                if not os.path.exists(
+                    os.path.join(site_libs, m.group(0)[len("site_libs/"):])
+                )
+            }
+            if missing:
+                page_dir = os.path.dirname(os.path.dirname(meta))
+                shutil.rmtree(page_dir)
+                dropped.append(
+                    f"{os.path.relpath(page_dir, freeze)} -> {sorted(missing)[0]}"
+                )
+
+        print(f"Self-heal: dropped {len(dropped)} stale freeze page(s)")
+        for entry in dropped:
+            print(f"  {entry}")
+        PY
+
     # Pre-render Julia notebooks BEFORE the R-heavy main render to avoid OOM.
     # babelquarto loads R + hundreds of packages (~1.5 GB); adding CairoMakie
     # (~1-2 GB peak) would exceed the runner's RAM limit.
@@ -240,6 +290,13 @@ runs:
           if [ -d "_freeze/${rel%.qmd}" ]; then
             mkdir -p "$REPO_DIR/_freeze/$(dirname "${rel%.qmd}")"
             rsync -a "_freeze/${rel%.qmd}/" "$REPO_DIR/_freeze/${rel%.qmd}/"
+          fi
+          # Project-level site_libs freeze resources (html dependency
+          # copies shared by all pages) must be synced back too, or the
+          # next frozen render points at dependencies that do not exist.
+          if [ -d "_freeze/site_libs" ]; then
+            mkdir -p "$REPO_DIR/_freeze/site_libs"
+            rsync -a "_freeze/site_libs/" "$REPO_DIR/_freeze/site_libs/"
           fi
           echo "  ✓ OK: $rel"
           touch "$STATUS_DIR/$key.ok"
