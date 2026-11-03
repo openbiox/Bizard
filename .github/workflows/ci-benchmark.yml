@@ -269,6 +269,12 @@ jobs:
           sudo mkdir -p ${{ env.TMP_DIR }}
           sudo chown -R $USER:$USER ${{ env.TMP_DIR }}
 
+      # Repair the freeze cache before anything consults it (Julia skip
+      # logic, pre-render work list). Mirrors the publish pipeline's
+      # render-site action. See .github/scripts/heal-freeze-site-libs.py.
+      - name: Self-heal freeze entries with missing site_libs assets
+        run: python3 .github/scripts/heal-freeze-site-libs.py
+
       - name: Pre-render Julia notebooks
         env:
           QUARTO_JULIA_PROJECT: ${{ env.QUARTO_JULIA_PROJECT }}
@@ -296,6 +302,7 @@ jobs:
           [ $failed -eq 0 ] || exit 1
 
       # ── Render pipeline (mirrors quarto-publish-update-cache.yml) ──
+
       - name: Pre-render all non-frozen QMD files
         env:
           TMPDIR: ${{ env.TMP_DIR }}
@@ -359,7 +366,9 @@ jobs:
           # back below).
           mkdir -p "$wdir/proj"
           (cd "$REPO_DIR" && tar --exclude=./.git --exclude=./_site \
-               --exclude=./_freeze --exclude=./.quarto \
+               --exclude=./_freeze --exclude=./.quarto --exclude=./mcp \
+               --exclude=./.claude --exclude=./.superpowers \
+               --exclude=./.pytest_cache \
                -cf - .) | (cd "$wdir/proj" && tar -xf -)
           mkdir -p "$wdir/proj/_freeze"
 
@@ -374,6 +383,12 @@ jobs:
             if [ -d "_freeze/${rel%.qmd}" ]; then
               mkdir -p "$REPO_DIR/_freeze/$(dirname "${rel%.qmd}")"
               rsync -a "_freeze/${rel%.qmd}/" "$REPO_DIR/_freeze/${rel%.qmd}/"
+            fi
+            if [ -d "_freeze/site_libs" ]; then
+              mkdir -p "$REPO_DIR/_freeze/site_libs"
+              rsync -a "_freeze/site_libs/" "$REPO_DIR/_freeze/site_libs/" \
+                || { echo "❌ failed to sync _freeze/site_libs for $rel"; \
+                     touch "$STATUS_DIR/$key.fail"; exit 1; }
             fi
             echo "  ✓ OK: $rel"
             touch "$STATUS_DIR/$key.ok"
