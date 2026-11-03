@@ -201,9 +201,9 @@ runs:
         # resources into site_libs; interleaved lstat/copy/readdir errors
         # out with "NotFound" and the page is silently dropped). Each
         # worker therefore renders inside its own copy of the tree and
-        # only the disjoint _freeze/<file>/ result is synced back. The
-        # _freeze/site_libs/ overlap is identical across workers, so
-        # clobbering during sync is harmless.
+        # only the disjoint _freeze/<file>/ result is synced back. Shared
+        # _freeze/site_libs/ resources are staged per worker and unioned
+        # after all workers finish.
         cat > "$WORKROOT/worker.sh" <<'WORKER'
         #!/bin/bash
         set -u
@@ -234,6 +234,13 @@ runs:
             mkdir -p "$REPO_DIR/_freeze/$(dirname "${rel%.qmd}")"
             rsync -a "_freeze/${rel%.qmd}/" "$REPO_DIR/_freeze/${rel%.qmd}/"
           fi
+          # Stage shared frozen resources per worker. Different pages
+          # contribute different widget dependencies to _freeze/site_libs,
+          # so this is a union, not identical clobber-safe overlap.
+          if [ -d "_freeze/site_libs" ]; then
+            mkdir -p "$STATUS_DIR/site_libs-$key"
+            cp -R _freeze/site_libs/. "$STATUS_DIR/site_libs-$key/"
+          fi
           echo "  ✓ OK: $rel"
           touch "$STATUS_DIR/$key.ok"
           rc=0
@@ -254,6 +261,16 @@ runs:
           # and must stay non-fatal (xargs exits 123 when any invocation
           # fails).
           xargs -P "$JOBS" -n 1 -r "$WORKROOT/worker.sh" < "$LIST" || true
+
+          # Union every worker's frozen shared resources into the workspace.
+          # Without this, frozen htmlwidget pages reference assets that were
+          # dropped with their temporary worker tree, leaving both root and
+          # zh pages with broken site_libs references.
+          mkdir -p "$REPO_DIR/_freeze/site_libs"
+          find "$STATUS_DIR" -maxdepth 1 -type d -name 'site_libs-*' -print0 |
+            while IFS= read -r -d '' staged; do
+              rsync -a "$staged/" "$REPO_DIR/_freeze/site_libs/"
+            done
 
           RENDERED=$(find "$STATUS_DIR" -name '*.ok' | wc -l)
           FAILED=$(find "$STATUS_DIR" -name '*.fail' | wc -l)
