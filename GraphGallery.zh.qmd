@@ -14,9 +14,10 @@ gallery_data <- read.csv("files/gallery_data_zh.csv")
 gallery_stats <- read.csv("files/gallery_data.csv")
 gallery_count <- nrow(gallery_stats)
 gallery_type_count <- length(unique(gallery_stats$Type))
+gallery_tutorial_count <- length(unique(sub("#.*$", "", gallery_stats$Tutorial_url)))
 ```
 
-👋 **Bizard** 是一个为生物医学研究量身定制的高级可视化代码综合存储库。目前包含 `r format(gallery_count, big.mark = ",")` 张图表，涵盖 `r gallery_type_count` 种图表类型。以下是所有图表的图库。
+👋 **Bizard** 是一个为生物医学研究量身定制的高级可视化代码综合存储库。目前包含 `r format(gallery_count, big.mark = ",")` 张图表，来自 `r gallery_tutorial_count` 篇图文教程（归入 `r gallery_type_count` 个图表类型标签）。以下是所有图表的图库。
 
 表格中的每一行对应一个图表。您可以点击图表进行放大预览。点击图表的蓝色标题，可以跳转到对应的图文教程页面。表格的搜索框提供了图表搜索功能。
 
@@ -42,7 +43,7 @@ data <- read.csv("files/gallery_data_zh.csv")
   <textarea id="recommender-input" rows="3" placeholder="例如：我想比较不同实验组之间的基因表达差异..." style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit;"></textarea>
   <br>
   <button id="recommender-btn" onclick="recommendChartsZh()" style="margin-top: 8px; padding: 8px 16px; background: #007899; color: white; border: none; border-radius: 4px; cursor: pointer;">推荐图表</button>
-  <div id="recommender-results" style="margin-top: 16px;"></div>
+  <div id="recommender-results" style="margin-top: 16px;" aria-live="polite"></div>
 </div>
 
 ## 基础
@@ -640,7 +641,6 @@ function hideModal() {
 
 // Smart Recommender Functions (Chinese + English bilingual support)
 let keywordsDataZh = null;
-let keywordsDataEn = null;
 
 // XSS prevention: sanitize user-generated content
 function sanitizeZh(str) {
@@ -677,11 +677,8 @@ async function loadKeywordsZh() {
 }
 
 function tokenizeZh(text) {
-  // Bilingual tokenization: handle both Chinese characters and English words
-  const englishTokens = text.toLowerCase().split(/[\s,.!?;:'"()\[\]]+/).filter(t => t.length > 0 && !/[\u4e00-\u9fa5]/.test(t));
-  // For Chinese, we use character-by-character scanning plus common phrases
-  const chineseTokens = text.match(/[\u4e00-\u9fa5]+/g) || [];
-  return [...englishTokens, ...chineseTokens];
+  // Chinese phrases are matched by scanning synonym and intent dictionaries below.
+  return text.toLowerCase().split(/[\s,.!?;:'"()\[\]]+/).filter(t => t.length > 0 && !/[\u4e00-\u9fa5]/.test(t));
 }
 
 function extractKeywordsZh(text, synonyms) {
@@ -730,11 +727,12 @@ function expandSynonymsZh(tokens, synonyms) {
   return Array.from(expanded);
 }
 
-function matchIntentsZh(tokens, intentKeywords) {
+function matchIntentsZh(text, intentKeywords) {
   const matched = [];
+  const haystack = text.toLowerCase();
   Object.keys(intentKeywords).forEach(intent => {
     const keywords = intentKeywords[intent];
-    if (keywords.some(kw => tokens.includes(kw))) {
+    if (keywords.some(kw => haystack.includes(kw.toLowerCase()))) {
       matched.push(intent);
     }
   });
@@ -790,7 +788,7 @@ async function recommendChartsZh() {
     // Extract keywords from input using new scanning method
     const extractedKeywords = extractKeywordsZh(input, keywords.synonyms);
     const expandedTokens = expandSynonymsZh(extractedKeywords, keywords.synonyms);
-    const matchedIntents = matchIntentsZh(expandedTokens, keywords.intentKeywords);
+    const matchedIntents = matchIntentsZh(input, keywords.intentKeywords);
 
     // Score each chart
     const results = chartData.map(chart => {
@@ -811,9 +809,9 @@ async function recommendChartsZh() {
     resultsDiv.innerHTML = `<p style="font-weight: 600;">匹配结果 (${results.length})：</p>` +
       results.map(r => `
         <div class="recommender-card" style="display: flex; align-items: center; margin: 8px 0; padding: 12px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fafafa;">
-          <img src="${sanitizeZh(r.chart.Image_url)}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; margin-right: 12px;" onclick="showModal(this)">
+          <img src="${sanitizeZh(r.chart.Image_url)}" alt="${sanitizeZh(r.chart.Name)}" loading="lazy" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; margin-right: 12px;" onclick="showModal(this)">
           <div style="flex: 1;">
-            <a href="${sanitizeZh(r.chart.Tutorial_url)}" target="_blank" style="color: #007899; font-weight: 600; text-decoration: none;">${sanitizeZh(r.chart.Name)}</a>
+            <a href="${sanitizeZh(r.chart.Tutorial_url)}" target="_blank" rel="noopener noreferrer" style="color: #007899; font-weight: 600; text-decoration: none;">${sanitizeZh(r.chart.Name)}</a>
             <p style="margin: 4px 0 0 0; color: #666; font-size: 0.9em;">${sanitizeZh(r.chart.Description)}</p>
             <p style="margin: 4px 0 0 0; color: #888; font-size: 0.8em;">匹配关键词: ${r.matchedKeywords.slice(0, 5).map(k => sanitizeZh(k)).join(', ')}</p>
           </div>
@@ -830,13 +828,52 @@ async function recommendChartsZh() {
 }
 
 function parseCSV(text) {
-  const lines = text.trim().split('\n');
-  const headers = lines[0].split(',');
-  return lines.slice(1).map(line => {
-    const values = line.split(',');
-    const obj = {};
-    headers.forEach((h, i) => obj[h] = values[i] || '');
-    return obj;
+  // RFC 4180 parser: preserve quoted commas, escaped quotes, and embedded newlines.
+  const cleanText = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const rows = [];
+  let row = [];
+  let value = '';
+  let quoted = false;
+
+  for (let i = 0; i < cleanText.length; i++) {
+    const char = cleanText[i];
+
+    if (quoted) {
+      if (char === '"') {
+        if (cleanText[i + 1] === '"') {
+          value += '"';
+          i++;
+        } else {
+          quoted = false;
+        }
+      } else {
+        value += char;
+      }
+    } else if (char === '"') {
+      quoted = true;
+    } else if (char === ',') {
+      row.push(value);
+      value = '';
+    } else if (char === '\n') {
+      row.push(value);
+      value = '';
+      if (row.length > 1 || row[0] !== '') rows.push(row);
+      row = [];
+    } else {
+      value += char;
+    }
+  }
+
+  row.push(value);
+  if (row.length > 1 || row[0] !== '') rows.push(row);
+
+  const headers = rows.shift();
+  return rows.map(values => {
+    const chart = {};
+    headers.forEach((header, index) => {
+      chart[header] = values[index] || '';
+    });
+    return chart;
   });
 }
 ```
