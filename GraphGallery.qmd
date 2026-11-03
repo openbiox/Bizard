@@ -4,7 +4,19 @@ execute:
   freeze: false   # the gallery reads files/gallery_data.csv — always re-render
 ---
 
-👋 **Bizard** is a comprehensive repository of advanced visualization codes tailored for biomedical research. It currently includes approximately 750 graphics across more than 65 chart types. Below is the gallery for all graphics.
+```{r}
+#| label: gallery-stats
+#| echo: false
+#| message: false
+#| warning: false
+
+gallery_data <- read.csv("files/gallery_data.csv")
+gallery_count <- nrow(gallery_data)
+gallery_type_count <- length(unique(gallery_data$Type))
+gallery_tutorial_count <- length(unique(sub("#.*$", "", gallery_data$Tutorial_url)))
+```
+
+👋 **Bizard** is a comprehensive repository of advanced visualization codes tailored for biomedical research. It currently includes `r format(gallery_count, big.mark = ",")` graphics across `r gallery_tutorial_count` tutorials (grouped under `r gallery_type_count` chart-type labels). Below is the gallery for all graphics.
 
 Each graph is a row in the table. You can click on the graph to zoom in for a preview. Clicking on the blue title of a graph will take you to the corresponding graphic tutorial page. The table's Search box provides graph search function.
 
@@ -16,7 +28,7 @@ Describe your visualization goal, and we'll recommend the best matching charts:
   <textarea id="recommender-input" rows="3" placeholder="e.g., I want to compare gene expression between different cancer types..." style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit;"></textarea>
   <br>
   <button id="recommender-btn" onclick="recommendChartsEn()" style="margin-top: 8px; padding: 8px 16px; background: #007899; color: white; border: none; border-radius: 4px; cursor: pointer;">Recommend Charts</button>
-  <div id="recommender-results" style="margin-top: 16px;"></div>
+  <div id="recommender-results" style="margin-top: 16px;" aria-live="polite"></div>
 </div>
 
 ```{r}
@@ -632,9 +644,14 @@ let keywordsDataEn = null;
 // XSS sanitization helper
 function sanitize(str) {
   if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  const escapeMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return String(str).replace(/[&<>"']/g, char => escapeMap[char]);
 }
 
 async function loadKeywordsEn() {
@@ -663,10 +680,16 @@ async function loadKeywordsEn() {
 }
 
 function tokenize(text) {
-  // Bilingual tokenization: handle both English words and Chinese characters
-  const englishTokens = text.toLowerCase().split(/[\s,.!?;:'"()\[\]]+/).filter(t => t.length > 0 && !/[\u4e00-\u9fa5]/.test(t));
-  const chineseTokens = text.match(/[\u4e00-\u9fa5]+/g) || [];
-  return [...englishTokens, ...chineseTokens];
+  // Chinese phrases are matched by scanning synonym and intent dictionaries below.
+  return text.toLowerCase().split(/[\s,.!?;:'"()\[\]]+/).filter(t => t.length > 0 && !/[\u4e00-\u9fa5]/.test(t));
+}
+
+function matchesPhrase(haystack, phrase) {
+  const normalizedHaystack = haystack.toLowerCase().replace(/[\s_-]+/g, ' ');
+  const needle = phrase.toLowerCase().replace(/[\s_-]+/g, ' ');
+  if (/[\u4e00-\u9fa5]/.test(needle)) return normalizedHaystack.includes(needle);
+  const escapedNeedle = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  return new RegExp(`\\b${escapedNeedle}\\b`).test(normalizedHaystack);
 }
 
 function extractKeywords(text, synonyms) {
@@ -677,13 +700,13 @@ function extractKeywords(text, synonyms) {
   // Check all synonym keys and their values
   Object.keys(synonyms).forEach(key => {
     // Check if key appears in text
-    if (text.includes(key) || textLower.includes(key.toLowerCase())) {
+    if (matchesPhrase(textLower, key)) {
       found.add(key);
       synonyms[key].forEach(syn => found.add(syn));
     }
     // Check if any synonym value appears in text
     synonyms[key].forEach(syn => {
-      if (text.includes(syn) || textLower.includes(syn.toLowerCase())) {
+      if (matchesPhrase(textLower, syn)) {
         found.add(syn);
         found.add(key);
         synonyms[key].forEach(s => found.add(s));
@@ -727,11 +750,11 @@ function expandSynonyms(tokens, synonyms) {
   return Array.from(expanded);
 }
 
-function matchIntents(tokens, intentKeywords) {
+function matchIntents(text, intentKeywords) {
   const matched = [];
   Object.keys(intentKeywords).forEach(intent => {
     const keywords = intentKeywords[intent];
-    if (keywords.some(kw => tokens.includes(kw.toLowerCase()))) {
+    if (keywords.some(kw => matchesPhrase(text, kw))) {
       matched.push(intent);
     }
   });
@@ -789,7 +812,7 @@ async function recommendChartsEn() {
     // Extract keywords from input using new scanning method
     const extractedKeywords = extractKeywords(input, keywords.synonyms);
     const expandedTokens = expandSynonyms(extractedKeywords, keywords.synonyms);
-    const matchedIntents = matchIntents(expandedTokens, keywords.intentKeywords);
+    const matchedIntents = matchIntents(input, keywords.intentKeywords);
 
     // Score each chart
     const results = chartData.map(chart => {
@@ -809,9 +832,9 @@ async function recommendChartsEn() {
     resultsDiv.innerHTML = `<p style="font-weight: 600;">Matching Results (${results.length}):</p>` +
       results.map(r => `
         <div class="recommender-card" style="display: flex; align-items: center; margin: 8px 0; padding: 12px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fafafa;">
-          <img src="${sanitize(r.chart.Image_url)}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; margin-right: 12px;" onclick="showModal(this)">
+          <img src="${sanitize(r.chart.Image_url)}" alt="${sanitize(r.chart.Name)}" loading="lazy" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; margin-right: 12px;" onclick="showModal(this)">
           <div style="flex: 1;">
-            <a href="${sanitize(r.chart.Tutorial_url)}" target="_blank" style="color: #007899; font-weight: 600; text-decoration: none;">${sanitize(r.chart.Name)}</a>
+            <a href="${sanitize(r.chart.Tutorial_url)}" target="_blank" rel="noopener noreferrer" style="color: #007899; font-weight: 600; text-decoration: none;">${sanitize(r.chart.Name)}</a>
             <p style="margin: 4px 0 0 0; color: #666; font-size: 0.9em;">${sanitize(r.chart.Description)}</p>
             <p style="margin: 4px 0 0 0; color: #888; font-size: 0.8em;">Matched: ${r.matchedKeywords.slice(0, 5).map(k => sanitize(k)).join(', ')}</p>
           </div>
@@ -828,13 +851,52 @@ async function recommendChartsEn() {
 }
 
 function parseCSV(text) {
-  const lines = text.trim().split('\n');
-  const headers = lines[0].split(',');
-  return lines.slice(1).map(line => {
-    const values = line.split(',');
-    const obj = {};
-    headers.forEach((h, i) => obj[h] = values[i] || '');
-    return obj;
+  // RFC 4180 parser: preserve quoted commas, escaped quotes, and embedded newlines.
+  const cleanText = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const rows = [];
+  let row = [];
+  let value = '';
+  let quoted = false;
+
+  for (let i = 0; i < cleanText.length; i++) {
+    const char = cleanText[i];
+
+    if (quoted) {
+      if (char === '"') {
+        if (cleanText[i + 1] === '"') {
+          value += '"';
+          i++;
+        } else {
+          quoted = false;
+        }
+      } else {
+        value += char;
+      }
+    } else if (char === '"') {
+      quoted = true;
+    } else if (char === ',') {
+      row.push(value);
+      value = '';
+    } else if (char === '\n') {
+      row.push(value);
+      value = '';
+      if (row.length > 1 || row[0] !== '') rows.push(row);
+      row = [];
+    } else {
+      value += char;
+    }
+  }
+
+  row.push(value);
+  if (row.length > 1 || row[0] !== '') rows.push(row);
+
+  const headers = rows.shift();
+  return rows.map(values => {
+    const chart = {};
+    headers.forEach((header, index) => {
+      chart[header] = values[index] || '';
+    });
+    return chart;
   });
 }
 ```
