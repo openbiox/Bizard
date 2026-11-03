@@ -78,7 +78,7 @@ export function createBizardServer(
 
   server.registerTool("bizard_search", {
     title: "Search Bizard chart tutorials",
-    description: "Search the Bizard atlas (800+ biomedical chart tutorials, EN/zh) by keyword. Returns chart cards with tutorial URLs and image previews.",
+    description: "Search the Bizard atlas (1,000+ biomedical chart tutorials, EN/zh) by keyword. Returns chart cards with tutorial URLs and image previews.",
     inputSchema: {
       query: z.string().max(QUERY_MAX_CHARS).describe("Search keywords, English or Chinese"),
       language: z.enum(["en", "zh"]).default("en").describe("Preferred result language"),

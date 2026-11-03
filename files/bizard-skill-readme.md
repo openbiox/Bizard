@@ -5,7 +5,7 @@
 | File | Purpose |
 |------|---------|
 | `SKILL.md` | The AI skill instruction document — load this into your AI assistant |
-| `gallery_data.csv` | 816 visualization examples with image URLs, tutorial links, descriptions, and categories |
+| `gallery_data.csv` | 1,000+ visualization examples with image URLs, tutorial links, descriptions, and categories |
 | `gallery_data_zh.csv` | Chinese version of the gallery data |
 | `README.md` | This file |
 
@@ -51,7 +51,7 @@ For AI **agents** that can call tools (Claude Code, Cursor, Cline, …), the sta
 skill package above is not the only option — Bizard ships an MCP server,
 **`@openbiox/bizard-mcp`**, that serves the live chart lifecycle over the
 [Model Context Protocol](https://modelcontextprotocol.io): bilingual search across
-800+ chart tutorials, runnable code with dependencies and data URLs, structured
+1,000+ chart tutorials, runnable code with dependencies and data URLs, structured
 adaptation guidance, citation metadata, and template-checked contribution — all
 from a CI-generated snapshot of the same sources as this skill, so they never drift.
 

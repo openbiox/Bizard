@@ -14,7 +14,7 @@ DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/openbiox/Bizard)
 
 ## Welcome 🎉
 
-Data visualization is a critical tool in biomedical research, enabling intuitive interpretation of complex datasets to advance scientific discovery and inform clinical decisions. The R programming language, with its powerful statistical capabilities and extensive package ecosystem, has become a cornerstone for creating high-quality visualizations. However, the vast and ever-evolving landscape of R plotting packages often poses challenges for researchers, who must select appropriate methods and customize visualizations to meet specific research needs. This process demands advanced coding expertise, interdisciplinary collaboration, and significant time investment, which can hinder progress and impact the accuracy of experimental outcomes.
+Data visualization is a critical tool in biomedical research, enabling intuitive interpretation of complex datasets to advance scientific discovery and inform clinical decisions. Modern programming languages—R, Python, and Julia—with their powerful statistical capabilities and extensive package ecosystems, have become cornerstones for creating high-quality visualizations. However, the vast and ever-evolving landscape of plotting packages across these languages often poses challenges for researchers, who must select appropriate methods and customize visualizations to meet specific research needs. This process demands advanced coding expertise, interdisciplinary collaboration, and significant time investment, which can hinder progress and impact the accuracy of experimental outcomes.
 
 To address these challenges, we developed **Bizard**, a comprehensive, community-driven platform that integrates a curated repository of visualization codes, advanced tutorials, and collaborative forums. By streamlining access to resources and promoting knowledge exchange, Bizard aims to enhance biomedical researchers’ data analysis capabilities and facilitate the clinical translation of research findings.
 
@@ -24,7 +24,7 @@ Bizard brings together powerful visualization tools, curated code, and collabora
 
 -   **Comprehensive Visualization Repository**: Bizard consolidates visualization codes from diverse sources, including conventional graphgallery charts and innovative contributions from global experts, providing a state-of-the-art toolkit for biomedical research.
 
--   **Versatile Chart Options**: The repository features R code implementations for a wide range of visualizations—variable distributions, correlation analyses, ranking plots, and interactive charts—meeting diverse data analysis needs.
+-   **Versatile Chart Options**: The repository features R, Python, and Julia code implementations for a wide range of visualizations—variable distributions, correlation analyses, ranking plots, and interactive charts—meeting diverse data analysis needs.
 
 -   **Real-World Applications**: Leveraging both native R datasets and authentic biomedical data examples, Bizard enables intuitive understanding and application of visualization techniques in real-world research contexts, accelerating clinical translation.
 
