@@ -31,6 +31,7 @@ jobs:
         run: python3 .github/scripts/build-bundle.py --out files/mcp
       - name: Commit bundle
         run: |
+          ORIGINAL_HEAD=$(git rev-parse HEAD)
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name  "github-actions[bot]"
           git add files/mcp/bundle.json files/mcp/llms.txt llms.txt
@@ -38,5 +39,27 @@ jobs:
             echo "No bundle changes."
           else
             git commit -m "chore(mcp): regenerate content bundle"
-            git push
+            # Other housekeeping workflows can advance main while this
+            # long bundle build is running. Rebase onto the pushed tip and
+            # retry; a generated bundle from the older QMD source remains
+            # valid only if its inputs did not change in the incoming tip.
+            for attempt in 1 2 3; do
+              if git push origin "HEAD:${{ github.ref_name }}"; then
+                exit 0
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "::error::Unable to push the regenerated MCP bundle after three attempts"
+                exit 1
+              fi
+              git fetch origin "${{ github.ref_name }}"
+              git rebase "origin/${{ github.ref_name }}"
+              # If incoming changes touched bundle inputs, the rebased
+              # bundle is stale. Rebuild it against the new tip before
+              # retrying the push.
+              if git diff --name-only "$ORIGINAL_HEAD".."origin/${{ github.ref_name }}" -- '**.qmd' 'files/gallery_data*.csv' 'files/recommender_keywords*.json' '.github/scripts/build-bundle.py' '.github/scripts/bundle_lib.py' | grep .; then
+                python3 .github/scripts/build-bundle.py --out files/mcp
+                git add files/mcp/bundle.json files/mcp/llms.txt llms.txt
+                git commit --amend --no-edit
+              fi
+            done
           fi
