@@ -1,5 +1,5 @@
-/* Bizard Graph Gallery — client-side browsing, filtering, search, lightbox,
-   and the smart chart recommender. Shared by the English and Chinese pages;
+/* Bizard Graph Gallery — client-side browsing, filtering, synonym-aware
+   search, and lightbox. Shared by the English and Chinese pages;
    all page-specific text comes from the #bz-gallery-config JSON island. */
 
 (function () {
@@ -53,30 +53,63 @@
       .toLowerCase();
   }
 
+  function expandToken(token) {
+    var synonyms = (config && config.synonyms) || {};
+    var has = Object.prototype.hasOwnProperty;
+    var expanded = [token];
+    if (has.call(synonyms, token)) {
+      synonyms[token].forEach(function (term) {
+        if (expanded.indexOf(term) === -1) expanded.push(term);
+      });
+      return expanded;
+    }
+    Object.keys(synonyms).forEach(function (key) {
+      if (synonyms[key].indexOf(token) === -1) return;
+      if (expanded.indexOf(key) === -1) expanded.push(key);
+      synonyms[key].forEach(function (term) {
+        if (expanded.indexOf(term) === -1) expanded.push(term);
+      });
+    });
+    return expanded;
+  }
+
   function filteredCharts() {
     var tokens = state.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    var tokenGroups = tokens.map(expandToken);
     var rows = charts.filter(function (chart) {
       if (state.collection !== 'all' && chart.Level1 !== state.collection) return false;
       if (state.family !== 'all' && chart.Family !== state.family) return false;
-      if (!tokens.length) return true;
+      if (!tokenGroups.length) return true;
       var text = chartText(chart);
-      return tokens.every(function (token) {
-        return text.indexOf(token) !== -1;
+      return tokenGroups.every(function (group) {
+        return group.some(function (term) {
+          return text.indexOf(term) !== -1;
+        });
       });
     });
 
-    if (tokens.length) {
+    if (tokenGroups.length) {
       rows = rows
         .map(function (chart) {
           var name = String(chart.Name).toLowerCase();
           var type = String(chart.Type).toLowerCase();
+          var family = String(chart.FamilyLabel).toLowerCase();
+          var description = String(chart.Description).toLowerCase();
           var score = 0;
-          tokens.forEach(function (token) {
-            if (name === token) score += 8;
-            else if (name.indexOf(token) !== -1) score += 6;
-            if (type.indexOf(token) !== -1) score += 4;
-            if (String(chart.FamilyLabel).toLowerCase().indexOf(token) !== -1) score += 2;
-            if (String(chart.Description).toLowerCase().indexOf(token) !== -1) score += 1;
+          tokenGroups.forEach(function (group) {
+            var best = 0;
+            group.forEach(function (term, index) {
+              var factor = index === 0 ? 1 : 0.5;
+              var termScore = 0;
+              if (name === term) termScore = 8;
+              else if (name.indexOf(term) !== -1) termScore = 6;
+              else if (type.indexOf(term) !== -1) termScore = 4;
+              else if (family.indexOf(term) !== -1) termScore = 2;
+              else if (description.indexOf(term) !== -1) termScore = 1;
+              termScore *= factor;
+              if (termScore > best) best = termScore;
+            });
+            score += best;
           });
           return { chart: chart, score: score };
         })
@@ -261,198 +294,6 @@
     document.body.style.overflow = '';
   }
 
-  /* Smart chart recommender (bilingual, keyword + intent based) */
-  var keywordsData = null;
-
-  function loadKeywords() {
-    if (keywordsData) return Promise.resolve(keywordsData);
-    return Promise.all([
-      fetch(config.recommender.keywordsEn).then(function (res) {
-        if (!res.ok) throw new Error('Failed to load English keywords');
-        return res.json();
-      }),
-      fetch(config.recommender.keywordsZh).then(function (res) {
-        if (!res.ok) throw new Error('Failed to load Chinese keywords');
-        return res.json();
-      })
-    ]).then(function (results) {
-      keywordsData = {
-        synonyms: Object.assign({}, results[0].synonyms, results[1].synonyms),
-        intentKeywords: Object.assign({}, results[0].intentKeywords, results[1].intentKeywords)
-      };
-      return keywordsData;
-    });
-  }
-
-  function tokenize(text) {
-    return text
-      .toLowerCase()
-      .split(/[\s,.!?;:'"()\[\]]+/)
-      .filter(function (token) {
-        return token.length > 0 && !/[\u4e00-\u9fa5]/.test(token);
-      });
-  }
-
-  function matchesPhrase(haystack, phrase) {
-    var normalizedHaystack = String(haystack).toLowerCase().replace(/[\s_-]+/g, ' ');
-    var needle = String(phrase).toLowerCase().replace(/[\s_-]+/g, ' ');
-    if (/[\u4e00-\u9fa5]/.test(needle)) return normalizedHaystack.indexOf(needle) !== -1;
-    var escapedNeedle = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-    return new RegExp('\\b' + escapedNeedle + '\\b').test(normalizedHaystack);
-  }
-
-  function extractKeywords(text, synonyms) {
-    var found = new Set();
-    var textLower = text.toLowerCase();
-
-    Object.keys(synonyms).forEach(function (key) {
-      if (matchesPhrase(textLower, key)) {
-        found.add(key);
-        synonyms[key].forEach(function (synonym) {
-          found.add(synonym);
-        });
-      }
-      synonyms[key].forEach(function (synonym) {
-        if (matchesPhrase(textLower, synonym)) {
-          found.add(synonym);
-          found.add(key);
-          synonyms[key].forEach(function (sibling) {
-            found.add(sibling);
-          });
-        }
-      });
-    });
-
-    tokenize(text).forEach(function (token) {
-      found.add(token);
-    });
-    return Array.from(found);
-  }
-
-  function expandSynonyms(tokens, synonyms) {
-    var expanded = new Set(tokens);
-    tokens.forEach(function (token) {
-      var tokenLower = token.toLowerCase();
-
-      if (synonyms[token] || synonyms[tokenLower]) {
-        (synonyms[token] || synonyms[tokenLower]).forEach(function (synonym) {
-          expanded.add(synonym);
-          if (!/[\u4e00-\u9fa5]/.test(synonym)) expanded.add(synonym.toLowerCase());
-        });
-      }
-      Object.keys(synonyms).forEach(function (key) {
-        var values = synonyms[key];
-        if (values.indexOf(token) !== -1 || values.indexOf(tokenLower) !== -1 || key === token || key === tokenLower) {
-          expanded.add(key);
-          values.forEach(function (synonym) {
-            expanded.add(synonym);
-          });
-        }
-      });
-    });
-    return Array.from(expanded);
-  }
-
-  function matchIntents(text, intentKeywords) {
-    return Object.keys(intentKeywords).filter(function (intent) {
-      return intentKeywords[intent].some(function (keyword) {
-        return matchesPhrase(text, keyword);
-      });
-    });
-  }
-
-  function recommendCharts() {
-    var inputEl = document.getElementById('bz-recommender-input');
-    var resultsEl = document.getElementById('bz-recommender-results');
-    var button = document.getElementById('bz-recommender-btn');
-    var s = strings();
-    var input = inputEl.value.trim();
-
-    if (!input) {
-      resultsEl.innerHTML = '<p>' + esc(s.recommenderEmptyInput) + '</p>';
-      return;
-    }
-
-    var originalText = button.textContent;
-    button.disabled = true;
-    button.textContent = s.recommenderSearching;
-    resultsEl.innerHTML = '<p>' + esc(s.recommenderSearching) + '</p>';
-
-    loadKeywords()
-      .then(function (keywords) {
-        var extracted = extractKeywords(input, keywords.synonyms);
-        var expandedTokens = expandSynonyms(extracted, keywords.synonyms);
-        var matchedIntents = matchIntents(input, keywords.intentKeywords);
-
-        var results = charts
-          .map(function (chart) {
-            var text = chartText(chart);
-            var score = 0;
-            expandedTokens.forEach(function (token) {
-              var tokenLower = token.toLowerCase();
-              if (text.indexOf(tokenLower) !== -1) score += 1;
-            });
-            score += matchedIntents.length * 2;
-            expandedTokens.forEach(function (token) {
-              if (String(chart.Type).indexOf(token) !== -1 || String(chart.Type).toLowerCase().indexOf(token.toLowerCase()) !== -1) score += 3;
-            });
-            return {
-              chart: chart,
-              score: score,
-              matched: expandedTokens.filter(function (token) {
-                return text.indexOf(String(token).toLowerCase()) !== -1;
-              })
-            };
-          })
-          .filter(function (result) {
-            return result.score > 0;
-          })
-          .sort(function (a, b) {
-            return b.score - a.score;
-          })
-          .slice(0, 5);
-
-        if (!results.length) {
-          resultsEl.innerHTML = '<p>' + esc(s.recommenderNoResults) + '</p>';
-          return;
-        }
-
-        resultsEl.innerHTML =
-          '<p><strong>' + esc(format(s.recommenderResultsTitle, { n: results.length })) + '</strong></p>' +
-          results
-            .map(function (result) {
-              return (
-                '<div class="bz-recommender-card">' +
-                '<img src="' + esc(result.chart.Image_url) + '" alt="' + esc(result.chart.Name) + '" loading="lazy" data-bz-lb-src="' + esc(result.chart.Image_url) + '" data-bz-lb-name="' + esc(result.chart.Name) + '">' +
-                '<div class="bz-rec-body">' +
-                '<a href="' + esc(result.chart.Tutorial_url) + '" target="_blank" rel="noopener">' + esc(result.chart.Name) + '</a>' +
-                '<p class="bz-rec-desc">' + esc(result.chart.Description) + '</p>' +
-                '<p class="bz-rec-match">' + esc(s.recommenderMatched) + ' ' + esc(result.matched.slice(0, 5).join(', ')) + '</p>' +
-                '</div>' +
-                '</div>'
-              );
-            })
-            .join('');
-      })
-      .catch(function (error) {
-        console.error('Chart recommendation failed:', error);
-        resultsEl.innerHTML = '<p>' + esc(s.recommenderError) + '</p>';
-      })
-      .finally(function () {
-        button.disabled = false;
-        button.textContent = originalText;
-      });
-  }
-
-  function initRecommender() {
-    var results = document.getElementById('bz-recommender-results');
-    if (!results) return;
-    results.addEventListener('click', function (event) {
-      var image = event.target.closest('img[data-bz-lb-src]');
-      if (image) openLightbox(image.getAttribute('data-bz-lb-src'), image.getAttribute('data-bz-lb-name'));
-    });
-  }
-
   function init() {
     charts = readJson('bz-gallery-data') || [];
     config = readJson('bz-gallery-config');
@@ -465,11 +306,9 @@
     });
 
     initGallery();
-    initRecommender();
   }
 
   window.bzShowLightbox = openLightbox;
-  window.bzRecommendCharts = recommendCharts;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

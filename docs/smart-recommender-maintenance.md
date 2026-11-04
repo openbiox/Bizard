@@ -1,144 +1,38 @@
-# Smart Graph Recommender - Maintenance Guide
+# Smart Graph Recommender — Deprecation & Keyword Dictionary Guide
 
-## Overview
+## Status
 
-The Smart Graph Recommender widget helps users find suitable charts by matching their visualization goals against a curated keyword dictionary. It runs purely client-side (no LLM, no backend).
+The standalone Smart Graph Recommender widget was removed from the Graph Gallery
+pages. Its search capabilities (synonym-aware matching) are now covered by the
+gallery search box: query tokens are expanded with the curated synonym
+dictionary at search time, so users can still type natural-language terms such
+as "versus", "相关性", or "trend" and find matching charts.
 
-## Files Structure
+## Keyword Dictionary
 
-```
-files/
-├── recommender_keywords.json      # English + Chinese keywords (bilingual)
-├── recommender_keywords_zh.json   # Chinese + English keywords (bilingual)
-├── gallery_data.csv               # Chart metadata (unchanged)
-├── gallery_data_zh.csv            # Chinese chart metadata (unchanged)
+`files/recommender_keywords.json` (English-first, bilingual) and
+`files/recommender_keywords_zh.json` (Chinese-first, bilingual) remain in the
+repository and are still actively used:
 
-GraphGallery.qmd                   # English page with widget
-GraphGallery.zh.qmd                # Chinese page with widget
-```
+1. **Gallery search** — `scripts/build_gallery.R` embeds the `synonyms` map
+   into the `bz-gallery-config` JSON island when rendering
+   `GraphGallery.qmd` / `GraphGallery.zh.qmd`; `files/gallery/gallery.js`
+   expands each search token to its synonym group (token → key + siblings) and
+   matches charts if any expanded term hits the chart text.
+2. **MCP skill bundle** — `.github/scripts/build-bundle.py` (triggered by
+   `.github/workflows/mcp-bundle.yml`) packages both files for the Bizard MCP
+   server. Do not delete or rename them.
 
-## How It Works
+The `intentKeywords` section of both files is only consumed by the MCP bundle
+today; the gallery search uses `synonyms` only.
 
-1. **User Input** → Text description of visualization goal
-2. **Keyword Extraction** → Scan input for all known keywords (Chinese & English)
-3. **Synonym Expansion** → Expand matched keywords via synonym dictionary
-4. **Intent Matching** → Identify visualization intent categories
-5. **Chart Scoring** → Score each chart against matched keywords
-6. **Top 5 Results** → Display best matches with thumbnails and links
+## Maintenance Workflow
 
-## Maintenance Tasks
+1. Edit the `synonyms` section of both JSON files, keeping each entry
+   bilingual (English and Chinese equivalents) and concise (5–10 items).
+2. Render both pages so the embedded config picks up the new dictionary:
+   `quarto render GraphGallery.qmd GraphGallery.zh.qmd --to html`
+3. Test a few synonym queries in the rendered search box, then commit.
 
-### Adding New Keywords
-
-Edit `files/recommender_keywords.json` and `files/recommender_keywords_zh.json`:
-
-```json
-{
-  "synonyms": {
-    "new_term": ["synonym1", "synonym2", "related_term"]
-  },
-  "intentKeywords": {
-    "new_intent": ["keyword1", "keyword2", "new_term"]
-  }
-}
-```
-
-**Guidelines:**
-- Add both Chinese and English equivalents for bilingual support
-- Include common abbreviations (e.g., "PCA", "UMAP", "RNA-seq")
-- Map specialized bioinfo terms to general chart categories
-- Keep synonym lists concise (5-10 items max)
-
-### Adding New Chart Types
-
-When new chart types are added to gallery_data.csv:
-
-1. Add chart type name to synonyms: `"新图表": ["synonym", "english_name"]`
-2. Add to relevant intent category: `"组学分析": ["新图表", "关键词"]`
-3. Re-render pages: `quarto render GraphGallery.qmd GraphGallery.zh.qmd --to html`
-4. Copy updated JSON: `cp files/recommender_keywords*.json _site/files/`
-
-### Testing Keywords
-
-Use Node.js to test keyword matching:
-
-```bash
-node -e "
-const kw = require('./files/recommender_keywords_zh.json');
-const text = '差异表达分析';
-// Add test logic here
-"
-```
-
-Or test in browser console on rendered page.
-
-### Performance Optimization
-
-Current algorithm is O(n*m) where:
-- n = number of keywords (~200)
-- m = number of charts (~800)
-
-For large expansions:
-- Consider caching keyword dictionary (already implemented)
-- Limit synonym expansion depth
-- Use debounce for input processing (optional enhancement)
-
-## Common Issues
-
-### No Results Found
-
-**Causes:**
-- Keyword not in dictionary → Add to synonyms
-- Chart Type name mismatch → Check gallery_data.csv Type column
-- CSV parsing error → Check for commas in Description field
-
-**Debug:**
-- Open browser console, check `recommendChartsZh()` output
-- Verify keywords loaded: `keywordsDataZh.synonyms`
-
-### Slow Response
-
-**Causes:**
-- Large synonym dictionary (acceptable at ~200 entries)
-- Network delay fetching CSV/JSON (cached after first load)
-
-**Solution:**
-- Files are cached after first fetch
-- Loading indicator shows progress
-
-### XSS Concerns
-
-All user/CSV content is sanitized via `sanitize()` function before innerHTML insertion.
-
-## Updating Workflow
-
-```bash
-# 1. Edit keyword dictionaries
-vim files/recommender_keywords.json
-vim files/recommender_keywords_zh.json
-
-# 2. Render pages
-quarto render GraphGallery.qmd GraphGallery.zh.qmd --to html
-
-# 3. Copy updated files
-cp files/recommender_keywords*.json _site/files/
-
-# 4. Test locally
-python3 -m http.server 8080 --directory _site
-
-# 5. Commit
-git add files/recommender_keywords*.json GraphGallery*.qmd
-git commit -m "maint: update recommender keywords"
-```
-
-## Statistics
-
-- **Keywords**: 201 synonym entries
-- **Intent Categories**: 143 intent mappings
-- **Charts Covered**: 798 charts
-- **Languages**: Chinese + English (bilingual)
-- **Coverage**: 50+ chart types, 20+ bioinfo scenarios
-
-## Contact
-
-For issues or suggestions, update the keyword dictionaries following the workflow above.
+No copy step is needed for deployment: the synonyms are embedded in the
+rendered pages and the CI workflow handles the MCP bundle rebuild.

@@ -23,15 +23,7 @@ gallery_strings <- function(lang = c("en", "zh")) {
       zoom = "Click to zoom in",
       typeLabel = "Type",
       categoryLabel = "Category",
-      searchLabel = "Search charts",
-      recommenderPlaceholder = "e.g., I want to compare gene expression between different cancer types...",
-      recommenderButton = "Recommend Charts",
-      recommenderEmptyInput = "Please enter a description of your visualization goal.",
-      recommenderSearching = "Searching for matching charts...",
-      recommenderResultsTitle = "Matching results ({n}):",
-      recommenderNoResults = "No matching charts found. Try different keywords.",
-      recommenderMatched = "Matched keywords:",
-      recommenderError = "An error occurred while searching. Please try again."
+      searchLabel = "Search charts"
     )
   } else {
     list(
@@ -47,17 +39,21 @@ gallery_strings <- function(lang = c("en", "zh")) {
       zoom = "点击放大预览",
       typeLabel = "类型",
       categoryLabel = "类别",
-      searchLabel = "搜索图表",
-      recommenderPlaceholder = "例如：我想比较不同癌症类型之间的基因表达差异...",
-      recommenderButton = "推荐图表",
-      recommenderEmptyInput = "请先描述您的可视化目标。",
-      recommenderSearching = "正在搜索匹配的图表...",
-      recommenderResultsTitle = "匹配结果（{n}）：",
-      recommenderNoResults = "没有找到匹配的图表，请尝试其他关键词。",
-      recommenderMatched = "匹配关键词：",
-      recommenderError = "搜索时出现错误，请重试。"
+      searchLabel = "搜索图表"
     )
   }
+}
+
+gallery_synonyms <- function(lang = c("en", "zh")) {
+  lang <- match.arg(lang)
+  keywords_path <- if (lang == "en") {
+    "files/recommender_keywords.json"
+  } else {
+    "files/recommender_keywords_zh.json"
+  }
+  if (!file.exists(keywords_path)) return(NULL)
+  keywords <- jsonlite::fromJSON(keywords_path, simplifyVector = TRUE)$synonyms
+  lapply(keywords, I)
 }
 
 build_gallery_html <- function(csv_path, lang = c("en", "zh")) {
@@ -120,10 +116,7 @@ build_gallery_html <- function(csv_path, lang = c("en", "zh")) {
     strings = strings,
     collectionLabels = collection_labels,
     collectionOrder = c("BASICS", "OMICS", "CLINICS", "PYTHON", "HIPLOT", "JULIA"),
-    recommender = list(
-      keywordsEn = "files/recommender_keywords.json",
-      keywordsZh = "files/recommender_keywords_zh.json"
-    )
+    synonyms = gallery_synonyms(lang)
   )
 
   data_json <- jsonlite::toJSON(gallery, na = "null")
@@ -163,20 +156,5 @@ build_gallery_html <- function(csv_path, lang = c("en", "zh")) {
       '</div>',
       '</div>'
     )
-  )
-}
-
-build_recommender_html <- function(lang = c("en", "zh")) {
-  lang <- match.arg(lang)
-  strings <- gallery_strings(lang)
-
-  paste0(
-    '<div class="bz-gallery">',
-    '<div class="bz-recommender">',
-    '<textarea id="bz-recommender-input" rows="3" placeholder="', strings$recommenderPlaceholder, '"></textarea>',
-    '<div class="bz-recommender-actions"><button type="button" class="bz-btn bz-btn-primary" id="bz-recommender-btn" onclick="bzRecommendCharts()">', strings$recommenderButton, '</button></div>',
-    '<div class="bz-recommender-results" id="bz-recommender-results" aria-live="polite"></div>',
-    '</div>',
-    '</div>'
   )
 }
