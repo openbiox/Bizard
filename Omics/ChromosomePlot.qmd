@@ -442,6 +442,63 @@ svg2jpg("chromosome.svg")
 svg2tiff("chromosome.svg")
 ```
 
+### 11. Building the karyotype from your own annotation (GTF)
+
+`RIdeogram` ships karyotype data for a few species, but real projects usually work with a custom genome build or assembly. In that case, construct the karyotype table from your annotation file (GTF/GFF): chromosome name, start, end and — when available — centromere coordinates \[3\]. The table can then be passed straight to `ideogram(karyotype = ...)` as in the sections above.
+
+Two implementations are shown: `rtracklayer` for complex annotations, and a `dplyr` fallback that derives chromosome lengths from the longest feature per chromosome (many GTF files have no `chromosome`/`centromere` records).
+
+```{r}
+#| label: fig-11-1
+#| fig-cap: "Building a karyotype table from a GTF file with rtracklayer."
+#| out.width: "95%"
+#| warning: false
+#| eval: false
+
+# Method 1: rtracklayer — works when the GTF contains chromosome/centromere records
+library(rtracklayer)
+library(dplyr)
+
+gtf <- import("your_annotation.gtf")
+
+karyotype <- gtf %>%
+  as.data.frame() %>%
+  filter(type == "chromosome") %>%
+  select(seqnames, start, end) %>%
+  rename(Chromosome = seqnames, Start = start, End = end) %>%
+  mutate(Centromere_Start = NA, Centromere_End = NA)
+
+centromere <- gtf %>%
+  as.data.frame() %>%
+  filter(type == "centromere") %>%
+  select(seqnames, start, end) %>%
+  rename(Chromosome = seqnames, Centromere_Start = start, Centromere_End = end)
+
+karyotype <- left_join(karyotype, centromere, by = "Chromosome")
+write.csv(karyotype, "karyotype.csv", row.names = FALSE)
+```
+
+```{r}
+#| label: fig-11-2
+#| fig-cap: "dplyr fallback: derive chromosome lengths from the longest feature per chromosome."
+#| out.width: "95%"
+#| warning: false
+#| eval: false
+
+# Method 2: dplyr fallback — no chromosome/centromere records needed
+karyotype <- gtf %>%
+  as.data.frame() %>%
+  group_by(Chromosome = seqnames) %>%
+  summarise(Start = min(start), End = max(end), .groups = "drop") %>%
+  mutate(Centromere_Start = NA, Centromere_End = NA)
+
+write.csv(karyotype, "karyotype.csv", row.names = FALSE)
+```
+
+::: callout-tip
+**Coordinate systems:** GTF/GFF files are 1-based; BED files are 0-based (half-open). `RIdeogram` input should be kept internally consistent — if your feature tables (heatmap, marker tracks) come from BED-derived data, convert them to the same convention as the karyotype before plotting.
+:::
+
 ## Application
 
 ::: {#fig-ChromosomePlotApplications1}
@@ -460,5 +517,6 @@ Schematic diagram of the combined domains inferred by IsoPlotter and mapped onto
 
 \[1\] RIdeogram: drawing SVG graphics to visualize and map genome-wide data on idiograms https://cran.r-project.org/web/packages/RIdeogram/vignettes/RIdeogram.html
 \[2\] Hao Z, Lv D, Ge Y, Shi J, Weijers D, Yu G, Chen J. 2020. RIdeogram: drawing SVG graphics to visualize and map genome-wide data on the idiograms. PeerJ Comput. Sci. 6:e251 http://doi.org/10.7717/peerj-cs.251
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
 

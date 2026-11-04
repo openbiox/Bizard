@@ -9,11 +9,12 @@ author:
 
 在 R 中分析由 `clusterProfiler::GSEA()` \[2\] 完成，经典图形由 `enrichplot::gseaplot2()` \[3\] 绘制。本教程绘制经典图形、在同一排序表上叠加多个基因集，并用 ggplot2 从基本组件重建运行得分，使统计量本身变得可读。本教程的 Python 对应版本见 [GSEA 运行得分图（Python）](../Python/GSEAPlot.html)。
 
-本教程涵盖三种工作流：
+本教程涵盖四种工作流：
 
 1. 经典 `gseaplot2` 运行得分图（带 p 值表）；
 2. 多个基因集叠加在同一排序表上；
-3. 手绘三面板运行 ES 重建（ggplot2 + patchwork）。
+3. 手绘三面板运行 ES 重建（ggplot2 + patchwork）；
+4. 用特异性热图比较各亚型特异性通路。
 
 ## Example
 
@@ -25,7 +26,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`clusterProfiler`；`enrichplot`；`ggplot2`；`dplyr`；`patchwork`
+-   依赖包：`clusterProfiler`；`enrichplot`；`ggplot2`；`dplyr`；`patchwork`；`pheatmap`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # 安装必要的包（Bioconductor）
@@ -38,6 +39,9 @@ if (!requireNamespace("clusterProfiler", quietly = TRUE)) {
 if (!requireNamespace("patchwork", quietly = TRUE)) {
   install.packages("patchwork")
 }
+if (!requireNamespace("pheatmap", quietly = TRUE)) {
+  install.packages("pheatmap")
+}
 
 # 加载包
 library(clusterProfiler)
@@ -45,6 +49,7 @@ library(enrichplot)
 library(ggplot2)
 library(dplyr)
 library(patchwork)
+library(pheatmap)
 ```
 
 ```{r}
@@ -179,6 +184,78 @@ p3
 
 加权运行 ES 是一个累计和：在基因集成员处加上其 |统计量| 除以成员总权重，在未命中处减去 1/(N − n)。从基本组件重建它揭开了 `gseaplot2` 的面纱——第 1 节的曲线正是这条行走轨迹——也让自定义变体（leading edge 注释、分面板主题、多图版式）变得直观。
 
+### 4. 跨分组比较亚型特异性通路
+
+运行得分图一次只评估一张排序表。在亚型（或细胞类型）研究中，反复出现的问题是：**哪些通路是每个分组特有的** \[4\]。工作流是：按"每组 vs. 其余组"的 log2 倍数变化为每组排序基因 → 每组分别做 GSEA → 收集每组 top 通路 → 把它们在*所有*分组中的活性画成一张不聚类热图，对角线式的特异性模式一目了然。
+
+```{r}
+#| label: fig-4.1SubtypeGsea
+#| fig-cap: "亚型特异性 GSEA：每个模拟亚型的 top-5 通路呈现对角线式的特异性模式。"
+#| out.width: "85%"
+#| fig-width: 7
+#| fig-height: 6
+#| warning: false
+#| message: false
+
+set.seed(251)
+## 模拟表达矩阵：3 个亚型 x 15 个重复 x 1200 个基因
+genes   <- paste0("Gene", sprintf("%04d", 1:1200))
+subtype <- rep(c("SubtypeA", "SubtypeB", "SubtypeC"), each = 15)
+signal  <- matrix(0, nrow = length(genes), ncol = 3,
+                  dimnames = list(genes, c("SubtypeA", "SubtypeB", "SubtypeC")))
+pool <- genes
+for (s in colnames(signal)) {          # 每个亚型 60 个特异基因
+  pick <- sample(pool, 60); signal[pick, s] <- 2; pool <- setdiff(pool, pick)
+}
+expr <- t(signal[, subtype]) +
+  matrix(rnorm(length(subtype) * length(genes), sd = 0.6),
+         nrow = length(subtype), ncol = length(genes))
+colnames(expr) <- genes
+
+## 每个亚型逐基因计算 one-vs-rest log2FC（可换用 t 检验/limma 循环）
+lfc <- sapply(colnames(signal), function(s) {
+  colMeans(expr[subtype == s, , drop = FALSE]) - colMeans(expr[subtype != s, , drop = FALSE])
+})
+
+## 特征基因集：每个亚型 5 个集合、每集 30 个基因
+term2gene_sub <- do.call(rbind, lapply(colnames(signal), function(s) {
+  do.call(rbind, lapply(1:5, function(k)
+    data.frame(term = paste0(s, "_signature_", k),
+               gene = sample(genes[signal[, s] > 0], 30))))
+}))
+
+## 在各自排序表上对每个亚型做 GSEA
+gsea_res <- lapply(colnames(signal), function(s) {
+  GSEA(sort(lfc[, s], decreasing = TRUE), TERM2GENE = term2gene_sub,
+       minGSSize = 10, maxGSSize = 100, pvalueCutoff = 1,
+       eps = 0, seed = TRUE, verbose = FALSE)
+})
+names(gsea_res) <- colnames(signal)
+
+## 每个亚型取 NES>0 的 top-5 通路
+top_gs <- lapply(gsea_res, function(r) {
+  res <- as.data.frame(r)
+  res <- res[res$NES > 0, ]
+  head(rownames(res[order(res$NES, decreasing = TRUE), ]), 5)
+})
+
+## 特异性评分：每个 top 基因集的基因在*所有*亚型中的 log2FC 均值
+score <- t(sapply(unlist(top_gs, use.names = FALSE), function(gs) {
+  gs_genes <- term2gene_sub$gene[term2gene_sub$term == gs]
+  colMeans(lfc[gs_genes, , drop = FALSE])
+}))
+ann <- data.frame(Subtype = gsub("_signature_[0-9]+$", "", rownames(score)),
+                  row.names = rownames(score))
+jco <- c("#F2CCCC", "#E6D8CF", "#D5E3F0")
+pheatmap(score, cluster_rows = FALSE, cluster_cols = FALSE,
+         border_color = NA, annotation_row = ann,
+         annotation_colors = list(Subtype = c(SubtypeA = jco[1], SubtypeB = jco[2],
+                                              SubtypeC = jco[3])),
+         main = "Subtype-specific top pathways")
+```
+
+对角线模式说明每个亚型的 top 通路确实具有特异性；共享通路则会在多列同时亮起。参考工作流 \[4\] 使用 GSVA（`GSVA::gsva()`）计算通路活性，这是真实数据下的标准做法——此处用各集合基因的 log2FC 均值作为免依赖的近似。若要分析下调通路，按 NES 升序取 top 集合并对行排序即可。
+
 ::: callout-tip
 ## 实践要点
 
@@ -201,3 +278,5 @@ p3
 \[2\] Wu T, Hu E, Xu S, et al. clusterProfiler 4.0: a universal enrichment tool for interpreting omics data. Innovation. 2021;2(3):100141. doi:10.1016/j.xinn.2021.100141
 
 \[3\] Yu G. enrichplot: visualization of functional enrichment result. Bioconductor package. https://bioconductor.org/packages/enrichplot/
+
+\[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

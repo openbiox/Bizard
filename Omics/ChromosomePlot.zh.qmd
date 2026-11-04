@@ -444,6 +444,63 @@ svg2jpg("chromosome.svg")
 svg2tiff("chromosome.svg")
 ```
 
+### 11. 从自己的注释文件构建 karyotype（GTF）
+
+`RIdeogram` 内置了少数物种的染色体数据，但实际项目往往使用自定义的基因组版本或组装。此时可以从注释文件（GTF/GFF）构建 karyotype 表：染色体名、起止位置，以及（如果有的话）着丝粒坐标 \[3\]。得到的表即可直接传入 `ideogram(karyotype = ...)`，如同上文各节所示。
+
+下面给出两种实现：`rtracklayer` 适合复杂注释；`dplyr` 方案以每条染色体上最长特征的终点推导染色体长度，适合没有 `chromosome`/`centromere` 记录的 GTF 文件。
+
+```{r}
+#| label: fig-11-1
+#| fig-cap: "用 rtracklayer 从 GTF 文件构建 karyotype 表。"
+#| out.width: "95%"
+#| warning: false
+#| eval: false
+
+# 方法一：rtracklayer——GTF 中含 chromosome/centromere 记录时可用
+library(rtracklayer)
+library(dplyr)
+
+gtf <- import("your_annotation.gtf")
+
+karyotype <- gtf %>%
+  as.data.frame() %>%
+  filter(type == "chromosome") %>%
+  select(seqnames, start, end) %>%
+  rename(Chromosome = seqnames, Start = start, End = end) %>%
+  mutate(Centromere_Start = NA, Centromere_End = NA)
+
+centromere <- gtf %>%
+  as.data.frame() %>%
+  filter(type == "centromere") %>%
+  select(seqnames, start, end) %>%
+  rename(Chromosome = seqnames, Centromere_Start = start, Centromere_End = end)
+
+karyotype <- left_join(karyotype, centromere, by = "Chromosome")
+write.csv(karyotype, "karyotype.csv", row.names = FALSE)
+```
+
+```{r}
+#| label: fig-11-2
+#| fig-cap: "dplyr 替代方案：以每条染色体最长特征推导染色体长度。"
+#| out.width: "95%"
+#| warning: false
+#| eval: false
+
+# 方法二：dplyr 替代——无需 chromosome/centromere 记录
+karyotype <- gtf %>%
+  as.data.frame() %>%
+  group_by(Chromosome = seqnames) %>%
+  summarise(Start = min(start), End = max(end), .groups = "drop") %>%
+  mutate(Centromere_Start = NA, Centromere_End = NA)
+
+write.csv(karyotype, "karyotype.csv", row.names = FALSE)
+```
+
+::: callout-tip
+**坐标体系**：GTF/GFF 是 1-based，BED 是 0-based（半开区间）。`RIdeogram` 的输入要保持内部一致——如果热图、形状标记等特征表来自 BED 衍生数据，请先转换到与 karyotype 相同的坐标约定再绘图。
+:::
+
 ## 应用
 
 ::: {#fig-ChromosomePlotApplications1}
@@ -462,5 +519,6 @@ iMapper 映射和分析插入位点序列数据
 
 \[1\] RIdeogram: drawing SVG graphics to visualize and map genome-wide data on idiograms https://cran.r-project.org/web/packages/RIdeogram/vignettes/RIdeogram.html
 \[2\] Hao Z, Lv D, Ge Y, Shi J, Weijers D, Yu G, Chen J. 2020. RIdeogram: drawing SVG graphics to visualize and map genome-wide data on the idiograms. PeerJ Comput. Sci. 6:e251 http://doi.org/10.7717/peerj-cs.251
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
 

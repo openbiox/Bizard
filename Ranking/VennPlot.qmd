@@ -284,6 +284,60 @@ p <- venn.diagram(
 );grid::grid.draw(p)
 ```
 
+### 4. Working with Real DE Result Tables
+
+In practice the input is not a ready-made list but several differential-expression result tables (from DESeq2/edgeR/limma or different contrasts). The recurring workflow \[5\] is: filter each table by FDR (and direction), collect the significant IDs into a **named list**, draw the Venn diagram, and export the genes of each overlap region as a supplementary table.
+
+```{r}
+#| label: fig-4.1RealDEG
+#| fig-cap: "Venn diagram built from three simulated DE result tables after FDR filtering."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# Simulate three DE result tables (id, log2FC, FDR)
+set.seed(123)
+mk_deg <- function(n) {
+  data.frame(id = sample(genes, n),
+             log2FC = rnorm(n, sd = 2),
+             FDR = runif(n))
+}
+deg_deseq2 <- mk_deg(400)
+deg_edger  <- mk_deg(400)
+deg_limma  <- mk_deg(400)
+
+adjcutoff <- 0.05
+sig_list <- list(
+  DESeq2 = deg_deseq2$id[deg_deseq2$FDR <= adjcutoff & deg_deseq2$log2FC > 0],
+  edgeR  = deg_edger$id[deg_edger$FDR <= adjcutoff & deg_edger$log2FC > 0],
+  limma  = deg_limma$id[deg_limma$FDR <= adjcutoff & deg_limma$log2FC > 0]
+)
+sapply(sig_list, length)
+
+ggVennDiagram(sig_list, label_alpha = 0) +
+  scale_fill_gradient(low = "white", high = "lightblue")
+```
+
+The fill gradient now encodes region size across methods — regions shared by more methods (or with more genes) are darker, making method agreement readable at a glance. To export the genes of each region, extract the region data from the set object and write it to an Excel workbook (a convenient supplementary file):
+
+```{r}
+#| label: fig-4.2RegionItems
+#| warning: false
+#| message: false
+
+region_data <- process_region_data(Venn(sig_list))
+
+region_export <- data.frame(
+  region = region_data$name,
+  count  = lengths(region_data$item),
+  items  = sapply(region_data$item, paste, collapse = ", ")
+)
+region_export
+openxlsx::write.xlsx(region_export, file.path(tempdir(), "venn_regions.xlsx"), rowNames = FALSE)
+```
+
+For exploration in the browser, `ggVennDiagram(sig_list, show_intersect = TRUE)` opens an interactive HTML table listing the members of each region (requires a suitable viewer; not rendered in this static tutorial).
+
 ## Application
 
 ::: {#fig-HistApplications}
@@ -297,4 +351,6 @@ In this figure, R1-R4 are four different genotypes. Since R2 and R4 have exactly
 ## Reference
 
 \[1\] Yu Y, Li W, Liu Y, Liu Y, Zhang Q, Ouyang Y, Ding W, Xue Y, Zou Y, Yan J, Jia A, Yan J, Hao X, Gou Y, Zhai Z, Liu L, Zheng Y, Zhang B, Xu J, Yang N, Xiao Y, Zhuo L, Lai Z, Yin P, Liu HJ, Fernie AR, Jackson D, Yan J. A Zea genus-specific micropeptide controls kernel dehydration in maize. Cell. 2025 Jan 9;188(1):44-59.e21. doi: 10.1016/j.cell.2024.10.030. Epub 2024 Nov 12. PMID: 39536747.
+
+\[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 

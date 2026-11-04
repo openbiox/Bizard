@@ -214,6 +214,44 @@ fviz_pca_ind(res.pca,
              title = "FactoMineR PCA results")
 ```
 
+### 4. Mapping groups and batches to color and shape
+
+In real omics projects the samples within a group often come from several sequencing batches or biological replicates. A common publication style keeps **one color per group** and maps **batch/replicate to point shape** \[2\]: a drifting batch or an outlier replicate then stands out immediately, which helps deciding whether a batch correction (e.g. `limma::removeBatchEffect`, ComBat) or removal of a sample is needed.
+
+We simulate three sequencing batches inside the iris data (batch 3 artificially shifted along PC2):
+
+```{r}
+#| label: fig-4.1BatchShapePCA
+#| fig-cap: "PCA sample plot with group mapped to color and sequencing batch mapped to shape; the drifted batch is easy to spot."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 6
+
+set.seed(123)
+pca_scores$batch <- as.factor(ave(seq_len(nrow(pca_scores)), pca_scores$Species,
+                                  FUN = function(i) paste("Batch", sample(1:3, length(i), replace = TRUE))))
+pca_scores$PC2 <- pca_scores$PC2 + ifelse(pca_scores$batch == "Batch 3", 0.6, 0)  # simulate a batch shift
+
+ggplot(pca_scores, aes(x = PC1, y = PC2, color = Species, shape = batch)) +
+  geom_point(size = 3, alpha = 0.8) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800", "#FC4E07")) +
+  scale_shape_manual(values = c(16, 17, 15)) +
+  labs(title = "PCA with group (color) and batch (shape) mapping",
+       caption = "Batch 3 is simulated to drift along PC2") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+::: callout-tip
+**Practice tips**
+
+- `ave(..., group, FUN = ...)` assigns batches **within** each group, which mirrors real experimental designs (each group is sequenced across several batches).
+- Shapes 16–25 are solid and scale well in print; start the series at 15 (square) if you have many groups with similar colors.
+- If one shape clearly separates from the others, suspect a batch effect: re-plot after batch correction, or inspect known batch marker genes.
+:::
+
 ## Application
 
 ::: {#fig-UpsetApplications}
@@ -227,4 +265,6 @@ The figure shows the first two principal components of the mean projection stren
 ## Reference
 
 \[1\] Chen Y, Chen X, Baserdem B. et al. High-throughput sequencing of single neuron projections reveals spatial organization in the olfactory cortex. Cell. 2022 Oct 27;185(22):4117-4134.e28.
+
+\[2\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
