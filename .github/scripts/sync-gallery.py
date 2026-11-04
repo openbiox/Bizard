@@ -30,6 +30,10 @@ only required step:
 Modes:
     python3 .github/scripts/sync-gallery.py --check    # exit 1 if out of sync (CI)
     python3 .github/scripts/sync-gallery.py --update   # append missing rows in place
+    python3 .github/scripts/sync-gallery.py --repair-names
+                # rewrite Name for rows appended by older versions with the
+                # fig-cap in both Name and Description; the figure's section
+                # heading becomes the Name (curated rows are never touched)
 """
 import argparse
 import csv
@@ -133,6 +137,9 @@ CHUNK_RE = re.compile(r"```+\{([^}]*)\}\n(.*?)```", re.S)
 LABEL_RE = re.compile(r"#\|\s*label:\s*(\S+)")
 EVAL_FALSE_RE = re.compile(r"#\|\s*eval:\s*false")
 CAP_RE = re.compile(r'#\|\s*fig-cap:\s*"([^"]*)"')
+HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+LEAD_NUM_RE = re.compile(r"^\s*(?:\d+(?:\.\d+)*[.、．)]|\(\w+\)|（[\w-]+）)\s*")
+EMPH_RE = re.compile(r"[*_`]+")
 
 
 def _engine_of(options):
@@ -166,8 +173,10 @@ def parse_fig_chunks(qmd_text):
     A figure chunk carries a label starting with `fig` and a non-empty
     single-line quoted fig-cap; chunks marked `eval: false` never render
     a PNG and are skipped. Each record is a dict with keys `label`,
-    `caption`, `engine`, and `manual_reason` (None when a static PNG
-    URL can be derived).
+    `caption`, `heading`, `engine`, and `manual_reason` (None when a
+    static PNG URL can be derived). `heading` is the nearest ATX heading
+    above the chunk (numbering and markdown stripped) — the human-facing
+    figure title used by the hand-curated gallery rows.
     """
     figures = []
     for match in CHUNK_RE.finditer(qmd_text):
@@ -184,11 +193,42 @@ def parse_fig_chunks(qmd_text):
             {
                 "label": name,
                 "caption": caption,
+                "heading": heading_before(qmd_text, match.start()),
                 "engine": engine,
                 "manual_reason": manual_reason_for(name, engine, body),
             }
         )
     return figures
+
+
+def heading_before(qmd_text, pos):
+    """Nearest ATX heading above `pos` that is outside code fences, or None.
+
+    Lines starting with `#` inside fenced chunks are code comments, not
+    headings, so fence state is tracked while scanning.
+    """
+    best = None
+    in_fence = False
+    for line in qmd_text[:pos].splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = HEADING_RE.match(line)
+        if m:
+            best = m.group(2)
+    if best is None:
+        return None
+    return clean_heading(best)
+
+
+def clean_heading(text):
+    """Heading text as a figure name: strip markdown and list numbering."""
+    text = EMPH_RE.sub("", text).strip()
+    text = LEAD_NUM_RE.sub("", text).strip()
+    return text
 
 
 def read_frontmatter_title(qmd_text):
@@ -304,6 +344,7 @@ def collect_missing(root):
             title = read_frontmatter_title(text)
             zh_title = read_frontmatter_title(zh_text) if zh_text else None
             zh_caps = {f["label"]: f["caption"] for f in parse_fig_chunks(zh_text)} if zh_text else {}
+            zh_heads = {f["label"]: f["heading"] for f in parse_fig_chunks(zh_text)} if zh_text else {}
             level2 = derive_level2(directory, page, root)
             for fig in parse_fig_chunks(text):
                 label = fig["label"]
@@ -327,8 +368,8 @@ def collect_missing(root):
                         "dir": directory,
                         "page": page,
                         "label": label,
-                        "name": fig["caption"],
-                        "zh_name": zh_caps.get(label) or fig["caption"],
+                        "name": fig["heading"] or fig["caption"],
+                        "zh_name": zh_heads.get(label) or zh_caps.get(label) or fig["heading"] or fig["caption"],
                         "image_url": image_url,
                         "manual_reason": fig["manual_reason"],
                         "tutorial_url": f"{CSV_BASE}/{directory}/{page}.html#{label}",
@@ -429,6 +470,96 @@ def check(root):
     return 0
 
 
+def figure_headings(root):
+    """Map (page path without extension, label) -> figure heading, per language."""
+    en, zh = {}, {}
+    for directory in CHART_DIRS:
+        dir_path = os.path.join(root, directory)
+        if not os.path.isdir(dir_path):
+            continue
+        for fname in sorted(os.listdir(dir_path)):
+            if not fname.endswith(".qmd"):
+                continue
+            page = fname[: -len(".qmd")]
+            with open(os.path.join(dir_path, fname), encoding="utf-8") as fh:
+                text = fh.read()
+            for f in parse_fig_chunks(text):
+                en[(f"{directory}/{page}", f["label"])] = f["heading"]
+            zh_path = os.path.join(dir_path, page + ".zh.qmd")
+            if os.path.exists(zh_path):
+                with open(zh_path, encoding="utf-8") as fh:
+                    zh_text = fh.read()
+                for f in parse_fig_chunks(zh_text):
+                    zh[(f"{directory}/{page}", f["label"])] = f["heading"]
+    return en, zh
+
+
+def repair_names(root):
+    """Fix rows whose Name duplicates the Description (the append bug).
+
+    Earlier versions of this script appended rows with the fig-cap for
+    both Name and Description, so the gallery showed full caption
+    sentences as chart titles. A row is repaired when Name equals
+    Description and the figure's section heading resolves in its chart
+    qmd; the heading (numbering stripped) replaces the Name. Curated
+    rows (Name != Description) and rows without a resolvable heading are
+    left untouched and reported.
+    """
+    en_heads, zh_heads = figure_headings(root)
+    totals = {}
+    for name, heads, lang_prefix in (
+        ("gallery_data.csv", en_heads, ""),
+        ("gallery_data_zh.csv", zh_heads, "/zh"),
+    ):
+        path = os.path.join(root, "files", name)
+        with open(path, encoding="utf-8", newline="") as fh:
+            text = fh.read()
+        eol = "\r\n" if "\r\n" in text else "\n"
+        lines = text.split(eol)
+        if lines and lines[-1] == "":
+            lines.pop()
+        repaired, unresolved = 0, []
+        for i, line in enumerate(lines):
+            if i == 0 or not line.strip():
+                continue
+            row = next(csv.reader([line]))
+            if len(row) < 5 or row[1] == "" or row[1] != row[4]:
+                continue
+            url = row[3]
+            page_match = re.search(re.escape(CSV_BASE) + r"/(?:zh/)?([^/#]+/.+)\.html#", url)
+            if not page_match:
+                continue
+            # The image URL's figure-html label is the authoritative chunk
+            # reference; the tutorial anchor is a fallback (some rows point
+            # at a Quarto heading id instead of the chunk label).
+            keys = []
+            image_match = re.search(r"figure-html/([A-Za-z0-9._-]+?)(?:-output)?-\d+\.png", row[2])
+            if image_match:
+                keys.append((page_match.group(1), image_match.group(1)))
+            anchor_match = re.search(r"\.html#([A-Za-z0-9._-]+)", url)
+            if anchor_match:
+                keys.append((page_match.group(1), anchor_match.group(1)))
+            heading = next((heads[key] for key in keys if heads.get(key)), None)
+            if not heading:
+                unresolved.append(row[0])
+                continue
+            if heading == row[1]:
+                continue
+            row[1] = heading
+            buf = io.StringIO()
+            csv.writer(buf, lineterminator="").writerow(row)
+            lines[i] = buf.getvalue()
+            repaired += 1
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(eol.join(lines) + eol)
+        totals[name] = repaired
+        label = "zh" if lang_prefix else "en"
+        print(f"{label}: repaired {repaired} Name(s)")
+        if unresolved:
+            print(f"{label}: {len(unresolved)} row(s) left untouched (no heading resolved): {' '.join(unresolved)}")
+    return totals
+
+
 def update(root):
     """Append placeable missing rows to both CSVs in place; return 1 if manual cases remain."""
     missing = collect_missing(root)
@@ -467,12 +598,20 @@ def main():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true", help="exit 1 if the gallery CSVs are out of sync (for CI)")
     mode.add_argument("--update", action="store_true", help="append missing rows to the gallery CSVs in place")
+    mode.add_argument(
+        "--repair-names",
+        action="store_true",
+        help="rewrite Name for rows where Name duplicates the Description, using the figure heading",
+    )
     parser.add_argument("--root", default=None, help="repository root (default: the script's repository)")
     args = parser.parse_args()
 
     root = os.path.abspath(args.root) if args.root else DEFAULT_ROOT
     if args.check:
         return check(root)
+    if args.repair_names:
+        repair_names(root)
+        return 0
     return update(root)
 
 

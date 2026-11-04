@@ -3,6 +3,7 @@
 Run from the repository root:
     python3 -m pytest .github/scripts/test_sync_gallery.py -v
 """
+import csv
 import importlib.util
 import os
 import sys
@@ -332,7 +333,7 @@ def test_collect_missing_derives_ivolcano_rows():
     ]
     row = missing[0]
     assert row["id"] == 2
-    assert row["name"] == "Map point size by -log10(P) value"
+    assert row["name"] == "Size mapping"
     assert row["image_url"] == (
         "https://openbiox.github.io/Bizard/Omics/iVolcanoPlot_files/figure-html/fig-1.3size_by-1.png"
     )
@@ -382,7 +383,8 @@ def test_update_appends_rows_to_both_csvs_preserving_eol():
         assert zh.startswith(ZH_CSV)
         assert en.count("\n") == 3 and zh.count("\n") == 3
         assert en.endswith("\r\n") and zh.endswith("\r\n")
-        assert "2,Map point size by -log10(P) value" in en
+        assert "2,Size mapping," in en
+        assert ",Map point size by -log10(P) value,Interactive Volcano Plot," in en
         assert "2,按 -log10(P) 值映射点大小" in zh
         # idempotent: second run changes nothing
         assert update(tmp) == 0
@@ -565,3 +567,115 @@ def test_collect_missing_uses_gallery_level2_names():
             write_gallery_csvs(tmp)
             missing = collect_missing(tmp)
         assert missing[0]["level2"] == directory, directory
+
+
+# --------------------------------------------------------------------------
+# Figure headings and Name repair
+# --------------------------------------------------------------------------
+
+HEADING_QMD_EN = """---
+title: "Wordcloud Plot"
+---
+
+## Setup
+
+```{python}
+#| label: packages-setup
+import wordcloud
+# this comment line sits inside a fence and must not count as a heading
+```
+
+## 1. Text-driven cloud with collocations
+
+```{python}
+#| label: fig-wc-text
+#| fig-cap: "Text-driven cloud with collocations kept"
+wc.generate(text)
+```
+
+### 2. Frequency-driven cloud for print
+
+```{python}
+#| label: fig-wc-freq
+#| fig-cap: "Cloud drawn from a precomputed frequency dictionary"
+wc.generate(freqs)
+```
+"""
+
+HEADING_QMD_ZH = """---
+title: "词云图"
+---
+
+### 1. 保留搭配的文本驱动词云
+
+```{python}
+#| label: fig-wc-text
+#| fig-cap: "保留搭配的文本驱动词云"
+wc.generate(text)
+```
+
+### 2. 面向印刷的频率驱动词云
+
+```{python}
+#| label: fig-wc-freq
+#| fig-cap: "面向印刷的频率驱动词云"
+wc.generate(freqs)
+```
+"""
+
+REPAIR_CSV_EN = (
+    "Id,Name,Image_url,Tutorial_url,Description,Type,Level1,Level2\r\n"
+    "1,Text-driven cloud with collocations kept,"
+    "https://openbiox.github.io/Bizard/Python/WordcloudPlot_files/figure-html/fig-wc-text-1.png,"
+    "https://openbiox.github.io/Bizard/Python/WordcloudPlot.html#fig-wc-text,"
+    "Text-driven cloud with collocations kept,"
+    "Wordcloud Plot,PYTHON,Python\r\n"
+    "2,Curated Frequency Cloud,"
+    "https://openbiox.github.io/Bizard/Python/WordcloudPlot_files/figure-html/fig-wc-freq-output-1.png,"
+    "https://openbiox.github.io/Bizard/Python/WordcloudPlot.html#fig-wc-freq,"
+    "Cloud drawn from a precomputed frequency dictionary,"
+    "Wordcloud Plot,PYTHON,Python\r\n"
+    "3,Manual screenshot row,"
+    "https://openbiox.github.io/Bizard/images/manual.png,"
+    "https://openbiox.github.io/Bizard/Python/WordcloudPlot.html,"
+    "Manual screenshot row,"
+    "Wordcloud Plot,PYTHON,Python\r\n"
+)
+
+REPAIR_CSV_ZH = (
+    "Id,Name,Image_url,Tutorial_url,Description,Type,Level1,Level2\r\n"
+    "1,保留搭配的文本驱动词云,"
+    "https://openbiox.github.io/Bizard/Python/WordcloudPlot_files/figure-html/fig-wc-text-1.png,"
+    "https://openbiox.github.io/Bizard/zh/Python/WordcloudPlot.html#fig-wc-text,"
+    "保留搭配的文本驱动词云,"
+    "词云图,PYTHON,Python\r\n"
+)
+
+
+def test_parse_fig_chunks_captures_section_heading():
+    figures = {f["label"]: f["heading"] for f in sync_gallery.parse_fig_chunks(HEADING_QMD_EN)}
+
+    assert figures["fig-wc-text"] == "Text-driven cloud with collocations"
+    assert figures["fig-wc-freq"] == "Frequency-driven cloud for print"
+
+
+def test_repair_names_rewrites_caption_named_rows_only():
+    with tempfile.TemporaryDirectory() as tmp:
+        write_qmd_page(tmp, "Python", "WordcloudPlot", HEADING_QMD_EN, HEADING_QMD_ZH)
+        os.makedirs(os.path.join(tmp, "files"))
+        for name, text in (("gallery_data.csv", REPAIR_CSV_EN), ("gallery_data_zh.csv", REPAIR_CSV_ZH)):
+            with open(os.path.join(tmp, "files", name), "w", newline="") as fh:
+                fh.write(text)
+
+        sync_gallery.repair_names(tmp)
+
+        with open(os.path.join(tmp, "files", "gallery_data.csv"), newline="") as fh:
+            rows = list(csv.reader(fh))
+        assert rows[1][1] == "Text-driven cloud with collocations"
+        assert rows[1][4] == "Text-driven cloud with collocations kept"
+        assert rows[2][1] == "Curated Frequency Cloud"
+        assert rows[3][1] == "Manual screenshot row"
+
+        with open(os.path.join(tmp, "files", "gallery_data_zh.csv"), newline="") as fh:
+            zh_rows = list(csv.reader(fh))
+        assert zh_rows[1][1] == "保留搭配的文本驱动词云"
