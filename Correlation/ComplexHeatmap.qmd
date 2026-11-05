@@ -416,6 +416,75 @@ Heatmap(small_mat, name = "Methylation", col = col_fun,
 Add graphics
 :::
 
+### 6. Correlation-Ordered Heatmap with Annotations
+
+In biomarker studies \[4\] the columns are samples **ordered by the expression of one target gene**, the rows are genes significantly positively or negatively correlated with it, and the top annotation carries subtype/mutation information. Turning clustering off makes the target gene's gradient (and the wedges of correlated genes) directly visible — an unclustered correlation heatmap.
+
+```{r}
+#| label: fig-6.1CorrOrdered
+#| fig-cap: "Samples ordered by target-gene expression; genes split into positively and negatively correlated blocks by row segmentation."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6
+
+set.seed(2026)
+n_sam  <- 40
+genes  <- paste0("Gene", sprintf("%03d", 1:299))
+target <- rnorm(n_sam)                                   # target gene (TIM-3-like) expression
+subtype <- factor(sample(c("Classical", "Mesenchymal", "Neural", "Proneural"), n_sam, TRUE))
+idh     <- factor(sample(c("WT", "Mutant"), n_sam, TRUE, prob = c(0.6, 0.4)))
+
+mat <- matrix(rnorm(299 * n_sam), nrow = 299,
+              dimnames = list(genes, paste0("S", seq_len(n_sam))))
+# Simulate biology: 15 genes co-vary with the target, 10 vary in opposition
+pos_seed <- sample(genes, 15)
+neg_seed <- sample(setdiff(genes, pos_seed), 10)
+mat[pos_seed, ] <- mat[pos_seed, ] + outer(rep(1, 15), target) * 0.9
+mat[neg_seed, ] <- mat[neg_seed, ] - outer(rep(1, 10), target) * 0.9
+mat <- rbind(mat, "TARGET" = target)                     # add the target gene row
+
+# Genes correlated with the target: top-15 positive, top-10 negative
+cors      <- cor(t(mat[genes, ]), mat["TARGET", ])
+pos_genes <- names(sort(cors[, 1], decreasing = TRUE))[1:15]
+neg_genes <- names(sort(cors[, 1], decreasing = FALSE))[1:10]
+
+sel  <- c(pos_genes, neg_genes)                          # rows: positive block first
+mat_sel <- t(scale(t(mat[sel, ])))                       # row-wise z-score
+mat_sel[mat_sel >  3] <-  3
+mat_sel[mat_sel < -3] <- -3
+ord    <- order(mat["TARGET", ])                         # columns ordered by the target gene
+mat_sel <- mat_sel[, ord]
+
+col_fun    <- circlize::colorRamp2(c(-3, 0, 3), c("#6699CC", "white", "#FF3C38"))
+target_fun <- circlize::colorRamp2(c(-2, 0, 2), c("#2166ac", "white", "#b2182b"))
+
+ha <- HeatmapAnnotation(
+  `Target expression` = mat["TARGET", ord],
+  Subtype = droplevels(subtype)[ord],
+  IDH     = idh[ord],
+  col = list(`Target expression` = target_fun,
+             Subtype = c(Classical = "#CEDC7C", Mesenchymal = "#EA6767",
+                         Neural = "#F7C07C", Proneural = "#445EAD"),
+             IDH = c(WT = "#EA6767", Mutant = "#70C17A")))
+
+Heatmap(mat_sel, name = "Z-score", top_annotation = ha,
+        col = col_fun,
+        cluster_rows = FALSE, cluster_columns = FALSE,   # keep the target-gene gradient
+        row_split = factor(rep(c("Positively correlated", "Negatively correlated"),
+                               c(length(pos_genes), length(neg_genes)))),
+        border = TRUE)
+```
+
+::: callout-tip
+**Practice tips**
+
+- The row segmentation here is **driven by analysis results** (sign of the correlation), not by clustering — `row_split` accepts any factor.
+- Sorting columns by the target gene before plotting is what turns correlation strength into a visible wedge; leave `cluster_columns = FALSE` or the sorting is destroyed.
+- With real data, select correlated genes with `cor.test()` (Spearman) plus a cutoff on rho and P, as in the reference workflow.
+:::
+
 ## Application
 
 ::: {#fig-ComplexHeatmapApplications}
@@ -433,6 +502,8 @@ The figure above is an unsupervised hierarchical clustering heatmap of 59 differ
 \[2\] Gu, Z. (2016) Complex heatmaps reveal patterns and correlations in multidimensional genomic data. Bioinformatics.Gu, Z. (2022) Complex Heatmap Visualization. iMeta.
 
 \[3\] Tal Galili (2015). dendextend: an R package for visualizing, adjusting, and comparing trees of hierarchical clustering. Bioinformatics. DOI:10.1093/bioinformatics/btv428
+
+\[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
 \[4\] Wickham H, Vaughan D, Girlich M (2024). tidyr: Tidy Messy Data. R package version 1.3.1, CRAN: Package tidyr.
 
