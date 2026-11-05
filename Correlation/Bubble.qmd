@@ -22,7 +22,7 @@ A bubble plot is a scatter plot in which a third numeric variable is mapped to t
 
 -   Programming Language: R
 
--   Dependencies: `dplyr`, `ggplot2`, `gapminder`, `hrbrthemes`, `viridis`
+-   Dependencies: `dplyr`, `ggplot2`, `gapminder`, `hrbrthemes`, `viridis`, `cowplot`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Install packages
@@ -41,6 +41,9 @@ if (!requireNamespace("hrbrthemes", quietly = TRUE)) {
 if (!requireNamespace("viridis", quietly = TRUE)) {
   install.packages("viridis")
 }
+if (!requireNamespace("cowplot", quietly = TRUE)) {
+  install.packages("cowplot")
+}
 
 # Load packages
 library(dplyr)
@@ -48,6 +51,7 @@ library(ggplot2)
 library(gapminder) # is an R package that provides a summary of data from Gapminder.org. The data includes life expectancy, GDP per capita, and population data for 142 countries every five years from 1952 to 2007.
 library(hrbrthemes)
 library(viridis)
+library(cowplot)
 ```
 
 ```{r}
@@ -157,6 +161,62 @@ p
 
 This bubble plot depicts the relationship between life expectancy (y) and GDP per capita (x) for countries around the world.
 
+### 5. Enrichment Bubble Panels Arranged Diagonally
+
+A gene-set enrichment staple \[8\]: one bubble per pathway with `GeneRatio` on x, bubble size for the gene count, colour for the P value — and the terms **ordered by GeneRatio** so the bubbles climb diagonally. Down- and up-regulated directions are drawn as mirror panels (right panel flips the term axis to the right with `scale_y_discrete(position = "right")`) and combined side by side.
+
+```{r}
+#| label: fig-5.1EnrichDiagonal
+#| fig-cap: "Down/up enrichment bubble panels; terms ordered by GeneRatio produce the diagonal arrangement, directions combined with cowplot."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 13
+#| fig-height: 5
+
+set.seed(11)
+mk_enrich <- function(prefix, n) {
+  data.frame(
+    Term = sprintf("%s pathway %d", prefix, 1:n),
+    PValue = 10^(-runif(n, 1.3, 6)),
+    Count = sample(5:60, n),
+    Pop.Hits = sample(80:200, n)
+  )
+}
+enrich <- rbind(cbind(direction = "Down", mk_enrich("Down", 8)),
+                cbind(direction = "Up",   mk_enrich("Up", 8)))
+enrich$GeneRatio <- enrich$Pop.Hits / enrich$Count
+
+enrich_bubble <- function(dat, legend_pos, term_side = "left") {
+  dat <- dat[order(dat$GeneRatio), ]
+  dat$Term <- factor(dat$Term, levels = dat$Term)      # keep the sorted order
+  p <- ggplot(dat, aes(GeneRatio, Term, colour = PValue)) +
+    geom_point(aes(size = Count)) +
+    scale_size_continuous(range = c(2, 10)) +
+    scale_color_gradientn(colours = c("red", "yellow")) +
+    theme_bw(base_size = 11) +
+    ylab(NULL) +
+    theme(legend.position = legend_pos, legend.justification = legend_pos,
+          legend.background = element_blank(), legend.key = element_blank())
+  if (term_side == "right") p <- p + scale_y_discrete(position = "right")
+  p
+}
+
+p_down <- enrich_bubble(subset(enrich, direction == "Down"), c(1, 0))
+p_up   <- enrich_bubble(subset(enrich, direction == "Up"),   c(0, 0), term_side = "right")
+
+plot_grid(p_down, p_up, labels = c("Down-regulated", "Up-regulated"),
+          label_x = 0.02, hjust = 0)
+```
+
+::: callout-tip
+**Practice tips**
+
+- The diagonal is nothing more than **sorting rows by the x value** before converting `Term` to a factor — sort descending to reverse the slope.
+- `legend.position` / `legend.justification` with the same coordinate pair pins the legend to a corner (`c(1, 0)` bottom-right, `c(0, 0)` bottom-left); the transparent background lets it sit inside the plot.
+- Any enrichment table works as input as long as it carries a ratio column, a gene-count column and a P value column — swap which one drives x, size or colour to taste.
+:::
+
 ## Applications
 
 ### 1. Bubble plots are used to display KEGG pathway enrichment analysis
@@ -195,3 +255,5 @@ This bubble plot demonstrates the agreement between extreme temperature anomalie
 
 \[7\] Ross, N., & Garnier, S. (2016). viridis: Default Color Maps for 'ggplot2'. Retrieved from https://cran.r-project.org/web/packages/viridis/index.html
 
+
+\[8\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

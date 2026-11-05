@@ -24,7 +24,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`ggplot2`, `dplyr`, `hrbrthemes`, `viridis`, `ggExtra`, `ggpubr`, `rstatix`, `ggtext`, `ggpmisc`
+-   依赖包：`ggplot2`, `dplyr`, `hrbrthemes`, `viridis`, `ggExtra`, `ggpubr`, `rstatix`, `ggtext`, `ggpmisc`, `ggsignif`, `tidyr`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # 安装包
@@ -58,6 +58,9 @@ if (!requireNamespace("ggtext", quietly = TRUE)) {
 if (!requireNamespace("ggpmisc", quietly = TRUE)) {
   install.packages("ggpmisc")
 }
+if (!requireNamespace("ggsignif", quietly = TRUE)) {
+  install.packages("ggsignif")
+}
 
 # 加载包
 library(readr)
@@ -70,6 +73,8 @@ library(rstatix)
 library(ggtext)
 library(ggpmisc)
 library(ggExtra)
+library(ggsignif)
+library(tidyr)
 ```
 
 ```{r}
@@ -430,6 +435,104 @@ p1
 -   `margins = 'x'` 或 `margins = 'y'`: 仅显示一个边际图
 ::: 
 
+### 8. 分面分组箱线图与显著性检验
+
+临床研究的常见版式：某个基因的表达能否**在每个肿瘤分期内部**区分两个分子分组 \[9\]？设计是"分组 × 分期"，按分期分面绘制箱线图，并在每个面板内标注显著性。我们模拟一个胶质瘤样队列（IDH 突变状态 × WHO 分级）：
+
+```{r}
+#| label: fig-8.1FacetSignif
+#| fig-cap: "按 WHO 分级分面的突变状态表达量箱线图；每个面板一个 Wilcoxon 显著性标记。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 5
+
+set.seed(123)
+grades <- c("Grade I", "Grade II", "Grade III", "Grade IV")
+df8 <- data.frame(
+  grade = factor(rep(grades, times = c(60, 55, 50, 45)), levels = grades),
+  mut   = sample(c("Mut", "WT"), 210, replace = TRUE, prob = c(0.4, 0.6))
+)
+# 表达量随分期升高、随突变升高
+df8$expr <- 2 +
+  as.numeric(df8$grade) * 0.5 +
+  ifelse(df8$mut == "Mut", 0.8, 0) +
+  rnorm(210, sd = 1)
+
+ggplot(df8, aes(x = mut, y = expr)) +
+  geom_boxplot(aes(color = mut), alpha = 0, width = 0.6, outlier.shape = NA) +
+  geom_jitter(aes(color = mut), width = 0.2, size = 0.7, alpha = 0.5) +
+  geom_signif(comparisons = list(c("Mut", "WT")),
+              map_signif_level = TRUE, test = "wilcox.test") +
+  facet_grid(. ~ grade) +
+  scale_color_manual(values = c("Mut" = "#B2182B", "WT" = "#2166AC")) +
+  labs(title = "Expression by mutation status within each grade",
+       x = "IDH mutation status", y = "Expression (log2)") +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = "bold"))
+```
+
+`geom_signif()` 会**自动在每个分面面板内**执行检验——这正是参考图按分期逐一比较的做法。若需要自定义显著性表（如校正后 P 值），先用 `rstatix` 计算，再改用 `stat_pvalue_manual()` 传入。
+
+### 9. 多基因批量箱线图与显著性星号
+
+筛选一批候选基因意味着对每个基因重复同一张箱线图 \[9\]。与其逐个画图，不如把表达矩阵转为长表、逐基因计算检验，再用分面汇总到一张图：
+
+```{r}
+#| label: fig-9.1BatchStars
+#| fig-cap: "8 个基因汇总为一张分面图，每个面板标注其单因素 ANOVA P 值与显著性星号。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 11
+#| fig-height: 7
+
+set.seed(42)
+genes9 <- paste0("Gene", 1:8)
+stage  <- factor(rep(paste0("stage", 1:3), each = 10))
+
+expr9 <- sapply(seq_along(genes9), function(g) {
+  eff <- if (g %in% c(2, 5)) c(0, 1.5, 3) else c(0, 0, 0)  # 随分期变化的基因
+  rnorm(30, mean = 3 + eff[stage], sd = 0.8)
+})
+colnames(expr9) <- genes9
+
+long9 <- data.frame(stage = stage, expr9) |>
+  pivot_longer(-stage, names_to = "gene", values_to = "expr")
+
+# 逐基因单因素 ANOVA + 显著性星号
+sig9 <- do.call(rbind, lapply(genes9, function(g) {
+  p <- summary(aov(expr ~ stage, data = subset(long9, gene == g)))[[1]]$"Pr(>F)"[1]
+  data.frame(gene = g,
+             label = paste0("ANOVA p = ", sprintf("%.3f", p), " ",
+                            cut(p, c(0, 0.001, 0.01, 0.05, 1),
+                                labels = c("***", "**", "*", ""))))
+}))
+
+ymax9 <- tapply(long9$expr, long9$gene, max)
+
+ggplot(long9, aes(x = stage, y = expr, fill = stage)) +
+  geom_boxplot(outlier.shape = NA, width = 0.6) +
+  geom_text(data = sig9,
+            aes(x = 2, y = ymax9[gene] + 0.5, label = label),
+            inherit.aes = FALSE, size = 3) +
+  facet_wrap(~gene, scales = "free_y", ncol = 4) +
+  scale_fill_manual(values = c("#BDD7E7", "#6BAED6", "#2171B5")) +
+  labs(x = NULL, y = "Relative expression (log2)") +
+  theme_bw(base_size = 11) +
+  theme(legend.position = "none", strip.text = element_text(face = "italic"))
+```
+
+::: callout-tip
+**实践要点**
+
+- `pivot_longer()` + `facet_wrap()` 取代了逐基因绘图的循环；`scales = "free_y"` 让每个基因使用自己的纵轴范围。
+- `cut()` 一行即可把连续 P 值转换为惯用星号（`***` < 0.001，`**` < 0.01，`*` < 0.05）。
+- 若为配对设计（如仅比较 stage III 与 stage I），改用 `t.test(..., paired = TRUE)` 并标注该 P 值。
+:::
+
 ## 应用场景
 
 ### 1. 基础箱线图
@@ -481,3 +584,5 @@ Figure C: 具有不含有（左）或含有（右）所示残基的 H2A 的生�
 \[7\] Simon Garnier, Noam Ross, Robert Rudis, Antônio P. Camargo, Marco Sciaini, and Cédric Scherer (2024). viridis(Lite) - Colorblind-Friendly Color Maps for R. viridis package version 0.6.5.
 
 \[8\] Attali D, Baker C (2023). *ggExtra: Add Marginal Histograms to 'ggplot2', and More 'ggplot2' Enhancements*. R package version 0.10.1, <https://CRAN.R-project.org/package=ggExtra>.
+
+\[9\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

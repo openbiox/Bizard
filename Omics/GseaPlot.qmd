@@ -9,11 +9,12 @@ Gene Set Enrichment Analysis (GSEA) asks whether the genes of a defined set (a p
 
 In R the analysis is handled by `clusterProfiler::GSEA()` \[2\] and the canonical figure by `enrichplot::gseaplot2()` \[3\]. This tutorial renders the canonical plot, stacks several gene sets on one ranked list, and then rebuilds the running score from primitives in ggplot2 so the statistic itself becomes legible. The Python counterpart of this tutorial is [GSEA Running-Score (Python)](../Python/GSEAPlot.html).
 
-This tutorial covers three workflows:
+This tutorial covers four workflows:
 
 1. The canonical `gseaplot2` running-score plot with a p-value table;
 2. Several gene sets overlaid on one ranked list;
-3. A hand-built three-panel reconstruction of the running ES (ggplot2 + patchwork).
+3. A hand-built three-panel reconstruction of the running ES (ggplot2 + patchwork);
+4. Comparing subtype-specific pathways across groups with a specificity heatmap.
 
 ## Example
 
@@ -25,7 +26,7 @@ This tutorial covers three workflows:
 
 -   Programming language: R
 
--   Dependent packages: `clusterProfiler`; `enrichplot`; `ggplot2`; `dplyr`; `patchwork`
+-   Dependent packages: `clusterProfiler`; `enrichplot`; `ggplot2`; `dplyr`; `patchwork`; `pheatmap`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages (Bioconductor)
@@ -38,6 +39,9 @@ if (!requireNamespace("clusterProfiler", quietly = TRUE)) {
 if (!requireNamespace("patchwork", quietly = TRUE)) {
   install.packages("patchwork")
 }
+if (!requireNamespace("pheatmap", quietly = TRUE)) {
+  install.packages("pheatmap")
+}
 
 # Load packages
 library(clusterProfiler)
@@ -45,6 +49,7 @@ library(enrichplot)
 library(ggplot2)
 library(dplyr)
 library(patchwork)
+library(pheatmap)
 ```
 
 ```{r}
@@ -179,6 +184,78 @@ p3
 
 The weighted running ES is a cumulative sum: at each set member add its |statistic| normalized by the total member weight; at each miss subtract 1/(N − n). Rebuilding it from primitives demystifies `gseaplot2` — the shapes in Section 1 are exactly this walk — and makes custom variants (annotation of the leading edge, per-panel themes, multi-figure layouts) straightforward.
 
+### 4. Comparing Subtype-Specific Pathways Across Groups
+
+The running-score plot evaluates one ranked list at a time. In subtype (or cell-type) papers the recurring question is which pathways are **specific to each group** \[4\]. The workflow is: rank genes per group by one-vs-rest log2 fold change → run GSEA per group → collect each group's top pathways → display their activity in *all* groups as an unclustered heatmap, which makes the diagonal specificity pattern directly visible.
+
+```{r}
+#| label: fig-4.1SubtypeGsea
+#| fig-cap: "Subtype-specific GSEA: the top-5 pathways of each simulated subtype show a diagonal specificity pattern."
+#| out.width: "85%"
+#| fig-width: 7
+#| fig-height: 6
+#| warning: false
+#| message: false
+
+set.seed(251)
+## Simulated expression matrix: 3 subtypes x 15 replicates x 1200 genes
+genes   <- paste0("Gene", sprintf("%04d", 1:1200))
+subtype <- rep(c("SubtypeA", "SubtypeB", "SubtypeC"), each = 15)
+signal  <- matrix(0, nrow = length(genes), ncol = 3,
+                  dimnames = list(genes, c("SubtypeA", "SubtypeB", "SubtypeC")))
+pool <- genes
+for (s in colnames(signal)) {          # 60 subtype-specific genes per subtype
+  pick <- sample(pool, 60); signal[pick, s] <- 2; pool <- setdiff(pool, pick)
+}
+expr <- t(signal[, subtype]) +
+  matrix(rnorm(length(subtype) * length(genes), sd = 0.6),
+         nrow = length(subtype), ncol = length(genes))
+colnames(expr) <- genes
+
+## One-vs-rest log2FC per gene, per subtype (a t-test/limma loop can replace this)
+lfc <- sapply(colnames(signal), function(s) {
+  colMeans(expr[subtype == s, , drop = FALSE]) - colMeans(expr[subtype != s, , drop = FALSE])
+})
+
+## Signature gene sets: 5 sets of 30 genes per subtype
+term2gene_sub <- do.call(rbind, lapply(colnames(signal), function(s) {
+  do.call(rbind, lapply(1:5, function(k)
+    data.frame(term = paste0(s, "_signature_", k),
+               gene = sample(genes[signal[, s] > 0], 30))))
+}))
+
+## GSEA per subtype on its own ranked list
+gsea_res <- lapply(colnames(signal), function(s) {
+  GSEA(sort(lfc[, s], decreasing = TRUE), TERM2GENE = term2gene_sub,
+       minGSSize = 10, maxGSSize = 100, pvalueCutoff = 1,
+       eps = 0, seed = TRUE, verbose = FALSE)
+})
+names(gsea_res) <- colnames(signal)
+
+## Top-5 up-regulated pathways per subtype
+top_gs <- lapply(gsea_res, function(r) {
+  res <- as.data.frame(r)
+  res <- res[res$NES > 0, ]
+  head(rownames(res[order(res$NES, decreasing = TRUE), ]), 5)
+})
+
+## Specificity score: mean log2FC of each top set's genes in EVERY subtype
+score <- t(sapply(unlist(top_gs, use.names = FALSE), function(gs) {
+  gs_genes <- term2gene_sub$gene[term2gene_sub$term == gs]
+  colMeans(lfc[gs_genes, , drop = FALSE])
+}))
+ann <- data.frame(Subtype = gsub("_signature_[0-9]+$", "", rownames(score)),
+                  row.names = rownames(score))
+jco <- c("#F2CCCC", "#E6D8CF", "#D5E3F0")
+pheatmap(score, cluster_rows = FALSE, cluster_cols = FALSE,
+         border_color = NA, annotation_row = ann,
+         annotation_colors = list(Subtype = c(SubtypeA = jco[1], SubtypeB = jco[2],
+                                              SubtypeC = jco[3])),
+         main = "Subtype-specific top pathways")
+```
+
+The diagonal pattern confirms that each subtype's top pathways are indeed specific to it; a shared pathway would light up in several columns. The reference workflow \[4\] scores pathway activity with GSVA (`GSVA::gsva()`), which is the standard choice for real data — here we use the mean log2FC of each set's genes as a dependency-free approximation. For down-regulated pathways, take the top sets by ascending NES and sort rows accordingly.
+
 ::: callout-tip
 ## Practice tips
 
@@ -201,3 +278,5 @@ Running-score GSEA plots are the standard figure for pathway-level interpretatio
 \[2\] Wu T, Hu E, Xu S, et al. clusterProfiler 4.0: a universal enrichment tool for interpreting omics data. Innovation. 2021;2(3):100141. doi:10.1016/j.xinn.2021.100141
 
 \[3\] Yu G. enrichplot: visualization of functional enrichment result. Bioconductor package. https://bioconductor.org/packages/enrichplot/
+
+\[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

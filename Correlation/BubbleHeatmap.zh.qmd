@@ -147,6 +147,68 @@ ggplot(marker_top, aes(x = cluster, y = row)) +
         axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
+### 4. 分类特征关联 tile 热图
+
+同一网格也能承载**分类型**单元格。在临床关联分析中 \[3\]，行是临床特征，列是按两个表达组排序的患者，每个 tile 记录 yes/no，右侧边距标注每个特征的卡方检验 P 值——一张图就能看清哪些临床特征跟随分子分组。
+
+```{r}
+#| label: fig-1.4AssociationTiles
+#| fig-cap: "关联 tile 热图：患者按表达组排序，临床特征以 yes/no tile 呈现，右边距标注卡方 P 值。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4
+
+set.seed(123)
+n_group <- 50
+group <- factor(rep(c("High expression", "Low expression"), each = n_group),
+                levels = c("High expression", "Low expression"))
+features   <- c("AJCC stage III", "Tumor size > 5 cm", "Serosal invasion", "Perineural invasion")
+p_high     <- c(0.70, 0.65, 0.80, 0.35)   # 特征在高表达组更常见
+p_low      <- c(0.25, 0.25, 0.30, 0.45)
+
+tile_df <- do.call(rbind, c(
+  list(data.frame(patient = seq_len(2 * n_group), row = "Expression group",
+                  state = as.character(group))),
+  lapply(seq_along(features), function(k) {
+    yes <- c(rbinom(n_group, 1, p_high[k]), rbinom(n_group, 1, p_low[k]))
+    data.frame(patient = seq_len(2 * n_group), row = features[k],
+               state = ifelse(yes == 1, "yes", "no"))
+  })
+))
+tile_df$row     <- factor(tile_df$row, levels = c("Expression group", features))
+tile_df$patient <- factor(tile_df$patient, levels = seq_len(2 * n_group))
+
+# 每个特征与表达组的卡方检验
+pvals <- sapply(features, function(f) {
+  chisq.test(table(tile_df$state[tile_df$row == f], group))$p.value
+})
+p_labels <- sprintf("%s\nP %s", features,
+                    ifelse(pvals < 0.001, "< 0.001", paste0("= ", sprintf("%.3f", pvals))))
+
+ggplot(tile_df, aes(x = patient, y = row, fill = state)) +
+  geom_tile(colour = "grey85", linewidth = .3) +
+  geom_tile(data = subset(tile_df, row == "Expression group"), colour = NA) +
+  scale_fill_manual(values = c("High expression" = "#292C7C", "Low expression" = "#97B9D7",
+                               "yes" = "#4582B5", "no" = "white")) +
+  annotate("text", x = 2 * n_group + 3, y = features, label = p_labels,
+           hjust = 0, size = 3.2, lineheight = .9) +
+  scale_x_discrete(expand = expansion(add = c(.6, 6))) +
+  labs(x = "Patients (ordered by expression group)", y = NULL, fill = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        panel.grid = element_blank(), legend.position = "left")
+```
+
+::: callout-tip
+**关键参数：**
+
+- tile 网格同样只是一张长表：患者 × 特征一格一行，`state` 驱动填充色。
+- `annotate("text", x = ..., y = <因子水平>)` 把 P 值放到网格外；用 `coord_cartesian(clip = "off")` 或留足 x 方向扩展，避免文字被裁掉。
+- 特征为有序或多分类时，按数据规模把卡方检验换成 `fisher.test`（小样本）或 Cochran–Armitage / Kruskal 检验。
+:::
+
 ## 应用场景
 
 -   **单细胞标志基因点图**：Seurat 风格工作流中对比各类群标志基因的标准布局。
@@ -159,3 +221,5 @@ ggplot(marker_top, aes(x = cluster, y = row)) +
 \[1\] 顶刊图社 | 第013期：气泡热图. 微信公众号文章. <http://mp.weixin.qq.com/s?__biz=MzU5NjE2ODU0OQ==&mid=2247483869&idx=1&sn=f35b5747cffd6ee98d7fcf0148dc4752>
 
 \[2\] Zhang J. scRNAtoolVis: Making single-cell RNA-seq visualization easier and better. <https://github.com/junjunlab/scRNAtoolVis>（`pbmc.markers` 数据集来源）。
+
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

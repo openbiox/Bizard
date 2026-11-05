@@ -19,7 +19,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`ComplexHeatmap`；`tidyverse`；`maftools`
+-   依赖包：`ComplexHeatmap`；`tidyverse`；`maftools`；`ggpubr`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages
@@ -32,11 +32,15 @@ if (!requireNamespace("tidyverse", quietly = TRUE)) {
 if (!requireNamespace("maftools", quietly = TRUE)) {
   BiocManager::install("maftools")
 }
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
 
 # Load packages
 library(ComplexHeatmap)
 library(tidyverse)
 library(maftools)
+library(ggpubr)
 ```
 
 ## 数据准备
@@ -319,6 +323,97 @@ oncoplot(maf = maf, top = 20,
 
 - **`ComplexHeatmap::oncoPrint()`**（第 1–3 节）：完全的控制力——自定义单元格渲染、来自任意数据的注释轨道、任意行列分组、与整个热图生态的整合。当 oncoplot 需要与其他热图面板组合或需要定制样式时最为合适。
 - **`maftools::oncoplot()`**（第 4–5 节）：真实 MAF 文件的标准入口——一次调用读取整个队列的变异，获得可直接用于发表的汇总（负荷条、变异类型构成、临床注释、自动推导的 multi-hit 细胞）。适合常规队列图以及 maftools 工具链的后续分析（互斥性、TiTv、驱动基因分析）。
+### 7. 聚合突变频率"扫雷"网格
+
+上文 oncoprint 展示的是**样本级**单元格；参考文献的泛癌"扫雷"布局改为聚合 \[4\]：每个癌亚型 × 基因一个 tile，携带受累样本数，两侧配置突变类型构成条（顶部：按亚型；右侧：按基因），并带原癌基因/抑癌基因色条。下面是该布局的紧凑模拟版本：
+
+```{r}
+#| label: fig-7.1AlterationGrid
+#| fig-cap: "聚合突变频率网格：中央 tile 统计每个亚型 × 基因的受累样本数，两侧构成条展示突变类型占比。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+set.seed(2026)
+subtypes <- c("BRCA_LumA", "BRCA_Basal", "LUAD", "LUSC", "COAD_MSI", "COAD_CIN")
+n_sam <- c(80, 40, 60, 50, 45, 35)
+genes_info <- data.frame(
+  Gene = c("EGFR", "KRAS", "BRAF", "PIK3CA", "TP53", "NF1", "PTEN", "RB1"),
+  Type = rep(c("OG", "TSG"), each = 4),
+  base_rate = c(0.10, 0.15, 0.06, 0.22, 0.45, 0.08, 0.12, 0.09)
+)
+
+## 样本级基因突变类型（按亚型模拟）
+alter_ls <- do.call(rbind, lapply(seq_along(subtypes), function(s) {
+  do.call(rbind, lapply(genes_info$Gene, function(g) {
+    rate <- genes_info$base_rate[genes_info$Gene == g] *
+      (1.4 ^ rnorm(1, mean = c(0.4, 0.2)[1 + (s > 2)]))   # 亚型漂移
+    n_alt <- rbinom(1, n_sam[s], min(rate, 0.9))
+    types <- sample(c("MUT", "AMP", "DEL"), n_alt, replace = TRUE,
+                    prob = c(0.6, 0.2, 0.2))
+    extra <- if (n_alt > 2 && runif(1) < 0.15) "Multiple" else NULL
+    data.frame(subtype = subtypes[s], gene = g,
+               type = c(types, extra, NA_character_))
+  }))
+})) |>
+  filter(!is.na(type))
+
+## 中央：每个亚型 x 基因的受累样本数
+centre <- alter_ls |>
+  count(subtype, gene, name = "n_altered") |>
+  complete(subtype = subtypes, gene = genes_info$Gene, fill = list(n_altered = 0)) |>
+  mutate(Gene = factor(gene, rev(genes_info$Gene)),
+         Subtype = factor(subtype, subtypes))
+
+## 构成条（突变类型占比）
+comp_st <- alter_ls |> count(subtype, type, name = "n")
+comp_ge <- alter_ls |> count(gene, type, name = "n")
+
+p_top <- ggplot(comp_st, aes(x = subtype, y = n, fill = type)) +
+  geom_col(position = "fill", width = 0.95, colour = "grey60", linewidth = .2) +
+  scale_fill_brewer(type = "div", palette = "Paired", direction = -1, name = NULL) +
+  scale_x_discrete(labels = NULL) +
+  theme_void() + theme(legend.position = "top", legend.key.size = unit(3, "mm"))
+
+p_right <- ggplot(comp_ge, aes(x = gene, y = n, fill = type)) +
+  geom_col(position = "fill", width = 0.95, colour = "grey60", linewidth = .2) +
+  scale_fill_brewer(type = "div", palette = "Paired", direction = -1) +
+  scale_x_discrete(labels = NULL, limits = rev(genes_info$Gene)) +
+  coord_flip() + theme_void()
+
+p_centre <- ggplot(centre, aes(Subtype, Gene, fill = n_altered)) +
+  geom_tile(colour = "grey55", linewidth = .3) +
+  geom_text(aes(label = ifelse(n_altered > 0, n_altered, "")), size = 3) +
+  scale_fill_gradient(low = "white", high = "grey30", name = "Altered samples") +
+  theme_minimal(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid = element_blank())
+
+p_left <- ggplot(genes_info, aes(x = 0, y = factor(Gene, rev(genes_info$Gene)),
+                                 fill = Type)) +
+  geom_tile(colour = "white", linewidth = .6) +
+  geom_text(aes(label = Gene), hjust = 1, nudge_x = -0.55, size = 3, fontface = "bold") +
+  scale_fill_manual(values = c(OG = "orangered", TSG = "royalblue")) +
+  xlim(-2.2, 0.5) + theme_void() + theme(legend.position = "none")
+
+## 组装：顶部构成条、左侧 OG/TSG 色条、右侧基因构成条
+lay <- ggarrange(
+  ggarrange(NULL, p_top, NULL, ncol = 3, widths = c(0.16, 1, 0.16)),
+  ggarrange(p_left, p_centre, p_right, ncol = 3, widths = c(0.16, 1, 0.16)),
+  nrow = 2, heights = c(0.14, 1), align = "v")
+annotate_figure(lay, top = text_grob("Alteration frequencies across cancer subtypes",
+                                     face = "bold", size = 13))
+```
+
+::: callout-tip
+**实践要点**
+
+- 中央行、右侧条 y 轴与左侧色条要保持**同一个因子顺序**（`rev(genes_info$Gene)`）——顺序错位是这张图静默对不上的经典原因。
+- 参考图的中央填充按基因归一化（log 计数除以该基因最大值）；这里用的统一计数标尺更简单，但会压平低频基因。
+- 真实数据可从 MAF 队列（`maftools::oncoplot` 的输入）取样本 × 基因突变表，按亚型聚合，并保留参考文献"仅统计已知致癌突变"的过滤。
+:::
 
 ## 应用场景
 
@@ -334,3 +429,5 @@ oncoplot(maf = maf, top = 20,
 \[2\] Mayakonda A, Lin DC, Assenov Y, Plass C, Koeffler HP. Maftools: efficient and comprehensive analysis of somatic variants in cancer. Genome Res. 2018;28(11):1747-1756. doi:10.1101/gr.239244.118
 
 \[3\] Gu Z, Eils R, Schlesner M. Complex heatmaps reveal patterns and correlations in multidimensional genomic data. Bioinformatics. 2016;32(18):2847-2849. doi:10.1093/bioinformatics/btw313
+
+\[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

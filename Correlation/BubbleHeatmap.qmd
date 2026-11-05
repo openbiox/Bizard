@@ -147,6 +147,68 @@ ggplot(marker_top, aes(x = cluster, y = row)) +
         axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
+### 4. Categorical Association Tile Heatmap
+
+The same grid also works for **categorical** cells. In clinical association analyses \[3\], rows are clinical features, columns are patients ordered in two expression groups, each tile records yes/no, and a chi-square P value per feature is annotated at the right margin — a compact one-glance summary of which clinical characteristics track with the molecular grouping.
+
+```{r}
+#| label: fig-1.4AssociationTiles
+#| fig-cap: "Association tile heatmap: patients ordered by expression group, clinical features as yes/no tiles, chi-square P values at the right margin."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4
+
+set.seed(123)
+n_group <- 50
+group <- factor(rep(c("High expression", "Low expression"), each = n_group),
+                levels = c("High expression", "Low expression"))
+features   <- c("AJCC stage III", "Tumor size > 5 cm", "Serosal invasion", "Perineural invasion")
+p_high     <- c(0.70, 0.65, 0.80, 0.35)   # feature more common in the high-expression group
+p_low      <- c(0.25, 0.25, 0.30, 0.45)
+
+tile_df <- do.call(rbind, c(
+  list(data.frame(patient = seq_len(2 * n_group), row = "Expression group",
+                  state = as.character(group))),
+  lapply(seq_along(features), function(k) {
+    yes <- c(rbinom(n_group, 1, p_high[k]), rbinom(n_group, 1, p_low[k]))
+    data.frame(patient = seq_len(2 * n_group), row = features[k],
+               state = ifelse(yes == 1, "yes", "no"))
+  })
+))
+tile_df$row     <- factor(tile_df$row, levels = c("Expression group", features))
+tile_df$patient <- factor(tile_df$patient, levels = seq_len(2 * n_group))
+
+# Chi-square test of each feature against the expression group
+pvals <- sapply(features, function(f) {
+  chisq.test(table(tile_df$state[tile_df$row == f], group))$p.value
+})
+p_labels <- sprintf("%s\nP %s", features,
+                    ifelse(pvals < 0.001, "< 0.001", paste0("= ", sprintf("%.3f", pvals))))
+
+ggplot(tile_df, aes(x = patient, y = row, fill = state)) +
+  geom_tile(colour = "grey85", linewidth = .3) +
+  geom_tile(data = subset(tile_df, row == "Expression group"), colour = NA) +
+  scale_fill_manual(values = c("High expression" = "#292C7C", "Low expression" = "#97B9D7",
+                               "yes" = "#4582B5", "no" = "white")) +
+  annotate("text", x = 2 * n_group + 3, y = features, label = p_labels,
+           hjust = 0, size = 3.2, lineheight = .9) +
+  scale_x_discrete(expand = expansion(add = c(.6, 6))) +
+  labs(x = "Patients (ordered by expression group)", y = NULL, fill = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        panel.grid = element_blank(), legend.position = "left")
+```
+
+::: callout-tip
+**Key Parameters:**
+
+- The tile grid is again just a long table: one row per patient × feature cell, `state` drives the fill.
+- `annotate("text", x = ..., y = <factor levels>)` places the P values outside the grid; use `coord_cartesian(clip = "off")` or generous x-expansion so they are not clipped.
+- When a feature is ordinal or has more than two levels, switch the chi-square test to `fisher.test` (small n) or a Cochran–Armitage / Kruskal test accordingly.
+:::
+
 ## Applications
 
 -   **Single-cell marker dot plots**: the layout used across Seurat-style workflows to compare marker genes across clusters.
@@ -159,3 +221,5 @@ ggplot(marker_top, aes(x = cluster, y = row)) +
 \[1\] 顶刊图社 | 第013期：气泡热图. WeChat article. <http://mp.weixin.qq.com/s?__biz=MzU5NjE2ODU0OQ==&mid=2247483869&idx=1&sn=f35b5747cffd6ee98d7fcf0148dc4752>
 
 \[2\] Zhang J. scRNAtoolVis: Making single-cell RNA-seq visualization easier and better. <https://github.com/junjunlab/scRNAtoolVis> (source of the `pbmc.markers` dataset).
+
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

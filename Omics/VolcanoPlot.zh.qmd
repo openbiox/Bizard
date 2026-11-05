@@ -18,7 +18,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`tidyverse`; `readxl`; `ggrepel`
+-   依赖包：`tidyverse`; `readxl`; `ggrepel`; `cowplot`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # 安装包
@@ -31,11 +31,15 @@ if (!requireNamespace("readxl", quietly = TRUE)) {
 if (!requireNamespace("ggrepel", quietly = TRUE)) {
   install.packages("ggrepel")
 }
+if (!requireNamespace("cowplot", quietly = TRUE)) {
+  install.packages("cowplot")
+}
 
 # 加载包
 library(tidyverse)
 library(readxl)
 library(ggrepel)
+library(cowplot)
 ```
 
 ```{r}
@@ -179,3 +183,90 @@ p <-
 p
 ```
 
+
+### 3. 带边缘注释面板的火山图
+
+发表级火山图常在散点四周携带**汇总信息**：顶部条带报告上调/下调特征的百分比，右侧条带展示显著特征在某个注释类别（基因组区域、基因类型、通路）上的分布 \[1\]。技巧是把三张 ggplot 图共享散点的 x/y 范围，再用 cowplot 的轴插入 grob 组装，并用 `expand = c(0, 0)` 让面板相互贴合。
+
+```{r}
+#| label: fig-3.1MarginalVolcano
+#| fig-cap: "带顶部条带（上调/下调百分比）与右侧条带（各特征类计数）的火山图。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6
+
+set.seed(2026)
+# 为本教程的差异分析表附加一个模拟注释类别（基因类型）
+data$feature <- sample(c("Protein-coding", "lncRNA", "Pseudogene", "Intergenic"),
+                       nrow(data), replace = TRUE,
+                       prob = c(0.5, 0.25, 0.1, 0.15))
+feat_colors <- c("Protein-coding" = "#445EAD", "lncRNA" = "#70C17A",
+                 "Pseudogene" = "#F7C07C", "Intergenic" = "#BEBEBE")
+
+xr <- grDevices::extendrange(data$log2FC, f = 0.05)  # 共享 x 范围（中央图 + 顶部条带）
+
+## 中央：按特征类别着色的火山图
+p1 <- ggplot(data, aes(x = log2FC, y = log10P)) +
+  geom_point(aes(color = feature), size = 0.8, alpha = 0.6) +
+  geom_vline(xintercept = c(-2, 2), linetype = "dashed", colour = "grey40") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", colour = "grey40") +
+  scale_colour_manual(values = feat_colors) +
+  coord_cartesian(xlim = xr, expand = c(0, 0)) +
+  labs(x = "log2 fold change", y = expression(-log[10](P))) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+
+## 顶部：显著特征中上调 vs 下调的百分比
+sig <- data %>% filter(significant != "Not significant")
+pct <- sig %>% count(significant) %>% mutate(p = n / sum(n))
+# 显式分段几何，保证条带与标签对齐（不使用 position_stack）
+pct$ymax <- 1 - cumsum(pct$p)
+pct$ymin <- pct$ymax + pct$p
+pct$ymid <- (pct$ymin + pct$ymax) / 2
+p3 <- ggplot() +
+  geom_rect(data = pct, inherit.aes = FALSE,
+            aes(xmin = xr[1], xmax = xr[2],
+                ymin = ymin, ymax = ymax, fill = significant),
+            alpha = 0.35) +
+  geom_text(data = pct, inherit.aes = FALSE,
+            aes(x = (xr[1] + xr[2]) / 2, y = ymid,
+                label = paste0(significant, ": ", sprintf("%.1f", 100 * p), "%")),
+            size = 3.2) +
+  scale_fill_manual(values = c(Upregulated = "#B2182B", Downregulated = "#2166AC")) +
+  scale_x_continuous(limits = xr, expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
+  theme_void()
+
+## 右侧：每个注释类别的显著特征数（共享特征配色）
+rsig <- sig %>% count(feature)
+yr <- c(0, max(rsig$n) * 1.15)
+p2 <- ggplot(rsig, aes(x = n, y = feature, fill = feature)) +
+  geom_col(width = 0.7, show.legend = FALSE) +
+  geom_text(aes(label = n), hjust = -0.2, size = 3) +
+  scale_fill_manual(values = feat_colors) +
+  scale_x_continuous(limits = yr, expand = c(0, 0)) +
+  labs(x = "Significant features") +
+  theme_classic(base_size = 10) +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.line.y = element_blank(), axis.title.y = element_blank(),
+        plot.margin = margin(0, 5, 0, 2))
+
+## 组装：顶部条带在上、右侧条带在旁——面板贴合（expand = 0）
+combined <- insert_xaxis_grob(p1, p3, position = "top", height = unit(0.35, "in"))
+combined <- insert_yaxis_grob(combined, p2, position = "right", width = unit(1.7, "in"))
+ggdraw(combined)
+```
+
+::: callout-tip
+**实践要点**
+
+- `grDevices::extendrange()` 一次性给出散点的 x 上下限并在顶部条带复用，堆叠条才能恰好铺满火山图宽度。
+- 中央图与两个条带的 `expand = c(0, 0)` 设置是面板贴合的关键；使用默认扩展时条带会错位。
+- `insert_xaxis_grob()` / `insert_yaxis_grob()` 来自 cowplot，且保持主面板尺寸；等价做法是 `patchwork::plot_layout` 配合 `design`——两者都需要对齐坐标范围。
+:::
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

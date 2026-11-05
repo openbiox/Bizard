@@ -24,7 +24,7 @@ This tutorial covers four practical ROC workflows in R:
 
 -   Programming language: R
 
--   Dependent packages: `survival`; `dplyr`; `pROC`; `plotROC`; `timeROC`; `ggplot2`
+-   Dependent packages: `survival`; `dplyr`; `pROC`; `plotROC`; `timeROC`; `ggplot2`; `glmnet`; `survivalROC`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages
@@ -37,6 +37,12 @@ if (!requireNamespace("plotROC", quietly = TRUE)) {
 if (!requireNamespace("timeROC", quietly = TRUE)) {
   install.packages("timeROC")
 }
+if (!requireNamespace("glmnet", quietly = TRUE)) {
+  install.packages("glmnet")
+}
+if (!requireNamespace("survivalROC", quietly = TRUE)) {
+  install.packages("survivalROC")
+}
 
 # Load packages
 library(survival)
@@ -45,6 +51,8 @@ library(ggplot2)
 library(pROC)
 library(plotROC)
 library(timeROC)
+library(glmnet)
+library(survivalROC)
 ```
 
 ```{r}
@@ -212,6 +220,130 @@ legend("bottomright",
 
 Important details: `delta` uses the coding 0 = censored and 1 = event of interest (this is *not* the raw `status` coding of `lung`, where 1 means censored); the risk score is a continuous marker derived from the Cox model. Confidence intervals of the time-dependent AUC are available through `confint(tr)` because `iid = TRUE` was requested.
 
+### 6. Training vs. Validation ROC for a Multi-Biomarker Model
+
+Biomarker-panel papers typically fit the model on a **training set** and re-estimate discrimination on an independent **validation set** \[5\]. If the validation AUC drops markedly, the model overfits; comparing the two curves with a bootstrap `roc.test()` quantifies the difference.
+
+```{r}
+#| label: fig-6.1TrainTestROC
+#| fig-cap: "ROC of the same model on the training split versus the held-out validation split; the bootstrap p-value tests the AUC difference."
+#| out.width: "70%"
+#| fig-width: 6
+#| fig-height: 6
+#| warning: false
+#| message: false
+
+set.seed(2026)
+idx      <- sample(seq_len(nrow(lung2)), size = floor(0.6 * nrow(lung2)))
+train_df <- lung2[idx, ]
+test_df  <- lung2[-idx, ]
+
+# Fit the multi-biomarker model on the training split only
+m_train    <- glm(y1y ~ age + sex + ph.ecog + wt.loss, data = train_df, family = binomial)
+roc_train  <- roc(train_df$y1y, fitted(m_train), quiet = TRUE)
+roc_test   <- roc(test_df$y1y, predict(m_train, newdata = test_df, type = "response"),
+                  quiet = TRUE)
+bt         <- roc.test(roc_train, roc_test, method = "bootstrap", boot.n = 500)
+
+plot(roc_train, col = "#0093FF", lwd = 2, legacy.axes = TRUE,
+     main = "Training vs validation ROC")
+plot(roc_test, col = "#E43889", lwd = 2, add = TRUE, legacy.axes = TRUE)
+legend("bottomright", bty = "n", cex = 0.8,
+       legend = c(sprintf("Train (AUC = %.2f)", auc(roc_train)),
+                  sprintf("Test  (AUC = %.2f)", auc(roc_test)),
+                  sprintf("Bootstrap p = %.3f", bt$p.value)))
+```
+
+Here the point estimate drops noticeably on the held-out split, but the bootstrap test does not reach significance (p > 0.05): a validation set of this size yields a noisy AUC estimate, so only large differences are detectable. With a genuinely independent external cohort the comparison becomes far more informative — an in-sample split can only detect within-cohort optimism.
+
+### 7. Building a Consensus Prognostic Signature
+
+Biomarker-discovery papers often need more than a single-model ROC: which *smallest* covariate set carries the prognostic signal? \[6\] The reference workflow is (1) univariate Cox screening, (2) **iterative LASSO** — run `cv.glmnet(family = "cox")` many times and rank variables by selection frequency, because a single run is seed-sensitive — then (3) add variables one by one in frequency order, stopping when the time-dependent AUC peaks. We illustrate with the `lung` clinical covariates standing in for genes:
+
+```{r}
+#| label: fig-7.1ConsensusSignature
+#| fig-cap: "Consensus signature construction: (A) AUC trajectory as covariates enter in LASSO-frequency order with the peak marked, (B) ROC at the peak, (C) high/low-risk Kaplan-Meier split."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 11
+#| fig-height: 3.8
+
+set.seed(111)
+cand <- c("age", "ph.ecog", "ph.karno", "pat.karno", "wt.loss", "meal.cal")
+
+## (1) univariate Cox screening
+cox_p <- sapply(cand, function(v) {
+  summary(coxph(Surv(time, status == 2) ~ lung2[[v]], data = lung2))$coefficients[, "Pr(>|z|)"]
+})
+sel <- names(cox_p)[cox_p < 0.2]           # generous screen for this small demo
+x_mat <- as.matrix(lung2[, sel])
+surv_obj <- Surv(lung2$time, lung2$status == 2)
+
+## (2) iterative LASSO — 20 runs here (the reference uses 500-1000)
+surv_lasso <- function(dummy) {
+  cvfit <- cv.glmnet(x_mat, surv_obj, nfolds = 10, alpha = 1, family = "cox")
+  r <- as.matrix(coef(cvfit, s = "lambda.min"))
+  rownames(r)[r != 0]
+}
+lasso_runs <- lapply(1:20, surv_lasso)
+freq <- sort(table(unlist(lasso_runs)), decreasing = TRUE)
+genes_freq <- names(freq)                  # variables in consensus order
+print(freq)
+
+## (3) add covariates one by one; stop at the time-dependent AUC peak
+pred_time <- 365
+auc <- c()
+roc_list <- list()
+for (i in seq_along(genes_freq)) {
+  fit_i <- coxph(Surv(time, status == 2) ~ .,
+                 data = lung2[, c("time", "status", genes_freq[seq_len(i)])])
+  rs <- predict(fit_i, type = "risk")
+  sr <- survivalROC::survivalROC(Stime = lung2$time,
+                                 status = as.integer(lung2$status == 2),
+                                 marker = rs, predict.time = pred_time, method = "KM")
+  auc[i] <- sr$AUC
+  roc_list[[i]] <- sr
+}
+best <- which.max(auc)
+prog_vars <- genes_freq[seq_len(best)]
+
+## final model, risk split, Kaplan-Meier
+fit_f  <- coxph(Surv(time, status == 2) ~ ., data = lung2[, c("time", "status", prog_vars)])
+risk   <- predict(fit_f, type = "risk")
+lung2$Risk <- ifelse(risk > median(risk), "High", "Low")
+fitd   <- survdiff(Surv(time, status == 2) ~ Risk, data = lung2)
+p_km   <- 1 - pchisq(fitd$chisq, length(fitd$n) - 1)
+fit_km <- survfit(Surv(time, status == 2) ~ Risk, data = lung2)
+
+## three-panel summary (base plots, as in the reference)
+red <- "#E94244"; blue <- "#4084BB"
+par(mfrow = c(1, 3), mgp = c(2, 0.5, 0), tcl = -0.25)
+
+plot(seq_along(auc), auc, type = "l", lwd = 2, col = blue,
+     ylim = range(auc) + c(-0.03, 0.03),
+     xlab = "Covariates in LASSO-frequency order", ylab = "AUC at 365 days",
+     main = sprintf("(%d covariates)", best))
+points(best, auc[best], pch = 16, cex = 1.5, col = red)
+
+plot(roc_list[[best]]$FP, roc_list[[best]]$TP, type = "l", lwd = 2, col = blue,
+     xlim = c(0, 1), ylim = c(0, 1), xlab = "1-Specificity", ylab = "Sensitivity",
+     main = sprintf("ROC at peak (AUC = %.2f)", auc[best]))
+lines(c(0, 1), c(0, 1), lty = 2, col = "grey40")
+
+plot(fit_km, col = c(red, blue), lwd = 1.5, mark.time = TRUE,
+     xlab = "Time (days)", ylab = "Overall survival",
+     main = sprintf("Risk split (log-rank p = %.3f)", p_km))
+```
+
+::: callout-tip
+**Practice tips**
+
+- The consensus idea matters more than any single run: selection frequency over many LASSO runs is far more stable than one optimal lambda, which flips with the cross-validation folds.
+- `survivalROC(..., method = "KM")` gives the censoring-aware AUC at a fixed horizon; `timeROC` (Section 5) is the more modern equivalent with confidence intervals.
+- With real expression data the loop stays identical — replace `cand` with gene columns and pass genes-as-rows expression to `cv.glmnet(x = t(expr))`.
+:::
+
 ## Application
 
 Time-dependent ROC curves are widely used in oncology prognostic-model papers to report discrimination at clinically meaningful horizons (1, 3, 5 years), often next to calibration curves and decision curve analysis. The panel below mirrors that publication layout with this tutorial's outputs: (A) standard ROC of the binary model and (B) time-dependent ROC at fixed horizons.
@@ -227,3 +359,7 @@ Time-dependent ROC curves are widely used in oncology prognostic-model papers to
 \[3\] Blanche P, Dartigues JF, Jacqmin-Gadda H. Estimating and comparing time-dependent areas under receiver operating characteristic curves for censored event times with competing risks. Stat Med. 2013;32(30):5381-5397. doi:10.1002/sim.5958
 
 \[4\] Sachs MC. plotROC: A Tool for Plotting ROC Curves. J Stat Softw Code Snippets. 2017;79(2):1-12. doi:10.18637/jss.v079.c02
+
+\[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[6\] Seven-gene prognostic signature reference figure: <https://clincancerres.aacrjournals.org/content/18/21/6001> (workflow reproduced by \[5\], FigureYa128Prognostic).

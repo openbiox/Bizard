@@ -24,7 +24,7 @@ A boxplot is defined by five key lines: the upper boundary, upper quartile, medi
 
 -   Programming Language: R
 
--   Packages: `ggplot2`, `dplyr`, `hrbrthemes`, `viridis`, `ggExtra`, `ggpubr`, `rstatix`, `ggtext`, `ggpmisc`
+-   Packages: `ggplot2`, `dplyr`, `hrbrthemes`, `viridis`, `ggExtra`, `ggpubr`, `rstatix`, `ggtext`, `ggpmisc`, `ggsignif`, `tidyr`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages
@@ -58,6 +58,9 @@ if (!requireNamespace("ggtext", quietly = TRUE)) {
 if (!requireNamespace("ggpmisc", quietly = TRUE)) {
   install.packages("ggpmisc")
 }
+if (!requireNamespace("ggsignif", quietly = TRUE)) {
+  install.packages("ggsignif")
+}
 
 # Loading the libraries
 library(readr)
@@ -70,6 +73,8 @@ library(rstatix)
 library(ggtext)
 library(ggpmisc)
 library(ggExtra)
+library(ggsignif)
+library(tidyr)
 ```
 
 ```{r}
@@ -429,6 +434,104 @@ The main customizable parameters of `ggMarginal()` are:
 -   `margins = 'x'` or `margins = 'y'` to display only one marginal plot
 ::: 
 
+### 8. Faceted Grouped Boxplot with Significance Tests
+
+A common clinical-question layout: does the expression of one gene separate two molecular groups **within each tumor stage**? \[9\] The design is group × grade, drawn as one boxplot panel per grade with a significance marker per panel. We simulate a glioma-like cohort (IDH mutation status × WHO grade):
+
+```{r}
+#| label: fig-8.1FacetSignif
+#| fig-cap: "Gene expression by mutation status, faceted by WHO grade; one Wilcoxon significance marker per panel."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 5
+
+set.seed(123)
+grades <- c("Grade I", "Grade II", "Grade III", "Grade IV")
+df8 <- data.frame(
+  grade = factor(rep(grades, times = c(60, 55, 50, 45)), levels = grades),
+  mut   = sample(c("Mut", "WT"), 210, replace = TRUE, prob = c(0.4, 0.6))
+)
+# Expression increases with grade and with the mutation
+df8$expr <- 2 +
+  as.numeric(df8$grade) * 0.5 +
+  ifelse(df8$mut == "Mut", 0.8, 0) +
+  rnorm(210, sd = 1)
+
+ggplot(df8, aes(x = mut, y = expr)) +
+  geom_boxplot(aes(color = mut), alpha = 0, width = 0.6, outlier.shape = NA) +
+  geom_jitter(aes(color = mut), width = 0.2, size = 0.7, alpha = 0.5) +
+  geom_signif(comparisons = list(c("Mut", "WT")),
+              map_signif_level = TRUE, test = "wilcox.test") +
+  facet_grid(. ~ grade) +
+  scale_color_manual(values = c("Mut" = "#B2182B", "WT" = "#2166AC")) +
+  labs(title = "Expression by mutation status within each grade",
+       x = "IDH mutation status", y = "Expression (log2)") +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = "bold"))
+```
+
+`geom_signif()` runs its test **per facet panel** automatically, which is exactly the per-grade comparison the reference figure reports. When you need a custom significance table (e.g. adjusted P values), compute them with `rstatix` first and feed them to `stat_pvalue_manual()` instead.
+
+### 9. Batch Boxplots for Many Genes with Significance Stars
+
+ Screening a shortlist of genes means repeating the same boxplot per gene \[9\]. Instead of one plot per gene, pivot the expression matrix to long format, compute the per-gene test, and facet:
+
+```{r}
+#| label: fig-9.1BatchStars
+#| fig-cap: "Eight genes in one faceted figure, each panel annotated with its one-way ANOVA P value and significance stars."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 11
+#| fig-height: 7
+
+set.seed(42)
+genes9 <- paste0("Gene", 1:8)
+stage  <- factor(rep(paste0("stage", 1:3), each = 10))
+
+expr9 <- sapply(seq_along(genes9), function(g) {
+  eff <- if (g %in% c(2, 5)) c(0, 1.5, 3) else c(0, 0, 0)  # stage-dependent genes
+  rnorm(30, mean = 3 + eff[stage], sd = 0.8)
+})
+colnames(expr9) <- genes9
+
+long9 <- data.frame(stage = stage, expr9) |>
+  pivot_longer(-stage, names_to = "gene", values_to = "expr")
+
+# One-way ANOVA per gene + significance stars
+sig9 <- do.call(rbind, lapply(genes9, function(g) {
+  p <- summary(aov(expr ~ stage, data = subset(long9, gene == g)))[[1]]$"Pr(>F)"[1]
+  data.frame(gene = g,
+             label = paste0("ANOVA p = ", sprintf("%.3f", p), " ",
+                            cut(p, c(0, 0.001, 0.01, 0.05, 1),
+                                labels = c("***", "**", "*", ""))))
+}))
+
+ymax9 <- tapply(long9$expr, long9$gene, max)
+
+ggplot(long9, aes(x = stage, y = expr, fill = stage)) +
+  geom_boxplot(outlier.shape = NA, width = 0.6) +
+  geom_text(data = sig9,
+            aes(x = 2, y = ymax9[gene] + 0.5, label = label),
+            inherit.aes = FALSE, size = 3) +
+  facet_wrap(~gene, scales = "free_y", ncol = 4) +
+  scale_fill_manual(values = c("#BDD7E7", "#6BAED6", "#2171B5")) +
+  labs(x = NULL, y = "Relative expression (log2)") +
+  theme_bw(base_size = 11) +
+  theme(legend.position = "none", strip.text = element_text(face = "italic"))
+```
+
+::: callout-tip
+**Practice tips**
+
+- `pivot_longer()` + `facet_wrap()` replaces the per-gene plotting loop; `scales = "free_y"` keeps each gene on its own scale.
+- `cut()` converts continuous P values into the conventional star codes (`***` < 0.001, `**` < 0.01, `*` < 0.05) in one line.
+- For a paired design (e.g. stage III vs stage I only), switch to `t.test(..., paired = TRUE)` and annotate that P instead.
+:::
+
 ## Application
 
 ### 1. Basic Boxplot
@@ -480,3 +583,5 @@ Figure C: Boxplot of genome size for organisms with H2A that does or does not co
 \[7\] Simon Garnier, Noam Ross, Robert Rudis, Antônio P. Camargo, Marco Sciaini, and Cédric Scherer (2024). viridis(Lite) - Colorblind-Friendly Color Maps for R. viridis package version 0.6.5.
 
 \[8\] Attali D, Baker C (2023). *ggExtra: Add Marginal Histograms to 'ggplot2', and More 'ggplot2' Enhancements*. R package version 0.10.1, <https://CRAN.R-project.org/package=ggExtra>.
+
+\[9\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

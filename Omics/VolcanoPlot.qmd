@@ -18,7 +18,7 @@ The volcano plot is used to compare the two groups and obtain the up-regulation/
 
 -   Programming language: R
 
--   Dependent packages: `tidyverse`; `readxl`; `ggrepel`
+-   Dependent packages: `tidyverse`; `readxl`; `ggrepel`; `cowplot`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages
@@ -31,11 +31,15 @@ if (!requireNamespace("readxl", quietly = TRUE)) {
 if (!requireNamespace("ggrepel", quietly = TRUE)) {
   install.packages("ggrepel")
 }
+if (!requireNamespace("cowplot", quietly = TRUE)) {
+  install.packages("cowplot")
+}
 
 # Load packages
 library(tidyverse)
 library(readxl)
 library(ggrepel)
+library(cowplot)
 ```
 
 ```{r}
@@ -179,3 +183,91 @@ p <-
 p
 ```
 
+
+### 3. Volcano Plot with Marginal Annotation Panels
+
+Publication volcanos often carry **summary information around the scatter**: the top strip reports the percentage of up- vs down-regulated features, the right strip shows how the significant features distribute across an annotation class (genomic region, gene type, pathway) \[1\]. The trick is to build three ggplots that share the scatter's x/y ranges and assemble them with cowplot's axis-insertion grobs, using `expand = c(0, 0)` so the panels touch.
+
+```{r}
+#| label: fig-3.1MarginalVolcano
+#| fig-cap: "Volcano plot with a top strip (up/down percentages) and a right strip (counts per feature class)."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6
+
+set.seed(2026)
+# Attach a simulated annotation class (gene type) to the tutorial's DE table
+data$feature <- sample(c("Protein-coding", "lncRNA", "Pseudogene", "Intergenic"),
+                       nrow(data), replace = TRUE,
+                       prob = c(0.5, 0.25, 0.1, 0.15))
+feat_colors <- c("Protein-coding" = "#445EAD", "lncRNA" = "#70C17A",
+                 "Pseudogene" = "#F7C07C", "Intergenic" = "#BEBEBE")
+
+xr <- grDevices::extendrange(data$log2FC, f = 0.05)  # shared x range (center panel + top strip)
+
+## Center: volcano colored by feature class
+p1 <- ggplot(data, aes(x = log2FC, y = log10P)) +
+  geom_point(aes(color = feature), size = 0.8, alpha = 0.6) +
+  geom_vline(xintercept = c(-2, 2), linetype = "dashed", colour = "grey40") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", colour = "grey40") +
+  scale_colour_manual(values = feat_colors) +
+  coord_cartesian(xlim = xr, expand = c(0, 0)) +
+  labs(x = "log2 fold change", y = expression(-log[10](P))) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+
+## Top: percentage of up- vs down-regulated significant features
+sig <- data %>% filter(significant != "Not significant")
+pct <- sig %>% count(significant) %>% mutate(p = n / sum(n))
+# Explicit segment geometry keeps bar and labels in register; rows are in
+# count() order (alphabetical), so the first row fills the TOP segment
+pct$ymax <- 1 - cumsum(pct$p)
+pct$ymin <- pct$ymax + pct$p
+pct$ymid <- (pct$ymin + pct$ymax) / 2
+p3 <- ggplot() +
+  geom_rect(data = pct, inherit.aes = FALSE,
+            aes(xmin = xr[1], xmax = xr[2],
+                ymin = ymin, ymax = ymax, fill = significant),
+            alpha = 0.35) +
+  geom_text(data = pct, inherit.aes = FALSE,
+            aes(x = (xr[1] + xr[2]) / 2, y = ymid,
+                label = paste0(significant, ": ", sprintf("%.1f", 100 * p), "%")),
+            size = 3.2) +
+  scale_fill_manual(values = c(Upregulated = "#B2182B", Downregulated = "#2166AC")) +
+  scale_x_continuous(limits = xr, expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
+  theme_void()
+
+## Right: significant features per annotation class (shares feature colors)
+rsig <- sig %>% count(feature)
+yr <- c(0, max(rsig$n) * 1.15)
+p2 <- ggplot(rsig, aes(x = n, y = feature, fill = feature)) +
+  geom_col(width = 0.7, show.legend = FALSE) +
+  geom_text(aes(label = n), hjust = -0.2, size = 3) +
+  scale_fill_manual(values = feat_colors) +
+  scale_x_continuous(limits = yr, expand = c(0, 0)) +
+  labs(x = "Significant features") +
+  theme_classic(base_size = 10) +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.line.y = element_blank(), axis.title.y = element_blank(),
+        plot.margin = margin(0, 5, 0, 2))
+
+## Assemble: top strip above, right strip beside — panels touch (expand = 0)
+combined <- insert_xaxis_grob(p1, p3, position = "top", height = unit(0.35, "in"))
+combined <- insert_yaxis_grob(combined, p2, position = "right", width = unit(1.7, "in"))
+ggdraw(combined)
+```
+
+::: callout-tip
+**Practice tips**
+
+- `grDevices::extendrange()` gives the scatter's x limits once and reuses them in the top strip, so the stacked bar spans exactly the volcano's width.
+- The two `expand = c(0, 0)` scale settings (center and strips) are what make the panels touch; with the default expansion the strips drift out of register.
+- `insert_xaxis_grob()` / `insert_yaxis_grob()` come from cowplot and keep the main panel's size; the alternative is `patchwork::plot_layout` with `design` — both need aligned limits.
+:::
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

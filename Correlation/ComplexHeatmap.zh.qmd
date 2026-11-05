@@ -416,6 +416,75 @@ Heatmap(small_mat, name = "Methylation", col = col_fun,
 添加图形
 :::
 
+### 6. 按相关系数排序的带注释热图
+
+在生物标志物研究中 \[4\]，列是**按某个目标基因表达量排序**的样本，行是与目标基因显著正/负相关的基因，顶部注释承载亚型/突变信息。关闭聚类后，目标基因的梯度（以及相关基因的楔形分布）一目了然——这就是无聚类的相关性热图。
+
+```{r}
+#| label: fig-6.1CorrOrdered
+#| fig-cap: "样本按目标基因表达量排序；基因通过行分割拆成正/负相关两个区块。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6
+
+set.seed(2026)
+n_sam  <- 40
+genes  <- paste0("Gene", sprintf("%03d", 1:299))
+target <- rnorm(n_sam)                                   # 目标基因（类 TIM-3）表达量
+subtype <- factor(sample(c("Classical", "Mesenchymal", "Neural", "Proneural"), n_sam, TRUE))
+idh     <- factor(sample(c("WT", "Mutant"), n_sam, TRUE, prob = c(0.6, 0.4)))
+
+mat <- matrix(rnorm(299 * n_sam), nrow = 299,
+              dimnames = list(genes, paste0("S", seq_len(n_sam))))
+# 模拟生物学：15 个基因与目标基因共变，10 个反向变化
+pos_seed <- sample(genes, 15)
+neg_seed <- sample(setdiff(genes, pos_seed), 10)
+mat[pos_seed, ] <- mat[pos_seed, ] + outer(rep(1, 15), target) * 0.9
+mat[neg_seed, ] <- mat[neg_seed, ] - outer(rep(1, 10), target) * 0.9
+mat <- rbind(mat, "TARGET" = target)                     # 加入目标基因行
+
+# 与目标基因相关的基因：正相关 top-15、负相关 top-10
+cors      <- cor(t(mat[genes, ]), mat["TARGET", ])
+pos_genes <- names(sort(cors[, 1], decreasing = TRUE))[1:15]
+neg_genes <- names(sort(cors[, 1], decreasing = FALSE))[1:10]
+
+sel  <- c(pos_genes, neg_genes)                          # 行：正相关块在前
+mat_sel <- t(scale(t(mat[sel, ])))                       # 逐行 z-score
+mat_sel[mat_sel >  3] <-  3
+mat_sel[mat_sel < -3] <- -3
+ord    <- order(mat["TARGET", ])                         # 列按目标基因排序
+mat_sel <- mat_sel[, ord]
+
+col_fun    <- circlize::colorRamp2(c(-3, 0, 3), c("#6699CC", "white", "#FF3C38"))
+target_fun <- circlize::colorRamp2(c(-2, 0, 2), c("#2166ac", "white", "#b2182b"))
+
+ha <- HeatmapAnnotation(
+  `Target expression` = mat["TARGET", ord],
+  Subtype = droplevels(subtype)[ord],
+  IDH     = idh[ord],
+  col = list(`Target expression` = target_fun,
+             Subtype = c(Classical = "#CEDC7C", Mesenchymal = "#EA6767",
+                         Neural = "#F7C07C", Proneural = "#445EAD"),
+             IDH = c(WT = "#EA6767", Mutant = "#70C17A")))
+
+Heatmap(mat_sel, name = "Z-score", top_annotation = ha,
+        col = col_fun,
+        cluster_rows = FALSE, cluster_columns = FALSE,   # 保留目标基因梯度
+        row_split = factor(rep(c("Positively correlated", "Negatively correlated"),
+                               c(length(pos_genes), length(neg_genes)))),
+        border = TRUE)
+```
+
+::: callout-tip
+**实践要点**
+
+- 这里的行分割由**分析结果驱动**（相关系数的符号），而非聚类——`row_split` 接受任意因子。
+- 绘图前先按目标基因对列排序，相关性强弱才会呈现为可见的楔形；务必保持 `cluster_columns = FALSE`，否则排序会被聚类破坏。
+- 真实数据请用 `cor.test()`（Spearman）加 rho 与 P 值阈值来筛选相关基因，参考工作流如此实现。
+:::
+
 ## 应用场景
 
 ::: {#fig-ComplexHeatmapApplications}
@@ -441,4 +510,6 @@ Heatmap(small_mat, name = "Methylation", col = col_fun,
 \[6\] Auguie B (2017). gridExtra: Miscellaneous Functions for "Grid" Graphics. R package version 2.3, CRAN: Package gridExtra.
 
 \[7\] Kolde R (2019). pheatmap: Pretty Heatmaps. R package version 1.0.12, CRAN: Package pheatmap.
+
+\[8\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 

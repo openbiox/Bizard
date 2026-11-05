@@ -284,6 +284,93 @@ p <- venn.diagram(
 );grid::grid.draw(p)
 ```
 
+### 4. 处理真实的差异分析结果表
+
+实际工作中输入往往不是现成的 list，而是多张差异分析结果表（来自 DESeq2/edgeR/limma 或不同比较组合）。常见工作流 \[5\] 是：按 FDR（和上调方向）筛选每张表，把显著基因 ID 收进一个**命名 list**，绘制韦恩图，再把各重叠区域的基因导出为补充表格。
+
+```{r}
+#| label: fig-4.1RealDEG
+#| fig-cap: "由三张模拟差异分析结果表经 FDR 筛选后构建的韦恩图。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+# 模拟三张差异分析结果表（id, log2FC, FDR）
+set.seed(123)
+mk_deg <- function(n) {
+  data.frame(id = sample(genes, n),
+             log2FC = rnorm(n, sd = 2),
+             FDR = runif(n))
+}
+deg_deseq2 <- mk_deg(400)
+deg_edger  <- mk_deg(400)
+deg_limma  <- mk_deg(400)
+
+adjcutoff <- 0.05
+sig_list <- list(
+  DESeq2 = deg_deseq2$id[deg_deseq2$FDR <= adjcutoff & deg_deseq2$log2FC > 0],
+  edgeR  = deg_edger$id[deg_edger$FDR <= adjcutoff & deg_edger$log2FC > 0],
+  limma  = deg_limma$id[deg_limma$FDR <= adjcutoff & deg_limma$log2FC > 0]
+)
+sapply(sig_list, length)
+
+ggVennDiagram(sig_list, label_alpha = 0) +
+  scale_fill_gradient(low = "white", high = "lightblue")
+```
+
+填充渐变此时编码的是跨方法对比下的区域大小——被更多方法共享（或基因更多）的区域颜色更深，方法间的一致性一眼可读。要导出各区域的基因，可从集合对象中提取区域数据并写入 Excel 工作簿（非常适合作为论文补充材料）：
+
+```{r}
+#| label: fig-4.2RegionItems
+#| warning: false
+#| message: false
+
+region_data <- process_region_data(Venn(sig_list))
+
+region_export <- data.frame(
+  region = region_data$name,
+  count  = lengths(region_data$item),
+  items  = sapply(region_data$item, paste, collapse = ", ")
+)
+region_export
+openxlsx::write.xlsx(region_export, file.path(tempdir(), "venn_regions.xlsx"), rowNames = FALSE)
+```
+
+如果想在浏览器中探索，`ggVennDiagram(sig_list, show_intersect = TRUE)` 会打开一个交互式 HTML 表格，列出每个区域的成员（需要合适的查看器；本静态教程中不渲染）。
+
+### 5. 百分比标签 + 按区域计数渐变填充
+
+经典的 venny 网页工具有一套流行约定：**颜色深浅按区域大小缩放**，标签可以显示百分比 \[6\]。ggVennDiagram 两者都支持：填充渐变本来就由各区域 count 驱动，`label = "percent"` 把标签切换为占并集的比例。在四集合图上使用这一组合，即可复现 `colorfulVennPlot::plotVenn4d()` 参考工作流的效果，而无需手工计算 15 个区域的计数。
+
+```{r}
+#| label: fig-5.1PercentFill
+#| fig-cap: "四集合韦恩图：填充深浅按区域计数缩放，标签显示各区域占并集的比例。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+
+set.seed(7)
+sets4 <- list(
+  G1 = sample(genes, 260),
+  G2 = sample(genes, 320),
+  G3 = sample(genes, 210),
+  G4 = sample(genes, 280)
+)
+
+ggVennDiagram(sets4, label = "percent", label_alpha = 0,
+              label_percent_digit = 1) +
+  scale_fill_gradient(low = "#F7FCF5", high = "#4D9342") +  # YlGn 风格色带
+  theme(legend.position = "bottom")
+```
+
+::: callout-tip
+**实践要点**
+
+- 渐变映射的是**每个区域的 count**（全图统一标尺），最深的区域就是最大的区域——集合大小悬殊时多数区域会落在浅色端；影响可读性可改用分箱色标（`scale_fill_binned()`）。
+- 需要在图注里给出精确数字时，用 `label = "both"` 同时显示 count 和百分比。
+- 超过四个集合时圆形布局会退化——请改用 UpSet（见 [UpSet Plot](UpSetPlot.html)），参考工作流同样如此建议。
+:::
+
 ## 应用场景
 
 ::: {#fig-HistApplications}
@@ -297,4 +384,9 @@ p <- venn.diagram(
 ## 参考文献
 
 \[1\] Yu Y, Li W, Liu Y, Liu Y, Zhang Q, Ouyang Y, Ding W, Xue Y, Zou Y, Yan J, Jia A, Yan J, Hao X, Gou Y, Zhai Z, Liu L, Zheng Y, Zhang B, Xu J, Yang N, Xiao Y, Zhuo L, Lai Z, Yin P, Liu HJ, Fernie AR, Jackson D, Yan J. A Zea genus-specific micropeptide controls kernel dehydration in maize. Cell. 2025 Jan 9;188(1):44-59.e21. doi: 10.1016/j.cell.2024.10.030. Epub 2024 Nov 12. PMID: 39536747.
+
+\[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+
+\[6\] venny 2.1.0 交互式网页工具. <http://bioinfogp.cnb.csic.es/tools/venny/>
 
