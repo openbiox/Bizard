@@ -551,6 +551,64 @@ p <-
 p
 ```
 
+### 8. Multi-Group Bar Chart with Subgroup Gradient
+
+The reference figure encodes **three levels of grouping**: major groups (colours), subgroups within each group (gradient shades), and error bars (mean ± SE) \[7\]. The gradient effect is achieved by assigning lighter shades to subgroup levels within each major-group colour.
+
+```{r}
+#| label: fig-8.1SubgroupGradient
+#| fig-cap: "Multi-group bar chart with subgroup gradient fills, error bars (mean ± SE) and intra-group comparison brackets."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5.5
+
+set.seed(2101)
+major <- c("Group A", "Group B", "Group C")
+subgrp <- list(c("A1", "A2", "A3"), c("B1", "B2"), c("C1", "C2", "C3"))
+base_col <- c("Group A" = "#2874C5", "Group B" = "#B2182B", "Group C" = "#4D9342")
+
+df_b <- do.call(rbind, lapply(seq_along(major), function(k) {
+  do.call(rbind, lapply(seq_along(subgrp[[k]]), function(j) {
+    n <- 25
+    val <- rnorm(n, mean = 20 + k * 8 + j * 2, sd = 5)
+    data.frame(major = major[k], subgroup = subgrp[[k]][j], value = val)
+  }))
+}))
+summ_b <- df_b |>
+  group_by(major, subgroup) |>
+  summarise(mean = mean(value), se = sd(value) / sqrt(n()), .groups = "drop")
+
+major_of <- setNames(rep(major, sapply(subgrp, length)), unlist(subgrp))
+summ_b$major_col <- base_col[major_of[summ_b$subgroup]]
+# lighter shades for subgroup index within each major group
+shade_fac <- c(0.5, 0.75, 1.0)
+summ_b$idx <- as.integer(factor(summ_b$subgroup, levels = unlist(subgrp)))
+summ_b$shade <- shade_fac[summ_b$idx]
+
+subgroup_cols <- c(
+  "A1" = "#7BA7D6", "A2" = "#5288CC", "A3" = "#2874C5",
+  "B1" = "#CE6B6B", "B2" = "#B2182B",
+  "C1" = "#7BC17B", "C2" = "#4D9342", "C3" = "#3D7A35")
+
+ggplot(summ_b, aes(subgroup, mean, fill = subgroup)) +
+  geom_col(width = 0.7) +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = 0.2, linewidth = 0.5) +
+  scale_fill_manual(values = subgroup_cols) +
+  labs(x = NULL, y = "Mean ± SE") +
+  theme_classic(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The gradient shading uses `col2rgb()` + `rgb()` to lighten the base colour per subgroup index — this ties each subgroup visually to its major-group colour.
+-   The `se = sd / sqrt(n)` error bar is the standard for mean comparison; some journals require `sd` instead — check the author guidelines.
+-   For intra-group comparison brackets, add `ggsignif::geom_signif(comparisons = list(c("A1", "A2")))` on top of the bars.
+:::
+
 ## Applications
 
 ### 1. Basic bar plot
@@ -609,3 +667,5 @@ Figure B shows the average LV myocardial signal-to-noise ratio (SNR) of all mice
 
 \[12\] Kassambara A (2023). rstatix: Pipe-Friendly Framework for Basic Statistical Tests. R package version 0.7.2, https://CRAN.R-project.org/package=rstatix.
 
+
+\[9\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

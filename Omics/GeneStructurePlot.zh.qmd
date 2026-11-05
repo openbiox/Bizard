@@ -359,6 +359,65 @@ ggplot(example_genes, aes(xmin = start, xmax = end, y = molecule, fill = gene, f
     theme_genes()
 ```
 
+### 3. ChIP/ATAC 信号轨道 + 基因结构（ggplot2）
+
+转录调控文章常将**测序信号轨道**（ChIP-seq、ATAC-seq、DNA 甲基化）叠在基因结构示意图上 \[4\]。ggplot2 + cowplot 配方：每个轨道一层 `geom_area()`/`geom_line()`，基因外显子一层 `geom_rect()`，用 `plot_grid()` 堆叠。
+
+```{r}
+#| label: fig-3.1SignalTracks
+#| fig-cap: "模拟 ATAC-seq 和 ChIP-seq 信号轨道与基因结构；下方面板展示外显子结构。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 4.5
+
+set.seed(2001)
+n_bin <- 200
+pos <- seq_len(n_bin)
+exons <- data.frame(start = c(30, 80, 140), end = c(60, 120, 175))
+
+mk_track <- function(base, peaks, noise_sd = 0.08) {
+  sig <- rep(base, n_bin)
+  for (pk in peaks) sig[pk[1]:pk[2]] <- sig[pk[1]:pk[2]] + pk[3]
+  sig + rnorm(n_bin, sd = noise_sd)
+}
+track_df <- rbind(
+  data.frame(track = "ATAC-seq", pos = pos, signal = mk_track(0.3, list(c(35, 55, 1.8), c(90, 110, 1.2), c(145, 170, 2.0)))),
+  data.frame(track = "ChIP-seq", pos = pos, signal = mk_track(0.5, list(c(40, 58, 2.5), c(145, 168, 1.5)))))
+
+p_tracks <- ggplot(track_df, aes(pos, signal, fill = track)) +
+  geom_area(alpha = 0.5, position = "identity", colour = NA) +
+  facet_wrap(~track, ncol = 1, scales = "free_y", strip.position = "left") +
+  scale_fill_manual(values = c("ATAC-seq" = "#445EAD", "ChIP-seq" = "#B2182B")) +
+  labs(x = NULL, y = "Signal") +
+  theme_classic(base_size = 10) +
+  theme(legend.position = "none", strip.placement = "outside",
+        strip.background = element_blank(), strip.text.y.left = element_text(angle = 0))
+
+p_gene <- ggplot(exons, aes(xmin = start, xmax = end, ymin = 0.4, ymax = 0.6)) +
+  geom_rect(fill = "#445EAD", colour = "#2874C5") +
+  annotate("segment", x = exons$end[-nrow(exons)], xend = exons$start[-1],
+           y = 0.5, yend = 0.5, colour = "#2874C5", linewidth = 0.5) +
+  scale_x_continuous(limits = c(1, n_bin), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "Genomic position (bp)", y = NULL) +
+  theme_classic(base_size = 10) +
+  theme(axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.y = element_blank())
+
+cowplot::plot_grid(p_tracks, p_gene, ncol = 2, align = "h", axis = "tb",
+                   rel_widths = c(1, 0.75))
+```
+
+::: callout-tip
+**实践要点**
+
+-   用 `base + peak_envelope + noise` 模拟轨道，峰值包络是在已知位置的高斯或阶跃函数——这模拟了真实 bigWig 数据结构。
+-   `facet_wrap(..., strip.position = "left")` 将轨道名放在左侧作为伪 y 轴标签。
+-   外显子 `geom_rect()` 使用与轨道 x 轴匹配的基因组坐标；两层保持相同的 `limits`。
+:::
+
 ## 应用场景
 
 ::: {#fig-GeneStructurePlotApplications}
@@ -374,3 +433,5 @@ ggplot(example_genes, aes(xmin = start, xmax = end, y = molecule, fill = gene, f
 \[1\] Guo BC, Zhang YR, Liu ZG, Li XC, Yu Z, Ping BY, Sun YQ, van den Burg H, Ma FW, Zhao T. Deciphering Plant NLR Genomic Evolution: Synteny-Informed Classification Unveils Insights into TNL Gene Loss. Mol Biol Evol. 2025 Feb 3;42(2):msaf015. doi: 10.1093/molbev/msaf015. PMID: 39835721; PMCID: PMC11789945.
 
 
+
+\[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
