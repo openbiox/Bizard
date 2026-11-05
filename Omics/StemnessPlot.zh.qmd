@@ -1,0 +1,146 @@
+---
+title: "干性指数（mRNAsi）图"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+基于 mRNA 表达的干性指数（mRNAsi）是干性基因 signature 表达矩阵的**第一主成分**，重标到 0–1 \[1\]。论文图把样本按 mRNAsi 排序，并在下方以色条堆叠已知临床特征——读者一眼看到哪些亚组处于去分化端。
+
+## Example
+
+![](../images/Omics/StemnessPlot_demo.png){fig-alt="StemnessPlot DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包： `ComplexHeatmap`; `ggplot2`; `dplyr`; `circlize`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装必要的包
+if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
+  BiocManager::install("ComplexHeatmap")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("circlize", quietly = TRUE)) {
+  install.packages("circlize")
+}
+
+# 加载包
+library(ComplexHeatmap)
+library(ggplot2)
+library(dplyr)
+library(circlize)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+真实数据中，mRNAsi 由肿瘤表达矩阵向 PCBC 干性 signature 投影得到（参考工作流的 `pcbc-stemsig` 文件）。我们直接模拟投影输出：60 个髓母细胞瘤样样本、连续 mRNAsi 与两个临床特征。
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(1101)
+n_sam <- 60
+samples <- paste0("MB-", sprintf("%02d", 1:n_sam))
+subgroup <- sample(c("Group3", "SHH", "Group4", "WNT"), n_sam,
+                   replace = TRUE, prob = c(0.3, 0.3, 0.3, 0.1))
+metastasis <- sample(c("M0", "M1"), n_sam, replace = TRUE, prob = c(0.6, 0.4))
+# 潜在干性 z 分：Group3/Group4 高、WNT 低、M1 更高（同参考图）——
+# 效应加完之后再重标到 0..1，且不再排序，否则数值与临床特征脱钩
+z <- rnorm(n_sam) + 0.9 * (subgroup %in% c("Group3", "Group4")) -
+  0.8 * (subgroup == "WNT") + 0.3 * (metastasis == "M1")
+mRNAsi <- pnorm(z)
+
+clin <- data.frame(sample = samples,
+                   mRNAsi = mRNAsi,
+                   Subgroup = subgroup,
+                   Metastasis = metastasis)
+head(clin, 3)
+```
+
+## Visualization
+
+### 1. 按 mRNAsi 排序的样本与临床色条
+
+```{r}
+#| label: fig-1.1mRNAsiHeatmap
+#| fig-cap: "样本按 mRNAsi 排序（顶部渐变行）+ 亚组与转移色条；去分化端富集 Group 3/4 与 M1。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 3
+
+ord <- order(clin$mRNAsi)
+mat <- rbind(mRNAsi = clin$mRNAsi[ord])
+rownames(mat) <- "mRNAsi"
+col_fun <- circlize::colorRamp2(c(0, 0.5, 1), c("#445EAD", "white", "#B31E22"))
+
+ha_top <- HeatmapAnnotation(
+  mRNAsi = anno_simple(mat["mRNAsi", ], col = col_fun),
+  Subgroup = clin$Subgroup[ord],
+  Metastasis = clin$Metastasis[ord],
+  col = list(Subgroup = c("Group3" = "#B31E22", "SHH" = "#529B40",
+                          "Group4" = "#383D8E", "WNT" = "#EABF00"),
+             Metastasis = c(M0 = "#dcddde", M1 = "#700353")),
+  annotation_name_side = "left")
+
+Heatmap(mat, name = "mRNAsi", top_annotation = ha_top,
+        col = col_fun, cluster_columns = FALSE, cluster_rows = FALSE,
+        show_column_names = FALSE, show_row_names = FALSE,
+        border = TRUE, width = unit(18, "cm"))
+```
+
+### 2. 各分子亚组的 mRNAsi
+
+```{r}
+#| label: fig-1.2mRNAsiBox
+#| fig-cap: "各髓母细胞瘤亚组的 mRNAsi；标注 Kruskal-Wallis p 值。"
+#| out.width: "65%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4.5
+
+p_kw <- kruskal.test(mRNAsi ~ Subgroup, data = clin)$p.value
+sub_order <- c("WNT", "SHH", "Group4", "Group3")
+
+ggplot(clin, aes(factor(Subgroup, sub_order), mRNAsi, fill = Subgroup)) +
+  geom_boxplot(outlier.shape = NA, width = 0.6) +
+  geom_jitter(width = 0.12, size = 0.8, alpha = 0.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("Group3" = "#B31E22", "SHH" = "#529B40",
+                               "Group4" = "#383D8E", "WNT" = "#EABF00")) +
+  labs(title = sprintf("mRNAsi by subgroup (Kruskal-Wallis %s)",
+       ifelse(p_kw < 0.001, "p < 0.001", sprintf("p = %.3f", p_kw))),
+       x = NULL, y = "mRNAsi", fill = NULL) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   mDNAsi（甲基化版指数）版式完全相同——换掉顶行重跑即可。
+-   色条必须与指数同序；给未排序的矩阵加注释会毁掉整张图的要点。
+-   真实数据用 `prcomp()` 把 log2 表达矩阵投影到 PCBC signature 取 PC1（`mRNAsi = PC1 / max(PC1)` 重标到 0–1）；参考工作流自带 signature 文件。
+:::
+
+## Application
+
+干性指数用于跨分子亚组、分期和治疗方式比较；高 mRNAsi 肿瘤通常是队列中去分化、侵袭性一端。排序色条图是标准的总览。
+
+## Reference
+
+\[1\] Malta TM, Sokolov A, Gentles AJ, et al. Machine learning identifies stemness features associated with oncogenic dedifferentiation. Cell. 2018;173(2):338-354.e15. doi:10.1016/j.cell.2018.03.034
+
+\[2\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

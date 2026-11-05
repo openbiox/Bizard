@@ -571,6 +571,62 @@ p
 ```
 
 
+### 10. Enriched Two-Group Scatter + Fisher r-to-z
+
+Two upgrades over a plain scatter, from the reference figure \[5\]: (1) **point size encodes |y − x|**, so samples whose two measurements disagree grow visually; (2) two groups share one panel, and **Fisher's r-to-z transformation** tests whether their correlation coefficients differ significantly.
+
+```{r}
+#| label: fig-10.1TwoGroupCor
+#| fig-cap: "Age vs DNAmAge in normal and tumour samples; size = |age - DNAmAge|, colour = group, each group's regression line; Fisher r-to-z compares the two correlations."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5
+
+set.seed(1301)
+mk_group <- function(n, r, offset) {
+  age <- sample(20:70, n, replace = TRUE)
+  dnam <- age * r + rnorm(n, sd = 12 * sqrt(1 - r^2)) + offset
+  data.frame(age = age, dnam = pmax(dnam, 0))
+}
+norm <- mk_group(150, 0.90, 8)
+tum <- mk_group(150, 0.55, 4)
+norm$group <- "Normal"; tum$group <- "Tumour"
+df_sc <- rbind(norm, tum)
+
+test2cor <- function(x1, y1, x2, y2) {
+  r1 <- cor(x1, y1); r2 <- cor(x2, y2)
+  n1 <- length(x1); n2 <- length(x2)
+  z1 <- atanh(r1); z2 <- atanh(r2)
+  se <- sqrt(1/(n1 - 3) + 1/(n2 - 3))
+  z <- (z1 - z2)/se
+  p <- 2 * pnorm(-abs(z))
+  list(r1 = r1, r2 = r2, p = p)
+}
+cor_cmp <- test2cor(norm$age, norm$dnam, tum$age, tum$dnam)
+
+ggplot(df_sc, aes(age, dnam, colour = group, size = abs(dnam - age))) +
+  geom_point(alpha = 0.55) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
+  scale_colour_manual(values = c(Normal = "#2874C5", Tumour = "#B2182B")) +
+  scale_size_continuous(range = c(0.5, 4), name = "|age − DNAmAge|") +
+  labs(title = sprintf("Normal r = %.2f vs Tumour r = %.2f (Fisher z p %s)",
+       cor_cmp$r1, cor_cmp$r2,
+       ifelse(cor_cmp$p < 0.001, "< 0.001", sprintf("= %.3f", cor_cmp$p))),
+       x = "Chronological age", y = "DNAm age", colour = NULL) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "top")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Fisher's r-to-z: `z = atanh(r)`, then compare `z1 − z2` against `sqrt(1/(n1−3) + 1/(n2−3))` — a two-sample z test on the transformed correlations. It answers "is r1 *significantly* bigger than r2", which comparing each p value against 0.05 cannot.
+-   Size = |y − x| only makes sense when both axes share units and scale (age vs methylation age, predicted vs observed); otherwise the sizes are meaningless.
+-   Keep both regression lines but drop the per-group p values from the legend — the Fisher z p is the comparison the panel is about.
+:::
+
 ## Applications
 
 ::: {#fig-ScatterApplications}
@@ -604,3 +660,5 @@ The figure explores the association between CXCR4 and various immune cells. \[3\
 \[2\] Xie J, Chen L, Wu D, et al. Significance of liquid-liquid phase separation (LLPS)-related genes in breast cancer: a multi-omics analysis\[J\]. Aging (Albany NY), 2023,15(12):5592-5610.
 
 \[3\]Zhang S, Hou L, Sun Q. Correlation analysis of intestinal flora and immune function in patients with primary hepatocellular carcinoma\[J\]. J Gastrointest Oncol, 2022,13(3):1308-1316.
+
+\[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

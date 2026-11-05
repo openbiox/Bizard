@@ -1,0 +1,152 @@
+---
+title: "单细胞通路评分（GSVA）"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+单细胞亚群注释完成后，反复出现的问题是：某条通路在**每个细胞或每个群**里活性如何、两个群之间是否有差异 \[1\]。GSVA 为每个细胞对基因集打分；随后用热图和箱线图在群间比较。本教程在模拟的"细胞 × 基因"矩阵上跑该工作流——参考流程（matrix → 分组 → GSVA → 出图）的绘图半程。
+
+## Example
+
+![](../images/Omics/ScGsvaPlot_demo.png){fig-alt="ScGsvaPlot DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包： `ComplexHeatmap`; `ggplot2`; `dplyr`; `tidyr`; `circlize`; `ggpubr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# 安装必要的包
+if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
+  BiocManager::install("ComplexHeatmap")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("tidyr", quietly = TRUE)) {
+  install.packages("tidyr")
+}
+if (!requireNamespace("circlize", quietly = TRUE)) {
+  install.packages("circlize")
+}
+if (!requireNamespace("ggpubr", quietly = TRUE)) {
+  install.packages("ggpubr")
+}
+
+# 加载包
+library(ComplexHeatmap)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(circlize)
+library(ggpubr)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+模拟两个内皮样亚群（EC1、EC2）共 400 个细胞的 log 归一化表达，以及六条植入群特异活性的 hallmark 式通路——即参考工作流中 GSVA 之前的状态。
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(1001)
+n_cell <- 200                                     # per cluster
+genes <- paste0("Gene", sprintf("%04d", 1:300))
+cells <- c(paste0("EC1_", sprintf("%03d", 1:n_cell)),
+           paste0("EC2_", sprintf("%03d", 1:n_cell)))
+cluster <- factor(rep(c("EC1", "EC2"), each = n_cell), levels = c("EC1", "EC2"))
+
+expr <- matrix(rnorm(300 * 2 * n_cell, sd = 0.5), nrow = 300,
+               dimnames = list(genes, cells))
+pathways <- list(
+  "Angiogenesis"       = 1:40,    "EC activation"     = 41:80,
+  "Hypoxia"            = 81:110,  "Leukocyte migration" = 111:150,
+  "Coagulation"        = 151:180, "Antigen processing"  = 181:210
+)
+signal <- c(1.4, 1.0, 0.6, -0.3, 0, 0)             # EC1 > EC2 for the first three
+for (k in seq_along(pathways)) {
+  pg <- names(pathways)[k]
+  expr[pathways[[pg]], cluster == "EC1"] <-
+    expr[pathways[[pg]], cluster == "EC1"] + signal[k]
+}
+```
+
+## Visualization
+
+### 1. 逐细胞通路评分（GSVA 热图）
+
+```{r}
+#| label: fig-1.1GsvaHeatmap
+#| fig-cap: "每个细胞（列）的通路评分，按亚群分块；EC1 携带血管生成/激活/缺氧程序。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4
+
+## 免依赖的逐细胞集合评分（集合基因均值）；参考流程在归一化矩阵上
+## 用 GSVA::gsva()——输入与版式一致
+score_mat <- t(sapply(pathways, function(idx) colMeans(expr[idx, , drop = FALSE])))
+score_z <- t(scale(t(score_mat)))
+
+ha <- HeatmapAnnotation(Cluster = cluster,
+                        col = list(Cluster = c(EC1 = "#B31E22", EC2 = "#529B40")),
+                        show_legend = FALSE)
+col_fun <- circlize::colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B"))
+Heatmap(score_z, name = "Score (z)",
+        top_annotation = ha, col = col_fun,
+        cluster_columns = FALSE,
+        column_split = cluster, column_gap = unit(1.5, "mm"),
+        row_names_gp = grid::gpar(fontsize = 9),
+        show_column_names = FALSE, border = TRUE)
+```
+
+### 2. 群间比较某条通路
+
+```{r}
+#| label: fig-1.2GsvaBox
+#| fig-cap: "EC1 与 EC2 中每个细胞的血管生成评分；标注 Wilcoxon p 值。"
+#| out.width: "60%"
+#| warning: false
+#| message: false
+#| fig-width: 5.5
+#| fig-height: 4.5
+
+box_df <- data.frame(cluster = cluster,
+                     score = score_mat["Angiogenesis", ])
+p_kw <- wilcox.test(score ~ cluster, data = box_df)$p.value
+
+ggplot(box_df, aes(cluster, score, fill = cluster)) +
+  geom_boxplot(outlier.shape = NA, width = 0.55) +
+  geom_jitter(width = 0.15, size = 0.5, alpha = 0.4, show.legend = FALSE) +
+  scale_fill_manual(values = c(EC1 = "#B31E22", EC2 = "#529B40")) +
+  labs(title = sprintf("Angiogenesis (Wilcoxon %s)",
+       ifelse(p_kw < 0.001, "p < 0.001", sprintf("p = %.3f", p_kw))),
+       x = NULL, y = "Pathway score", fill = NULL) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   在**归一化**数据上为细胞打分（Seurat 中为 `GetAssayData(slot = "data")`），切勿用 raw counts。
+-   真实数据在"细胞 × 基因"矩阵上运行 `GSVA::gsva(expr, pathways)`——热图与箱线两半与此完全一致。
+-   两个群对应一个 Wilcoxon 检验；更多群用逐通路 Kruskal-Wallis（`ggpubr::stat_compare_means(method = "kruskal.test")`）。
+:::
+
+## Application
+
+逐细胞通路评分是亚群注释的标准读出（内皮尖端 vs 主干细胞、肿瘤 vs 基质成纤维细胞）。热图揭示哪些程序定义哪个群；箱线图量化感兴趣的某条程序。
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
