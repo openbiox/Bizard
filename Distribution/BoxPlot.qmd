@@ -534,6 +534,68 @@ ggplot(long9, aes(x = stage, y = expr, fill = stage)) +
 - For a paired design (e.g. stage III vs stage I only), switch to `t.test(..., paired = TRUE)` and annotate that P instead.
 :::
 
+### 10. Signature-Score Boxplots Across Cell Clusters
+
+TME (tumour-microenvironment) studies compare **gene-set scores** — not raw genes — between sample groups \[10\]: each signature's score is the sign-corrected first principal component of its genes, scores are standardised so the panels share a scale, and a Kruskal-Wallis test per signature flags cluster differences with stars.
+
+```{r}
+#| label: fig-10.1TMEscoreBox
+#| fig-cap: "Three TME signature scores across three simulated cell clusters; stars mark per-signature Kruskal-Wallis significance."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+set.seed(404)
+clusters <- c("C1", "C2", "C3")
+n_per <- 30
+sig_sets <- list(
+  `Immune checkpoint` = paste0("ICG", 1:15),
+  `Antigen processing` = paste0("APM", 1:15),
+  `TGF-beta response` = paste0("TGF", 1:15)
+)
+all_genes <- unlist(sig_sets)
+meta <- data.frame(sample = paste0("S", 1:90),
+                   cluster = rep(clusters, each = n_per))
+
+expr10 <- matrix(rnorm(45 * 90, sd = 1), nrow = 45, dimnames = list(all_genes, meta$sample))
+shift <- c(0, 0.7, 1.6)[match(meta$cluster, clusters)]      # C3 strongest
+for (gs in c("Immune checkpoint", "Antigen processing")) {
+  expr10[sig_sets[[gs]], ] <- sweep(expr10[sig_sets[[gs]], ], 2, shift, "+")  # shift applies per sample (column)
+}
+expr10[sig_sets[["TGF-beta response"]], meta$cluster == "C3"] <-
+  expr10[sig_sets[["TGF-beta response"]], meta$cluster == "C3"] - 1.2
+
+## sign-corrected PC1 score per signature (the reference workflow's core step)
+score_of <- function(gs) {
+  m <- expr10[sig_sets[[gs]], , drop = FALSE]
+  pc <- prcomp(t(m), retx = TRUE)
+  pc$x[, 1] * sign(cor(pc$x[, 1], colMeans(m)))
+}
+scores <- sapply(names(sig_sets), score_of)
+
+long10 <- data.frame(sample = meta$sample, cluster = meta$cluster, scores) |>
+  pivot_longer(-c(sample, cluster), names_to = "Signature", values_to = "Score") |>
+  mutate(Score = as.numeric(scale(Score)))
+
+ggplot(long10, aes(Signature, Score, fill = cluster)) +
+  geom_boxplot(outlier.shape = NA, width = 0.65) +
+  stat_compare_means(label = "p.signif", method = "kruskal.test") +
+  scale_fill_manual(values = c("#E31A1C", "#E7B800", "#2E9FDF")) +
+  labs(y = "Signature score (scaled)", fill = "TME cluster") +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "top")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `pc$x[, 1] * sign(cor(pc$x[, 1], colMeans(m)))` flips the PC1 sign so that higher always means stronger signature activity — without it the direction flips randomly per run.
+-   `stat_compare_means()` placed on a categorical x runs its test **per signature** across the fill groups and writes stars at an automatic height.
+-   With real data the input is a samples × signatures score table (e.g. ssGSEA/GSVA output); everything from `pivot_longer()` onward stays identical.
+:::
+
 ## Application
 
 ### 1. Basic Boxplot
@@ -587,3 +649,5 @@ Figure C: Boxplot of genome size for organisms with H2A that does or does not co
 \[8\] Attali D, Baker C (2023). *ggExtra: Add Marginal Histograms to 'ggplot2', and More 'ggplot2' Enhancements*. R package version 0.10.1, <https://CRAN.R-project.org/package=ggExtra>.
 
 \[9\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[10\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

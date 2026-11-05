@@ -9,12 +9,14 @@ author:
 
 在 R 中分析由 `clusterProfiler::GSEA()` \[2\] 完成，经典图形由 `enrichplot::gseaplot2()` \[3\] 绘制。本教程绘制经典图形、在同一排序表上叠加多个基因集，并用 ggplot2 从基本组件重建运行得分，使统计量本身变得可读。本教程的 Python 对应版本见 [GSEA 运行得分图（Python）](../Python/GSEAPlot.html)。
 
-本教程涵盖四种工作流：
+本教程涵盖六种工作流：
 
 1. 经典 `gseaplot2` 运行得分图（带 p 值表）；
 2. 多个基因集叠加在同一排序表上；
 3. 手绘三面板运行 ES 重建（ggplot2 + patchwork）；
-4. 用特异性热图比较各亚型特异性通路。
+4. 用特异性热图比较各亚型特异性通路；
+5. fgsea 多通路表格图（条码行 + Size/NES/padj 统计列）；
+6. 将 Java-GSEA 输出重绘为等宽对齐的点/条码面板。
 
 ## Example
 
@@ -26,7 +28,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`clusterProfiler`；`enrichplot`；`ggplot2`；`dplyr`；`patchwork`；`pheatmap`
+-   依赖包：`clusterProfiler`；`enrichplot`；`ggplot2`；`dplyr`；`patchwork`；`pheatmap`；`fgsea`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # 安装必要的包（Bioconductor）
@@ -42,6 +44,9 @@ if (!requireNamespace("patchwork", quietly = TRUE)) {
 if (!requireNamespace("pheatmap", quietly = TRUE)) {
   install.packages("pheatmap")
 }
+if (!requireNamespace("fgsea", quietly = TRUE)) {
+  BiocManager::install("fgsea")
+}
 
 # 加载包
 library(clusterProfiler)
@@ -50,6 +55,7 @@ library(ggplot2)
 library(dplyr)
 library(patchwork)
 library(pheatmap)
+library(fgsea)
 ```
 
 ```{r}
@@ -264,6 +270,125 @@ pheatmap(score, cluster_rows = FALSE, cluster_cols = FALSE,
 -   传入 `seed = TRUE`（配合 `set.seed()`）保证置换 p 值可复现。
 -   报告 NES 配合 p.adjust，而非原始 ES：ES 依赖基因集大小，NES 已对其标准化。
 :::
+### 5. fgsea 多通路表格图
+
+当许多通路要挤进同一张图时，`fgsea::plotGseaTable()` 把它们堆成共享排序表上的**条码行**，右侧对齐排列 Size / NES / p / padj 统计列 \[5\]——一眼看完整个富集论证。
+
+```{r}
+#| label: fig-5.1FgseaTable
+#| fig-cap: "fgsea 表格图：八个 hallmark 式通路作为条码行叠加在同一排序表上，右侧为统计列。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 5.5
+
+set.seed(401)
+genes_f <- paste0("Gene", sprintf("%04d", 1:1500))
+stats_f <- rnorm(1500, sd = 2)
+names(stats_f) <- genes_f
+
+## 八个 hallmark 式集合，富联强度分级（+ = 上调，- = 下调）
+set_names <- c("MYC targets", "Cell cycle", "Inflammatory response", "Hypoxia",
+               "Angiogenesis", "TGF-beta signaling", "EMT", "Wnt signaling")
+enrich_amt <- c(2.5, 2, 1, 0.3, -0.3, -1, -2, -2.5)
+pool <- genes_f
+pathways_f <- lapply(seq_along(set_names), function(k) {
+  hits <- sample(pool, 60)
+  pool <<- setdiff(pool, hits)
+  stats_f[hits] <<- stats_f[hits] + enrich_amt[k]
+  hits
+})
+names(pathways_f) <- set_names
+geneList_f <- sort(stats_f, decreasing = TRUE)
+
+fgseaRes <- fgsea(pathways = pathways_f, stats = geneList_f,
+                  minSize = 15, maxSize = 500, eps = 0)
+fgseaRes <- fgseaRes[order(pval)]
+
+plotGseaTable(pathways_f, geneList_f, fgseaRes, gseaParam = 0.5)
+
+as.data.frame(fgseaRes)[, c("pathway", "size", "NES", "pval", "padj")]
+```
+
+::: callout-tip
+## 实践要点
+
+-   `fgsea()` 接受与 `clusterProfiler::GSEA()` 相同的"命名且降序排序"数值向量；`eps = 0` 是现代精确模式设置（旧参数 `nperm` 已弃用）。
+-   表格按 p 值排序，最强信号在最上面；只需展示显著集合时，把过滤后的结果对象传入即可。
+-   `gseaParam = 1` 用统计量加权运行得分（GSEA 默认）；更小的值会压平曲线，让弱集合更可见。
+:::
+
+### 6. 将 Java-GSEA 输出重绘为点图 + 条码面板
+
+Java-GSEA 的每通路 Excel 只保存**通路内基因位置**的运行 ES——这正是线图重绘永远对不上官方图的原因 \[6\]。在成员位置画点是忠实的重绘；下方配一条 rank 条码、再用 `patchwork` 对齐两面板宽度，即可复现论文样式。
+
+```{r}
+#| label: fig-6.1JavaRedraw
+#| fig-cap: "Java-GSEA 输出重绘：成员位置的运行 ES 点图（上）叠加 rank 条码（下），patchwork 等宽对齐。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 4.5
+
+set.seed(402)
+n_rank <- 2000
+specs <- list(
+  HALLMARK_MYC_TARGETS = list(idx = sort(sample(600, 110)),       dir =  1.0),
+  HALLMARK_HYPOXIA     = list(idx = sort(sample(2000, 90)),       dir = -0.5),
+  HALLMARK_EMT         = list(idx = sort(sample(1400:2000, 100)), dir = -1.0)
+)
+java_df <- do.call(rbind, lapply(names(specs), function(pw) {
+  spec <- specs[[pw]]
+  hit <- seq_len(n_rank) %in% spec$idx
+  step <- ifelse(hit, spec$dir / length(spec$idx), -spec$dir / (n_rank - sum(hit)))
+  data.frame(pathway = pw,
+             RANK.IN.GENE.LIST = seq_len(n_rank),
+             RUNNING.ES = cumsum(step),
+             member = hit)
+}))
+
+pal_j <- c(HALLMARK_MYC_TARGETS = "#E31A1C", HALLMARK_HYPOXIA = "#E7B800",
+           HALLMARK_EMT = "#2E9FDF")
+
+p_point <- ggplot(java_df, aes(RANK.IN.GENE.LIST, RUNNING.ES, fill = pathway)) +
+  geom_point(data = subset(java_df, member), shape = 21, colour = "black",
+             size = 1.6, stroke = 0.25) +
+  scale_fill_manual(values = pal_j) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0),
+                     limits = c(min(java_df$RUNNING.ES) - 0.02,
+                                max(java_df$RUNNING.ES) + 0.02)) +
+  labs(x = NULL, y = "Enrichment score", fill = NULL) +
+  theme_classic(base_size = 10) +
+  theme(axis.line.x = element_blank(), axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "bottom", legend.key.size = unit(3, "mm"),
+        legend.text = element_text(size = 8))
+
+p_rank <- ggplot(java_df, aes(RANK.IN.GENE.LIST, pathway, fill = pathway)) +
+  geom_tile(data = subset(java_df, member), colour = NA) +
+  scale_fill_manual(values = pal_j) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  labs(x = "Rank in gene list") +
+  theme_bw(base_size = 10) +
+  theme(panel.grid = element_blank(), panel.border = element_blank(),
+        axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(), legend.position = "none")
+
+## 面板堆叠：patchwork 自动等分共享 x 轴宽度
+p_point / p_rank + patchwork::plot_layout(heights = c(3, 1))
+```
+
+::: callout-tip
+## 实践要点
+
+-   用点不用线：Java 输出的 ES 值只存在于成员基因处，连线意味着一条从未被计算的曲线。
+-   原工作流用 `grid::unit.pmax()` 对两张 `ggplotGtable()` 的列宽取最大值来对齐面板；`patchwork`（`p_point / p_rank + plot_layout(heights = ...)`）以现代方式实现同样的"共享宽度、独立高度"堆叠。
+-   真实输入：用 `read.delim()` 读取每张通路表，保留 `RANK.IN.GENE.LIST`、`RUNNING.ES` 与 `PROBE/NAME` 列，再像此处一样跨通路 rbind。
+:::
 
 ## Application
 
@@ -280,3 +405,7 @@ pheatmap(score, cluster_rows = FALSE, cluster_cols = FALSE,
 \[3\] Yu G. enrichplot: visualization of functional enrichment result. Bioconductor package. https://bioconductor.org/packages/enrichplot/
 
 \[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[5\] Korotkevich G, Sukhov V, Budin N, Shpak B, Artyomov MN, Sergushichev A. Fast gene set enrichment analysis. bioRxiv. 2021. doi:10.1101/060012
+
+\[6\] GSEA desktop application output format. Broad Institute. https://gseapab.github.io/

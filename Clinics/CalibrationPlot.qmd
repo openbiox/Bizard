@@ -171,6 +171,61 @@ ggplot(grouped, aes(mean_pred, obs_rate)) +
 
 This transparent construction — bucket predictions, compare observed event rates — is exactly what grouped calibration curves show, and makes the sample size behind each point visible. Note the wide intervals: calibration assessment needs large samples.
 
+### 5. Publication-Style Calibration with the Hosmer-Lemeshow Test
+
+The layout biomarker papers ship with: the bias-corrected calibration curve against the ideal 45° line, annotated with the **Hosmer-Lemeshow goodness-of-fit test** \[5\] — p > 0.05 means no departure from perfect calibration. `ResourceSelection::hoslem.test()` provides the statistic; the dependency-free equivalent below groups predictions into deciles and compares observed vs expected events with a chi-square on g − 2 degrees of freedom.
+
+```{r}
+#| label: fig-5.1HosmerCalibration
+#| fig-cap: "Bootstrap-corrected calibration of the full model against the ideal line, annotated with the Hosmer-Lemeshow p value."
+#| out.width: "70%"
+#| fig-width: 5.5
+#| fig-height: 5.5
+#| warning: false
+#| message: false
+
+hoslem_p <- function(y, p, g = 10) {
+  brk <- unique(quantile(p, seq(0, 1, length.out = g + 1)))
+  grp <- cut(p, breaks = brk, include.lowest = TRUE)
+  obs <- tapply(y, grp, sum)
+  expd <- tapply(p, grp, sum)
+  nn <- tapply(y, grp, length)
+  chi <- sum((obs - expd)^2 / (expd * (1 - expd / nn)))
+  pchisq(chi, df = length(levels(grp)) - 2, lower.tail = FALSE)
+}
+glm_full <- glm(y1y ~ age + sex + ph.ecog + meal.cal + wt.loss,
+                data = lung2, family = binomial)
+p_hl <- hoslem_p(lung2$y1y, fitted(glm_full), g = 10)
+
+lrm_full <- lrm(y1y ~ age + sex + ph.ecog + meal.cal + wt.loss,
+                data = lung2, x = TRUE, y = TRUE)
+cal_full <- calibrate(lrm_full, method = "boot", B = 200)
+
+red <- adjustcolor("#FF0197", 0.6)
+blue <- "#0093FF"
+plot(cal_full[, "predy"], cal_full[, "calibrated.corrected"],
+     type = "l", lwd = 2, col = red,
+     xlim = c(0, 1), ylim = c(0, 1),
+     xlab = "Predicted probability of 1-year death",
+     ylab = "Observed proportion")
+abline(0, 1, lwd = 1.5, lty = "longdash", col = blue)
+legend("topleft", bty = "n", lwd = 2, lty = c("longdash", "solid"),
+       col = c(blue, red),
+       legend = c("Ideal", "Full model (bias-corrected)"))
+text(0, 0.04, sprintf("Hosmer-Lemeshow %s",
+     ifelse(p_hl < 0.001, "p < 0.001", sprintf("p = %.3f", p_hl))), adj = 0)
+```
+
+The H-L test here is computed on the *uncorrected* fitted probabilities (its standard form); the curve shows the bootstrap-corrected calibration. A significant H-L p flags miscalibration even when the curve looks close to the diagonal — report both together.
+
+::: callout-tip
+## Practice tips
+
+-   H-L is sensitive to the number of groups: g = 10 is convention, but with small samples reduce g so each decile holds enough events.
+-   This logistic calibration is for diagnostic-type endpoints; survival-model calibration uses `calibrate()` on a `cph` fit with the `u` horizon (Section 3).
+-   Report the H-L p value with the curve, not instead of it — a non-significant test is necessary but not sufficient evidence of calibration.
+:::
+
 ## Application
 
 Calibration curves are reported alongside nomograms in prediction-model papers, typically as "training set + validation set" pairs. The panel below mirrors that layout with this tutorial's outputs: (A) bootstrap-corrected calibration on the training sample and (B) independent-sample validation with `val.prob`.
@@ -186,3 +241,5 @@ Calibration curves are reported alongside nomograms in prediction-model papers, 
 \[3\] Harrell FE Jr. Regression Modeling Strategies: With Applications to Linear Models, Logistic and Ordinal Regression, and Survival Analysis. 2nd ed. Springer; 2015. doi:10.1007/978-3-319-19425-7
 
 \[4\] Collins GS, Reitsma JB, Altman DG, Moons KGM. Transparent Reporting of a multivariable prediction model for Individual Prognosis Or Diagnosis (TRIPOD). BMJ. 2015;350:g7594. doi:10.1136/bmj.g7594
+
+\[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

@@ -475,6 +475,66 @@ p
 
 使用`heatmaply`包构建交互式热图，允许用户动态探索和深入分析数据，提供更直观的理解和信息获取。
 
+#### 2.5 对角分割热图：每格承载两个对立水平
+
+当每个单元格携带**两个对立数值**——例如每个基因在各癌种中的拷贝数扩增（上三角）与缺失（下三角）\[8\]——就把每格切成两个三角形。单一 diverging 色标（红 = 扩增，蓝 = 缺失）用一个图例编码两个水平，`geom_polygon()` 负责切分：
+
+```{r}
+#| label: fig-DiagSplitHeatmap
+#| fig-cap: "对角分割热图：10 个基因 × 8 个癌种的扩增（上三角，红）与缺失（下三角，蓝）。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5
+
+set.seed(403)
+gene_d <- paste0("Gene", sprintf("%02d", 1:10))
+cancer_d <- c("BRCA", "LUAD", "COAD", "STAD", "KIRC", "HNSC", "LUSC", "PRAD")
+amp <- matrix(runif(80, 0, 0.55), 10, 8, dimnames = list(gene_d, cancer_d))
+del <- matrix(runif(80, 0, 0.55), 10, 8, dimnames = list(gene_d, cancer_d))
+amp[1:4, ] <- amp[1:4, ] + 0.25      # 原癌基因样：扩增
+del[5:10, ] <- del[5:10, ] + 0.30    # 抑癌基因样：缺失
+amp <- pmin(amp, 0.95); del <- pmin(del, 0.95)
+
+make_tri <- function(i, j, upper) {
+  x0 <- j - 0.5; y0 <- i - 0.5
+  if (upper) data.frame(x = x0 + c(0, 0, 1), y = y0 + c(0, 1, 1))   # upper-left triangle
+  else data.frame(x = x0 + c(0, 1, 1), y = y0 + c(0, 0, 1))         # lower-right triangle
+}
+cells <- expand.grid(i = seq_len(10), j = seq_len(8))
+tri_df <- do.call(rbind, lapply(seq_len(nrow(cells)), function(k) {
+  i <- cells$i[k]; j <- cells$j[k]
+  rbind(cbind(make_tri(i, j, TRUE),  value =  amp[i, j], id = k, tri = "up",   gi = i, cj = j),
+        cbind(make_tri(i, j, FALSE), value = -del[i, j], id = k, tri = "dn",   gi = i, cj = j))
+}))
+tri_df$gene <- factor(gene_d[tri_df$gi], levels = rev(gene_d))
+tri_df$cancer <- factor(cancer_d[tri_df$cj], levels = cancer_d)
+
+## 多边形需要数值 x/y——离散 aes 会把顶点坐标压塌
+ggplot(tri_df, aes(x, y, group = interaction(id, tri), fill = value)) +
+  geom_polygon(colour = "white", linewidth = 0.4) +
+  scale_x_continuous(breaks = seq_len(8) - 0.5, labels = cancer_d, expand = c(0, 0)) +
+  scale_y_continuous(breaks = seq_len(10) - 0.5, labels = gene_d, expand = c(0, 0)) +
+  scale_fill_gradient2(low = "#3878C1", mid = "#FFFADD", high = "#AB221F",
+                       midpoint = 0, limits = c(-1, 1), name = NULL,
+                       labels = function(v) sprintf("%.1f", v)) +
+  labs(x = "Cancer type", y = NULL,
+       caption = "上三角：扩增 | 下三角：缺失（颜色深浅 = 频率）") +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.height = unit(5, "mm"))
+```
+
+::: callout-tip
+**实践要点**
+
+-   `group = interaction(id, tri)` 让同一格的两个三角形保持为独立多边形——去掉它 `geom_polygon()` 会把所有三点集连成一条路径。
+-   用符号编码（扩增 = +，缺失 = −）换来的是两个水平共享一条 diverging 色标；若两个水平单位不同，请预计算十六进制颜色并用 `scale_fill_identity()` 配手工图例。
+-   行/列标签就是普通离散轴：重排（按通路聚类基因、按器官排列癌种）只需改因子水平顺序，无需聚类。
+:::
+
 ### 3. lattice 热图
 
 用 `lattice` 包的 `levelplot()` 函数构建热图
@@ -1018,3 +1078,4 @@ p1 + p2
 15. Becker, R. A., Wilks, A. R., & Brownrigg, R. (2021). *lattice: The lattice package for R*. <https://cran.r-project.org/package=lattice>\
 16. Auguie, B. (2017). gridExtra: Miscellaneous Functions for "Grid" Graphics. <https://cran.r-project.org/package=gridExtra>
 17. Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+18. Xiaofan Lu, et al. FigureYa144DiagHeatmap 参考图：对角分割热图。FigureYa 文档。https://ying-ge.github.io/FigureYa/

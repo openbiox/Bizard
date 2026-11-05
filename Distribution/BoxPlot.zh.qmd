@@ -534,6 +534,67 @@ ggplot(long9, aes(x = stage, y = expr, fill = stage)) +
 - `cut()` 一行即可把连续 P 值转换为惯用星号（`***` < 0.001，`**` < 0.01，`*` < 0.05）。
 - 若为配对设计（如仅比较 stage III 与 stage I），改用 `t.test(..., paired = TRUE)` 并标注该 P 值。
 :::
+### 10. 跨细胞类群的 signature 评分箱线图
+
+TME（肿瘤微环境）研究比较的是**基因集评分**而非单个基因 \[10\]：每个 signature 的得分是其基因集合经符号校正的第一主成分，评分标准化后共享一个坐标，再用逐 signature 的 Kruskal-Wallis 检验以星号标记类群差异。
+
+```{r}
+#| label: fig-10.1TMEscoreBox
+#| fig-cap: "三个 TME signature 评分在三个模拟细胞类群间的箱线图；星号标记逐 signature 的 Kruskal-Wallis 显著性。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+set.seed(404)
+clusters <- c("C1", "C2", "C3")
+n_per <- 30
+sig_sets <- list(
+  `Immune checkpoint` = paste0("ICG", 1:15),
+  `Antigen processing` = paste0("APM", 1:15),
+  `TGF-beta response` = paste0("TGF", 1:15)
+)
+all_genes <- unlist(sig_sets)
+meta <- data.frame(sample = paste0("S", 1:90),
+                   cluster = rep(clusters, each = n_per))
+
+expr10 <- matrix(rnorm(45 * 90, sd = 1), nrow = 45, dimnames = list(all_genes, meta$sample))
+shift <- c(0, 0.7, 1.6)[match(meta$cluster, clusters)]      # C3 最强
+for (gs in c("Immune checkpoint", "Antigen processing")) {
+  expr10[sig_sets[[gs]], ] <- sweep(expr10[sig_sets[[gs]], ], 2, shift, "+")  # shift 逐样本（列）施加
+}
+expr10[sig_sets[["TGF-beta response"]], meta$cluster == "C3"] <-
+  expr10[sig_sets[["TGF-beta response"]], meta$cluster == "C3"] - 1.2
+
+## 每个 signature 的符号校正 PC1 评分（参考工作流的核心步骤）
+score_of <- function(gs) {
+  m <- expr10[sig_sets[[gs]], , drop = FALSE]
+  pc <- prcomp(t(m), retx = TRUE)
+  pc$x[, 1] * sign(cor(pc$x[, 1], colMeans(m)))
+}
+scores <- sapply(names(sig_sets), score_of)
+
+long10 <- data.frame(sample = meta$sample, cluster = meta$cluster, scores) |>
+  pivot_longer(-c(sample, cluster), names_to = "Signature", values_to = "Score") |>
+  mutate(Score = as.numeric(scale(Score)))
+
+ggplot(long10, aes(Signature, Score, fill = cluster)) +
+  geom_boxplot(outlier.shape = NA, width = 0.65) +
+  stat_compare_means(label = "p.signif", method = "kruskal.test") +
+  scale_fill_manual(values = c("#E31A1C", "#E7B800", "#2E9FDF")) +
+  labs(y = "Signature score (scaled)", fill = "TME cluster") +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "top")
+```
+
+::: callout-tip
+**实践要点**
+
+-   `pc$x[, 1] * sign(cor(pc$x[, 1], colMeans(m)))` 会翻转 PC1 符号，保证得分越高 signature 活性越强——否则方向会随每次运行随机翻转。
+-   放在分类 x 上的 `stat_compare_means()` 会**逐 signature** 对填充组做检验，并把星号写到自动高度。
+-   换真实数据时输入即"样本 × signature"评分表（如 ssGSEA/GSVA 输出）；从 `pivot_longer()` 往后的一切保持不变。
+:::
 
 ## 应用场景
 
@@ -588,3 +649,5 @@ Figure C: 具有不含有（左）或含有（右）所示残基的 H2A 的生�
 \[8\] Attali D, Baker C (2023). *ggExtra: Add Marginal Histograms to 'ggplot2', and More 'ggplot2' Enhancements*. R package version 0.10.1, <https://CRAN.R-project.org/package=ggExtra>.
 
 \[9\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[10\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
