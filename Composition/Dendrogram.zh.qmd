@@ -471,6 +471,58 @@ tanglegram(dl,
 ```
 
 这个图展示了两种不同的聚类方法对同一数据集（`USArrests`）的聚类结果进行比较。通过使用`dendlist()`将两个层次聚类树（`d1` 和 `d2`）合并为一个图，并通过tanglegram()函数展示这两个聚类树之间的差异。图中突出了不同的聚类分支，并通过颜色区分了两个方法在聚类过程中的不同划分。这样，可以直观地看到两种方法在聚类结果上的不同，并帮助用户理解它们的区别。
+#### 4.6 监督聚类树状图与注释色条
+
+signature 验证论文常画监督聚类树，并在叶子下方用**颜色条带标注已知表型** \[9\]：signature 有效时，一条分支是 LN 阳性、另一条是 LN 阴性，一眼即见。色条就是在叶子绘图顺序下方画的矩形——不需要额外包（参考工作流的 `dendsort`/`squash` 由树状图的 `sort()` 加手绘色条替代）：
+
+```{r}
+#| label: fig4.6SupervisedDendro
+#| fig-cap: "监督聚类树状图：分支按聚类着色，叶子下方两条注释色条（聚类与转移状态）。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+set.seed(502)
+n_sam <- 20
+meta_status <- rep(c("LN+", "LN-"), each = 10)
+genes_sig <- paste0("Sig", sprintf("%02d", 1:40))
+expr_d <- matrix(rnorm(40 * n_sam, sd = 1), nrow = 40,
+                 dimnames = list(genes_sig, paste0("S", sprintf("%02d", 1:n_sam))))
+expr_d[1:20, meta_status == "LN+"] <- expr_d[1:20, meta_status == "LN+"] + 2.0   # half of the signature shifts in LN+ (a uniform shift is invisible to Pearson correlation)
+
+## Pearson 距离 + Ward 聚类（参考配方）
+d_hc <- hclust(as.dist(1 - cor(expr_d, method = "pearson")), method = "ward.D")  # sample-sample correlations
+clust <- cutree(d_hc, k = 2)
+dend_sorted <- sort(as.dendrogram(d_hc))          # 整理叶子顺序
+leaf_order <- order.dendrogram(dend_sorted)
+
+jco <- c("#2874C5", "#EABF00"); cherry <- "#700353"; lightgrey <- "#dcddde"
+clust_col  <- ifelse(clust[leaf_order] == 1, jco[1], jco[2])
+status_col <- ifelse(meta_status[leaf_order] == "LN+", cherry, lightgrey)
+
+col_dend <- dendextend::color_branches(dend_sorted, k = 2, col = jco)
+
+par(mar = c(8, 2, 2, 2))
+plot(col_dend, axes = FALSE)
+xx <- seq_along(leaf_order)
+h <- max(attr(dend_sorted, "height"))
+y0 <- -h * 0.10                                    # 叶子下方的色条行
+rect(xx - 0.5, y0 - h * 0.05, xx + 0.5, y0, col = clust_col, border = NA, xpd = NA)
+rect(xx - 0.5, y0 - h * 0.11, xx + 0.5, y0 - h * 0.06, col = status_col, border = NA, xpd = NA)
+text(x = 0.55, y = y0 - h * 0.025, labels = "Cluster", adj = 1, xpd = NA, cex = 0.8)
+text(x = 0.55, y = y0 - h * 0.085, labels = "MetaStatus", adj = 1, xpd = NA, cex = 0.8)
+legend("topright", bty = "n", cex = 0.8, ncol = 2,
+       legend = c("C1", "C2", "LN+", "LN-"),
+       fill = c(jco[1], jco[2], cherry, lightgrey), border = NA)
+```
+
+::: callout-tip
+**实践要点**
+
+-   `sort()` 之后，叶子下方绘制的一切都必须跟随 `order.dendrogram()` 的顺序——色条与颜色都按该顺序索引，否则与叶子对不上。
+-   好 signature 的检验是视觉性的：色条颜色应沿一条分支分裂。若颜色交错，无论 p 值如何，signature 都没有分开表型。
+-   注释行多时（OS、PFS、亚型……）照 MetaStatus 行的样子再叠 `rect()` 即可——每行就是一次带各自颜色映射的调用。
+:::
 
 ## 应用场景
 
@@ -522,3 +574,5 @@ tanglegram(dl,
 
 \[8\] dendextend: Extensions to Dendrogram Class. https://cran.r-project.org/web/packages/dendextend/index.html
 
+
+9. Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

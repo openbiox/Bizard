@@ -207,6 +207,66 @@ plot(co_net_union)
 
 The MetaNet package provides a comprehensive set of tools for microbial network analysis, from basic network construction to advanced annotation and visualization. By flexibly using these functions, we can extract meaningful biological patterns from complex microbiome data and provide new perspectives for understanding the structure and function of microbial communities.
 
+### 5. Hub-Spoke Interaction Network
+
+Interaction databases (STRING chat, ComPPI) answer one protein per query; the resulting table reads best as a **hub-spoke drawing**: the bait sits large in the centre, interactors radiate around it, each edge is coloured by its evidence class (cellular location, motif, peak overlap...) and the number of edges per spoke encodes how many evidence lines support the interaction \[9\].
+
+```{r}
+#| label: fig-5.1HubSpoke
+#| fig-cap: "Hub-spoke interaction network: central bait (large pink node), interactors around it, edge colours = evidence classes, curved multi-edges."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 7
+
+set.seed(501)
+hub <- "EGFR"
+partners <- paste0("PRT", sprintf("%02d", 1:22))
+locs <- c("Nucleus", "Cytosol", "Membrane", "Extracellular")
+loc_pal <- setNames(c("#445EAD", "#70C17A", "#F7C07C", "#EA6767"), locs)
+
+## one row per evidence line: a STRING-chat table (or ComPPI rows split by "|")
+links <- do.call(rbind, lapply(partners, function(pt) {
+  n_ev <- sample(1:2, 1)
+  data.frame(source = hub, target = pt,
+             Loc = sample(locs, n_ev, replace = TRUE),
+             score = round(runif(n_ev, 0.6, 0.99), 2))
+}))
+head(links, 3)
+
+net <- graph_from_data_frame(links, directed = FALSE)
+
+vertexes <- igraph::vertex_attr(net, "name")
+net <- set_edge_attr(net, "color", value = loc_pal[links$Loc])
+net <- set_edge_attr(net, "width", value = links$score)
+
+set.seed(501)
+lay <- layout_with_dh(net)
+
+plot(net, layout = lay,
+     vertex.shape = "circle",                       # igraph 2.x draws frame.width natively
+     vertex.size = ifelse(vertexes == hub, 15, 3),
+     vertex.color = "hotpink",
+     vertex.frame.color = "white",
+     vertex.frame.width = ifelse(vertexes == hub, 4, 1),
+     vertex.label.color = ifelse(vertexes == hub, "black", "grey30"),
+     vertex.label.cex = ifelse(vertexes == hub, 0.9, 0.6),
+     vertex.label.dist = ifelse(vertexes == hub, 0.9, 0.4),
+     edge.curved = curve_multiple(net, start = 0.08))
+legend("bottomleft", bty = "n", cex = 0.7, lty = 1, lwd = 2,
+       legend = names(loc_pal), col = loc_pal,
+       title = "Evidence class")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The input is one row **per evidence line**, not per partner: a partner with motif + ATAC-peak + H3K27ac evidence gets three curved edges, and the visual thickness of the spoke is the evidence count.
+-   `layout_with_dh()` (Davidson-Harel) works well for these small hub layouts but is stochastic — set a seed, and accept Illustrator-style fine tuning of label positions for publication.
+-   When the interaction score is a *combined* probability across evidence classes (as ComPPI reports per location), combine as `1 - prod(1 - x_i * x_hub)` — the probability that at least one evidence chain holds — before drawing.
+:::
+
 ## Reference
 
 \[1\] K. Contrepois, S. Wu, K. J. Moneghetti, D. Hornburg, et al., [Molecular Choreography of Acute Exercise

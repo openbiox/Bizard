@@ -1026,6 +1026,79 @@ p1 + p2
 `ComplexHeatmap`包的一大特色就是可以同时绘制多个热图，下图为水平排列的热图，垂直排列的热图原理与此类似。水平排列的热图要求具有相同的行。
 
 热图和条形图组合，显示了TCGA-CHOL 数据集中不同样本在甲基化状态上的差异和每个位点的平均甲基化值。
+#### 5.6 分类型热图与格内数字
+
+连续统计量（log 倍数变化、相关系数）**分档成类别**并标注数值往往更好读 \[17\]：五档倍数变化（红 = 上调、蓝 = 下调）加一档白色表示不显著，`cell_fun` 依色档深浅以黑/白把数值写进每个格子，左侧注释携带基因类别。
+
+```{r}
+#| label: fig-5.6CategoricalCells
+#| fig-cap: "分类型热图：倍数变化分五档（白 = P >= 0.05），格内数字随色档换色，左侧色条 = 基因类别。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 5.5
+
+set.seed(503)
+gene_r <- paste0("MMP", sprintf("%02d", 1:24))
+cancer_r <- c("BRCA", "LUAD", "COAD", "STAD", "KIRC", "HNSC", "LUSC", "PRAD")
+logfc_r <- matrix(rnorm(24 * 8, sd = 1.5), 24, 8,
+                  dimnames = list(gene_r, cancer_r))
+logfc_r[1:6, ] <- logfc_r[1:6, ] + 1.8      # 上调区块
+logfc_r[7:12, ] <- logfc_r[7:12, ] - 1.8    # 下调区块
+## explicit P-value design: strong bands significant, weak genes mostly not
+p_low <- ifelse(runif(24 * 8) < 0.25, runif(24 * 8, 1e-3, 0.045),
+                                       runif(24 * 8, 0.06, 0.9))
+pval_r <- ifelse(abs(logfc_r) > 2, runif(24 * 8, 1e-8, 1e-3),
+          ifelse(abs(logfc_r) > 1, runif(24 * 8, 1e-4, 0.04), p_low))
+gene_type <- rep(c("Collagen-binding", "Membrane-type", "Gelatin-binding",
+                   "Secreted", "Matrisome", "Other"),
+                 each = 4)
+
+## 分成 5 档倍数变化；P >= 0.05 覆盖为第 6 档（白色）
+logfc_cat <- apply(logfc_r, 2, function(x)
+  cut(x, breaks = c(-Inf, -2, -1, 1, 2, Inf),
+      labels = c("< -2", "-2 - -1", "-1 - 1", "1 - 2", "> 2")))
+rownames(logfc_cat) <- gene_r
+logfc_cat[pval_r >= 0.05] <- "P >= 0.05"
+
+col_cat <- c("> 2" = "#A80C3A", "1 - 2" = "#ED5E57", "-1 - 1" = "#DDD3D2",
+             "-2 - -1" = "#6B9AB7", "< -2" = "#2F5B89", "P >= 0.05" = "white")
+
+cell_fun <- function(j, i, x, y, width, height, fill) {
+  dark <- logfc_cat[i, j] %in% c("> 2", "1 - 2", "< -2", "-2 - -1")
+  val <- logfc_r[i, j]; if (abs(val) < 0.05) val <- 0
+  grid::grid.text(sprintf("%.1f", val), x, y,
+                  gp = grid::gpar(fontsize = 8,
+                                  col = if (dark) "white" else "black"))
+}
+
+row_an <- HeatmapAnnotation(
+  Type = gene_type, show_annotation_name = FALSE,
+  col = list(Type = c("Collagen-binding" = "#ED1450", "Membrane-type" = "#FCCA02",
+                      "Gelatin-binding" = "#A7CE35", "Secreted" = "#2C92DA",
+                      "Matrisome" = "#59574A", "Other" = "#BCBDBF")),
+  annotation_legend_param = list(title = "Gene class"), which = "row")
+
+Heatmap(logfc_cat, name = "logFC band",
+        rect_gp = grid::gpar(col = "grey90"),
+        col = col_cat,
+        heatmap_legend_param = list(border = "black"),
+        cell_fun = cell_fun,
+        row_names_side = "left",
+        row_names_gp = grid::gpar(fontsize = 8),
+        column_names_gp = grid::gpar(fontsize = 8),
+        column_names_rot = 45,
+        left_annotation = row_an)
+```
+
+::: callout-tip
+**实践要点**
+
+-   白色"P >= 0.05"档是把*倍数大小*与*证据强度*分开的关键：倍数再大但 P 弱的格子读作空白，正是审稿人期望的呈现。
+-   `cell_fun` 收到的 `i`/`j` 是矩阵顺序；文字颜色按**色档**切换（如本例）而非原始数值，文字与背景永远一致。
+-   色档是因子水平——`col_cat` 中的顺序即图例顺序；保持档位递增，让图例自上而下与生物学方向一致。
+:::
 
 ## 应用场景
 

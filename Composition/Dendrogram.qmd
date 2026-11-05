@@ -472,6 +472,59 @@ tanglegram(dl,
 
 This graph compares the clustering results of two different clustering methods on the same dataset (`USArrests`). Two hierarchical clustering trees (`d1` and `d2`) are merged into a single graph using `dendlist()`, and the differences between the two trees are displayed using the `tanglegram()` function. The graph highlights the different clustering branches and uses colors to distinguish the different partitions in the clustering process by the two methods. This visually shows the differences in the clustering results of the two methods and helps users understand their distinctions.
 
+#### 4.6 Supervised Clustering Dendrogram with Annotation Strips
+
+Signature-validation papers draw the supervised-clustering tree with the known phenotype as **colour strips under the leaves** \[9\]: if the signature works, one branch is LN-positive and the other LN-negative at a glance. The strips are just rectangles drawn under the leaves in their plotting order — no extra package needed (`dendsort`/`squash` of the reference workflow are replaced by `sort()` on the dendrogram plus hand-drawn strips):
+
+```{r}
+#| label: fig4.6SupervisedDendro
+#| fig-cap: "Supervised-clustering dendrogram: branches coloured by cluster, two annotation strips (cluster and metastasis status) under the leaves."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+
+set.seed(502)
+n_sam <- 20
+meta_status <- rep(c("LN+", "LN-"), each = 10)
+genes_sig <- paste0("Sig", sprintf("%02d", 1:40))
+expr_d <- matrix(rnorm(40 * n_sam, sd = 1), nrow = 40,
+                 dimnames = list(genes_sig, paste0("S", sprintf("%02d", 1:n_sam))))
+expr_d[1:20, meta_status == "LN+"] <- expr_d[1:20, meta_status == "LN+"] + 2.0   # half of the signature shifts in LN+ (a uniform shift is invisible to Pearson correlation)
+
+## Pearson distance + Ward clustering (the reference recipe)
+d_hc <- hclust(as.dist(1 - cor(expr_d, method = "pearson")), method = "ward.D")  # sample-sample correlations
+clust <- cutree(d_hc, k = 2)
+dend_sorted <- sort(as.dendrogram(d_hc))          # tidy the leaves
+leaf_order <- order.dendrogram(dend_sorted)
+
+jco <- c("#2874C5", "#EABF00"); cherry <- "#700353"; lightgrey <- "#dcddde"
+clust_col  <- ifelse(clust[leaf_order] == 1, jco[1], jco[2])
+status_col <- ifelse(meta_status[leaf_order] == "LN+", cherry, lightgrey)
+
+col_dend <- dendextend::color_branches(dend_sorted, k = 2, col = jco)
+
+par(mar = c(8, 2, 2, 2))
+plot(col_dend, axes = FALSE)
+xx <- seq_along(leaf_order)
+h <- max(attr(dend_sorted, "height"))
+y0 <- -h * 0.10                                    # strip rows below the leaves
+rect(xx - 0.5, y0 - h * 0.05, xx + 0.5, y0, col = clust_col, border = NA, xpd = NA)
+rect(xx - 0.5, y0 - h * 0.11, xx + 0.5, y0 - h * 0.06, col = status_col, border = NA, xpd = NA)
+text(x = 0.55, y = y0 - h * 0.025, labels = "Cluster", adj = 1, xpd = NA, cex = 0.8)
+text(x = 0.55, y = y0 - h * 0.085, labels = "MetaStatus", adj = 1, xpd = NA, cex = 0.8)
+legend("topright", bty = "n", cex = 0.8, ncol = 2,
+       legend = c("C1", "C2", "LN+", "LN-"),
+       fill = c(jco[1], jco[2], cherry, lightgrey), border = NA)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   After `sort()`, everything drawn under the leaves must follow `order.dendrogram()` — the strips and their colours are indexed by that order, or they will not line up with the leaves.
+-   The test of a good signature is visual: the strip colours should split along a branch. If they interleave, the signature does not separate the phenotypes, whatever the p value says.
+-   For many annotation rows, stack more strips (OS, PFS, subtype...) exactly like the MetaStatus row — each row is one more `rect()` call with its own colour mapping.
+:::
+
 ## Applications
 
 ### 1. Basic tree diagram
@@ -522,3 +575,5 @@ Optimal dendrogram of 3,905 RefSeq viral genomes (k = 9). Lineages are colored b
 
 \[8\] dendextend: Extensions to Dendrogram Class. https://cran.r-project.org/web/packages/dendextend/index.html
 
+
+\[9\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
