@@ -9,14 +9,15 @@ author:
 
 在 R 中分析由 `clusterProfiler::GSEA()` \[2\] 完成，经典图形由 `enrichplot::gseaplot2()` \[3\] 绘制。本教程绘制经典图形、在同一排序表上叠加多个基因集，并用 ggplot2 从基本组件重建运行得分，使统计量本身变得可读。本教程的 Python 对应版本见 [GSEA 运行得分图（Python）](../Python/GSEAPlot.html)。
 
-本教程涵盖六种工作流：
+本教程涵盖七种工作流：
 
 1. 经典 `gseaplot2` 运行得分图（带 p 值表）；
 2. 多个基因集叠加在同一排序表上；
 3. 手绘三面板运行 ES 重建（ggplot2 + patchwork）；
 4. 用特异性热图比较各亚型特异性通路；
 5. fgsea 多通路表格图（条码行 + Size/NES/padj 统计列）；
-6. 将 Java-GSEA 输出重绘为等宽对齐的点/条码面板。
+6. 将 Java-GSEA 输出重绘为等宽对齐的点/条码面板；
+7. 富集结果的环形通路-基因层级图（ggraph）。
 
 ## Example
 
@@ -28,7 +29,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`clusterProfiler`；`enrichplot`；`ggplot2`；`dplyr`；`patchwork`；`pheatmap`；`fgsea`
+-   依赖包：`clusterProfiler`；`enrichplot`；`ggplot2`；`dplyr`；`patchwork`；`pheatmap`；`fgsea`；`ggraph`；`tidygraph`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # 安装必要的包（Bioconductor）
@@ -47,6 +48,12 @@ if (!requireNamespace("pheatmap", quietly = TRUE)) {
 if (!requireNamespace("fgsea", quietly = TRUE)) {
   BiocManager::install("fgsea")
 }
+if (!requireNamespace("ggraph", quietly = TRUE)) {
+  install.packages("ggraph")
+}
+if (!requireNamespace("tidygraph", quietly = TRUE)) {
+  install.packages("tidygraph")
+}
 
 # 加载包
 library(clusterProfiler)
@@ -56,6 +63,8 @@ library(dplyr)
 library(patchwork)
 library(pheatmap)
 library(fgsea)
+library(ggraph)
+library(tidygraph)
 ```
 
 ```{r}
@@ -389,6 +398,81 @@ p_point / p_rank + patchwork::plot_layout(heights = c(3, 1))
 -   原工作流用 `grid::unit.pmax()` 对两张 `ggplotGtable()` 的列宽取最大值来对齐面板；`patchwork`（`p_point / p_rank + plot_layout(heights = ...)`）以现代方式实现同样的"共享宽度、独立高度"堆叠。
 -   真实输入：用 `read.delim()` 读取每张通路表，保留 `RANK.IN.GENE.LIST`、`RUNNING.ES` 与 `PROBE/NAME` 列，再像此处一样跨通路 rbind。
 :::
+### 7. 环形通路-基因层级图（ggraph）
+
+富集结果自带层级——内环是通路、外环是其成员基因——参考图把它画成**中心之外的圆环气泡** \[7\]：气泡大小承载基因的 |logFC|、颜色承载方向。tidygraph/ggraph 下整个布局就是一张放射状树状图，无需手工环形计算：
+
+```{r}
+#| label: fig-7.1RadialHierarchy
+#| fig-cap: "环形通路-基因层级图：内环为通路，外圈为成员基因，气泡大小 = |logFC|，颜色 = 方向。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 7.5
+
+set.seed(504)
+pathway_defs <- list(
+  "Cell cycle"        = c("CDK2", "CCNB1", "PCNA", "MCM2", "CDC20"),
+  "p53 pathway"       = c("TP53", "MDM2", "CDKN1A", "BAX"),
+  "DNA repair"        = c("BRCA1", "RAD51", "XRCC1", "PARP1", "ERCC1"),
+  "EMT"               = c("VIM", "CDH1", "SNAI1", "TWIST1"),
+  "Hypoxia"           = c("HIF1A", "VEGFA", "CA9", "EGLN3"),
+  "Apoptosis"         = c("BCL2", "CASP3", "FAS", "XIAP")
+)
+gene_fc <- rnorm(length(unlist(pathway_defs)), sd = 1.6)
+names(gene_fc) <- unlist(pathway_defs)
+
+edges <- do.call(rbind, lapply(names(pathway_defs), function(pw) {
+  data.frame(from = "Enrichment", to = pw)
+}))
+## gene node names must be unique across pathways: suffix with the pathway,
+## keep the original gene name in a label column
+edges <- rbind(edges, do.call(rbind, lapply(names(pathway_defs), function(pw) {
+  data.frame(from = pw, to = paste0(pathway_defs[[pw]], "@", pw))
+})))
+nodes <- data.frame(
+  name = c("Enrichment", names(pathway_defs),
+           unique(unlist(lapply(names(pathway_defs), function(pw)
+             paste0(pathway_defs[[pw]], "@", pw))))))
+graph <- tidygraph::tbl_graph(nodes = nodes, edges = edges)
+
+graph <- graph |>
+  dplyr::mutate(
+    is_gene = grepl("@", name),
+    level   = ifelse(name == "Enrichment", 0, ifelse(is_gene, 2, 1)),
+    label   = ifelse(is_gene, sub("@.*$", "", name), name),
+    fc      = ifelse(is_gene, gene_fc[sub("@.*$", "", name)], NA_real_),
+    leaf    = tidygraph::node_is_leaf())
+
+ggraph(graph, layout = "dendrogram", circular = TRUE) +
+  geom_edge_diagonal(colour = "grey75", linewidth = 0.3, alpha = 0.7) +
+  geom_node_point(aes(filter = is_gene, size = abs(fc), colour = fc > 0),
+                  alpha = 0.85) +
+  geom_node_text(aes(filter = level == 1, label = label, angle = node_angle(x, y)),
+                 size = 3.2, hjust = 0.5, fontface = "bold") +
+  geom_node_text(aes(filter = is_gene, label = label,
+                     x = x * 1.07,
+                     angle = node_angle(x, y),
+                     hjust = ifelse(x < 0, 1.08, -0.08)),   # by circle half, not by FC
+                 size = 2.4) +
+  scale_colour_manual(values = c(`TRUE` = "#B2182B", `FALSE` = "#2166AC"),
+                      labels = c("up", "down"), name = "logFC") +
+  scale_size_continuous(range = c(1.5, 5), name = "|logFC|") +
+  coord_fixed() +
+  theme_void() +
+  theme(legend.position = "right",
+        legend.key.size = unit(3, "mm"), legend.text = element_text(size = 8),
+        legend.title = element_text(size = 9))
+```
+
+::: callout-tip
+## 实践要点
+
+-   `layout = "dendrogram", circular = TRUE` 就是全部的环形计算；`node_angle(x, y)` 让每个标签沿径向旋转，文字贴合圆环。
+-   叶子标签的 `hjust` 两侧取值让基因名排在最外环之外而不是横穿圆环；内环通路名保持居中在自己的辐条上。
+-   气泡只能承载大小（|logFC|）——方向交给颜色。更深的层级（通路 → 子通路 → 基因）只需扩展边表。
+:::
 
 ## Application
 
@@ -409,3 +493,5 @@ p_point / p_rank + patchwork::plot_layout(heights = c(3, 1))
 \[5\] Korotkevich G, Sukhov V, Budin N, Shpak B, Artyomov MN, Sergushichev A. Fast gene set enrichment analysis. bioRxiv. 2021. doi:10.1101/060012
 
 \[6\] GSEA desktop application output format. Broad Institute. https://gseapab.github.io/
+
+\[7\] Pedersen TL. ggraph: An Implementation of Grammar of Graphics for Graphs and Networks. https://ggraph.data-imaginist.com/

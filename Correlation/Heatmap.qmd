@@ -1019,6 +1019,81 @@ One of the standout features of the `ComplexHeatmap` package is its ability to p
 
 The combination of the heatmap and bar chart displays differences in methylation states among samples in the TCGA-CHOL dataset and the average methylation value for each site.
 
+
+#### 5.6 Categorical Heatmap with In-Cell Numbers
+
+Continuous statistics (log fold change, correlation) often read better **binned into categories** and annotated with their numbers \[17\]: five fold-change bands (red = up, blue = down) plus a white band for non-significant cells, a `cell_fun` writing the value inside every cell in black-or-white depending on the band's darkness, and a left annotation carrying the gene class.
+
+```{r}
+#| label: fig-5.6CategoricalCells
+#| fig-cap: "Categorical heatmap: fold changes binned into five bands (white = P >= 0.05), in-cell numbers switch colour with the band, left strip = gene class."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 5.5
+
+set.seed(503)
+gene_r <- paste0("MMP", sprintf("%02d", 1:24))
+cancer_r <- c("BRCA", "LUAD", "COAD", "STAD", "KIRC", "HNSC", "LUSC", "PRAD")
+logfc_r <- matrix(rnorm(24 * 8, sd = 1.5), 24, 8,
+                  dimnames = list(gene_r, cancer_r))
+logfc_r[1:6, ] <- logfc_r[1:6, ] + 1.8      # up-regulated block
+logfc_r[7:12, ] <- logfc_r[7:12, ] - 1.8    # down-regulated block
+## explicit P-value design: strong bands significant, weak genes mostly not
+p_low <- ifelse(runif(24 * 8) < 0.25, runif(24 * 8, 1e-3, 0.045),
+                                       runif(24 * 8, 0.06, 0.9))
+pval_r <- ifelse(abs(logfc_r) > 2, runif(24 * 8, 1e-8, 1e-3),
+          ifelse(abs(logfc_r) > 1, runif(24 * 8, 1e-4, 0.04), p_low))
+gene_type <- rep(c("Collagen-binding", "Membrane-type", "Gelatin-binding",
+                   "Secreted", "Matrisome", "Other"),
+                 each = 4)
+
+## bin into 5 fold-change bands; P >= 0.05 overrides to a 6th (white) band
+logfc_cat <- apply(logfc_r, 2, function(x)
+  cut(x, breaks = c(-Inf, -2, -1, 1, 2, Inf),
+      labels = c("< -2", "-2 - -1", "-1 - 1", "1 - 2", "> 2")))
+rownames(logfc_cat) <- gene_r
+logfc_cat[pval_r >= 0.05] <- "P >= 0.05"
+
+col_cat <- c("> 2" = "#A80C3A", "1 - 2" = "#ED5E57", "-1 - 1" = "#DDD3D2",
+             "-2 - -1" = "#6B9AB7", "< -2" = "#2F5B89", "P >= 0.05" = "white")
+
+cell_fun <- function(j, i, x, y, width, height, fill) {
+  dark <- logfc_cat[i, j] %in% c("> 2", "1 - 2", "< -2", "-2 - -1")
+  val <- logfc_r[i, j]; if (abs(val) < 0.05) val <- 0
+  grid::grid.text(sprintf("%.1f", val), x, y,
+                  gp = grid::gpar(fontsize = 8,
+                                  col = if (dark) "white" else "black"))
+}
+
+row_an <- HeatmapAnnotation(
+  Type = gene_type, show_annotation_name = FALSE,
+  col = list(Type = c("Collagen-binding" = "#ED1450", "Membrane-type" = "#FCCA02",
+                      "Gelatin-binding" = "#A7CE35", "Secreted" = "#2C92DA",
+                      "Matrisome" = "#59574A", "Other" = "#BCBDBF")),
+  annotation_legend_param = list(title = "Gene class"), which = "row")
+
+Heatmap(logfc_cat, name = "logFC band",
+        rect_gp = grid::gpar(col = "grey90"),
+        col = col_cat,
+        heatmap_legend_param = list(border = "black"),
+        cell_fun = cell_fun,
+        row_names_side = "left",
+        row_names_gp = grid::gpar(fontsize = 8),
+        column_names_gp = grid::gpar(fontsize = 8),
+        column_names_rot = 45,
+        left_annotation = row_an)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The white "P >= 0.05" band is the trick that separates *magnitude* from *evidence*: a huge fold change with a weak P still reads as blank, exactly as reviewers expect.
+-   `cell_fun` receives `i`/`j` in matrix order; switch the text colour on the **bin** (as here) rather than on the raw value, so text and background always agree.
+-   The bins are factor levels — their order in `col_cat` is the legend order; keep bands increasing so the legend reads top-to-bottom as the biology does.
+:::
+
 ## Applications
 
 ### 1. Basic Heatmap

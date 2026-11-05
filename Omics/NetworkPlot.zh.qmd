@@ -207,6 +207,65 @@ plot(co_net_union)
 ```
 
 MetaNet 包为微生物网络分析提供了全面的工具集，从基础的网络构建到高级的注释与可视化。通过灵活使用这些功能，我们能够从复杂的微生物组数据中提取有意义的生物学模式，为理解微生物群落结构与功能提供新视角。
+### 5. 中心-放射互作网络
+
+互作数据库（STRING chat、ComPPI）一次回答一个蛋白；结果表最适合画成**中心-放射图**：诱饵蛋白居中放大，互作蛋白向外辐射，每条边按证据类别着色（亚细胞定位、motif、peak 重叠……），每根辐条上的边数编码支持该互作的证据条数 \[10\]。
+
+```{r}
+#| label: fig-5.1HubSpoke
+#| fig-cap: "中心-放射互作网络：中央诱饵蛋白（粉色大节点），互作蛋白环绕，边色 = 证据类别，多重边曲线。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 7
+
+set.seed(501)
+hub <- "EGFR"
+partners <- paste0("PRT", sprintf("%02d", 1:22))
+locs <- c("Nucleus", "Cytosol", "Membrane", "Extracellular")
+loc_pal <- setNames(c("#445EAD", "#70C17A", "#F7C07C", "#EA6767"), locs)
+
+## 一行一条证据：STRING chat 表（或 ComPPI 按"|"拆分的行）
+links <- do.call(rbind, lapply(partners, function(pt) {
+  n_ev <- sample(1:2, 1)
+  data.frame(source = hub, target = pt,
+             Loc = sample(locs, n_ev, replace = TRUE),
+             score = round(runif(n_ev, 0.6, 0.99), 2))
+}))
+head(links, 3)
+
+net <- graph_from_data_frame(links, directed = FALSE)
+
+vertexes <- igraph::vertex_attr(net, "name")
+net <- set_edge_attr(net, "color", value = loc_pal[links$Loc])
+net <- set_edge_attr(net, "width", value = links$score)
+
+set.seed(501)
+lay <- layout_with_dh(net)
+
+plot(net, layout = lay,
+     vertex.shape = "circle",                       # igraph 2.x draws frame.width natively
+     vertex.size = ifelse(vertexes == hub, 15, 3),
+     vertex.color = "hotpink",
+     vertex.frame.color = "white",
+     vertex.frame.width = ifelse(vertexes == hub, 4, 1),
+     vertex.label.color = ifelse(vertexes == hub, "black", "grey30"),
+     vertex.label.cex = ifelse(vertexes == hub, 0.9, 0.6),
+     vertex.label.dist = ifelse(vertexes == hub, 0.9, 0.4),
+     edge.curved = curve_multiple(net, start = 0.08))
+legend("bottomleft", bty = "n", cex = 0.7, lty = 1, lwd = 2,
+       legend = names(loc_pal), col = loc_pal,
+       title = "Evidence class")
+```
+
+::: callout-tip
+**实践要点**
+
+-   输入是**每条证据一行**，而非每个伙伴一行：同时有 motif + ATAC-peak + H3K27ac 三种证据的伙伴会有三条曲线边，辐条的视觉厚度就是证据数。
+-   `layout_with_dh()`（Davidson-Harel）适合这类小型 hub 布局但是随机算法——设好 seed；发表级成图可在 Illustrator 里微调标签位置。
+-   当互作得分是跨证据类别的组合概率时（ComPPI 按定位报告），按 `1 - prod(1 - x_i * x_hub)` 组合——即至少一条证据链成立的概率——然后再画图。
+:::
 
 ## 参考文献
 
