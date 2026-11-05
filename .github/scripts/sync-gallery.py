@@ -438,6 +438,38 @@ def csv_covered_labels(text):
     return covered
 
 
+def cross_language_mismatches(root):
+    """Report rows whose EN/ZH tutorial URLs point at different pages.
+
+    The zh CSV must mirror every English row: same page path, only the
+    `/zh/` prefix differs (figure anchors may legitimately be localized).
+    """
+    en_rows = {}
+    zh_rows = {}
+    for key, name in (("en", "gallery_data.csv"), ("zh", "gallery_data_zh.csv")):
+        text = load_csv_text(os.path.join(root, "files", name))
+        target = en_rows if key == "en" else zh_rows
+        for r in csv.reader(text.splitlines()):
+            if len(r) < 4 or not r[0]:
+                continue
+            target[r[0]] = r
+    mismatches = []
+    def page_path(url):
+        path = re.sub(r"^https?://[^/]+", "", url).split("#")[0]
+        if path.startswith("/Bizard"):
+            path = path[len("/Bizard"):]
+        return path
+    for id_, row in en_rows.items():
+        zrow = zh_rows.get(id_)
+        if zrow is None:
+            mismatches.append((id_, "row missing in zh CSV", row[3], ""))
+            continue
+        en_path, zh_path = page_path(row[3]), page_path(zrow[3])
+        if zh_path != en_path and zh_path != "/zh" + en_path:
+            mismatches.append((id_, "page path mismatch", en_path, zh_path))
+    return mismatches
+
+
 def append_rows(csv_text, new_lines):
     """Append lines using the EOL of the file's last line (keep trailing EOL)."""
     if not csv_text:
@@ -450,7 +482,8 @@ def check(root):
     """Report out-of-sync rows; return 1 only when placeable rows are missing.
 
     Manual cases (widget/julia chunks, unplaced Hiplot pages) are reported
-    but never fail CI, because they have no derivable fix.
+    but never fail CI, because they have no derivable fix. Cross-language
+    row mismatches always fail: the zh CSV must mirror the EN pages.
     """
     missing = collect_missing(root)
     manual = [m for m in missing if m["manual_reason"] or m["level2"] is None]
@@ -460,6 +493,12 @@ def check(root):
     for m in manual:
         reason = m["manual_reason"] or "no Hiplot sidebar section"
         print(f"MANUAL: {m['dir']}/{m['page']}.qmd#{m['label']} — {reason}")
+    mismatches = cross_language_mismatches(root)
+    for id_, reason, en_path, zh_path in mismatches:
+        print(f"LANGUAGE MISMATCH: Id {id_} — {reason}: en={en_path} zh={zh_path}")
+    if mismatches:
+        print(f"--check failed: {len(mismatches)} cross-language row mismatch(es)")
+        return 1
     if placeable:
         print(f"--check failed: {len(placeable)} placeable row(s) missing, {len(manual)} manual")
         return 1

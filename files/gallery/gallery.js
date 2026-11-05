@@ -57,18 +57,30 @@
     var synonyms = (config && config.synonyms) || {};
     var has = Object.prototype.hasOwnProperty;
     var expanded = [token];
-    if (has.call(synonyms, token)) {
-      synonyms[token].forEach(function (term) {
+    function addAll(terms) {
+      terms.forEach(function (term) {
         if (expanded.indexOf(term) === -1) expanded.push(term);
       });
+    }
+    if (has.call(synonyms, token)) {
+      addAll(synonyms[token]);
       return expanded;
     }
     Object.keys(synonyms).forEach(function (key) {
-      if (synonyms[key].indexOf(token) === -1) return;
+      var values = synonyms[key];
+      var matched = values.indexOf(token) !== -1;
+      if (!matched && token.length >= 4) {
+        if (token.indexOf(key) !== -1) {
+          matched = true;
+        } else {
+          matched = values.some(function (term) {
+            return token.indexOf(term) !== -1;
+          });
+        }
+      }
+      if (!matched) return;
       if (expanded.indexOf(key) === -1) expanded.push(key);
-      synonyms[key].forEach(function (term) {
-        if (expanded.indexOf(term) === -1) expanded.push(term);
-      });
+      addAll(values);
     });
     return expanded;
   }
@@ -203,6 +215,8 @@
         esc(labels[key]) + '<span class="bz-tag-count">' + counts[key] + '</span></button>';
     });
     wrap.innerHTML = html;
+    var countEl = document.getElementById('bz-family-count');
+    if (countEl) countEl.textContent = String(keys.length);
   }
 
   function update() {
@@ -246,6 +260,15 @@
       renderCollections();
       update();
       input.focus();
+    });
+
+    [['bz-collection-toggle', 'bz-collection-group'], ['bz-family-toggle', 'bz-family-group']].forEach(function (pair) {
+      var toggle = document.getElementById(pair[0]);
+      var group = document.getElementById(pair[1]);
+      toggle.addEventListener('click', function () {
+        var collapsed = group.classList.toggle('bz-collapsed');
+        toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      });
     });
 
     document.getElementById('bz-collection-pills').addEventListener('click', function (event) {
