@@ -26,7 +26,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`readr`; `tidyr`; `ggplot2`; `dplyr`; `gghalves`; `forcats`; `hrbrthemes`; `viridis`; `ggstatsplot`; `palmerpenguins`
+-   依赖包：`readr`; `tidyr`; `ggplot2`; `dplyr`; `ggdist`; `ggbeeswarm`; `forcats`; `hrbrthemes`; `viridis`; `ggstatsplot`; `palmerpenguins`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # 安装包
@@ -36,8 +36,11 @@ if (!requireNamespace("readr", quietly = TRUE)) {
 if (!requireNamespace("tidyr", quietly = TRUE)) {
   install.packages("tidyr")
 }
-if (!requireNamespace("gghalves", quietly = TRUE)) {
-  install.packages("https://cran.r-project.org/src/contrib/Archive/gghalves/gghalves_0.1.4.tar.gz")
+if (!requireNamespace("ggdist", quietly = TRUE)) {
+  install.packages("ggdist")
+}
+if (!requireNamespace("ggbeeswarm", quietly = TRUE)) {
+  install.packages("ggbeeswarm")
 }
 if (!requireNamespace("dplyr", quietly = TRUE)) {
   install.packages("dplyr")
@@ -70,7 +73,8 @@ library(tidyr)
 library(ggplot2)
 library(ggpubr)
 library(dplyr)
-library(gghalves)
+library(ggdist)
+library(ggbeeswarm)
 library(forcats)
 library(hrbrthemes)
 library(viridis)
@@ -330,7 +334,7 @@ ggplot(data_penguins, aes(fill=sex, y=flipper_length_mm, x=species)) + # 使用X
 
 ### 5. 半分小提琴图
 
-半分小提琴图可以用简便的方式展现大量信息，我们可以用`geom_half_violin`函数分别绘制两个group.
+半分小提琴图可以用简便的方式展现大量信息，我们可以用`ggdist::stat_halfeye`分别绘制两个 group.
 
 在下面的例子中，我们通过在图的两侧绘制雌性和雄性企鹅来可视化不同物种和性别的企鹅的鳍状肢长度。
 
@@ -346,25 +350,21 @@ data_male <- data_penguins %>% filter(sex == "male")
 
 # 绘制半分小提琴图（右侧为雌性，左侧为雄性）
 ggplot() +
-  geom_half_violin(
+  ggdist::stat_halfeye(
     data = data_female,
     aes(y = flipper_length_mm, x = species),
-    position = position_dodge(width = 1),
-    scale = 'width',
     colour = NA,
     fill = "#9370DB",
-    alpha = 0.8,  ## 设置透明度
-    side = "r"
+    alpha = 0.8,
+    side = "right", justification = 0, width = 0.8
   ) +
-  geom_half_violin(
+  ggdist::stat_halfeye(
     data = data_male,
     aes(y = flipper_length_mm, x = species),
-    position = position_dodge(width = 1),
-    scale = 'width',
     colour = NA,
     fill = "#FFFF00",
     alpha = 0.6,
-    side = "l"
+    side = "left", justification = 0, width = 0.8
   )
 ```
 
@@ -404,6 +404,49 @@ plt <- ggbetweenstats(
 
 plt
 ```
+
+### 7. 分半小提琴 + 原始点（两组）
+
+参考版式为每个组画：**左半小提琴 + 箱线，右半原始点** \[6\]——统计量与个体观测共用一个 x 槽位而不互相遮挡。`ggdist::stat_halfeye()` 与 `ggbeeswarm::geom_beeswarm()`（上文已加载）提供半密度与单侧蜂群：
+
+```{r}
+#| label: fig-7.1SplitViolin
+#| fig-cap: "每组分半小提琴：左半小提琴 + 箱线，右半原始点；标注 Mann-Whitney p。"
+#| out.width: "70%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 4.5
+
+set.seed(1201)
+dat_v <- data.frame(
+  group = rep(c("DNAmAge-ACC", "DNAmAge-DCC"), each = 40),
+  value = c(rnorm(40, 68, 6), rnorm(40, 58, 7)))
+
+p_w <- wilcox.test(value ~ group, data = dat_v)$p.value
+
+ggplot(dat_v, aes(group, value, fill = group)) +
+  ggdist::stat_halfeye(side = "left", justification = 0,
+                       position = position_nudge(x = -0.02),
+                       width = 0.6, alpha = 0.8, colour = NA) +
+  geom_boxplot(width = 0.12, outlier.shape = NA, alpha = 0.9) +
+  ggbeeswarm::geom_beeswarm(side = 1L, cex = 1.1,
+                            size = 0.8, alpha = 0.5, colour = "grey30") +
+  scale_fill_manual(values = c("DNAmAge-ACC" = "#B31E22", "DNAmAge-DCC" = "#2874C5")) +
+  labs(title = sprintf("Mann-Whitney %s",
+       ifelse(p_w < 0.001, "p < 0.001", sprintf("p = %.3f", p_w))),
+       x = NULL, y = "DNAm age") +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+```
+
+::: callout-tip
+**实践要点**
+
+-   `position_nudge()` 把三层分开；不加 nudged 位移，半小提琴、箱线与点会叠在同一槽位，丢失"分半"读法。
+-   每组的小提琴保持同一侧——逐组交替侧会被读成两种编码。
+-   配对数据在点半侧用 `geom_line(aes(group = id))` 跨组连线替代抖动。
+:::
 
 ## 应用场景
 
@@ -463,7 +506,7 @@ plt
 
 \[7\] Wickham H, François R, Henry L, Müller K, Vaughan D (2023). *dplyr: A Grammar of Data Manipulation*. R package version 1.1.4, <https://CRAN.R-project.org/package=dplyr>.
 
-\[8\] Tiedemann F (2022). *gghalves: Compose Half-Half Plots Using Your Favourite Geoms*. R package version 0.1.4, <https://CRAN.R-project.org/package=gghalves>.
+\[8\] Kay M. ggdist: Visualizations of Distributions and Uncertainty in the Grammar of Graphics. https://mjskay.github.io/ggdist/
 
 \[9\] Wickham H (2023). *forcats: Tools for Working with Categorical Variables (Factors)*. R package version 1.0.0, <https://CRAN.R-project.org/package=forcats>.
 
@@ -474,3 +517,5 @@ plt
 \[12\] Patil, I. (2021). Visualizations with statistical details: The 'ggstatsplot' approach. Journal of Open Source Software, 6(61), 3167, doi:10.21105/joss.03167
 
 \[13\] Horst AM, Hill AP, Gorman KB (2020). palmerpenguins: Palmer Archipelago (Antarctica) penguin data. R package version 0.1.0. https://allisonhorst.github.io/palmerpenguins/. doi: 10.5281/zenodo.3960218.
+
+\[6\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

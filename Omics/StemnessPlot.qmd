@@ -1,0 +1,147 @@
+---
+title: "Stemness Index (mRNAsi) Plot"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+The mRNA-expression-based stemness index (mRNAsi) is the **first principal component** of a stemness gene-signature expression matrix, rescaled to 0–1 \[1\]. Publication figures sort samples by mRNAsi and stack the known clinical features underneath as colour strips, so the reader sees which subgroups carry the dedifferentiated end of the axis.
+
+## Example
+
+![](../images/Omics/StemnessPlot_demo.png){fig-alt="StemnessPlot DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming Language: R
+
+-   Dependent packages: `ComplexHeatmap`; `ggplot2`; `dplyr`; `circlize`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# Installing necessary packages
+if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
+  BiocManager::install("ComplexHeatmap")
+}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("circlize", quietly = TRUE)) {
+  install.packages("circlize")
+}
+
+# Load packages
+library(ComplexHeatmap)
+library(ggplot2)
+library(dplyr)
+library(circlize)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+With real data, mRNAsi comes from projecting your tumour expression matrix onto the PCBC stemness signature (the reference workflow's `pcbc-stemsig` file). We simulate the projection output directly: 60 medulloblastoma-like samples, a continuous mRNAsi, and two clinical features.
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(1101)
+n_sam <- 60
+samples <- paste0("MB-", sprintf("%02d", 1:n_sam))
+subgroup <- sample(c("Group3", "SHH", "Group4", "WNT"), n_sam,
+                   replace = TRUE, prob = c(0.3, 0.3, 0.3, 0.1))
+metastasis <- sample(c("M0", "M1"), n_sam, replace = TRUE, prob = c(0.6, 0.4))
+# latent stemness z-score: Group3/Group4 high, WNT low, M1 higher (as in the
+# reference) — rescale to 0..1 only AFTER the effects, and do NOT re-sort, or
+# the values decouple from the clinical features
+z <- rnorm(n_sam) + 0.9 * (subgroup %in% c("Group3", "Group4")) -
+  0.8 * (subgroup == "WNT") + 0.3 * (metastasis == "M1")
+mRNAsi <- pnorm(z)
+
+clin <- data.frame(sample = samples,
+                   mRNAsi = mRNAsi,
+                   Subgroup = subgroup,
+                   Metastasis = metastasis)
+head(clin, 3)
+```
+
+## Visualization
+
+### 1. Samples Sorted by mRNAsi with Clinical Strips
+
+```{r}
+#| label: fig-1.1mRNAsiHeatmap
+#| fig-cap: "Samples sorted by mRNAsi (top gradient row) with subgroup and metastasis strips; the dedifferentiated end enriches for Group 3/4 and M1."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 3
+
+ord <- order(clin$mRNAsi)
+mat <- rbind(mRNAsi = clin$mRNAsi[ord])
+rownames(mat) <- "mRNAsi"
+col_fun <- circlize::colorRamp2(c(0, 0.5, 1), c("#445EAD", "white", "#B31E22"))
+
+ha_top <- HeatmapAnnotation(
+  mRNAsi = anno_simple(mat["mRNAsi", ], col = col_fun),
+  Subgroup = clin$Subgroup[ord],
+  Metastasis = clin$Metastasis[ord],
+  col = list(Subgroup = c("Group3" = "#B31E22", "SHH" = "#529B40",
+                          "Group4" = "#383D8E", "WNT" = "#EABF00"),
+             Metastasis = c(M0 = "#dcddde", M1 = "#700353")),
+  annotation_name_side = "left")
+
+Heatmap(mat, name = "mRNAsi", top_annotation = ha_top,
+        col = col_fun, cluster_columns = FALSE, cluster_rows = FALSE,
+        show_column_names = FALSE, show_row_names = FALSE,
+        border = TRUE, width = unit(18, "cm"))
+```
+
+### 2. mRNAsi by Molecular Subgroup
+
+```{r}
+#| label: fig-1.2mRNAsiBox
+#| fig-cap: "mRNAsi across medulloblastoma subgroups; the Kruskal-Wallis p value is annotated."
+#| out.width: "65%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4.5
+
+p_kw <- kruskal.test(mRNAsi ~ Subgroup, data = clin)$p.value
+sub_order <- c("WNT", "SHH", "Group4", "Group3")
+
+ggplot(clin, aes(factor(Subgroup, sub_order), mRNAsi, fill = Subgroup)) +
+  geom_boxplot(outlier.shape = NA, width = 0.6) +
+  geom_jitter(width = 0.12, size = 0.8, alpha = 0.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("Group3" = "#B31E22", "SHH" = "#529B40",
+                               "Group4" = "#383D8E", "WNT" = "#EABF00")) +
+  labs(title = sprintf("mRNAsi by subgroup (Kruskal-Wallis %s)",
+       ifelse(p_kw < 0.001, "p < 0.001", sprintf("p = %.3f", p_kw))),
+       x = NULL, y = "mRNAsi", fill = NULL) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   mDNAsi (the methylation-based index) is drawn with the identical layout — swap the top row and re-run.
+-   The strips must be ordered by the same sort as the index; annotating an unsorted matrix destroys the whole point of the figure.
+-   For real data, project your log2-expression matrix onto the PCBC signature with `prcomp()` and take PC1 (`mRNAsi = PC1 / max(PC1)` rescaled to 0–1); the reference workflow ships the signature file.
+:::
+
+## Application
+
+Stemness indices are compared across molecular subgroups, stages and therapies; high-mRNAsi tumours are typically the dedifferentiated, aggressive end of the cohort. The sorted-strip figure is the standard overview.
+
+## Reference
+
+\[1\] Malta TM, Sokolov A, Gentles AJ, et al. Machine learning identifies stemness features associated with oncogenic dedifferentiation. Cell. 2018;173(2):338-354.e15. doi:10.1016/j.cell.2018.03.034
+
+\[2\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

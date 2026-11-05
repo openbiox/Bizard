@@ -572,6 +572,62 @@ p
 ```
 
 
+### 10. 富集两组散点 + Fisher r-to-z
+
+相比普通散点的两处升级，来自参考图 \[5\]：（1）**点大小编码 |y − x|**，两个测量分歧大的样本视觉放大；（2）两组同图，并用 **Fisher r-to-z 变换**检验两组相关系数是否有统计学差异。
+
+```{r}
+#| label: fig-10.1TwoGroupCor
+#| fig-cap: "正常与肿瘤样本的年龄 vs DNAmAge；大小 = |age − DNAmAge|，颜色 = 组别，各组回归线；Fisher r-to-z 比较两组相关。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5
+
+set.seed(1301)
+mk_group <- function(n, r, offset) {
+  age <- sample(20:70, n, replace = TRUE)
+  dnam <- age * r + rnorm(n, sd = 12 * sqrt(1 - r^2)) + offset
+  data.frame(age = age, dnam = pmax(dnam, 0))
+}
+norm <- mk_group(150, 0.90, 8)
+tum <- mk_group(150, 0.55, 4)
+norm$group <- "Normal"; tum$group <- "Tumour"
+df_sc <- rbind(norm, tum)
+
+test2cor <- function(x1, y1, x2, y2) {
+  r1 <- cor(x1, y1); r2 <- cor(x2, y2)
+  n1 <- length(x1); n2 <- length(x2)
+  z1 <- atanh(r1); z2 <- atanh(r2)
+  se <- sqrt(1/(n1 - 3) + 1/(n2 - 3))
+  z <- (z1 - z2)/se
+  p <- 2 * pnorm(-abs(z))
+  list(r1 = r1, r2 = r2, p = p)
+}
+cor_cmp <- test2cor(norm$age, norm$dnam, tum$age, tum$dnam)
+
+ggplot(df_sc, aes(age, dnam, colour = group, size = abs(dnam - age))) +
+  geom_point(alpha = 0.55) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
+  scale_colour_manual(values = c(Normal = "#2874C5", Tumour = "#B2182B")) +
+  scale_size_continuous(range = c(0.5, 4), name = "|age − DNAmAge|") +
+  labs(title = sprintf("Normal r = %.2f vs Tumour r = %.2f (Fisher z p %s)",
+       cor_cmp$r1, cor_cmp$r2,
+       ifelse(cor_cmp$p < 0.001, "< 0.001", sprintf("= %.3f", cor_cmp$p))),
+       x = "Chronological age", y = "DNAm age", colour = NULL) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "top")
+```
+
+::: callout-tip
+**实践要点**
+
+-   Fisher r-to-z：`z = atanh(r)`，再把 `z1 − z2` 与 `sqrt(1/(n1−3) + 1/(n2−3))` 比较——即变换后相关系数的双样本 z 检验。它回答"r1 是否*显著*大于 r2"，这是各自与 0.05 比较无法回答的。
+-   大小 = |y − x| 只在两轴同单位同尺度时才有意义（年龄 vs 甲基化年龄、预测 vs 观测）；否则大小无含义。
+-   保留两条回归线，但把各组各自的 p 值从图例里去掉——本图的重点是 Fisher z p。
+:::
+
 ## 应用场景
 
 ::: {#fig-ScatterApplications}
@@ -605,3 +661,5 @@ p
 \[2\] Xie J, Chen L, Wu D, et al. Significance of liquid-liquid phase separation (LLPS)-related genes in breast cancer: a multi-omics analysis\[J\]. Aging (Albany NY), 2023,15(12):5592-5610.
 
 \[3\]Zhang S, Hou L, Sun Q. Correlation analysis of intestinal flora and immune function in patients with primary hepatocellular carcinoma\[J\]. J Gastrointest Oncol, 2022,13(3):1308-1316.
+
+\[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
