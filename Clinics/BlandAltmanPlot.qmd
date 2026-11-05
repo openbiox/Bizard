@@ -188,6 +188,56 @@ ggplot(method_data, aes(x = avg, y = pct_diff)) +
 On the percentage scale the bias is −6.4% with limits of about −25% to +13%: a compact statement of method agreement that holds at low and high concentrations alike.
 
 ::: callout-tip
+### 5. Bland-Altman with Slope Test (Constant Bias Assessment)
+
+The reference workflow adds a **slope test**: regress the differences on the averages and test whether the slope differs from zero \[6\]. A non-significant slope supports the constant-bias assumption; a significant slope indicates proportional bias.
+
+```{r}
+#| label: fig-5.1SlopeTest
+#| fig-cap: "Bland-Altman plot with linear regression of differences on averages. The slope test assesses proportional bias (H0: slope = 0)."
+#| out.width: "75%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 5
+
+set.seed(2301)
+n_ba <- 60
+method_a <- rnorm(n_ba, 50, 10)
+method_b <- method_a * 1.1 + rnorm(n_ba, sd = 5)
+ba_diff <- method_b - method_a
+ba_mean <- (method_a + method_b) / 2
+
+fit_ba <- lm(ba_diff ~ ba_mean)
+slope_p <- summary(fit_ba)$coefficients[2, 4]
+
+ba_mean_of <- mean(ba_mean)
+ba_sd_of <- sd(ba_diff)
+upper <- ba_mean_of + 1.96 * ba_sd_of
+lower <- ba_mean_of - 1.96 * ba_sd_of
+
+plot(ba_mean, ba_diff, pch = 19, col = "#2874C5",
+     xlab = "Mean of two methods", ylab = "Difference (B - A)",
+     main = sprintf("Bland-Altman with slope test (P %s)",
+     ifelse(slope_p < 0.001, "< 0.001", sprintf("= %.3f", slope_p))))
+abline(fit_ba, col = "#B2182B", lwd = 2)
+abline(h = c(upper, lower), col = "grey40", lty = 2)
+abline(h = ba_mean_of, col = "grey40")
+legend("topleft", bty = "n", cex = 0.8,
+       legend = c("Regression line", "95% limits of agreement", "Mean difference"),
+       col = c("#B2182B", "grey40", "grey40"), lwd = c(2, 1, 1), lty = c(1, 2, 1))
+```
+
+A significant slope indicates **proportional bias**: the difference between methods grows with magnitude. Standard 95% limits of agreement (which assume constant bias) underestimate the discrepancy at high values.
+
+::: callout-tip
+**Practice tips**
+
+-   The slope test is `lm(diff ~ mean)`; use `smatr::sma()` for model-II regression if both methods have measurement error.
+-   If proportional bias is detected, log-transform the data before BA analysis or use percentage differences.
+-   The critical difference is ±1.96 × SD of differences; slope ≠ 0 means this is not constant across the range.
+:::
+
 ## Practice tips
 
 -   The x-axis should be the *average* of the two methods (the best estimate of the true value), never one method alone — plotting against a single method induces spurious correlation in the differences.
@@ -209,3 +259,5 @@ Method-comparison plots are required when laboratories introduce a new assay or 
 \[2\] Bland JM, Altman DG. Measuring agreement in method comparison studies. Stat Methods Med Res. 1999;8(2):135-160. doi:10.1177/096228029900800204
 
 \[3\] Datta D. blandr: a Bland-Altman Method Comparison package for R. Zenodo. 2017. doi:10.5281/zenodo.824514
+
+\[6\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

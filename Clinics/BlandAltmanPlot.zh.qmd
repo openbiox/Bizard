@@ -188,6 +188,58 @@ ggplot(method_data, aes(x = avg, y = pct_diff)) +
 在百分比尺度上，偏倚为 −6.4%，界限约为 −25% 至 +13%：一条适用于低浓度与高浓度的简洁一致性陈述。
 
 ::: callout-tip
+### 5. 带\u659c率检验的 Bland-Altman 图（恒定偏倚评估）
+
+参考工作流增加了**斜率检验**：将差值对均值做回归，检验斜率是否偏离零 \[6\]。斜率不显著支持标准 Bland-Altman 方法的恒定偏倚假设；斜率显著则提示比例偏倚。
+
+```{r}
+#| label: fig-5.1SlopeTest
+#| fig-cap: "Bland-Altman 图，差值对均值做线性回归。斜率检验评估比例偏倚（H0：斜率 = 0）。"
+#| out.width: "75%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 5
+
+set.seed(2301)
+n_ba <- 60
+method_a <- rnorm(n_ba, 50, 10)
+method_b <- method_a * 1.1 + rnorm(n_ba, sd = 5)
+ba_diff <- method_b - method_a
+ba_mean <- (method_a + method_b) / 2
+
+fit_ba <- lm(ba_diff ~ ba_mean)
+slope_p <- summary(fit_ba)$coefficients[2, 4]
+
+ba_mean_of <- mean(ba_mean)
+ba_sd_of <- sd(ba_diff)
+upper <- ba_mean_of + 1.96 * ba_sd_of
+lower <- ba_mean_of - 1.96 * ba_sd_of
+
+plot(ba_mean, ba_diff, pch = 19, col = "#2874C5",
+     xlab = "Mean of two methods", ylab = "Difference (B - A)",
+     main = sprintf("Bland-Altman with slope test (P %s)",
+     ifelse(slope_p < 0.001, "< 0.001", sprintf("= %.3f", slope_p))))
+abline(fit_ba, col = "#B2182B", lwd = 2)
+abline(h = c(upper, lower), col = "grey40", lty = 2)
+abline(h = ba_mean_of, col = "grey40")
+legend("topleft", bty = "n", cex = 0.8,
+       legend = c("Regression line", "95% limits of agreement", "Mean difference"),
+       col = c("#B2182B", "grey40", "grey40"), lwd = c(2, 1, 1), lty = c(1, 2, 1))
+```
+
+显著斜率提示**比例偏倚**：方法间差异随量级增大。标准 95% 一致性界限（假设恒定偏倚）在高值处低估差异。
+
+::: callout-tip
+**实践要点**
+
+-   斜率检验即 `lm(diff ~ mean)`；两种方法均有测量误差时用 `smatr::sma()` 做 model-II 回归。
+-   检出比例偏倚时，先对数据取对数再做 BA 分析或改用百分比差值。
+-   临界差异为 ±1.96 × 差值标准差；斜率 ≠ 0 意味着该值在全范围内非常数。
+:::
+
+## Practice tips
+
 ## 实践要点
 
 -   x 轴应使用两种方法的*均值*（真值的最佳估计），切勿只用其中一种方法——以单一方法为横轴会在差值中引入虚假相关。
@@ -209,3 +261,5 @@ ggplot(method_data, aes(x = avg, y = pct_diff)) +
 \[2\] Bland JM, Altman DG. Measuring agreement in method comparison studies. Stat Methods Med Res. 1999;8(2):135-160. doi:10.1177/096228029900800204
 
 \[3\] Datta D. blandr: a Bland-Altman Method Comparison package for R. Zenodo. 2017. doi:10.5281/zenodo.824514
+
+\[6\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

@@ -245,6 +245,53 @@ ggplot(df_heat, aes(x = Receiver, y = Sender, fill = Weight)) +
   )
 ```
 
+
+### 5. CellPhoneDB-Style Ligand-Receptor Dot Plot
+
+The CellPhoneDB output is conventionally shown as a **dot heatmap**: rows = ligand-receptor pairs, columns = cell-type pairs, point size = permutation P value, colour = scaled mean expression of both partners \[6\]. This recipe reproduces that layout from a simulated interaction table.
+
+```{r}
+#| label: fig-5.1CellPhoneDB
+#| fig-cap: "CellPhoneDB-style dot plot: rows = ligand-receptor pairs, columns = cell-type pairs; point size = permutation P, colour = scaled mean expression."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+set.seed(2401)
+lr_pairs <- c("FGFR1_FGF2", "MET_HGF", "EGFR_EGFR", "VEGFB_FLT1",
+              "NOTCH1_DLL1", "WNT5A_FZD5", "CXCL12_CXCR4", "PDGFB_PDGFRB")
+cell_pairs <- c("EC1|EC2", "EC1|Fibro", "EC2|SMC", "Fibro|EC1",
+                "EC2|EC2", "SMC|EC1", "Fibro|EC2", "EC1|SMC")
+
+lr_df <- expand.grid(pair = lr_pairs, cell_pair = cell_pairs,
+                     stringsAsFactors = FALSE)
+lr_df$pval  <- runif(nrow(lr_df), 0, 1)
+lr_df$mean  <- rnorm(nrow(lr_df), 0.5, 0.4)
+lr_df$mean  <- pmax(pmin(lr_df$mean, 1.5), 0)
+
+ggplot(lr_df, aes(cell_pair, pair, size = pval, colour = mean)) +
+  geom_point(alpha = 0.85) +
+  scale_size_continuous(range = c(0.5, 6), trans = "reverse",
+                        name = "Permutation P") +
+  scale_colour_gradient(low = "#445EAD", high = "#B2182B",
+                        name = "Scaled mean\nexpression") +
+  labs(x = "Cell-type pair", y = "Ligand-receptor pair") +
+  theme_classic(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.box = "vertical")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   CellPhoneDB permutation P values are one-sided (larger = more random); `scale_size_continuous(trans = "reverse")` flips the axis so larger points = more significant.
+-   The colour scale represents the **mean of the two partners' normalised expression**, which is what CellPhoneDB reports as `scale_factor`.
+-   `expand.grid()` creates all pair combinations; subset to significant interactions (e.g. P < 0.05) before plotting for cleaner figures.
+:::
+
+## References
 ## References
 
 \[1\] Jin S, Guerrero-Juarez CF, Zhang L, et al. Inference and analysis of cell-cell communication using CellChat. *Nature Communications*. 2021;12(1):1088. <https://doi.org/10.1038/s41467-021-21246-9>

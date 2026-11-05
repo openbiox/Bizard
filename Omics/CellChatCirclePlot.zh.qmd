@@ -247,6 +247,53 @@ ggplot(df_heat, aes(x = 接收者, y = 发送者, fill = 权重)) +
   )
 ```
 
+### 5. CellPhoneDB 风格配体-受体点图
+
+CellPhoneDB 输出通常以**点热图**展示：行 = 配体-受体对，列 = 细胞类型对，点大小 = 置换 P 值，颜色 = 两配体/受体的平均表达量 \[6\]。以下配方从模拟互作表复现该版式。
+
+```{r}
+#| label: fig-5.1CellPhoneDB
+#| fig-cap: "CellPhoneDB 风格点图：行 = 配体-受体对，列 = 细胞类型对；点大小 = 置换 P，颜色 = 缩放平均表达。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+set.seed(2401)
+lr_pairs <- c("FGFR1_FGF2", "MET_HGF", "EGFR_EGFR", "VEGFB_FLT1",
+              "NOTCH1_DLL1", "WNT5A_FZD5", "CXCL12_CXCR4", "PDGFB_PDGFRB")
+cell_pairs <- c("EC1|EC2", "EC1|Fibro", "EC2|SMC", "Fibro|EC1",
+                "EC2|EC2", "SMC|EC1", "Fibro|EC2", "EC1|SMC")
+
+lr_df <- expand.grid(pair = lr_pairs, cell_pair = cell_pairs,
+                     stringsAsFactors = FALSE)
+lr_df$pval  <- runif(nrow(lr_df), 0, 1)
+lr_df$mean  <- rnorm(nrow(lr_df), 0.5, 0.4)
+lr_df$mean  <- pmax(pmin(lr_df$mean, 1.5), 0)
+
+ggplot(lr_df, aes(cell_pair, pair, size = pval, colour = mean)) +
+  geom_point(alpha = 0.85) +
+  scale_size_continuous(range = c(0.5, 6), trans = "reverse",
+                        name = "Permutation P") +
+  scale_colour_gradient(low = "#445EAD", high = "#B2182B",
+                        name = "Scaled mean\nexpression") +
+  labs(x = "Cell-type pair", y = "Ligand-receptor pair") +
+  theme_classic(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.box = "vertical")
+```
+
+::: callout-tip
+**实践要点**
+
+-   CellPhoneDB 置换 P 值是单侧的（越大越随机）；`scale_size_continuous(trans = "reverse")` 反转轴使大点 = 更显著。
+-   颜色标度表示**两个配体/受体归一化表达的均值**，即 CellPhoneDB 报告的 `scale_factor`。
+-   `expand.grid()` 创建所有配对组合；绘图前筛除不显著互作（如 P ≥ 0.05）以获得更干净的图。
+:::
+
+## References
+
 ## 参考文献
 
 \[1\] Jin S, Guerrero-Juarez CF, Zhang L 等. 使用 CellChat 推断和分析细胞-细胞通讯. *Nature Communications*. 2021;12(1):1088. <https://doi.org/10.1038/s41467-021-21246-9>
