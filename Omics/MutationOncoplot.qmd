@@ -19,7 +19,7 @@ This oncoplot summarizes a simulated 60-sample cohort across 20 cancer driver ge
 
 -   Programming Language: R
 
--   Dependencies: `ComplexHeatmap`; `tidyverse`; `maftools`; `ggpubr`
+-   Dependencies: `ComplexHeatmap`; `tidyverse`; `maftools`; `cowplot`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages
@@ -32,15 +32,15 @@ if (!requireNamespace("tidyverse", quietly = TRUE)) {
 if (!requireNamespace("maftools", quietly = TRUE)) {
   BiocManager::install("maftools")
 }
-if (!requireNamespace("ggpubr", quietly = TRUE)) {
-  install.packages("ggpubr")
+if (!requireNamespace("cowplot", quietly = TRUE)) {
+  install.packages("cowplot")
 }
 
 # Load packages
 library(ComplexHeatmap)
 library(tidyverse)
 library(maftools)
-library(ggpubr)
+library(cowplot)
 ```
 
 ## Data Preparation
@@ -224,6 +224,7 @@ p2 <- oncoPrint(mat,
 draw(p2)
 ```
 
+
 ::: callout-tip
 **Key Parameters: **
 
@@ -338,19 +339,22 @@ The oncoprints above show **sample-level** cells; the pan-cancer "minesweeper" l
 #| fig-height: 6
 
 set.seed(2026)
-subtypes <- c("BRCA_LumA", "BRCA_Basal", "LUAD", "LUSC", "COAD_MSI", "COAD_CIN")
-n_sam <- c(80, 40, 60, 50, 45, 35)
+subtypes <- c("BRCA_LumA", "BRCA_Basal", "LUAD", "LUSC", "COAD_MSI", "COAD_CIN",
+              "KIRC", "STAD_MSI", "HNSC_HPV-", "SKCM")
+n_sam <- c(80, 40, 60, 50, 45, 35, 55, 45, 50, 45)
 genes_info <- data.frame(
-  Gene = c("EGFR", "KRAS", "BRAF", "PIK3CA", "TP53", "NF1", "PTEN", "RB1"),
-  Type = rep(c("OG", "TSG"), each = 4),
-  base_rate = c(0.10, 0.15, 0.06, 0.22, 0.45, 0.08, 0.12, 0.09)
+  Gene = c("EGFR", "KRAS", "BRAF", "PIK3CA", "MYC", "CCND1",
+           "TP53", "NF1", "PTEN", "RB1", "ARID1A", "CDKN2A"),
+  Type = rep(c("OG", "TSG"), each = 6),
+  base_rate = c(0.10, 0.15, 0.06, 0.22, 0.12, 0.09,
+                0.45, 0.08, 0.12, 0.09, 0.14, 0.20)
 )
 
-## sample-level alteration type per gene (simulate per subtype)
+## sample-level alteration types per gene (simulated per subtype)
 alter_ls <- do.call(rbind, lapply(seq_along(subtypes), function(s) {
   do.call(rbind, lapply(genes_info$Gene, function(g) {
     rate <- genes_info$base_rate[genes_info$Gene == g] *
-      (1.4 ^ rnorm(1, mean = c(0.4, 0.2)[1 + (s > 2)]))   # subtype drift
+      (1.35 ^ rnorm(1, mean = ifelse(s <= 5, 0.4, -0.2)))     # subtype drift
     n_alt <- rbinom(1, n_sam[s], min(rate, 0.9))
     types <- sample(c("MUT", "AMP", "DEL"), n_alt, replace = TRUE,
                     prob = c(0.6, 0.2, 0.2))
@@ -362,10 +366,11 @@ alter_ls <- do.call(rbind, lapply(seq_along(subtypes), function(s) {
   filter(!is.na(type))
 
 ## centre: altered-sample counts per subtype x gene
+gene_levels <- rev(genes_info$Gene)
 centre <- alter_ls |>
   count(subtype, gene, name = "n_altered") |>
   complete(subtype = subtypes, gene = genes_info$Gene, fill = list(n_altered = 0)) |>
-  mutate(Gene = factor(gene, rev(genes_info$Gene)),
+  mutate(Gene = factor(gene, gene_levels),
          Subtype = factor(subtype, subtypes))
 
 ## composition bars (shares of alteration types)
@@ -373,40 +378,41 @@ comp_st <- alter_ls |> count(subtype, type, name = "n")
 comp_ge <- alter_ls |> count(gene, type, name = "n")
 
 p_top <- ggplot(comp_st, aes(x = subtype, y = n, fill = type)) +
-  geom_col(position = "fill", width = 0.95, colour = "grey60", linewidth = .2) +
+  geom_col(position = "fill", width = 1, colour = "grey60", linewidth = .2) +
   scale_fill_brewer(type = "div", palette = "Paired", direction = -1, name = NULL) +
-  scale_x_discrete(labels = NULL) +
-  theme_void() + theme(legend.position = "top", legend.key.size = unit(3, "mm"))
+  scale_x_discrete(labels = NULL, limits = subtypes) +
+  theme_void(base_size = 9) + theme(legend.position = "none")
 
 p_right <- ggplot(comp_ge, aes(x = gene, y = n, fill = type)) +
-  geom_col(position = "fill", width = 0.95, colour = "grey60", linewidth = .2) +
-  scale_fill_brewer(type = "div", palette = "Paired", direction = -1) +
-  scale_x_discrete(labels = NULL, limits = rev(genes_info$Gene)) +
-  coord_flip() + theme_void()
+  geom_col(position = "fill", width = 1, colour = "grey60", linewidth = .2) +
+  scale_fill_brewer(type = "div", palette = "Paired", direction = -1, name = NULL) +
+  scale_x_discrete(labels = NULL, limits = gene_levels) +
+  coord_flip() + theme_void() +
+  theme(legend.position = "bottom", legend.key.size = unit(3, "mm"),
+        legend.text = element_text(size = 7))
+leg <- cowplot::get_legend(p_right)          # grob insertion drops legends: extract it
+p_right <- p_right + theme(legend.position = "none")
 
 p_centre <- ggplot(centre, aes(Subtype, Gene, fill = n_altered)) +
   geom_tile(colour = "grey55", linewidth = .3) +
-  geom_text(aes(label = ifelse(n_altered > 0, n_altered, "")), size = 3) +
-  scale_fill_gradient(low = "white", high = "grey30", name = "Altered samples") +
+  geom_text(aes(label = ifelse(n_altered > 0, n_altered, "")), size = 2.6) +
+  scale_fill_gradient(low = "white", high = "grey30", name = "Altered\nsamples") +
   theme_minimal(base_size = 10) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+        axis.text.y = element_text(size = 9, face = "bold",
+                                   colour = c(rep("orangered", 6), rep("royalblue", 6))),
         panel.grid = element_blank())
 
-p_left <- ggplot(genes_info, aes(x = 0, y = factor(Gene, rev(genes_info$Gene)),
-                                 fill = Type)) +
-  geom_tile(colour = "white", linewidth = .6) +
-  geom_text(aes(label = Gene), hjust = 1, nudge_x = -0.55, size = 3, fontface = "bold") +
-  scale_fill_manual(values = c(OG = "orangered", TSG = "royalblue")) +
-  xlim(-2.2, 0.5) + theme_void() + theme(legend.position = "none")
-
-## assemble: composition bar on top, OG/TSG strip left, gene bar right
-lay <- ggarrange(
-  ggarrange(NULL, p_top, NULL, ncol = 3, widths = c(0.16, 1, 0.16)),
-  ggarrange(p_left, p_centre, p_right, ncol = 3, widths = c(0.16, 1, 0.16)),
-  nrow = 2, heights = c(0.14, 1), align = "v")
-annotate_figure(lay, top = text_grob("Alteration frequencies across cancer subtypes",
-                                     face = "bold", size = 13))
+## cowplot grobs keep the edge bars in register with the centre grid
+## (verified mechanism; ggarrange/patchwork drifted here)
+combined <- insert_xaxis_grob(p_centre, p_top, position = "top", height = unit(0.3, "in"))
+combined <- insert_yaxis_grob(combined, p_right, position = "right", width = unit(1.4, "in"))
+ggdraw(combined) +
+  draw_grob(leg, x = 0.76, y = 0.006, width = 0.23, height = 0.045)  # legend into the empty lower-right corner
 ```
+
+
+- Assemble with **cowplot's `insert_xaxis_grob()` / `insert_yaxis_grob()`** (the same mechanism as the marginal-volcano recipe) rather than width/height vectors: grob insertion ties each edge bar to the centre panel's axis space, which is what keeps them aligned with the tiles. Note it discards the edge plot's own axis text — labels belong on the centre grid.
 
 ::: callout-tip
 **Practice tips**

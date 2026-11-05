@@ -157,8 +157,8 @@ ggplot(marker_top, aes(x = cluster, y = row)) +
 #| out.width: "95%"
 #| warning: false
 #| message: false
-#| fig-width: 9
-#| fig-height: 4
+#| fig-width: 8
+#| fig-height: 4.5
 
 set.seed(123)
 n_group <- 50
@@ -184,20 +184,23 @@ tile_df$patient <- factor(tile_df$patient, levels = seq_len(2 * n_group))
 pvals <- sapply(features, function(f) {
   chisq.test(table(tile_df$state[tile_df$row == f], group))$p.value
 })
-p_labels <- sprintf("%s\nP %s", features,
-                    ifelse(pvals < 0.001, "< 0.001", paste0("= ", sprintf("%.3f", pvals))))
+# P values go into the y-axis labels: they can never be clipped there
+row_labels <- c("Expression group",
+                sprintf("%s\nP %s", features,
+                        ifelse(pvals < 0.001, "< 0.001", paste0("= ", sprintf("%.3f", pvals)))))
+names(row_labels) <- levels(tile_df$row)
 
 ggplot(tile_df, aes(x = patient, y = row, fill = state)) +
   geom_tile(colour = "grey85", linewidth = .3) +
   geom_tile(data = subset(tile_df, row == "Expression group"), colour = NA) +
   scale_fill_manual(values = c("High expression" = "#292C7C", "Low expression" = "#97B9D7",
                                "yes" = "#4582B5", "no" = "white")) +
-  annotate("text", x = 2 * n_group + 3, y = features, label = p_labels,
-           hjust = 0, size = 3.2, lineheight = .9) +
-  scale_x_discrete(expand = expansion(add = c(.6, 6))) +
+  scale_y_discrete(labels = row_labels) +
+  scale_x_discrete(expand = expansion(add = c(.6, .6))) +
   labs(x = "Patients (ordered by expression group)", y = NULL, fill = NULL) +
   theme_minimal(base_size = 11) +
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        axis.text.y = element_text(size = 9, lineheight = .9),
         panel.grid = element_blank(), legend.position = "left")
 ```
 
@@ -205,7 +208,7 @@ ggplot(tile_df, aes(x = patient, y = row, fill = state)) +
 **关键参数：**
 
 - tile 网格同样只是一张长表：患者 × 特征一格一行，`state` 驱动填充色。
-- `annotate("text", x = ..., y = <因子水平>)` 把 P 值放到网格外；用 `coord_cartesian(clip = "off")` 或留足 x 方向扩展，避免文字被裁掉。
+- 把 P 值**并入 y 轴行标签**（`scale_y_discrete(labels = ...)`），而不是在网格外画文字——出界文字正是这张图被裁切的经典原因。
 - 特征为有序或多分类时，按数据规模把卡方检验换成 `fisher.test`（小样本）或 Cochran–Armitage / Kruskal 检验。
 :::
 
