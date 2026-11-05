@@ -850,6 +850,129 @@ pheatmap(status,
 - 行/列名与图例挤占主体时果断关闭（`show_colnames = FALSE`、`annotation_legend = FALSE`）：pheatmap 的图例堆在右侧，轻松吃掉三分之一画布。
 :::
 
+#### 4.7 带组间比较 P 值的表达热图
+
+表达热图加上每行的**组间比较 P 值**就成为证据图 \[11\]：四种检验覆盖所有设计（两组用 t.test/Wilcoxon，多组用 ANOVA/Kruskal-Wallis），BH 校正后把结论以颜色标注列放在热图旁。
+
+```{r}
+#| label: fig-4.7PvalueHeatmap
+#| fig-cap: "12 个基因在三档 WHO 样 grades 中的 z-score 表达热图（列按 grade 分块）；右侧色条编码每基因 BH 校正后的 Kruskal-Wallis P。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+set.seed(1601)
+genes_p <- paste0("m6A", sprintf("%02d", 1:12))
+grades <- c("G2", "G3", "G4")
+samples <- paste0("S", sprintf("%02d", 1:60))
+grade_v <- factor(rep(grades, each = 20), levels = grades)
+
+expr_p <- matrix(rnorm(12 * 60, sd = 0.8), 12, 60, dimnames = list(genes_p, samples))
+expr_p[1:4, grade_v == "G3"] <- expr_p[1:4, grade_v == "G3"] + 0.9
+expr_p[1:4, grade_v == "G4"] <- expr_p[1:4, grade_v == "G4"] + 1.6
+expr_p[5:8, grade_v == "G4"] <- expr_p[5:8, grade_v == "G4"] - 1.2
+
+## 逐基因 Kruskal-Wallis，BH 校正（参考的 cross_subtype_compr 四分支）
+p_kw <- apply(expr_p, 1, function(x) kruskal.test(x ~ grade_v)$p.value)
+p_adj <- p.adjust(p_kw, method = "BH")
+
+z_mat <- t(scale(t(expr_p)))
+p_cut <- cut(p_adj, breaks = c(0, 0.001, 0.01, 0.05, 1),
+             labels = c("P < 0.001", "P < 0.01", "P < 0.05", "n.s."))
+p_col <- c("P < 0.001" = "#B2182B", "P < 0.01" = "#EF8A62",
+           "P < 0.05" = "#FDDBC7", "n.s." = "grey90")
+## 每个基因一个 P 值，作为右侧行注释（同参考图的 p 值列）
+row_ha_p <- rowAnnotation(`KW P (BH)` = factor(p_cut, levels = names(p_col)),
+  col = list(`KW P (BH)` = p_col),
+  annotation_name_side = "top")
+
+grade_col <- c(G2 = "#445EAD", G3 = "#EABF00", G4 = "#B2182B")
+ha_col <- HeatmapAnnotation(Grade = grade_v, col = list(Grade = grade_col),
+                            show_legend = FALSE)
+
+Heatmap(z_mat, name = "Expression (z)",
+        top_annotation = ha_col, right_annotation = row_ha_p,
+        col = circlize::colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+        cluster_columns = FALSE,
+        column_split = grade_v, column_gap = unit(1.5, "mm"),
+        row_names_gp = grid::gpar(fontsize = 9),
+        show_column_names = FALSE, border = TRUE)
+```
+
+::: callout-tip
+**实践要点**
+
+-   按设计选检验而非习惯：两组用 `t.test`/`wilcox`，≥3 组用 `anova`/`kruskal`；参考工作流的四分支辅助函数封装的正是这个。
+-   注释色条让显著性无需打印十二个 P 值即可扫读；原始数值表留作补充数据。
+-   `p.adjust(method = "BH")` 要**跨被检验的基因**计算——按列或按图分别校正会让 FDR 失效。
+:::
+
+#### 4.8 亚型特异性对角热图
+
+≥3 个亚型时，one-vs-rest 差异检验产生**每个亚型特异的基因集**；把这些集合堆进同一张不聚类的 z-score 表达热图，就得到对角线布局 \[12\]——每个亚型的特异基因只在它自己的列亮起。
+
+```{r}
+#| label: fig-4.8DiagonalSubtype
+#| fig-cap: "亚型特异性对角热图：每模拟亚型取 one-vs-rest 上调 top-10 基因，z-score 后列按亚型分组；行保持亚型区块顺序。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6.5
+
+set.seed(1602)
+subts <- paste0("C", 1:4)
+genes_d <- paste0("G", sprintf("%02d", 1:40))
+subt_v <- rep(subts, each = 20)
+samp_d <- paste0(subt_v, "_", unlist(lapply(table(subt_v), seq_len)))
+
+expr_d <- matrix(rnorm(40 * 80, sd = 0.8), 40, 80,
+                 dimnames = list(genes_d, samp_d))
+for (k in seq_along(subts)) {                          # 每亚型 10 个特异基因
+  blk <- ((k - 1) * 10 + 1):(k * 10)
+  expr_d[blk, subt_v == subts[k]] <- expr_d[blk, subt_v == subts[k]] + 1.8
+}
+
+## 逐亚型 one-vs-rest t 检验；每亚型保留上调 top-10
+spec_list <- lapply(subts, function(st) {
+  rest <- subt_v != st
+  p_vals <- apply(expr_d, 1, function(x) t.test(x[!rest], x[rest])$p.value)
+  lfc <- rowMeans(expr_d[, !rest, drop = FALSE]) - rowMeans(expr_d[, rest, drop = FALSE])
+  genes_d[order(p_adj2 <- p.adjust(p_vals, "BH"), -lfc)][1:10]
+})
+names(spec_list) <- subts
+
+## 按亚型堆叠区块：行 = 特异基因，列 = 样本
+row_idx <- unlist(spec_list)
+col_idx <- order(subt_v)
+z_d <- t(scale(t(expr_d[row_idx, col_idx, drop = FALSE])))
+
+subt_col <- c(C1 = "#B31E22", C2 = "#529B40", C3 = "#383D8E", C4 = "#EABF00")
+ann_d <- HeatmapAnnotation(Subtype = subt_v[col_idx],
+                           col = list(Subtype = subt_col), show_legend = FALSE)
+row_block <- data.frame(Specific = rep(subts, each = 10))
+
+Heatmap(z_d, name = "Expression (z)",
+        top_annotation = ann_d,
+        col = circlize::colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+        cluster_rows = FALSE, cluster_columns = FALSE,
+        row_split = factor(rep(subts, each = 10), subts),
+        column_split = factor(subt_v[col_idx], subts),
+        column_gap = unit(1.5, "mm"), row_gap = unit(1.5, "mm"),
+        show_column_names = FALSE,
+        row_names_gp = grid::gpar(fontsize = 6), border = TRUE)
+```
+
+::: callout-tip
+**实践要点**
+
+-   one-vs-rest 是产生对角线的比较：把每个亚型与**合并的其他亚型**比，而非两两比较。
+-   行按亚型分块（`row_split`）且**永不聚类行**——聚类会打散特异区块、抹掉对角线。
+-   参考工作流的特异基因集来自配对 RNA-seq DE（edgeR）；microarray 型数据上 t 检验给出相同选择。
+:::
+
 ### 5. complexheatmap 热图
 
 `ComplexHeatmap`包是基于`grid`包的，使用面向对象的方式实现热图及其组件，主要包含以下几个类：

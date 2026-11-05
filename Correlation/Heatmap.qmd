@@ -842,6 +842,131 @@ pheatmap(status,
 - Turn off column names and legends when they crowd the body (`show_colnames = FALSE`, `annotation_legend = FALSE`): pheatmap's legends stack on the right and can easily take a third of the canvas.
 :::
 
+#### 4.7 Heatmap with Per-Gene Group-Comparison P Values
+
+Expression heatmaps become evidence figures when each row carries its **group-comparison P value** \[11\]: four tests cover all designs (t.test / Wilcoxon for two groups, ANOVA / Kruskal-Wallis for more), BH-adjust, and the verdict rides next to the profile as a colour-coded annotation column.
+
+```{r}
+#| label: fig-4.7PvalueHeatmap
+#| fig-cap: "z-scored expression of 12 genes across samples from three WHO-like grades (columns split by grade); the right strip encodes per-gene BH-adjusted Kruskal-Wallis P."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+set.seed(1601)
+genes_p <- paste0("m6A", sprintf("%02d", 1:12))
+grades <- c("G2", "G3", "G4")
+samples <- paste0("S", sprintf("%02d", 1:60))
+grade_v <- factor(rep(grades, each = 20), levels = grades)
+
+expr_p <- matrix(rnorm(12 * 60, sd = 0.8), 12, 60, dimnames = list(genes_p, samples))
+expr_p[1:4, grade_v == "G3"] <- expr_p[1:4, grade_v == "G3"] + 0.9
+expr_p[1:4, grade_v == "G4"] <- expr_p[1:4, grade_v == "G4"] + 1.6
+expr_p[5:8, grade_v == "G4"] <- expr_p[5:8, grade_v == "G4"] - 1.2
+
+## one Kruskal-Wallis per gene, BH-adjusted (the reference's cross_subtype_compr)
+p_kw <- apply(expr_p, 1, function(x) kruskal.test(x ~ grade_v)$p.value)
+p_adj <- p.adjust(p_kw, method = "BH")
+
+z_mat <- t(scale(t(expr_p)))
+p_cut <- cut(p_adj, breaks = c(0, 0.001, 0.01, 0.05, 1),
+             labels = c("P < 0.001", "P < 0.01", "P < 0.05", "n.s."))
+p_col <- c("P < 0.001" = "#B2182B", "P < 0.01" = "#EF8A62",
+           "P < 0.05" = "#FDDBC7", "n.s." = "grey90")
+## per-GENE p values go as a row annotation on the right (one p per gene,
+## like the reference's extra p column)
+row_ha_p <- rowAnnotation(`KW P (BH)` = factor(p_cut, levels = names(p_col)),
+  col = list(`KW P (BH)` = p_col),
+  annotation_name_side = "top")
+
+grade_col <- c(G2 = "#445EAD", G3 = "#EABF00", G4 = "#B2182B")
+ha_col <- HeatmapAnnotation(Grade = grade_v, col = list(Grade = grade_col),
+                            show_legend = FALSE)
+
+Heatmap(z_mat, name = "Expression (z)",
+        top_annotation = ha_col, right_annotation = row_ha_p,
+        col = circlize::colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+        cluster_columns = FALSE,
+        column_split = grade_v, column_gap = unit(1.5, "mm"),
+        row_names_gp = grid::gpar(fontsize = 9),
+        show_column_names = FALSE, border = TRUE)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Pick the test by design, not by habit: 2 groups → `t.test`/`wilcox`, ≥3 groups → `anova`/`kruskal`; the four-branch helper in the reference wraps exactly this.
+-   The annotation strip colours make significance scannable without printing twelve P values; keep the raw table as supplementary data.
+-   `p.adjust(method = "BH")` is computed **across the tested genes** — adjusting per column or per plot invalidates the FDR.
+:::
+
+#### 4.8 Subtype-Specific Diagonal Heatmap
+
+With ≥3 subtypes, one-vs-rest differential tests produce a **subtype-specific gene set per subtype**; stacking those sets into one unclustered heatmap of z-scored expression yields the diagonal layout \[12\] — each subtype's specific genes light up only in its own columns.
+
+```{r}
+#| label: fig-4.8DiagonalSubtype
+#| fig-cap: "Subtype-specific diagonal heatmap: top-10 one-vs-rest up genes per simulated subtype, z-scored, columns grouped by subtype; rows stay in subtype-block order."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6.5
+
+set.seed(1602)
+subts <- paste0("C", 1:4)
+n_rep <- 20
+genes_d <- paste0("G", sprintf("%02d", 1:40))
+subt_v <- rep(subts, each = 20)
+samp_d <- paste0(subt_v, "_", unlist(lapply(table(subt_v), seq_len)))
+
+expr_d <- matrix(rnorm(40 * 80, sd = 0.8), 40, 80,
+                 dimnames = list(genes_d, samp_d))
+for (k in seq_along(subts)) {                          # 10 specific genes per subtype
+  blk <- ((k - 1) * 10 + 1):(k * 10)
+  expr_d[blk, subt_v == subts[k]] <- expr_d[blk, subt_v == subts[k]] + 1.8
+}
+
+## one-vs-rest t-test per subtype; keep the top-10 up genes per subtype
+spec_list <- lapply(subts, function(st) {
+  rest <- subt_v != st
+  p_vals <- apply(expr_d, 1, function(x) t.test(x[!rest], x[rest])$p.value)
+  lfc <- rowMeans(expr_d[, !rest, drop = FALSE]) - rowMeans(expr_d[, rest, drop = FALSE])
+  genes_d[order(p_adj2 <- p.adjust(p_vals, "BH"), -lfc)][1:10]
+})
+names(spec_list) <- subts
+
+## stack the subtype blocks: rows = specific genes, columns = samples
+row_idx <- unlist(spec_list)
+col_idx <- order(subt_v)
+z_d <- t(scale(t(expr_d[row_idx, col_idx, drop = FALSE])))
+
+subt_col <- c(C1 = "#B31E22", C2 = "#529B40", C3 = "#383D8E", C4 = "#EABF00")
+ann_d <- HeatmapAnnotation(Subtype = subt_v[col_idx],
+                           col = list(Subtype = subt_col), show_legend = FALSE)
+row_block <- data.frame(Specific = rep(subts, each = 10))
+
+Heatmap(z_d, name = "Expression (z)",
+        top_annotation = ann_d,
+        col = circlize::colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+        cluster_rows = FALSE, cluster_columns = FALSE,
+        row_split = factor(rep(subts, each = 10), subts),
+        column_split = factor(subt_v[col_idx], subts),
+        column_gap = unit(1.5, "mm"), row_gap = unit(1.5, "mm"),
+        show_column_names = FALSE,
+        row_names_gp = grid::gpar(fontsize = 6), border = TRUE)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   One-vs-rest is the comparison that creates the diagonal: test each subtype against **all other subtypes pooled**, not pairwise.
+-   Keep rows grouped by subtype (`row_split`) and **never cluster rows** — clustering would interleave the specific blocks and erase the diagonal.
+-   The reference workflow derives the specific sets from paired RNA-seq DE (edgeR); t-tests on log expression give the same selection on microarray-style data.
+:::
+
 ### 5. complexheatmap Heatmaps
 
 The `ComplexHeatmap` package, based on the `grid` package, uses an object-oriented approach to implement heatmaps and their components. It mainly includes the following classes:
