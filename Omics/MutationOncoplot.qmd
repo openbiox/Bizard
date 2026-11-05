@@ -499,6 +499,71 @@ p_sig / p_expo + patchwork::plot_layout(heights = c(1.2, 1))
 -   With real MAF input, `maftools::trinucleotideMatrix()` builds the channel matrix (needs `BSgenome.Hsapiens`), then the plotting half is exactly this.
 :::
 
+
+### 9. Mutation-Context Lego/Heatmap with Class Pie
+
+Mutation signatures read best as a **6 × 16 grid**: six substitution classes, sixteen 3'-flanking contexts per class, bar height or colour depth for counts. The reference figure renders this as a 3D lego plot (`barplot3d` + `rgl`); the 2D heatmap twin carries the same information without the 3D dependency, and the class pie summarises the six-way split \[5\].
+
+```{r}
+#| label: fig-9.1ContextHeatmap
+#| fig-cap: "Mutation context: 6 substitution classes x 16 flanking contexts as a colour-depth heatmap (left) and the six-class proportion pie (right)."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 4.5
+
+set.seed(1701)
+mut_types <- c("C>A", "C>G", "C>T", "T>A", "T>C", "T>G")
+type_cols <- c("#805D3F", "#72549A", "#5EAFB2", "#3F4F9D", "#F2EC3C", "#74B655")
+names(type_cols) <- mut_types
+contexts <- c("A_C", "C_C", "G_C", "T_C", "A_G", "C_G", "G_G", "T_G",
+              "A_T", "C_T", "G_T", "T_T", "A_A", "C_A", "G_A", "T_A")
+
+## simulate a 96-channel count vector with a C>T (aging-like) tilt
+counts <- rmultinom(1, 6000,
+                    prob = rep(c(4, 2, 3, 1, 2, 2, 3, 1,
+                                 6, 3, 4, 2, 1, 1, 1, 1), times = 6))
+mut_df <- data.frame(
+  mut_type = factor(rep(mut_types, each = 16), levels = mut_types),
+  context = factor(rep(contexts, times = 6), levels = contexts),
+  count = as.vector(counts))
+
+## left: colour-depth heatmap, rows = contexts, cols = substitution classes
+p_heat <- ggplot(mut_df, aes(mut_type, context, fill = count)) +
+  geom_tile(colour = "grey80", linewidth = 0.3) +
+  geom_text(aes(label = count), size = 2.2) +
+  scale_fill_gradient(low = "white", high = "#3F4F9D", name = "Count") +
+  scale_x_discrete(limits = mut_types) +
+  labs(x = NULL, y = "3' flanking base", title = "Mutation context (96 channels)") +
+  theme_minimal(base_size = 10) +
+  theme(axis.text.x = element_text(face = "bold", colour = type_cols),
+        panel.grid = element_blank())
+
+## right: proportion pie of the six classes
+pie_df <- aggregate(count ~ mut_type, mut_df, sum)
+pie_df$pct <- pie_df$count / sum(pie_df$count) * 100
+p_pie <- ggplot(pie_df, aes(x = "", y = pct, fill = mut_type)) +
+  geom_col(width = 1, colour = "white") +
+  coord_polar(theta = "y") +
+  scale_fill_manual(values = type_cols) +
+  geom_text(aes(label = sprintf("%.0f%%", pct)),
+            position = position_stack(vjust = 0.5), size = 3) +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  theme_void(base_size = 10)
+
+patchwork::wrap_elements(full = p_heat) |
+  patchwork::wrap_elements(full = p_pie + theme(legend.position = "bottom"))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The 4 × 4 block inside each colour class is the lego plot's advantage over the classic 96-bar chart: the two flanking bases read as a matrix, so context preferences (e.g. TpC for APOBEC) pop out.
+-   The 3D lego version needs `barplot3d` + `rgl` (screen-only, saved via `rgl.postscript`); this 2D heatmap + pie pair is publication-portable and renders identically on CI.
+-   With a real MAF, `maftools::trinucleotideMatrix()` builds the same 96-vector (needs `BSgenome.Hsapiens`); feed `count` from it and keep the plotting half.
+:::
+
 ## Applications
 
 -   **Cohort characterization**: first-line summary of a cancer genomics study, usually split by subtype, stage or treatment arm.

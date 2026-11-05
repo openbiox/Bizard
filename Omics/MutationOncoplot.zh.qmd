@@ -497,6 +497,72 @@ p_sig / p_expo + patchwork::plot_layout(heights = c(1.2, 1))
 -   真实 MAF 输入用 `maftools::trinucleotideMatrix()` 构建通道矩阵（需 `BSgenome.Hsapiens`），之后的绘图半程与本例完全一致。
 :::
 
+
+### 9. 突变上下文乐高/热图与类别饼图
+
+突变 signature 最适合以 **6 × 16 网格**呈现：六个替换类别，每类 16 个 3' 侧翼上下文，柱高或颜色深度表示计数。参考图以 3D 乐高图（`barplot3d` + `rgl`）渲染；2D 热图孪生版携带相同信息且无 3D 依赖，类别饼图总结六分占比 \[5\]。
+
+```{r}
+#| label: fig-9.1ContextHeatmap
+#| fig-cap: "突变上下文：6 个替换类 × 16 个侧翼上下文的颜色深度热图（左）与六类占比饼图（右）。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 4.5
+
+set.seed(1701)
+mut_types <- c("C>A", "C>G", "C>T", "T>A", "T>C", "T>G")
+type_cols <- c("#805D3F", "#72549A", "#5EAFB2", "#3F4F9D", "#F2EC3C", "#74B655")
+names(type_cols) <- mut_types
+contexts <- c("A_C", "C_C", "G_C", "T_C", "A_G", "C_G", "G_G", "T_G",
+              "A_T", "C_T", "G_T", "T_T", "A_A", "C_A", "G_A", "T_A")
+
+## 模拟带 C>T（类衰老）倾斜的 96 通道计数向量
+counts <- rmultinom(1, 6000,
+                    prob = rep(c(4, 2, 3, 1, 2, 2, 3, 1,
+                                 6, 3, 4, 2, 1, 1, 1, 1), times = 6))
+mut_df <- data.frame(
+  mut_type = factor(rep(mut_types, each = 16), levels = mut_types),
+  context = factor(rep(contexts, times = 6), levels = contexts),
+  count = as.vector(counts))
+
+## 左：颜色深度热图，行 = 上下文，列 = 替换类别
+p_heat <- ggplot(mut_df, aes(mut_type, context, fill = count)) +
+  geom_tile(colour = "grey80", linewidth = 0.3) +
+  geom_text(aes(label = count), size = 2.2) +
+  scale_fill_gradient(low = "white", high = "#3F4F9D", name = "Count") +
+  scale_x_discrete(limits = mut_types) +
+  labs(x = NULL, y = "3' flanking base", title = "Mutation context (96 channels)") +
+  theme_minimal(base_size = 10) +
+  theme(axis.text.x = element_text(face = "bold", colour = type_cols),
+        panel.grid = element_blank())
+
+## 右：六类占比饼图
+pie_df <- aggregate(count ~ mut_type, mut_df, sum)
+pie_df$pct <- pie_df$count / sum(pie_df$count) * 100
+p_pie <- ggplot(pie_df, aes(x = "", y = pct, fill = mut_type)) +
+  geom_col(width = 1, colour = "white") +
+  coord_polar(theta = "y") +
+  scale_fill_manual(values = type_cols) +
+  geom_text(aes(label = sprintf("%.0f%%", pct)),
+            position = position_stack(vjust = 0.5), size = 3) +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  theme_void(base_size = 10)
+
+patchwork::wrap_elements(full = p_heat) |
+  patchwork::wrap_elements(full = p_pie + theme(legend.position = "bottom"))
+```
+
+::: callout-tip
+**实践要点**
+
+-   每个颜色类内部的 4 × 4 块是乐高图优于经典 96 柱图之处：两个侧翼碱基构成矩阵，上下文偏好（如 APOBEC 的 TpC）一目了然。
+-   3D 乐高版需要 `barplot3d` + `rgl`（仅屏幕显示，经 `rgl.postscript` 保存）；这对 2D 热图 + 饼图可进出版物且在 CI 上渲染一致。
+-   真实 MAF 用 `maftools::trinucleotideMatrix()` 构建同一 96 向量（需 `BSgenome.Hsapiens`）；取其 `count` 后保留绘图半程。
+:::
+
+## 应用场景
 ## 应用场景
 
 -   **队列刻画**：肿瘤基因组学研究的一线总结图，通常按亚型、分期或治疗臂拆分。
