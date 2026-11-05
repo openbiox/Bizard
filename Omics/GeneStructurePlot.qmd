@@ -359,6 +359,65 @@ ggplot(example_genes, aes(xmin = start, xmax = end, y = molecule, fill = gene, f
     theme_genes()
 ```
 
+### 3. ChIP/ATAC Signal Tracks + Gene Structure (ggplot2)
+
+Transcription-regulation figures overlay **sequencing signal tracks** (ChIP-seq, ATAC-seq, DNA methylation) on a gene-body schematic \[4\]. The ggplot2 + cowplot recipe: one `geom_area()`/`geom_line()` layer per track, one `geom_rect()` layer for exons, stacked with `plot_grid()`.
+
+```{r}
+#| label: fig-3.1SignalTracks
+#| fig-cap: "Simulated ATAC-seq and ChIP-seq signal tracks around a gene body; the bottom panel shows the exon structure."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 4.5
+
+set.seed(2001)
+n_bin <- 200
+pos <- seq_len(n_bin)
+exons <- data.frame(start = c(30, 80, 140), end = c(60, 120, 175))
+
+mk_track <- function(base, peaks, noise_sd = 0.08) {
+  sig <- rep(base, n_bin)
+  for (pk in peaks) sig[pk[1]:pk[2]] <- sig[pk[1]:pk[2]] + pk[3]
+  sig + rnorm(n_bin, sd = noise_sd)
+}
+track_df <- rbind(
+  data.frame(track = "ATAC-seq", pos = pos, signal = mk_track(0.3, list(c(35, 55, 1.8), c(90, 110, 1.2), c(145, 170, 2.0)))),
+  data.frame(track = "ChIP-seq", pos = pos, signal = mk_track(0.5, list(c(40, 58, 2.5), c(145, 168, 1.5)))))
+
+p_tracks <- ggplot(track_df, aes(pos, signal, fill = track)) +
+  geom_area(alpha = 0.5, position = "identity", colour = NA) +
+  facet_wrap(~track, ncol = 1, scales = "free_y", strip.position = "left") +
+  scale_fill_manual(values = c("ATAC-seq" = "#445EAD", "ChIP-seq" = "#B2182B")) +
+  labs(x = NULL, y = "Signal") +
+  theme_classic(base_size = 10) +
+  theme(legend.position = "none", strip.placement = "outside",
+        strip.background = element_blank(), strip.text.y.left = element_text(angle = 0))
+
+p_gene <- ggplot(exons, aes(xmin = start, xmax = end, ymin = 0.4, ymax = 0.6)) +
+  geom_rect(fill = "#445EAD", colour = "#2874C5") +
+  annotate("segment", x = exons$end[-nrow(exons)], xend = exons$start[-1],
+           y = 0.5, yend = 0.5, colour = "#2874C5", linewidth = 0.5) +
+  scale_x_continuous(limits = c(1, n_bin), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "Genomic position (bp)", y = NULL) +
+  theme_classic(base_size = 10) +
+  theme(axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.y = element_blank())
+
+cowplot::plot_grid(p_tracks, p_gene, ncol = 2, align = "h", axis = "tb",
+                   rel_widths = c(1, 0.75))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Simulate the tracks with `base + peak_envelope + noise` where the peak envelope is a Gaussian or step function at known positions — this mirrors real bigWig data structure.
+-   `facet_wrap(..., strip.position = "left")` puts track names on the left as a pseudo-y-axis label.
+-   The exon `geom_rect()` uses genomic coordinates that match the track x-axis; keep the same `limits` in both layers.
+:::
+
 ## Application
 
 ::: {#fig-GeneStructurePlotApplications}
@@ -373,3 +432,5 @@ The figure shows the loss and differentiation model of NLR genes in plants durin
 
 \[1\] Guo BC, Zhang YR, Liu ZG, Li XC, Yu Z, Ping BY, Sun YQ, van den Burg H, Ma FW, Zhao T. Deciphering Plant NLR Genomic Evolution: Synteny-Informed Classification Unveils Insights into TNL Gene Loss. Mol Biol Evol. 2025 Feb 3;42(2):msaf015. doi: 10.1093/molbev/msaf015. PMID: 39835721; PMCID: PMC11789945.
 
+
+\[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
