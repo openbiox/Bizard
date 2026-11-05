@@ -206,17 +206,22 @@ feat_colors <- c("Protein-coding" = "#445EAD", "lncRNA" = "#70C17A",
                  "Pseudogene" = "#F7C07C", "Intergenic" = "#BEBEBE")
 
 xr <- grDevices::extendrange(data$log2FC, f = 0.05)  # 共享 x 范围（中央图 + 顶部条带）
+y_cap <- 12                                          # 封顶极端的 -log10(P)，保持面板可读
+data$log10P_cap <- pmin(data$log10P, y_cap)
 
 ## 中央：按特征类别着色的火山图
-p1 <- ggplot(data, aes(x = log2FC, y = log10P)) +
+p1 <- ggplot(data, aes(x = log2FC, y = log10P_cap)) +
   geom_point(aes(color = feature), size = 0.8, alpha = 0.6) +
   geom_vline(xintercept = c(-2, 2), linetype = "dashed", colour = "grey40") +
   geom_hline(yintercept = -log10(0.05), linetype = "dashed", colour = "grey40") +
   scale_colour_manual(values = feat_colors) +
-  coord_cartesian(xlim = xr, expand = c(0, 0)) +
+  coord_cartesian(xlim = xr, ylim = c(0, y_cap * 1.05), expand = c(0, 0)) +
+  scale_y_continuous(breaks = seq(0, y_cap, 3)) +
   labs(x = "log2 fold change", y = expression(-log[10](P))) +
   theme_classic(base_size = 11) +
-  theme(legend.position = "none")
+  theme(legend.position = "bottom", legend.key.size = unit(3, "mm"),
+        legend.title = element_blank(), legend.text = element_text(size = 8),
+        legend.margin = margin(t = 2))
 
 ## 顶部：显著特征中上调 vs 下调的百分比
 sig <- data %>% filter(significant != "Not significant")
@@ -229,7 +234,7 @@ p3 <- ggplot() +
   geom_rect(data = pct, inherit.aes = FALSE,
             aes(xmin = xr[1], xmax = xr[2],
                 ymin = ymin, ymax = ymax, fill = significant),
-            alpha = 0.35) +
+            alpha = 0.8, colour = "white", linewidth = 0.4) +
   geom_text(data = pct, inherit.aes = FALSE,
             aes(x = (xr[1] + xr[2]) / 2, y = ymid,
                 label = paste0(significant, ": ", sprintf("%.1f", 100 * p), "%")),
@@ -249,7 +254,7 @@ p2 <- ggplot(rsig, aes(x = n, y = feature, fill = feature)) +
   scale_x_continuous(limits = yr, expand = c(0, 0)) +
   labs(x = "Significant features") +
   theme_classic(base_size = 10) +
-  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+  theme(axis.text.y = element_text(size = 9), axis.ticks.y = element_blank(),
         axis.line.y = element_blank(), axis.title.y = element_blank(),
         plot.margin = margin(0, 5, 0, 2))
 
@@ -262,6 +267,7 @@ ggdraw(combined)
 ::: callout-tip
 **实践要点**
 
+- y 轴封顶（`pmin(-log10(P), cap)`）：否则几个极端显著的点会把其余所有点压成底部一条细带。
 - `grDevices::extendrange()` 一次性给出散点的 x 上下限并在顶部条带复用，堆叠条才能恰好铺满火山图宽度。
 - 中央图与两个条带的 `expand = c(0, 0)` 设置是面板贴合的关键；使用默认扩展时条带会错位。
 - `insert_xaxis_grob()` / `insert_yaxis_grob()` 来自 cowplot，且保持主面板尺寸；等价做法是 `patchwork::plot_layout` 配合 `design`——两者都需要对齐坐标范围。

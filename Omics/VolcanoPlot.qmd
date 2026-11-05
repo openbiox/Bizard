@@ -206,17 +206,22 @@ feat_colors <- c("Protein-coding" = "#445EAD", "lncRNA" = "#70C17A",
                  "Pseudogene" = "#F7C07C", "Intergenic" = "#BEBEBE")
 
 xr <- grDevices::extendrange(data$log2FC, f = 0.05)  # shared x range (center panel + top strip)
+y_cap <- 12                                          # cap extreme -log10(P) so the panel stays readable
+data$log10P_cap <- pmin(data$log10P, y_cap)
 
 ## Center: volcano colored by feature class
-p1 <- ggplot(data, aes(x = log2FC, y = log10P)) +
+p1 <- ggplot(data, aes(x = log2FC, y = log10P_cap)) +
   geom_point(aes(color = feature), size = 0.8, alpha = 0.6) +
   geom_vline(xintercept = c(-2, 2), linetype = "dashed", colour = "grey40") +
   geom_hline(yintercept = -log10(0.05), linetype = "dashed", colour = "grey40") +
   scale_colour_manual(values = feat_colors) +
-  coord_cartesian(xlim = xr, expand = c(0, 0)) +
+  coord_cartesian(xlim = xr, ylim = c(0, y_cap * 1.05), expand = c(0, 0)) +
+  scale_y_continuous(breaks = seq(0, y_cap, 3)) +
   labs(x = "log2 fold change", y = expression(-log[10](P))) +
   theme_classic(base_size = 11) +
-  theme(legend.position = "none")
+  theme(legend.position = "bottom", legend.key.size = unit(3, "mm"),
+        legend.title = element_blank(), legend.text = element_text(size = 8),
+        legend.margin = margin(t = 2))
 
 ## Top: percentage of up- vs down-regulated significant features
 sig <- data %>% filter(significant != "Not significant")
@@ -230,7 +235,7 @@ p3 <- ggplot() +
   geom_rect(data = pct, inherit.aes = FALSE,
             aes(xmin = xr[1], xmax = xr[2],
                 ymin = ymin, ymax = ymax, fill = significant),
-            alpha = 0.35) +
+            alpha = 0.8, colour = "white", linewidth = 0.4) +
   geom_text(data = pct, inherit.aes = FALSE,
             aes(x = (xr[1] + xr[2]) / 2, y = ymid,
                 label = paste0(significant, ": ", sprintf("%.1f", 100 * p), "%")),
@@ -250,7 +255,7 @@ p2 <- ggplot(rsig, aes(x = n, y = feature, fill = feature)) +
   scale_x_continuous(limits = yr, expand = c(0, 0)) +
   labs(x = "Significant features") +
   theme_classic(base_size = 10) +
-  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+  theme(axis.text.y = element_text(size = 9), axis.ticks.y = element_blank(),
         axis.line.y = element_blank(), axis.title.y = element_blank(),
         plot.margin = margin(0, 5, 0, 2))
 
@@ -263,6 +268,7 @@ ggdraw(combined)
 ::: callout-tip
 **Practice tips**
 
+- Cap the y axis (`pmin(-log10(P), cap)`): a few ultra-significant hits would otherwise compress every other point into a thin bottom band.
 - `grDevices::extendrange()` gives the scatter's x limits once and reuses them in the top strip, so the stacked bar spans exactly the volcano's width.
 - The two `expand = c(0, 0)` scale settings (center and strips) are what make the panels touch; with the default expansion the strips drift out of register.
 - `insert_xaxis_grob()` / `insert_yaxis_grob()` come from cowplot and keep the main panel's size; the alternative is `patchwork::plot_layout` with `design` — both need aligned limits.
