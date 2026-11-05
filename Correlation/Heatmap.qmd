@@ -699,6 +699,85 @@ p15 <- pheatmap(standardized_methylation_matrix, scale = "none",
 
 These three heatmaps use different color palettes to showcase the differences in methylation states among samples in the TCGA-CHOL dataset, emphasizing the importance of palette choice for visual effects and data interpretation.
 
+#### 4.6 Ternary Status Heatmap Against Normal Samples
+
+Pathway-dysregulation studies often encode each gene as a **three-state** variable relative to normal samples: a gene is "up" in a tumour when its log2 expression exceeds the 97.5% quantile of the normals, "down" below the 2.5% quantile, otherwise "no-change" [10]. The resulting −1/0/1 matrix, clustered with Ward's method and drawn with a three-colour scale plus the fraction of up-regulated samples in each row label, exposes subtype structure inside one pathway.
+
+```{r}
+#| label: fig-TernaryStatusPheatmap
+#| fig-cap: "Ternary status heatmap: genes scored UP/NO-CHANGE/DOWN against normal-sample quantiles, Ward clustering with three column clusters."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6
+
+set.seed(2026)
+n_tum <- 30; n_nor <- 20
+path_genes <- paste0("PathGene", sprintf("%02d", 1:20))
+base <- rnorm(20, mean = 5, sd = 0.3)            # baseline expression per gene
+normal_expr <- sapply(seq_len(n_nor), function(i) base + rnorm(20, sd = 0.6))
+
+tum_shift <- matrix(0, nrow = 20, ncol = n_tum)
+tum_shift[1:8, 1:15]    <- 2.2                   # subgroup 1 (T01-T15): genes 1-8 up
+tum_shift[17:20, 16:30] <- -2.2                  # subgroup 2 (T16-T30): genes 17-20 down
+tum_expr <- sapply(seq_len(n_tum), function(i) base + tum_shift[, i] + rnorm(20, sd = 0.6))
+colnames(tum_expr) <- paste0("T", sprintf("%02d", 1:n_tum))
+
+logdata <- log2(cbind(tum_expr, normal_expr) - min(cbind(tum_expr, normal_expr)) + 0.5)
+tumordata  <- logdata[, seq_len(n_tum)]
+normaldata <- logdata[, (n_tum + 1):(n_tum + n_nor)]
+
+# Three-state coding against the 2.5% / 97.5% normal quantiles, gene by gene
+normaldown <- apply(normaldata, 1, quantile, probs = 0.025)
+normalup   <- apply(normaldata, 1, quantile, probs = 0.975)
+status <- tumordata                              # reuse the matrix shell
+for (k in seq_len(nrow(tumordata))) {
+  row_k <- as.numeric(tumordata[k, ])
+  out <- rep(0, length(row_k))
+  out[row_k > normalup[k]]   <-  1               # above the 97.5% normal quantile
+  out[row_k < normaldown[k]] <- -1               # below the 2.5% normal quantile
+  status[k, ] <- out
+}
+
+# Ward clustering on genes and samples; cut samples into 3 clusters
+hcg <- hclust(dist(status), method = "ward.D")
+hcs <- hclust(dist(t(status)), method = "ward.D")
+group <- paste0("C", cutree(hcs, 3))
+
+# A dysregulation score per sample (sum of -1/0/1 states), used as annotation
+score <- colSums(status)
+ann_col <- data.frame(Cluster = factor(group), Score = score)
+p_val <- kruskal.test(score ~ Cluster, data = ann_col)$p.value
+score_colname <- sprintf("Pathway score (KW p = %.3f)", p_val)
+colnames(ann_col)[2] <- score_colname
+
+# Row labels carry the fraction of tumours with the gene UP
+pct <- paste0(round(rowSums(status == 1) / ncol(status), 2) * 100, "%")
+rownames(status) <- paste0(path_genes, " (", pct, ")")
+
+ann_colors <- list(Cluster = c(C1 = "#B31E22", C2 = "#529B40", C3 = "#020105"))
+ann_colors[[score_colname]] <- colorRampPalette(c("#283285", "#DEDEDE", "#651430"))(64)
+
+pheatmap(status,
+         cluster_rows = hcg, cluster_cols = hcs,
+         color = c("#283285", "#DEDEDE", "#651430"),   # down / no-change / up
+         annotation_col = ann_col,
+         annotation_colors = ann_colors,
+         cutree_cols = 3,
+         legend_breaks = c(-1, 0, 1),
+         legend_labels = c("mRNA\ndown-regulation", "mRNA\nno-change", "mRNA\nup-regulation"),
+         fontsize_row = 8, fontsize_col = 8)
+```
+
+::: callout-tip
+**Practice tips**
+
+- Quantile thresholds estimated from **normal tissue** are what make the states meaningful — using tumour quantiles would re-absorb the heterogeneity this plot is meant to reveal.
+- The reference workflow annotates columns with a GSVA pathway score; the per-sample state sum used here is a dependency-free stand-in showing the same contrast.
+- `cutree_cols = 3` draws the cluster rectangles without re-sorting anything: `cluster_cols` still governs the order, the cut only frames the groups.
+:::
+
 ### 5. complexheatmap Heatmaps
 
 The `ComplexHeatmap` package, based on the `grid` package, uses an object-oriented approach to implement heatmaps and their components. It mainly includes the following classes:
@@ -927,3 +1006,4 @@ Abbreviations: ARS: Autonomous Replicating Sequence, FKH: Forkhead, ORC: Origin 
 14. Gang, C. (2020). *heatmaply: Interactive heat maps for R*. <https://cran.r-project.org/package=heatmaply>\
 15. Becker, R. A., Wilks, A. R., & Brownrigg, R. (2021). *lattice: The lattice package for R*. <https://cran.r-project.org/package=lattice>\
 16. Auguie, B. (2017). gridExtra: Miscellaneous Functions for "Grid" Graphics. <https://cran.r-project.org/package=gridExtra>
+17. Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

@@ -24,7 +24,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`survival`；`dplyr`；`pROC`；`plotROC`；`timeROC`；`ggplot2`
+-   依赖包：`survival`；`dplyr`；`pROC`；`plotROC`；`timeROC`；`ggplot2`；`glmnet`；`survivalROC`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # 安装必要的包
@@ -37,6 +37,12 @@ if (!requireNamespace("plotROC", quietly = TRUE)) {
 if (!requireNamespace("timeROC", quietly = TRUE)) {
   install.packages("timeROC")
 }
+if (!requireNamespace("glmnet", quietly = TRUE)) {
+  install.packages("glmnet")
+}
+if (!requireNamespace("survivalROC", quietly = TRUE)) {
+  install.packages("survivalROC")
+}
 
 # 加载包
 library(survival)
@@ -45,6 +51,8 @@ library(ggplot2)
 library(pROC)
 library(plotROC)
 library(timeROC)
+library(glmnet)
+library(survivalROC)
 ```
 
 ```{r}
@@ -246,6 +254,93 @@ legend("bottomright", bty = "n", cex = 0.8,
 ```
 
 本例中验证集上的点估计下降明显，但 bootstrap 检验未达显著（p > 0.05）：这个规模的验证集给出的 AUC 估计噪声较大，只有足够大的差异才能被检出。如果换成真正独立的外部队列，对比的信息量会大得多——同一队列内部的拆分只能检测队列内的乐观偏差。
+### 7. 构建共识预后 signature
+
+生物标志物研究往往超出单模型 ROC 的范畴：哪个*最小*协变量集合携带预后信号？\[6\] 参考工作流是（1）单因素 Cox 筛选，（2）**迭代 LASSO**——多次运行 `cv.glmnet(family = "cox")` 并按入选频次排序变量，因为单次运行对种子高度敏感——然后（3）按频次顺序逐个纳入变量，直到 time-dependent AUC 达峰为止。这里用 `lung` 的临床协变量代替基因做演示：
+
+```{r}
+#| label: fig-7.1ConsensusSignature
+#| fig-cap: "共识 signature 构建：(A) 变量按 LASSO 频次逐一纳入时的 AUC 轨迹并标记峰值，(B) 峰值处的 ROC，(C) 高/低风险组的 Kaplan-Meier 分层。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 11
+#| fig-height: 3.8
+
+set.seed(111)
+cand <- c("age", "ph.ecog", "ph.karno", "pat.karno", "wt.loss", "meal.cal")
+
+## （1）单因素 Cox 筛选
+cox_p <- sapply(cand, function(v) {
+  summary(coxph(Surv(time, status == 2) ~ lung2[[v]], data = lung2))$coefficients[, "Pr(>|z|)"]
+})
+sel <- names(cox_p)[cox_p < 0.2]           # 小样例用宽松阈值
+x_mat <- as.matrix(lung2[, sel])
+surv_obj <- Surv(lung2$time, lung2$status == 2)
+
+## （2）迭代 LASSO——此处 20 次（参考文献用 500-1000 次）
+surv_lasso <- function(dummy) {
+  cvfit <- cv.glmnet(x_mat, surv_obj, nfolds = 10, alpha = 1, family = "cox")
+  r <- as.matrix(coef(cvfit, s = "lambda.min"))
+  rownames(r)[r != 0]
+}
+lasso_runs <- lapply(1:20, surv_lasso)
+freq <- sort(table(unlist(lasso_runs)), decreasing = TRUE)
+genes_freq <- names(freq)                  # 按共识频次排序的变量
+print(freq)
+
+## （3）逐个纳入变量；在 time-dependent AUC 峰值处停止
+pred_time <- 365
+auc <- c()
+roc_list <- list()
+for (i in seq_along(genes_freq)) {
+  fit_i <- coxph(Surv(time, status == 2) ~ .,
+                 data = lung2[, c("time", "status", genes_freq[seq_len(i)])])
+  rs <- predict(fit_i, type = "risk")
+  sr <- survivalROC::survivalROC(Stime = lung2$time,
+                                 status = as.integer(lung2$status == 2),
+                                 marker = rs, predict.time = pred_time, method = "KM")
+  auc[i] <- sr$AUC
+  roc_list[[i]] <- sr
+}
+best <- which.max(auc)
+prog_vars <- genes_freq[seq_len(best)]
+
+## 最终模型、风险分组、Kaplan-Meier
+fit_f  <- coxph(Surv(time, status == 2) ~ ., data = lung2[, c("time", "status", prog_vars)])
+risk   <- predict(fit_f, type = "risk")
+lung2$Risk <- ifelse(risk > median(risk), "High", "Low")
+fitd   <- survdiff(Surv(time, status == 2) ~ Risk, data = lung2)
+p_km   <- 1 - pchisq(fitd$chisq, length(fitd$n) - 1)
+fit_km <- survfit(Surv(time, status == 2) ~ Risk, data = lung2)
+
+## 三面板汇总（与参考文献一致使用 base plot）
+red <- "#E94244"; blue <- "#4084BB"
+par(mfrow = c(1, 3), mgp = c(2, 0.5, 0), tcl = -0.25)
+
+plot(seq_along(auc), auc, type = "l", lwd = 2, col = blue,
+     ylim = range(auc) + c(-0.03, 0.03),
+     xlab = "Covariates in LASSO-frequency order", ylab = "AUC at 365 days",
+     main = sprintf("(%d covariates)", best))
+points(best, auc[best], pch = 16, cex = 1.5, col = red)
+
+plot(roc_list[[best]]$FP, roc_list[[best]]$TP, type = "l", lwd = 2, col = blue,
+     xlim = c(0, 1), ylim = c(0, 1), xlab = "1-Specificity", ylab = "Sensitivity",
+     main = sprintf("ROC at peak (AUC = %.2f)", auc[best]))
+lines(c(0, 1), c(0, 1), lty = 2, col = "grey40")
+
+plot(fit_km, col = c(red, blue), lwd = 1.5, mark.time = TRUE,
+     xlab = "Time (days)", ylab = "Overall survival",
+     main = sprintf("Risk split (log-rank p = %.3f)", p_km))
+```
+
+::: callout-tip
+**实践要点**
+
+- 共识思想比任何单次运行更重要：多次 LASSO 的入选频次远比单一最优 lambda 稳定——后者会随交叉验证折数的不同而翻转。
+- `survivalROC(..., method = "KM")` 给出固定时间点的删失感知 AUC；第 5 节的 `timeROC` 是更现代的等价实现，且自带置信区间。
+- 换成真实表达数据时循环不变——把 `cand` 换成基因列，并把基因在行的表达矩阵经 `cv.glmnet(x = t(expr))` 传入。
+:::
 
 ## 应用
 
@@ -264,3 +359,5 @@ Time-dependent ROC 曲线广泛用于肿瘤预后模型论文中，以报告在�
 \[4\] Sachs MC. plotROC: A Tool for Plotting ROC Curves. J Stat Softw Code Snippets. 2017;79(2):1-12. doi:10.18637/jss.v079.c02
 
 \[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[6\] 七基因预后 signature 参考图出处：<https://clincancerres.aacrjournals.org/content/18/21/6001>（工作流由 \[5\] FigureYa128Prognostic 复现）。

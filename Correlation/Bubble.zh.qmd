@@ -22,7 +22,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`dplyr`, `ggplot2`, `gapminder`, `hrbrthemes`, `viridis`
+-   依赖包：`dplyr`, `ggplot2`, `gapminder`, `hrbrthemes`, `viridis`, `cowplot`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # 安装包
@@ -41,6 +41,9 @@ if (!requireNamespace("hrbrthemes", quietly = TRUE)) {
 if (!requireNamespace("viridis", quietly = TRUE)) {
   install.packages("viridis")
 }
+if (!requireNamespace("cowplot", quietly = TRUE)) {
+  install.packages("cowplot")
+}
 
 # 加载包
 library(dplyr)
@@ -48,6 +51,7 @@ library(ggplot2)
 library(gapminder) # 是一个 R 语言的数据包，它提供了来自 Gapminder.org 的数据摘要。这些数据包括了 142 个国家从 1952 年到 2007 年每五年的生命期望值、人均 GDP 和人口数据。
 library(hrbrthemes)
 library(viridis)
+library(cowplot)
 ```
 
 ```{r}
@@ -156,6 +160,61 @@ p
 ```
 
 这个气泡图描述了世界各国预期寿命（y）与人均国内生产总值（x）之间的关系。
+### 5. 对角线排列的富集气泡双面板
+
+基因集富集分析的经典画法 \[8\]：每个通路一个气泡，`GeneRatio` 为横坐标、气泡大小为基因数、颜色为 P 值——并**按 GeneRatio 排序**通路，让气泡沿对角线爬升。下调/上调两个方向画成镜像面板（右面板用 `scale_y_discrete(position = "right")` 把通路轴翻到右侧），再并排组合。
+
+```{r}
+#| label: fig-5.1EnrichDiagonal
+#| fig-cap: "下调/上调富集气泡面板；通路按 GeneRatio 排序形成对角线排列，cowplot 组合方向。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 13
+#| fig-height: 5
+
+set.seed(11)
+mk_enrich <- function(prefix, n) {
+  data.frame(
+    Term = sprintf("%s pathway %d", prefix, 1:n),
+    PValue = 10^(-runif(n, 1.3, 6)),
+    Count = sample(5:60, n),
+    Pop.Hits = sample(80:200, n)
+  )
+}
+enrich <- rbind(cbind(direction = "Down", mk_enrich("Down", 8)),
+                cbind(direction = "Up",   mk_enrich("Up", 8)))
+enrich$GeneRatio <- enrich$Pop.Hits / enrich$Count
+
+enrich_bubble <- function(dat, legend_pos, term_side = "left") {
+  dat <- dat[order(dat$GeneRatio), ]
+  dat$Term <- factor(dat$Term, levels = dat$Term)      # 保持排序
+  p <- ggplot(dat, aes(GeneRatio, Term, colour = PValue)) +
+    geom_point(aes(size = Count)) +
+    scale_size_continuous(range = c(2, 10)) +
+    scale_color_gradientn(colours = c("red", "yellow")) +
+    theme_bw(base_size = 11) +
+    ylab(NULL) +
+    theme(legend.position = legend_pos, legend.justification = legend_pos,
+          legend.background = element_blank(), legend.key = element_blank())
+  if (term_side == "right") p <- p + scale_y_discrete(position = "right")
+  p
+}
+
+p_down <- enrich_bubble(subset(enrich, direction == "Down"), c(1, 0))
+p_up   <- enrich_bubble(subset(enrich, direction == "Up"),   c(0, 0), term_side = "right")
+
+plot_grid(p_down, p_up, labels = c("Down-regulated", "Up-regulated"),
+          label_x = 0.02, hjust = 0)
+```
+
+::: callout-tip
+**实践要点**
+
+- 对角线排列不过是**先把行按 x 值排序再转因子**——改成降序即可反转斜率方向。
+- `legend.position` / `legend.justification` 使用同一对坐标即可把图例钉在角落（`c(1, 0)` 右下、`c(0, 0)` 左下）；透明背景让图例融入图内。
+- 输入只需包含倍数比列、基因数列和 P 值列的任意富集表——x、大小或颜色由哪列驱动可以自由替换。
+:::
 
 ## 应用场景
 
@@ -194,4 +253,6 @@ p
 \[6\] Rudis, B. (2017). hrbrthemes: Additional Themes, Theme Components and Utilities for 'ggplot2' (Version 0.8.7). Retrieved from https://github.com/hrbrmstr/hrbrthemes
 
 \[7\] Ross, N., & Garnier, S. (2016). viridis: Default Color Maps for 'ggplot2'. Retrieved from https://cran.r-project.org/web/packages/viridis/index.html
+
+\[8\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
