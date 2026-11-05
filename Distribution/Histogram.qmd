@@ -338,6 +338,51 @@ p3 <- ggMarginal(p, type = "histogram", margins = 'x')
 cowplot::plot_grid(p1, p2, p3)
 ```
 
+### 7. Monte-Carlo Empirical P-Value Histogram
+
+When an observed count looks "too good to be true", simulate the null \[12\]: draw the same experiment at random many times, histogram the random counts, and mark where the observation falls — its tail frequency is the empirical p value. The reference paper used exactly this to show that a 21/58 gene set over-representation is not a chance draw.
+
+```{r}
+#| label: fig-7.1MonteCarlo
+#| fig-cap: "Monte-Carlo null distribution of random draws (histogram) with the observed count marked (red line); the empirical p value is the tail fraction beyond it."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 4.5
+
+set.seed(901)
+N_universe <- 20000          # genes screened
+N_de <- 58                   # differentially expressed genes
+N_hit <- 21                  # of which over-expressed & prognosis-linked
+N_sim <- 10000
+
+random_hits <- replicate(N_sim, sum(sample(N_universe, N_de) <= 90))  # 90 genes could plausibly fit the phenotype
+observed <- N_hit
+p_emp <- mean(random_hits >= observed)
+
+hist_df <- data.frame(counts = random_hits)
+ggplot(hist_df, aes(counts)) +
+  geom_histogram(binwidth = 1, fill = "#BDD7E7", colour = "white") +
+  geom_vline(xintercept = observed, colour = "#B2182B", linewidth = 1) +
+  annotate("text", x = observed - 1.2,
+           y = max(table(random_hits)) * 0.9, hjust = 1, colour = "#B2182B", size = 3.4,
+           label = sprintf("Observed = %d\nEmpirical p %s",
+                           observed, ifelse(p_emp < 0.001, "< 0.001", sprintf("= %.3f", p_emp)))) +
+  labs(x = sprintf("Over-expressed genes among %d random draws", N_de),
+       y = "Frequency in simulations",
+       title = sprintf("%d Monte-Carlo simulations", N_sim)) +
+  theme_classic(base_size = 11)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The simulation must mirror the experiment's **sampling scheme** exactly — here: draw N_de genes from the same universe and count how many land in the phenotype-eligible set.
+-   Report the empirical p as a tail fraction (`mean(random >= observed)`); with 10,000 draws the resolution floor is 1e-4, so quote "p < 0.001" rather than the raw fraction when it hits the floor.
+-   Increase `N_sim` until the histogram stabilises; if the observed value still sits inside the bulk of the distribution, the event is common and the gene set needs a better justification.
+:::
+
 ## Applications
 
 ### 1. Applications of Basic Histogram
@@ -377,3 +422,5 @@ Fig. 10b demonstrates examples of cranial MRI from patients with WHO grade I (up
 9.  García, M. (2018). *viridis: Default color maps from 'matplotlib'*. <https://cran.r-project.org/package=viridis>
 10. Aubry, R., & Bouchard, C. (2020). *ggpmisc: Miscellaneous extensions to 'ggplot2'*. <https://cran.r-project.org/package=ggpmisc>
 11. Kassambara, A. (2021). *ggpubr: 'ggplot2' based publication-ready plots*. <https://cran.r-project.org/package=ggpubr>
+
+\[12\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

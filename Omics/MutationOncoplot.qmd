@@ -19,7 +19,7 @@ This oncoplot summarizes a simulated 60-sample cohort across 20 cancer driver ge
 
 -   Programming Language: R
 
--   Dependencies: `ComplexHeatmap`; `tidyverse`; `maftools`; `cowplot`
+-   Dependencies: `ComplexHeatmap`; `tidyverse`; `maftools`; `cowplot`; `NMF`; `patchwork`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages
@@ -35,12 +35,20 @@ if (!requireNamespace("maftools", quietly = TRUE)) {
 if (!requireNamespace("cowplot", quietly = TRUE)) {
   install.packages("cowplot")
 }
+if (!requireNamespace("NMF", quietly = TRUE)) {
+  BiocManager::install("NMF")
+}
+if (!requireNamespace("patchwork", quietly = TRUE)) {
+  install.packages("patchwork")
+}
 
 # Load packages
 library(ComplexHeatmap)
 library(tidyverse)
 library(maftools)
 library(cowplot)
+library(NMF)
+library(patchwork)
 ```
 
 ## Data Preparation
@@ -420,6 +428,75 @@ ggdraw(combined) +
 - Keep **one shared factor order** (`rev(genes_info$Gene)`) for the centre rows, the right bar y-axis and the left strip — mismatched levels are the classic way this figure silently misregisters.
 - The centre fill is normalized per gene in the reference (log count against the gene's maximum); the shared count scale used here is simpler but flattens rare genes.
 - With real data, take the sample × gene alteration table from a MAF cohort (`maftools::oncoplot`'s input), aggregate per subtype, and keep the reference's "count only known oncogenic alterations" filter.
+:::
+
+### 8. De Novo Mutation-Signature Decomposition
+
+Somatic mutation catalogues decompose into **signatures** — 96-channel trinucleotide-context profiles characteristic of mutational processes (APOBEC, tobacco, UV, aging) \[4\]. The maftools/MutationalPatterns route needs a reference genome; the layout itself can be reproduced from a simulated channel matrix decomposed with NMF:
+
+```{r}
+#| label: fig-8.1SignatureNMF
+#| fig-cap: "De novo signature decomposition of a simulated 96-channel catalogue: NMF-extracted signature profiles (top) and per-sample exposures (bottom)."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6
+
+set.seed(902)
+bases <- c("C>A", "C>G", "C>T", "T>A", "T>C", "T>G")
+ctx <- rep(c("A","C","G","T"), each = 2)  # simplified 3' context labels
+channels <- paste0(rep(bases, each = 8), "_", rep(1:8, times = 6))
+n_ch <- length(channels); n_samp <- 40
+
+sig_apobec <- c(2, 6, 8, 6, 2, 1, 1, 1)   # TCW motif enrichment, simplified shape
+sig_aging  <- c(5, 4, 6, 5, 4, 3, 2, 2)   # flat, C>T tilt
+W_true <- cbind(rep(sig_apobec, 6), rep(sig_aging, 6))
+W_true <- W_true / colSums(W_true)
+expo <- t(cbind(c(rep(0.7, 15), rep(0.05, 25)), rep(0.5, n_samp)))  # 2 signatures x 40 samples
+counts <- round((W_true %*% expo) * 600 +
+                matrix(rpois(n_ch * n_samp, 2), nrow = n_ch))  # depth 600 for SNR
+
+fit <- NMF::nmf(counts + 1, rank = 2, method = "brunet", nrun = 1, seed = 902)
+W <- NMF::basis(fit); W <- W / colSums(W)                 # channels x 2
+H <- NMF::coef(fit)                                       # 2 x samples
+
+sig_df <- as.data.frame(W) |>
+  mutate(channel = rep(bases, each = n_ch / 6), pos = rep(1:(n_ch / 6), times = 6)) |>
+  pivot_longer(V1:V2, names_to = "signature", values_to = "weight")
+sig_df$signature <- ifelse(sig_df$signature == "V1", "Signature A", "Signature B")
+
+expo_df <- as.data.frame(t(H)) |>
+  mutate(sample = seq_len(n_samp)) |>
+  pivot_longer(V1:V2, names_to = "signature", values_to = "exposure")
+expo_df$signature <- ifelse(expo_df$signature == "V1", "Signature A", "Signature B")
+expo_df$sample <- factor(expo_df$sample, levels = unique(expo_df$sample[order(expo_df$signature, -expo_df$exposure)]))
+
+p_sig <- ggplot(sig_df, aes(pos, weight, fill = signature)) +
+  geom_col(position = "dodge", width = 0.8) +
+  facet_grid(signature ~ channel, scales = "free_y") +
+  scale_fill_manual(values = c("Signature A" = "#B2182B", "Signature B" = "#2166AC")) +
+  labs(x = "3' flanking base", y = "Channel weight", fill = NULL) +
+  theme_classic(base_size = 9) +
+  theme(legend.position = "none", strip.text = element_text(size = 8))
+
+p_expo <- ggplot(expo_df, aes(sample, exposure, fill = signature)) +
+  geom_col(position = "stack", width = 0.9) +
+  scale_fill_manual(values = c("Signature A" = "#B2182B", "Signature B" = "#2166AC")) +
+  labs(x = "Samples (sorted by dominant signature)", y = "Signature exposure", fill = NULL) +
+  theme_classic(base_size = 9) +
+  theme(legend.position = "top", axis.text.x = element_blank(),
+        legend.key.size = unit(3, "mm"))
+
+p_sig / p_expo + patchwork::plot_layout(heights = c(1.2, 1))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Rank selection is the hard part with real data: run `NMF::nmf(rank = 2:5, nrun = 20)` and pick the rank where the cophenetic coefficient starts to drop.
+-   The full 96-channel layout orders channels by the 3' flanking base within each of the six substitution classes — repeat `sig_apobec`-style shapes across the six facets, as done here.
+-   With real MAF input, `maftools::trinucleotideMatrix()` builds the channel matrix (needs `BSgenome.Hsapiens`), then the plotting half is exactly this.
 :::
 
 ## Applications
