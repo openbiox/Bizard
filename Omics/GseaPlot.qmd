@@ -9,12 +9,14 @@ Gene Set Enrichment Analysis (GSEA) asks whether the genes of a defined set (a p
 
 In R the analysis is handled by `clusterProfiler::GSEA()` \[2\] and the canonical figure by `enrichplot::gseaplot2()` \[3\]. This tutorial renders the canonical plot, stacks several gene sets on one ranked list, and then rebuilds the running score from primitives in ggplot2 so the statistic itself becomes legible. The Python counterpart of this tutorial is [GSEA Running-Score (Python)](../Python/GSEAPlot.html).
 
-This tutorial covers four workflows:
+This tutorial covers six workflows:
 
 1. The canonical `gseaplot2` running-score plot with a p-value table;
 2. Several gene sets overlaid on one ranked list;
 3. A hand-built three-panel reconstruction of the running ES (ggplot2 + patchwork);
-4. Comparing subtype-specific pathways across groups with a specificity heatmap.
+4. Comparing subtype-specific pathways across groups with a specificity heatmap;
+5. An fgsea multi-pathway table plot (barcode rows + Size/NES/padj columns);
+6. Redrawing Java-GSEA output as dot/barcode panels with aligned widths.
 
 ## Example
 
@@ -26,7 +28,7 @@ This tutorial covers four workflows:
 
 -   Programming language: R
 
--   Dependent packages: `clusterProfiler`; `enrichplot`; `ggplot2`; `dplyr`; `patchwork`; `pheatmap`
+-   Dependent packages: `clusterProfiler`; `enrichplot`; `ggplot2`; `dplyr`; `patchwork`; `pheatmap`; `fgsea`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages (Bioconductor)
@@ -42,6 +44,9 @@ if (!requireNamespace("patchwork", quietly = TRUE)) {
 if (!requireNamespace("pheatmap", quietly = TRUE)) {
   install.packages("pheatmap")
 }
+if (!requireNamespace("fgsea", quietly = TRUE)) {
+  BiocManager::install("fgsea")
+}
 
 # Load packages
 library(clusterProfiler)
@@ -50,6 +55,7 @@ library(ggplot2)
 library(dplyr)
 library(patchwork)
 library(pheatmap)
+library(fgsea)
 ```
 
 ```{r}
@@ -265,6 +271,126 @@ The diagonal pattern confirms that each subtype's top pathways are indeed specif
 -   Report NES with p.adjust, not the raw ES: ES depends on set size, NES is normalized for it.
 :::
 
+### 5. fgsea Multi-Pathway Table Plot
+
+When many pathways must share one figure, `fgsea::plotGseaTable()` stacks them as **barcode rows** over a shared ranked list, with Size / NES / p / padj as aligned text columns on the right \[5\] — one glance carries the whole enrichment argument.
+
+```{r}
+#| label: fig-5.1FgseaTable
+#| fig-cap: "fgsea table plot: eight hallmark-like pathways as barcode rows over one ranked list, statistics in the right-hand columns."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 5.5
+
+set.seed(401)
+genes_f <- paste0("Gene", sprintf("%04d", 1:1500))
+stats_f <- rnorm(1500, sd = 2)
+names(stats_f) <- genes_f
+
+## eight hallmark-like sets with graded enrichment (+ = up, - = down)
+set_names <- c("MYC targets", "Cell cycle", "Inflammatory response", "Hypoxia",
+               "Angiogenesis", "TGF-beta signaling", "EMT", "Wnt signaling")
+enrich_amt <- c(2.5, 2, 1, 0.3, -0.3, -1, -2, -2.5)
+pool <- genes_f
+pathways_f <- lapply(seq_along(set_names), function(k) {
+  hits <- sample(pool, 60)
+  pool <<- setdiff(pool, hits)
+  stats_f[hits] <<- stats_f[hits] + enrich_amt[k]
+  hits
+})
+names(pathways_f) <- set_names
+geneList_f <- sort(stats_f, decreasing = TRUE)
+
+fgseaRes <- fgsea(pathways = pathways_f, stats = geneList_f,
+                  minSize = 15, maxSize = 500, eps = 0)
+fgseaRes <- fgseaRes[order(pval)]
+
+plotGseaTable(pathways_f, geneList_f, fgseaRes, gseaParam = 0.5)
+
+as.data.frame(fgseaRes)[, c("pathway", "size", "NES", "pval", "padj")]
+```
+
+::: callout-tip
+## Practice tips
+
+-   `fgsea()` accepts the same named, decreasing-sorted vector as `clusterProfiler::GSEA()`; `eps = 0` is the modern exact-mode setting (the old `nperm` argument is deprecated).
+-   The table is sorted by p value, so the strongest signals sit at the top; feed a filtered result object to show only significant sets.
+-   `gseaParam = 1` weights the running score by the statistic (the GSEA default); smaller values flatten the curve and make weak sets more visible.
+:::
+
+### 6. Redrawing Java-GSEA Output as Dot + Barcode Panels
+
+Java-GSEA's per-pathway Excel only stores the running ES **at the genes inside the pathway** — that is why a line redraw never matches the official plot \[6\]. Dots at member positions are the faithful redraw; pairing them with a rank barcode beneath, and aligning the two panels' widths with `gridExtra`'s `unit.pmax()`, reproduces the paper look.
+
+```{r}
+#| label: fig-6.1JavaRedraw
+#| fig-cap: "Java-GSEA output redrawn: running-ES dots at member positions (top) over a rank barcode (bottom), widths aligned with gridExtra."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 4.5
+
+set.seed(402)
+n_rank <- 2000
+specs <- list(
+  HALLMARK_MYC_TARGETS = list(idx = sort(sample(600, 110)),     dir =  1.0),
+  HALLMARK_HYPOXIA     = list(idx = sort(sample(2000, 90)),     dir = -0.5),
+  HALLMARK_EMT         = list(idx = sort(sample(1400:2000, 100)), dir = -1.0)
+)
+java_df <- do.call(rbind, lapply(names(specs), function(pw) {
+  spec <- specs[[pw]]
+  hit <- seq_len(n_rank) %in% spec$idx
+  step <- ifelse(hit, spec$dir / length(spec$idx), -spec$dir / (n_rank - sum(hit)))
+  data.frame(pathway = pw,
+             RANK.IN.GENE.LIST = seq_len(n_rank),
+             RUNNING.ES = cumsum(step),
+             member = hit)
+}))
+
+pal_j <- c(HALLMARK_MYC_TARGETS = "#E31A1C", HALLMARK_HYPOXIA = "#E7B800",
+           HALLMARK_EMT = "#2E9FDF")
+
+p_point <- ggplot(java_df, aes(RANK.IN.GENE.LIST, RUNNING.ES, fill = pathway)) +
+  geom_point(data = subset(java_df, member), shape = 21, colour = "black",
+             size = 1.6, stroke = 0.25) +
+  scale_fill_manual(values = pal_j) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0),
+                     limits = c(min(java_df$RUNNING.ES) - 0.02,
+                                max(java_df$RUNNING.ES) + 0.02)) +
+  labs(x = NULL, y = "Enrichment score", fill = NULL) +
+  theme_classic(base_size = 10) +
+  theme(axis.line.x = element_blank(), axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "bottom", legend.key.size = unit(3, "mm"),
+        legend.text = element_text(size = 8))
+
+p_rank <- ggplot(java_df, aes(RANK.IN.GENE.LIST, pathway, fill = pathway)) +
+  geom_tile(data = subset(java_df, member), colour = NA) +
+  scale_fill_manual(values = pal_j) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  labs(x = "Rank in gene list") +
+  theme_bw(base_size = 10) +
+  theme(panel.grid = element_blank(), panel.border = element_blank(),
+        axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(), legend.position = "none")
+
+## stack the panels: patchwork equalises the shared x-axis widths automatically
+p_point / p_rank + patchwork::plot_layout(heights = c(3, 1))
+```
+
+::: callout-tip
+## Practice tips
+
+-   Dots, not lines: the Java output's ES values exist only at member genes, so connecting them implies a curve that was never computed.
+-   The original workflow equalised panel widths with `grid::unit.pmax()` over two `ggplotGtable()`s; `patchwork` (`p_point / p_rank + plot_layout(heights = ...)`) achieves the same shared-width, independent-height stacking and is the modern route.
+-   Real inputs: read each pathway sheet with `read.delim()`, keep the `RANK.IN.GENE.LIST`, `RUNNING.ES` and `PROBE/NAME` columns, and rbind across pathways exactly as done here.
+:::
+
 ## Application
 
 Running-score GSEA plots are the standard figure for pathway-level interpretation of transcriptomic contrasts: tumor-vs-normal signatures, drug perturbation screens, and single-cell cluster markers. The panel below mirrors a typical publication layout: (A) the canonical single-set plot with p-value table and (B) the multi-set overlay.
@@ -280,3 +406,7 @@ Running-score GSEA plots are the standard figure for pathway-level interpretatio
 \[3\] Yu G. enrichplot: visualization of functional enrichment result. Bioconductor package. https://bioconductor.org/packages/enrichplot/
 
 \[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[5\] Korotkevich G, Sukhov V, Budin N, Shpak B, Artyomov MN, Sergushichev A. Fast gene set enrichment analysis. bioRxiv. 2021. doi:10.1101/060012
+
+\[6\] GSEA desktop application output format. Broad Institute. https://gseapab.github.io/

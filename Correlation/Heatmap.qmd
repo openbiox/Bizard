@@ -472,6 +472,66 @@ p
 
 Similarly, the `heatmaply` package generates interactive heatmaps, allowing for dynamic analysis and enhanced comprehension of the data.
 
+#### 2.5 Diagonally Split Heatmap: Two Opposing Levels per Cell
+
+When each cell carries **two opposing values** — e.g. copy-number amplification (upper triangle) versus deletion (lower triangle) per gene across cancer types \[8\] — split every cell into two triangles. A single diverging scale (red = gain, blue = loss) encodes both levels with one legend, and `geom_polygon()` does the splitting:
+
+```{r}
+#| label: fig-DiagSplitHeatmap
+#| fig-cap: "Diagonally split heatmap: amplification (upper triangle, red) vs deletion (lower triangle, blue) for 10 genes across 8 cancer types."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5
+
+set.seed(403)
+gene_d <- paste0("Gene", sprintf("%02d", 1:10))
+cancer_d <- c("BRCA", "LUAD", "COAD", "STAD", "KIRC", "HNSC", "LUSC", "PRAD")
+amp <- matrix(runif(80, 0, 0.55), 10, 8, dimnames = list(gene_d, cancer_d))
+del <- matrix(runif(80, 0, 0.55), 10, 8, dimnames = list(gene_d, cancer_d))
+amp[1:4, ] <- amp[1:4, ] + 0.25      # oncogene-like: amplified
+del[5:10, ] <- del[5:10, ] + 0.30    # tumour-suppressor-like: deleted
+amp <- pmin(amp, 0.95); del <- pmin(del, 0.95)
+
+make_tri <- function(i, j, upper) {
+  x0 <- j - 0.5; y0 <- i - 0.5
+  if (upper) data.frame(x = x0 + c(0, 0, 1), y = y0 + c(0, 1, 1))   # upper-left triangle
+  else data.frame(x = x0 + c(0, 1, 1), y = y0 + c(0, 0, 1))         # lower-right triangle
+}
+cells <- expand.grid(i = seq_len(10), j = seq_len(8))
+tri_df <- do.call(rbind, lapply(seq_len(nrow(cells)), function(k) {
+  i <- cells$i[k]; j <- cells$j[k]
+  rbind(cbind(make_tri(i, j, TRUE),  value =  amp[i, j], id = k, tri = "up",   gi = i, cj = j),
+        cbind(make_tri(i, j, FALSE), value = -del[i, j], id = k, tri = "dn",   gi = i, cj = j))
+}))
+tri_df$gene <- factor(gene_d[tri_df$gi], levels = rev(gene_d))
+tri_df$cancer <- factor(cancer_d[tri_df$cj], levels = cancer_d)
+
+## polygons need NUMERIC x/y — a discrete aes would collapse the vertices
+ggplot(tri_df, aes(x, y, group = interaction(id, tri), fill = value)) +
+  geom_polygon(colour = "white", linewidth = 0.4) +
+  scale_x_continuous(breaks = seq_len(8) - 0.5, labels = cancer_d, expand = c(0, 0)) +
+  scale_y_continuous(breaks = seq_len(10) - 0.5, labels = gene_d, expand = c(0, 0)) +
+  scale_fill_gradient2(low = "#3878C1", mid = "#FFFADD", high = "#AB221F",
+                       midpoint = 0, limits = c(-1, 1), name = NULL,
+                       labels = function(v) sprintf("%.1f", v)) +
+  labs(x = "Cancer type", y = NULL,
+       caption = "Upper triangle: amplification | lower triangle: deletion (colour depth = frequency)") +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.height = unit(5, "mm"))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `group = interaction(id, tri)` is what keeps the two triangles of one cell as separate polygons — without it `geom_polygon()` connects all three-point sets in a single path.
+-   Sign-coding (gain = +, loss = −) buys you one diverging scale for both levels; if the two levels carry different units, pre-compute hex colours and use `scale_fill_identity()` with a hand-drawn legend instead.
+-   Row/column labels are plain discrete axes here, so reordering (cluster genes by pathway, cancers by organ) is just factor level order — no clustering machinery needed.
+:::
+
 ### 3. lattice Heatmaps
 
 The `lattice` package provides the `levelplot()` function for constructing heatmaps.
@@ -1011,3 +1071,4 @@ Abbreviations: ARS: Autonomous Replicating Sequence, FKH: Forkhead, ORC: Origin 
 15. Becker, R. A., Wilks, A. R., & Brownrigg, R. (2021). *lattice: The lattice package for R*. <https://cran.r-project.org/package=lattice>\
 16. Auguie, B. (2017). gridExtra: Miscellaneous Functions for "Grid" Graphics. <https://cran.r-project.org/package=gridExtra>
 17. Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+18. Xiaofan Lu, et al. FigureYa144DiagHeatmap reference figure: diagonally split heatmap. FigureYapy/FigureYa documentation. https://ying-ge.github.io/FigureYa/
