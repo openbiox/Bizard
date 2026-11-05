@@ -338,6 +338,51 @@ p3 <- ggMarginal(p, type = "histogram", margins = 'x')
 cowplot::plot_grid(p1, p2, p3)
 ```
 
+### 7. 蒙特卡洛经验 p 值直方图
+
+当某个观测计数看起来"好得不像真的"，就模拟零分布 \[12\]：按同一实验方案随机抽取多次、对随机计数做直方图、标出观测值的位置——其尾部频率即经验 p 值。参考论文正是用这一方法证明 21/58 基因集的过表达并非偶然。
+
+```{r}
+#| label: fig-7.1MonteCarlo
+#| fig-cap: "随机抽样的零分布直方图，红线为观测计数；经验 p 值即越过观测值的尾部比例。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 4.5
+
+set.seed(901)
+N_universe <- 20000          # 筛选的基因总数
+N_de <- 58                   # 差异表达基因
+N_hit <- 21                  # 其中过表达且与预后相关
+N_sim <- 10000
+
+random_hits <- replicate(N_sim, sum(sample(N_universe, N_de) <= 90))  # 90 个基因可能符合表型
+observed <- N_hit
+p_emp <- mean(random_hits >= observed)
+
+hist_df <- data.frame(counts = random_hits)
+ggplot(hist_df, aes(counts)) +
+  geom_histogram(binwidth = 1, fill = "#BDD7E7", colour = "white") +
+  geom_vline(xintercept = observed, colour = "#B2182B", linewidth = 1) +
+  annotate("text", x = observed - 1.2,
+           y = max(table(random_hits)) * 0.9, hjust = 1, colour = "#B2182B", size = 3.4,
+           label = sprintf("Observed = %d\nEmpirical p %s",
+                           observed, ifelse(p_emp < 0.001, "< 0.001", sprintf("= %.3f", p_emp)))) +
+  labs(x = sprintf("Over-expressed genes among %d random draws", N_de),
+       y = "Frequency in simulations",
+       title = sprintf("%d Monte-Carlo simulations", N_sim)) +
+  theme_classic(base_size = 11)
+```
+
+::: callout-tip
+**实践要点**
+
+-   模拟必须**完全复刻**实验的抽样方案——此处：从同一基因全集抽 N_de 个基因、数落入表型可选集的个数。
+-   经验 p 报告为尾部比例（`mean(random >= observed)`）；一万次模拟的分辨率下限是 1e-4，触底时引述"p < 0.001"而非原始比例。
+-   增大 `N_sim` 直到直方图稳定；若观测值仍落在分布主体内，说明事件常见，基因集需要更有力的论证。
+:::
+
 ## 应用场景
 
 ### 1. 基础直方图
@@ -377,3 +422,5 @@ Fig. 10b 展示了 WHO I 级（上排）和 WHO II 级星形细胞瘤（下排�
 9.  García, M. (2018). *viridis: Default color maps from 'matplotlib'*. <https://cran.r-project.org/package=viridis>
 10. Aubry, R., & Bouchard, C. (2020). *ggpmisc: Miscellaneous extensions to 'ggplot2'*. <https://cran.r-project.org/package=ggpmisc>
 11. Kassambara, A. (2021). *ggpubr: 'ggplot2' based publication-ready plots*. <https://cran.r-project.org/package=ggpubr>
+
+\[12\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

@@ -19,7 +19,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`ComplexHeatmap`；`tidyverse`；`maftools`；`cowplot`
+-   依赖包：`ComplexHeatmap`；`tidyverse`；`maftools`；`cowplot`；`NMF`；`patchwork`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages
@@ -35,12 +35,20 @@ if (!requireNamespace("maftools", quietly = TRUE)) {
 if (!requireNamespace("cowplot", quietly = TRUE)) {
   install.packages("cowplot")
 }
+if (!requireNamespace("NMF", quietly = TRUE)) {
+  BiocManager::install("NMF")
+}
+if (!requireNamespace("patchwork", quietly = TRUE)) {
+  install.packages("patchwork")
+}
 
 # Load packages
 library(ComplexHeatmap)
 library(tidyverse)
 library(maftools)
 library(cowplot)
+library(NMF)
+library(patchwork)
 ```
 
 ## 数据准备
@@ -419,6 +427,74 @@ ggdraw(combined) +
 - 中央行、右侧条 y 轴与左侧色条要保持**同一个因子顺序**（`rev(genes_info$Gene)`）——顺序错位是这张图静默对不上的经典原因。
 - 参考图的中央填充按基因归一化（log 计数除以该基因最大值）；这里用的统一计数标尺更简单，但会压平低频基因。
 - 真实数据可从 MAF 队列（`maftools::oncoplot` 的输入）取样本 × 基因突变表，按亚型聚合，并保留参考文献"仅统计已知致癌突变"的过滤。
+:::
+
+### 8. 从头突变 signature 分解
+
+体细胞突变目录可分解为 **signature**——特征性的 96 通道三核苷酸上下文谱（APOBEC、烟草、UV、衰老等突变过程）\[4\]。maftools/MutationalPatterns 路线需要参考基因组；其版式本身可由模拟的通道矩阵经 NMF 分解复现：
+
+```{r}
+#| label: fig-8.1SignatureNMF
+#| fig-cap: "模拟 96 通道突变目录的从头分解：NMF 提取的 signature 谱（上）与各样本的 signature 暴露（下）。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6
+
+set.seed(902)
+bases <- c("C>A", "C>G", "C>T", "T>A", "T>C", "T>G")
+channels <- paste0(rep(bases, each = 8), "_", rep(1:8, times = 6))
+n_ch <- length(channels); n_samp <- 40
+
+sig_apobec <- c(2, 6, 8, 6, 2, 1, 1, 1)   # TCW motif 富集（简化形状）
+sig_aging  <- c(5, 4, 6, 5, 4, 3, 2, 2)   # 平坦、C>T 倾斜
+W_true <- cbind(rep(sig_apobec, 6), rep(sig_aging, 6))
+W_true <- W_true / colSums(W_true)
+expo <- t(cbind(c(rep(0.7, 15), rep(0.05, 25)), rep(0.5, n_samp)))  # 2 signatures x 40 samples
+counts <- round((W_true %*% expo) * 600 +
+                matrix(rpois(n_ch * n_samp, 2), nrow = n_ch))  # depth 600 for SNR
+
+fit <- NMF::nmf(counts + 1, rank = 2, method = "brunet", nrun = 1, seed = 902)
+W <- NMF::basis(fit); W <- W / colSums(W)                 # 通道 x 2
+H <- NMF::coef(fit)                                       # 2 x 样本
+
+sig_df <- as.data.frame(W) |>
+  mutate(channel = rep(bases, each = n_ch / 6), pos = rep(1:(n_ch / 6), times = 6)) |>
+  pivot_longer(V1:V2, names_to = "signature", values_to = "weight")
+sig_df$signature <- ifelse(sig_df$signature == "V1", "Signature A", "Signature B")
+
+expo_df <- as.data.frame(t(H)) |>
+  mutate(sample = seq_len(n_samp)) |>
+  pivot_longer(V1:V2, names_to = "signature", values_to = "exposure")
+expo_df$signature <- ifelse(expo_df$signature == "V1", "Signature A", "Signature B")
+expo_df$sample <- factor(expo_df$sample, levels = unique(expo_df$sample[order(expo_df$signature, -expo_df$exposure)]))
+
+p_sig <- ggplot(sig_df, aes(pos, weight, fill = signature)) +
+  geom_col(position = "dodge", width = 0.8) +
+  facet_grid(signature ~ channel, scales = "free_y") +
+  scale_fill_manual(values = c("Signature A" = "#B2182B", "Signature B" = "#2166AC")) +
+  labs(x = "3' flanking base", y = "Channel weight", fill = NULL) +
+  theme_classic(base_size = 9) +
+  theme(legend.position = "none", strip.text = element_text(size = 8))
+
+p_expo <- ggplot(expo_df, aes(sample, exposure, fill = signature)) +
+  geom_col(position = "stack", width = 0.9) +
+  scale_fill_manual(values = c("Signature A" = "#B2182B", "Signature B" = "#2166AC")) +
+  labs(x = "Samples (sorted by dominant signature)", y = "Signature exposure", fill = NULL) +
+  theme_classic(base_size = 9) +
+  theme(legend.position = "top", axis.text.x = element_blank(),
+        legend.key.size = unit(3, "mm"))
+
+p_sig / p_expo + patchwork::plot_layout(heights = c(1.2, 1))
+```
+
+::: callout-tip
+**实践要点**
+
+-   真实数据的难点在秩选择：`NMF::nmf(rank = 2:5, nrun = 20)`，取 cophenetic 系数开始下降前的秩。
+-   完整 96 通道版式按六大替换类内的 3' 侧翼碱基排序通道——把 `sig_apobec` 式形状在六个 facet 中重复即可（如本例）。
+-   真实 MAF 输入用 `maftools::trinucleotideMatrix()` 构建通道矩阵（需 `BSgenome.Hsapiens`），之后的绘图半程与本例完全一致。
 :::
 
 ## 应用场景
