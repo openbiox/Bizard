@@ -367,6 +367,25 @@ def test_check_exits_1_when_rows_missing():
         assert check(tmp) == 1
 
 
+def test_check_fails_on_cross_language_path_mismatch(capsys):
+    check = sync_gallery.check
+
+    with tempfile.TemporaryDirectory() as tmp:
+        make_root(tmp)
+        assert sync_gallery.update(tmp) == 0
+        zh_path = os.path.join(tmp, "files", "gallery_data_zh.csv")
+        text = open(zh_path, newline="").read()
+        broken = text.replace(
+            "Bizard/zh/Omics/iVolcanoPlot.html#fig-1.1BasicPlot",
+            "Bizard/zh/Omics/GwasSnpPlot.html#fig-1GwasSnpCircos",
+        )
+        assert broken != text
+        with open(zh_path, "w", newline="") as fh:
+            fh.write(broken)
+        assert check(tmp) == 1
+        assert "LANGUAGE MISMATCH" in capsys.readouterr().out
+
+
 def test_update_appends_rows_to_both_csvs_preserving_eol():
     update = sync_gallery.update
 
