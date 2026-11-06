@@ -485,7 +485,118 @@ Heatmap(mat_sel, name = "Z-score", top_annotation = ha,
 - 真实数据请用 `cor.test()`（Spearman）加 rho 与 P 值阈值来筛选相关基因，参考工作流如此实现。
 :::
 
-## 应用场景
+### 7. 单细胞簇均值标记热图
+
+单细胞标记基因面板以**簇均值**热图呈现最为清晰：每个标记基因在各簇内取均值、按行 z-score 并截断极值，以免单个高表达基因使色标饱和 \[8\]。行保持标记集顺序（`cluster_rows = FALSE`）、列做完全链接聚类，`annotation_row` 色带标注每块所属细胞类型——即 scRNA-seq 论文中标准的对角式标记-细胞类型布局。
+
+```{r}
+#| label: fig-7.1ScMarkerHeatmap
+#| fig-cap: "簇均值标记热图：4 个细胞类型 × 4 套标记基因（共 24 个基因），行经 z-score 并截断，对角信号对比度一致；左侧注释条按细胞类型为标记基因集着色。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 5
+
+set.seed(5101)
+clusters <- c("T", "B", "Mye", "NK")
+n_clust <- length(clusters); n_genes_per <- 6
+genes <- c(paste0("T_M", 1:n_genes_per), paste0("B_M", 1:n_genes_per),
+           paste0("M_M", 1:n_genes_per), paste0("NK_M", 1:n_genes_per))
+# 簇均值标记表达：每套标记基因仅在其所属簇中达峰
+avg <- matrix(rnorm(length(genes) * n_clust, sd = 0.4), nrow = length(genes),
+              dimnames = list(genes, clusters))
+for (k in 1:n_clust) {
+  idx <- ((k - 1) * n_genes_per + 1):(k * n_genes_per)
+  avg[idx, k] <- avg[idx, k] + 2.5
+}
+clip_scale <- function(x, lo = -2, hi = 2)
+  matrix(pmin(pmax(x, lo), hi), nrow = nrow(x), dimnames = dimnames(x))
+# 按基因 z-score 并截断至 ±2，防止单个高表达基因使色标饱和
+ph_data <- clip_scale(scale(avg))
+
+ann <- data.frame(cluster = rep(clusters, each = n_genes_per))
+cl_cols <- setNames(c("#B2182B", "#2166AC", "#EABF00", "#4D9342"), clusters)
+hm <- ComplexHeatmap::pheatmap(ph_data,
+  color = colorRampPalette(c("darkblue", "white", "red3"))(99),
+  scale = "row", cluster_rows = FALSE, cluster_cols = TRUE,
+  clustering_method = "complete", show_rownames = FALSE,
+  annotation_row = ann, annotation_colors = list(cluster = cl_cols),
+  border_color = NA)
+ComplexHeatmap::draw(hm)
+
+# 模拟的标记基因块须各自在所属簇中达峰（对角结构）
+diag_hits <- sapply(1:n_clust, function(k) {
+  idx <- ((k - 1) * n_genes_per + 1):(k * n_genes_per)
+  all(apply(avg[idx, , drop = FALSE], 1, which.max) == k)
+})
+stopifnot(sum(diag_hits) == n_clust)
+```
+
+::: callout-tip
+**实践要点**
+
+-   `cluster_rows = FALSE` 令各标记基因集保持连续；若让行参与聚类，对角式阅读逻辑即被破坏。
+-   按基因 z-score 后截断至 ±2 是四组标记块色彩等浓的关键：每块对比度由自身定标。
+-   `darkblue-white-red3` 99 级渐变匹配经典图风；用 `colorRampPalette()` 构建一次即可跨面板复用。
+:::
+### 8. 多区块水平拼接热图
+
+一整幅论文版式——二分类性状条、表达矩阵、带格内数字标注的得分列——可由行对齐的三个 `pheatmap` 区块水平拼接而成 \[8\]。`display_numbers` + `number_color` 机制可把任意区块变成表格列：逐格控制数字与文字颜色，缺失值画为 `NA`。
+
+```{r}
+#| label: fig-8.1MultiBlockHeatmap
+#| fig-cap: "以六种药物为共享坐标的三区块水平拼接：应答注释（红 = 敏感）、12 个基因的表达谱、以及以格内数字显示的 CMap 得分（缺失画 NA）。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 4.5
+
+set.seed(5301)
+drugs <- c("BI-2536", "Leptomycin", "Methotrexate",
+           "Narciclasine", "SR-II-138A", "Vincristine")
+expr_genes <- paste0("Gene", sprintf("%03d", 1:12))
+# 三个区块行数均为 6（药物）——水平拼接的硬性要求
+centre <- matrix(rnorm(12 * 6, sd = 1), nrow = 6, dimnames = list(drugs, expr_genes))
+centre[1:2, ] <- centre[1:2, ] + 1.4       # 前两种药物为应答者
+
+hm1 <- ComplexHeatmap::pheatmap(mat = matrix(c(1, 1, 0, 1, 0, 0), ncol = 1,
+    dimnames = list(drugs, "Response")),
+  color = c("#F7F7F7", "#B2182B"), cluster_rows = FALSE, cluster_cols = FALSE,
+  show_rownames = TRUE, show_colnames = FALSE,
+  cellwidth = 25, cellheight = 40, legend = FALSE)
+
+hm2 <- ComplexHeatmap::pheatmap(mat = centre, cluster_rows = FALSE,
+  cluster_cols = FALSE, show_rownames = FALSE, show_colnames = TRUE,
+  color = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+  cellwidth = 55, cellheight = 18, border_color = "white", legend = FALSE)
+
+score <- c(-83.13, NA, -49.61, -91.23, NA, -34.30)
+hm3 <- ComplexHeatmap::pheatmap(mat = matrix(score, ncol = 1,
+    dimnames = list(drugs, "CMap\nscore")),
+  color = c("#FDCEB9", "#FDCEB9", "#F26E5F"),
+  cluster_rows = FALSE, cluster_cols = FALSE,
+  show_rownames = FALSE, show_colnames = TRUE,
+  display_numbers = ifelse(is.na(score), "NA", sprintf("%.1f", score)),
+  number_color = ifelse(is.na(score), "black", "white"),
+  fontsize_number = 9, border_color = "white",
+  cellwidth = 40, cellheight = 40, legend = FALSE)
+
+ComplexHeatmap::draw(hm1 + hm2 + hm3)
+stopifnot(sum(is.na(score)) == 2 &&
+          identical(as.numeric(matrix(c(1, 1, 0, 1, 0, 0), ncol = 1)),
+                    c(1, 1, 0, 1, 0, 0)))
+```
+
+::: callout-tip
+**实践要点**
+
+-   水平拼接要求**各区块行数相同**（报错会逐一列出各块行数）：所有区块须建于同一药物/样本向量之上。
+-   `draw(hm1 + hm2 + hm3)` 自左向右组合；为每块单独设 `cellwidth`/`cellheight`，而非统一图幅。
+-   对不宜以色载义的区块（含缺失值的得分列），`display_numbers` + 逐格 `number_color` 比强套色阶更易读。
+:::
+
 
 ::: {#fig-ComplexHeatmapApplications}
 ![](../images/Correlation/ComplexHeatmap_app.jpg){fig-alt="ComplexHeatmapApp1" fig-align="center" width="60%"}

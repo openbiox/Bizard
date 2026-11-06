@@ -398,7 +398,52 @@ out_data |>
                summary = c("darkblue", "red"))
 ```
 
-## 应用场景
+### 3. 队列级随机效应 meta 森林图
+
+当仅掌握各队列已发表的 HR 与 95%CI、拿不到个体生存数据时，用 `meta::metagen()` 在对数 HR 尺度以逆方差法合并各队列效应量，再由 `forest()` 画随机效应合并结果 \[6\]。不同于亚组森林图（合并原始数据）与风险表森林图（各数据集分别建模）：此处每项研究只贡献一行汇总值；Q 检验、I\^2 与 \tau\^2 打在菱形下方。
+
+```{r}
+#| label: fig-3.1RandomForest
+#| fig-cap: "三队列随机效应 meta 分析森林图：各队列 HR（95%CI）与 P 值、下方合并菱形、以及 I2/Q/tau2 异质性行。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 4.5
+
+set.seed(5501)
+mdata <- data.frame(
+  Groups = c("TCGA-LUAD", "GSE30219", "GSE31225"),
+  HR = c(2.83, 3.42, 2.16),
+  LCI = c(1.71, 2.03, 1.15),
+  HCI = c(4.68, 5.76, 4.05),
+  pvalue = c(0.00002, 0.0001, 0.021),
+  stringsAsFactors = FALSE)
+stopifnot(all(mdata$LCI > 1) && all(mdata$HCI > mdata$LCI))
+
+m <- metagen(TE = log(HR), seTE = (log(HCI) - log(LCI)) / (2 * 1.96),
+             sm = "HR", data = mdata, studlab = Groups)
+# 合并效应存于对数尺度；取指数方可读出菱形的 HR
+stopifnot(exp(m$TE.random) > 1 && exp(m$TE.random) < 10 && m$pval.random < 0.05)
+
+forest(m, comb.fixed = FALSE, comb.random = TRUE,
+       leftcols = "studlab",
+       label.left = "Cohort",
+       rightcols = c("TE", "lower", "upper"),
+       print.pval.Q = TRUE, print.I2 = TRUE, print.tau2 = TRUE,
+       col.square = "#8B0000", col.square.lines = "#8B0000",
+       col.diamond = "#8B0000", col.diamond.lines = "#8B0000",
+       xlab = "Hazard Ratio (log scale)")
+```
+
+::: callout-tip
+**实践要点**
+
+-   还原 HR 尺度须对 `m$TE.random`/`m$lower`/`m$upper` 取指数——对象存的是对数尺度效应量；混用两者是典型错误。
+-   模型选择看异质性：Q 显著或 I\^2 > 50% 支持随机效应（`comb.random = TRUE`）；研究数不足 ~10 项时即便随机效应也脆弱。
+-   三项异质性打印（`print.pval.Q/I2/tau2`）全部保留：审稿人据此判断该用哪种合并模型。
+:::
+
 
 ### 1. Meta分析结果可视化
 
@@ -442,3 +487,4 @@ TwoSampleMR包做出来的森林图。
 
 \[5\] Murrell, P. (2018). R Graphics (3rd ed.). Chapman & Hall/CRC.ISBN: 978-1439888417
 
+\[6\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

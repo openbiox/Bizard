@@ -322,6 +322,58 @@ p2 <- ggplot(use_pathway, aes(-log10(p.adjust), y = index, fill = Category)) +
 p2
 ```
 
-## 参考资料
+### 3. 上下调镜像富集点图
+
+当上、下调基因在同一次分析中检验时，两条富集臂可在同一张点图中以零为镜面对置：把下调臂的 `Count` 取负、共享同一因子坐标，按 FDR 着色、按基因数定大小 \[2\]。真实 `enrichResult` 对象上用 `enrichplot::dotplot()` 同理可得。
+
+```{r}
+#| label: fig-3.1MirrorEnrichDot
+#| fig-cap: "镜像富集点图：上调 term 位于零线之右、下调位于之左；点大小 = 基因数，颜色 = FDR（对数标）；两面板独立缩放。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6
+
+set.seed(5201)
+n_term <- 14
+terms <- paste0("HALLMARK_", sprintf("%02d", 1:n_term))
+mk_res <- function(direction) {
+  data.frame(Category = direction, ID = terms,
+             Description = paste0(terms, "_desc"),
+             Count = abs(round(rnorm(n_term, 8, 4))) + 1,
+             FDR = 10^runif(n_term, -5, -1.4), stringsAsFactors = FALSE)
+}
+up <- mk_res("Up")
+dn <- mk_res("Down")
+dn$Count <- -dn$Count          # 负 Count 使下调臂绘于零线之左
+allr <- rbind(up, dn)
+
+ggplot(allr, aes(Count, reorder(Description, Count), colour = FDR)) +
+  geom_point(aes(size = abs(Count))) +
+  scale_colour_gradient(low = "#B2182B", high = "#2874C5",
+                        trans = "log10", name = "FDR") +
+  scale_size_continuous(range = c(1.5, 5), guide = "none") +
+  facet_grid(Category ~ ., scales = "free_y", space = "free_y") +
+  geom_vline(xintercept = 0, colour = "grey50", linewidth = 0.4) +
+  labs(x = "Over-representation gene count", y = NULL) +
+  theme_classic(base_size = 11) +
+  theme(panel.grid.major.y = element_blank(), legend.position = "right",
+        strip.text = element_text(colour = "black", face = "bold", size = 9),
+        strip.background = element_rect(fill = "grey92"))
+
+stopifnot(sum(up$FDR < 0.05) + sum(dn$FDR < 0.05) >= 10)
+```
+
+::: callout-tip
+**实践要点**
+
+-   负 `Count` 手法使两臂同处一尺度，两臂长度可直读对比。
+-   `facet_grid(..., scales = "free_y", space = "free_y")` 允许两臂各自排 term 而不产生空行。
+-   真实结果用 `clusterProfiler::compare_eGO()`/`compareEGO()` 构建两臂后，直接喂给同一组 ggplot2 图层即可——无需依赖 enrichplot。
+:::
+
 
 \[1\] 生信医道. 超好看的单细胞GO，KEGG富集分析图！确定不来看看吗？ \[Internet\]. 微信公众号: 生信医道. 2025 \[cited 2025 Dec 30\]. Available from: <https://mp.weixin.qq.com/s/pY1S0EJQAhdezvxeNt-SzA>
+
+\[2\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
