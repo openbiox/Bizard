@@ -1,0 +1,98 @@
+---
+title: "WGCNA 图"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+加权基因共表达网络分析（WGCNA）需要选择一个**软阈值幂 β** 使无标度拓扑拟合指数达到平台期 \[1\]。经典图是双面板：(左) 拟合指数 vs β，(右) 平均连接度 vs β。本教程模拟表达数据并走完拟合步骤。
+
+## Example
+
+![](../images/Correlation/WgcnaPlot_demo.png){fig-alt="WgcnaPlot DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包： `ggplot2`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("patchwork", quietly = TRUE)) install.packages("patchwork")
+
+library(ggplot2)
+library(dplyr)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+真实数据用 `WGCNA::pickSoftThreshold()` 在表达矩阵上计算。我们模拟一系列 β 值的无标度拓扑拟合指数和平均连接度，模拟输出结构。
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(2201)
+powers <- c(1:10, seq(12, 20, by = 2))
+fit_index <- 1 - exp(-0.3 * powers) + rnorm(length(powers), sd = 0.02)
+mean_conn <- exp(-0.8 * powers) * 100 + rnorm(length(powers), sd = 1)
+
+sft <- data.frame(power = powers, fit_index = fit_index, mean_conn = mean_conn)
+head(sft)
+```
+
+## Visualization
+
+### 1. 无标度拓扑拟合指数与平均连接度
+
+```{r}
+#| label: fig-1.1SoftThreshold
+#| fig-cap: "无标度拓扑拟合指数（左）和平均连接度（右）vs 软阈值幂 β。虚线标记拟合指数 = 0.8。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.5
+
+p1 <- ggplot(sft, aes(power, fit_index)) +
+  geom_point(colour = "#B2182B", size = 2.5) +
+  geom_line(colour = "#B2182B", linewidth = 0.5) +
+  geom_hline(yintercept = 0.8, linetype = "dashed", colour = "grey40") +
+  geom_text(aes(label = power), vjust = -0.8, size = 3) +
+  labs(x = "Soft-thresholding power (β)", y = "Scale-free topology fit index") +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+
+p2 <- ggplot(sft, aes(power, mean_conn)) +
+  geom_point(colour = "#445EAD", size = 2.5) +
+  geom_line(colour = "#445EAD", linewidth = 0.5) +
+  geom_text(aes(label = power), vjust = -0.8, size = 3) +
+  labs(x = "Soft-thresholding power (β)", y = "Mean connectivity") +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+
+library(patchwork)
+p1 + p2 + patchwork::plot_annotation(tag_levels = "A")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   选最低的 β 使拟合指数 ≥ 0.8（虚线处）——更高的 β 降低连接度但可能丢失生物学信号。
+-   真实数据用 `WGCNA::pickSoftThreshold(expr_data, powerVector = powers, networkType = "unsigned")`。
+-   若无 β 达到 0.8，数据可能不符合无标度拓扑；检查批次效应或换用其他网络类型。
+:::
+
+## Application
+
+WGCNA 软阈值拟合是共表达网络分析的第一步；选定的 β 决定用于模块检测的邻接矩阵。
+
+## Reference
+
+\[1\] Langfelder P, Horvath S. WGCNA: an R package for weighted correlation network analysis. BMC Bioinformatics. 2008;9:559. doi:10.1186/1471-2105-9-559
+
+\[2\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

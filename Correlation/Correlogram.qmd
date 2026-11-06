@@ -254,6 +254,57 @@ corrgram(data_mtcars, order=NULL,
 
 > By setting `lower.panel=panel.shade` and `upper.panel=NULL`, only the color diagram in the lower part is displayed.
 
+### 5. Multi-Gene Correlation with FDR Correction
+
+When testing correlations for many genes simultaneously, **false discovery rate (FDR) correction** is essential \[5\]. This recipe computes pairwise correlations between a target gene and all others, applies BH correction, and visualises the results as a sorted bar chart.
+
+```{r}
+#| label: fig-5.1MultiGeneCor
+#| fig-cap: "Correlation of simulated genes with a target gene; bars sorted by r, red = significant after BH correction."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6
+
+set.seed(2801)
+target_gene <- "TARGET"
+other_genes <- paste0("Gene", sprintf("%03d", 1:30))
+n_samp <- 40
+
+expr_cor <- matrix(rnorm(31 * n_samp, sd = 1), nrow = 31,
+                   dimnames = list(c(target_gene, other_genes), NULL))
+# make some genes correlated with target
+expr_cor[2:11, ] <- sweep(expr_cor[2:11, ], 2, expr_cor[1, ] * 0.6, `+`)
+
+cor_res <- t(sapply(2:nrow(expr_cor), function(i) {
+  ct <- cor.test(expr_cor[1, ], expr_cor[i, ], method = "pearson")
+  c(r = unname(ct$estimate), p = ct$p.value)
+}))
+cor_df <- data.frame(gene = other_genes, r = cor_res[, "r"], p = cor_res[, "p"])
+cor_df$fdr <- p.adjust(cor_df$p, method = "BH")
+cor_df <- cor_df[order(cor_df$r), ]
+cor_df$sig <- cor_df$fdr < 0.05
+
+ggplot(cor_df, aes(r, reorder(gene, r), fill = sig)) +
+  geom_col(width = 0.6) +
+  scale_fill_manual(values = c(`TRUE` = "#B2182B", `FALSE` = "grey70"),
+                    labels = c(`TRUE` = "FDR < 0.05", `FALSE` = "n.s."), name = NULL) +
+  labs(x = "Pearson correlation coefficient", y = NULL,
+       title = paste0("Correlation with ", target_gene)) +
+  theme_classic(base_size = 10) +
+  theme(legend.position = "bottom")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `p.adjust(method = "BH")` must be applied across **all tested genes** — adjusting per gene or per plot invalidates the FDR.
+-   Sort bars by correlation coefficient (not by gene name) to see the gradient from positive to negative correlations.
+-   For Spearman correlation, replace `cor.test(method = "pearson")` with `method = "spearman"`.
+:::
+
+## Applications
 ## Applications
 
 ::: {#fig-CorrelogramApplications}
@@ -285,3 +336,5 @@ Applications of Correlogram
 \[5\] Kassambara A (2023). *ggcorrplot: Visualization of a Correlation Matrix using 'ggplot2'*. R package version 0.1.4.1, [CRAN: Package ggcorrplot](https://CRAN.R-project.org/package=ggcorrplot).
 
 \[6\] Wright K (2021). *corrgram: Plot a Correlogram*. R package version 1.14, [CRAN: Package corrgram](https://CRAN.R-project.org/package=corrgram).
+
+\[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

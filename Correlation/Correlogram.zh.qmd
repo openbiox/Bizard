@@ -254,6 +254,57 @@ corrgram(data_mtcars, order=NULL,
 
 > 通过`lower.panel=panel.shade`,`upper.panel=NULL`只显示下半部分的颜色图
 
+### 5. 多基因相关分析 + FDR 校正
+
+同时检验多个基因的相关性时，**假发现率（FDR）校正**必不可少 \[5\]。此配方计算目标基因与所有其他基因的成对相关，BH 校正后按相关系数排序画柱形图。
+
+```{r}
+#| label: fig-5.1MultiGeneCor
+#| fig-cap: "模拟基因与目标基因的相关系数；柱形按 r 排序，红色 = BH 校正后显著。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6
+
+set.seed(2801)
+target_gene <- "TARGET"
+other_genes <- paste0("Gene", sprintf("%03d", 1:30))
+n_samp <- 40
+
+expr_cor <- matrix(rnorm(31 * n_samp, sd = 1), nrow = 31,
+                   dimnames = list(c(target_gene, other_genes), NULL))
+expr_cor[2:11, ] <- sweep(expr_cor[2:11, ], 2, expr_cor[1, ] * 0.6, `+`)
+
+cor_res <- t(sapply(2:nrow(expr_cor), function(i) {
+  ct <- cor.test(expr_cor[1, ], expr_cor[i, ], method = "pearson")
+  c(r = unname(ct$estimate), p = ct$p.value)
+}))
+cor_df <- data.frame(gene = other_genes, r = cor_res[, "r"], p = cor_res[, "p"])
+cor_df$fdr <- p.adjust(cor_df$p, method = "BH")
+cor_df <- cor_df[order(cor_df$r), ]
+cor_df$sig <- cor_df$fdr < 0.05
+
+ggplot(cor_df, aes(r, reorder(gene, r), fill = sig)) +
+  geom_col(width = 0.6) +
+  scale_fill_manual(values = c(`TRUE` = "#B2182B", `FALSE` = "grey70"),
+                    labels = c(`TRUE` = "FDR < 0.05", `FALSE` = "n.s."), name = NULL) +
+  labs(x = "Pearson correlation coefficient", y = NULL,
+       title = paste0("Correlation with ", target_gene)) +
+  theme_classic(base_size = 10) +
+  theme(legend.position = "bottom")
+```
+
+::: callout-tip
+**实践要点**
+
+-   `p.adjust(method = "BH")` 必须**跨所有被检验的基因**计算——逐基因或逐图校正会让 FDR 失效。
+-   柱形按相关系数排序（而非基因名），可直观看到从正相关到负相关的梯度。
+-   Spearman 相关将 `cor.test(method = "pearson")` 替换为 `method = "spearman"` 即可。
+:::
+
+## 应用场景
+
 ## 应用场景
 
 ::: {#fig-CorrelogramApplications}
@@ -285,3 +336,5 @@ corrgram(data_mtcars, order=NULL,
 \[5\] Kassambara A (2023). *ggcorrplot: Visualization of a Correlation Matrix using 'ggplot2'*. R package version 0.1.4.1, [CRAN: Package ggcorrplot](https://CRAN.R-project.org/package=ggcorrplot).
 
 \[6\] Wright K (2021). *corrgram: Plot a Correlogram*. R package version 1.14, [CRAN: Package corrgram](https://CRAN.R-project.org/package=corrgram).
+
+\[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
