@@ -1,0 +1,98 @@
+---
+title: "WGCNA Plot"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+Weighted Gene Co-expression Network Analysis (WGCNA) requires choosing a **soft-thresholding power β** such that the scale-free topology fit index reaches a plateau \[1\]. The canonical figure is a two-panel plot: (left) the scale-free fit index vs β and (right) the mean connectivity vs β. This tutorial simulates expression data and walks through the fitting step.
+
+## Example
+
+![](../images/Correlation/WgcnaPlot_demo.png){fig-alt="WgcnaPlot DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming Language: R
+
+-   Dependent packages: `ggplot2`; `dplyr`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("patchwork", quietly = TRUE)) install.packages("patchwork")
+
+library(ggplot2)
+library(dplyr)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+With real data, you would use `WGCNA::pickSoftThreshold()` on the expression matrix. We simulate the scale-free topology fit index and mean connectivity for a range of β values, mimicking the output structure.
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(2201)
+powers <- c(1:10, seq(12, 20, by = 2))
+fit_index <- 1 - exp(-0.3 * powers) + rnorm(length(powers), sd = 0.02)
+mean_conn <- exp(-0.8 * powers) * 100 + rnorm(length(powers), sd = 1)
+
+sft <- data.frame(power = powers, fit_index = fit_index, mean_conn = mean_conn)
+head(sft)
+```
+
+## Visualization
+
+### 1. Scale-Free Topology Fit and Mean Connectivity
+
+```{r}
+#| label: fig-1.1SoftThreshold
+#| fig-cap: "Scale-free topology fit index (left) and mean connectivity (right) vs soft-thresholding power β. The dashed line marks fit index = 0.8."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.5
+
+p1 <- ggplot(sft, aes(power, fit_index)) +
+  geom_point(colour = "#B2182B", size = 2.5) +
+  geom_line(colour = "#B2182B", linewidth = 0.5) +
+  geom_hline(yintercept = 0.8, linetype = "dashed", colour = "grey40") +
+  geom_text(aes(label = power), vjust = -0.8, size = 3) +
+  labs(x = "Soft-thresholding power (β)", y = "Scale-free topology fit index") +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+
+p2 <- ggplot(sft, aes(power, mean_conn)) +
+  geom_point(colour = "#445EAD", size = 2.5) +
+  geom_line(colour = "#445EAD", linewidth = 0.5) +
+  geom_text(aes(label = power), vjust = -0.8, size = 3) +
+  labs(x = "Soft-thresholding power (β)", y = "Mean connectivity") +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+
+library(patchwork)
+p1 + p2 + patchwork::plot_annotation(tag_levels = "A")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Choose the lowest β where the fit index reaches ≥ 0.8 (the dashed line) — a higher β reduces connectivity but may lose biological signal.
+-   With real data, use `WGCNA::pickSoftThreshold(expr_data, powerVector = powers, networkType = "unsigned")`.
+-   If no β reaches 0.8, the data may not follow a scale-free topology; check for batch effects or use a different network type.
+:::
+
+## Application
+
+WGCNA soft-threshold fitting is the first step in co-expression network analysis; the chosen β determines the adjacency matrix used for module detection.
+
+## Reference
+
+\[1\] Langfelder P, Horvath S. WGCNA: an R package for weighted correlation network analysis. BMC Bioinformatics. 2008;9:559. doi:10.1186/1471-2105-9-559
+
+\[2\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
