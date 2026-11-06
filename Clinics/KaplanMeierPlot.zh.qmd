@@ -304,6 +304,51 @@ final_plot
 美化版生存曲线
 :::
 
+### 多组生存曲线与置信区间带
+
+两臂与三臂比较沿用同一个 `ggsurvplot()` 调用：为每个分层在 `palette` 中传入一种颜色，在 `legend.labs` 中传入各组标签，并用 `conf.int` 开启置信区间带 \[7\]。
+
+```{r}
+#| label: fig-2.2MultiGroupKM
+#| fig-cap: "三臂 KM 比较（高/中/低表达），含 log-rank P 值与 95% 置信区间带；风险表计数各组的在险人数。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 6
+
+set.seed(4201)
+n_km <- 240
+grp3 <- rep(c("High", "Med", "Low"), each = n_km / 3)
+base_t <- rexp(n_km, rate = 0.09)
+mult <- ifelse(grp3 == "High", 1.8, ifelse(grp3 == "Med", 1.0, 0.55))
+km3 <- data.frame(
+  time = base_t * mult,
+  event = sample(0:1, n_km, replace = TRUE, prob = c(0.25, 0.75)),
+  group = factor(grp3, levels = c("High", "Med", "Low")))
+
+fit3 <- survfit(Surv(time, event) ~ group, data = km3)
+ggsurvplot(fit3, data = km3,
+           pval = TRUE, linetype = "solid",
+           palette = c("#B2182B", "#EABF00", "#2166AC"),
+           legend.title = "Expression",
+           legend.labs = c("High", "Medium", "Low"),
+           risk.table = TRUE, risk.table.col = "strata",
+           risk.table.height = 0.25,
+           conf.int = TRUE, conf.int.style = "ribbon",
+           conf.int.alpha = 0.12,
+           xlab = "Follow-up (months)",
+           xlim = c(0, 60), break.time.by = 10)
+```
+
+::: callout-tip
+**实践要点**
+
+-   `palette` 与 `legend.labs` 的长度应与分层数一致；分层顺序取决于分组因子的 `levels()`，因此显式设定 levels 才能控制颜色映射。
+-   `conf.int.style = "ribbon"`（默认为线条）配合低 alpha 可避免区间带遮挡曲线；取 `conf.int.alpha = 0.1-0.2` 为宜。
+-   分层超过 ~4 组时，把图例移到图外（`legend = c(1.1, 0.9)`）以保持绘图区可读性。
+:::
+
 ### Risk Table（风险表）
 
 KM 曲线下方的**风险表**展示每个时间点仍在随访的患者数 \[7\]——审稿人用它评估曲线在晚期随访时的可靠性。`survminer::ggsurvplot()` 通过 `risk.table = TRUE` 绘制。

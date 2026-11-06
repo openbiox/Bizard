@@ -477,6 +477,66 @@ p
 
 对原数据企鹅种类和企鹅性别对翅膀长度的影响进行差异分析，其结果均具有显著性。
 
+### 6. 蛋白突变棒棒糖图
+
+突变论文中的经典“棒棒糖”图 \[11\]：水平蛋白坐标轴上放置带色的**结构域方块**，突变位点以带支棍的圆点表示，圆点大小编码突变例数。真实数据可用 `trackViewer::lolliplot()` 从 `GRanges` 对象直接绘制；下面用 `ggplot2` 图元重建，使输出可定制主题且可复现。
+
+```{r}
+#| label: fig-6.1ProteinLollipop
+#| fig-cap: "蛋白突变棒棒糖图：TP53 热点突变分布于蛋白坐标轴上并叠加结构域方块。圆点大小编码携带该位点的样本数；支棍交替分布于轴上下以减少拥挤。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.5
+
+set.seed(4101)
+# 模拟队列突变：每行一个样本，氨基酸位点 1-393
+mut <- data.frame(
+  position = c(175, 175, 175, 220, 220, 245, 248, 248, 273, 273, 273,
+               158, 179, 196, 213, 234, 245, 280, 306, 338, 34, 72, 115,
+               133, 141))
+# 蛋白结构域（可来自 maftools::read.protein.domains 或 UniProt）
+dom <- data.frame(
+  name = c("Proline-rich", "DNA-binding", "Tetramerization"),
+  start = c(60, 100, 320), end = c(80, 290, 360),
+  fill = c("#EABF00", "#445EAD", "#4D9342"))
+
+pos_tab <- table(mut$position)
+lp_df <- data.frame(position = as.numeric(names(pos_tab)),
+                    freq = as.numeric(pos_tab))
+# 支棍交替分布于轴上下以避免拥挤
+lp_df$layer <- rep(c("top", "bottom"), length.out = nrow(lp_df))
+lp_df$y <- ifelse(lp_df$layer == "top", log2(lp_df$freq) + 0.6,
+                  -(log2(lp_df$freq) + 0.6))
+
+ggplot() +
+  geom_rect(data = dom, aes(xmin = start, xmax = end,
+                            ymin = -0.35, ymax = 0.35, fill = name),
+            inherit.aes = FALSE, colour = "grey30") +
+  scale_fill_manual(values = setNames(dom$fill, dom$name), name = "Domain") +
+  geom_hline(yintercept = 0, colour = "grey30", linewidth = 0.5) +
+  geom_segment(aes(x = position, xend = position, y = 0, yend = y),
+               data = lp_df, colour = "grey50", linewidth = 0.4) +
+  geom_point(aes(x = position, y = y, size = freq),
+             data = lp_df, shape = 21, fill = "#B2182B", stroke = 0.8) +
+  scale_size_continuous(range = c(2, 7), name = "n samples") +
+  coord_cartesian(clip = "off", xlim = c(0, 400)) +
+  labs(title = "TP53 mutation landscape (simulated cohort)",
+       x = "Amino-acid position", y = NULL) +
+  theme_classic(base_size = 11) +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        panel.grid.major.y = element_blank(), legend.position = "bottom")
+```
+
+::: callout-tip
+**实践要点**
+
+-   真实数据上，用 `trackViewer::lolliplot()` 配 `GRanges` 对象（点带 `score` 控制高度）是即插即用的路径；上面的 `ggplot2` 版本可完全定制主题并输出矢量 SVG。
+-   支棍分上下两层（`layer = c("top", "bottom")`）是热点拥挤的常用解法；按临床变量而非随机分层即可得到两组对比。
+-   结构域坐标可取 `maftools::read.protein.domains()` 按 RefSeq ID 过滤，或来自 UniProt REST API。
+:::
+
 ## 应用场景
 
 ### 1. 棒棒糖图
@@ -523,3 +583,4 @@ D图展示了AAGs（血管生成相关基因）中拷贝数变异缺失、增加
 
 \[10\] Kassambara A (2023). ggpubr: 'ggplot2' Based Publication Ready Plots. R package version 0.6.0, https://CRAN.R-project.org/package=ggpubr.
 
+\[11\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

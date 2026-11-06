@@ -477,6 +477,66 @@ p
 
 The results of the difference analysis on the effects of penguin species and penguin gender on wing length in the original data were significant.
 
+### 6. Protein-Mutation Lollipop Plot
+
+The classic "lollipop" figure from mutation papers \[11\]: a horizontal protein axis with coloured **domain boxes**, and mutation sites drawn as circles on stalks whose size encodes the mutation count. `trackViewer::lolliplot()` renders it from a `GRanges` object on real data; below we rebuild it with `ggplot2` primitives so the output is themeable and reproducible.
+
+```{r}
+#| label: fig-6.1ProteinLollipop
+#| fig-cap: "Protein-mutation lollipop: TP53 hot-spots on the protein axis with domain boxes. Circle size encodes the number of samples carrying each site; stalks alternate above and below the axis to reduce crowding."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.5
+
+set.seed(4101)
+# Simulated cohort mutations: one row per sample, amino-acid position 1-393
+mut <- data.frame(
+  position = c(175, 175, 175, 220, 220, 245, 248, 248, 273, 273, 273,
+               158, 179, 196, 213, 234, 245, 280, 306, 338, 34, 72, 115,
+               133, 141))
+# Protein domains (e.g. from maftools::read-protein-domains or UniProt)
+dom <- data.frame(
+  name = c("Proline-rich", "DNA-binding", "Tetramerization"),
+  start = c(60, 100, 320), end = c(80, 290, 360),
+  fill = c("#EABF00", "#445EAD", "#4D9342"))
+
+pos_tab <- table(mut$position)
+lp_df <- data.frame(position = as.numeric(names(pos_tab)),
+                    freq = as.numeric(pos_tab))
+# Alternate stalks above/below the axis to avoid crowding
+lp_df$layer <- rep(c("top", "bottom"), length.out = nrow(lp_df))
+lp_df$y <- ifelse(lp_df$layer == "top", log2(lp_df$freq) + 0.6,
+                  -(log2(lp_df$freq) + 0.6))
+
+ggplot() +
+  geom_rect(data = dom, aes(xmin = start, xmax = end,
+                            ymin = -0.35, ymax = 0.35, fill = name),
+            inherit.aes = FALSE, colour = "grey30") +
+  scale_fill_manual(values = setNames(dom$fill, dom$name), name = "Domain") +
+  geom_hline(yintercept = 0, colour = "grey30", linewidth = 0.5) +
+  geom_segment(aes(x = position, xend = position, y = 0, yend = y),
+               data = lp_df, colour = "grey50", linewidth = 0.4) +
+  geom_point(aes(x = position, y = y, size = freq),
+             data = lp_df, shape = 21, fill = "#B2182B", stroke = 0.8) +
+  scale_size_continuous(range = c(2, 7), name = "n samples") +
+  coord_cartesian(clip = "off", xlim = c(0, 400)) +
+  labs(title = "TP53 mutation landscape (simulated cohort)",
+       x = "Amino-acid position", y = NULL) +
+  theme_classic(base_size = 11) +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        panel.grid.major.y = element_blank(), legend.position = "bottom")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   On real data, `trackViewer::lolliplot()` with a `GRanges` object (points carry a `score` for height) is the drop-in path; the `ggplot2` version above gives full theme control and vector SVG output.
+-   Splitting stalks into two layers (`layer = c("top", "bottom")`) is the standard cure for crowding hot-spots; split by a clinical variable instead of randomly for a two-group contrast.
+-   Take domain coordinates from `maftools::read-protein-domains()` filtered by RefSeq ID, or from the UniProt REST API.
+:::
+
 ## Applications
 
 ### 1. Lollipop plot
@@ -523,3 +583,4 @@ The size of the dot represents the strength of the correlation between the gene 
 
 \[10\] Kassambara A (2023). ggpubr: 'ggplot2' Based Publication Ready Plots. R package version 0.6.0, https://CRAN.R-project.org/package=ggpubr.
 
+\[11\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

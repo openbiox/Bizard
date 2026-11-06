@@ -1223,6 +1223,61 @@ Heatmap(logfc_cat, name = "logFC band",
 -   色档是因子水平——`col_cat` 中的顺序即图例顺序；保持档位递增，让图例自上而下与生物学方向一致。
 :::
 
+### 6. 聚类-相关性热图
+
+Unsupervised (consensus) clustering of samples splits a cohort into gene-driven subtypes; correlating **each gene with the numeric cluster label** then splits the gene set into a positively correlated signature (A) and a negatively correlated one (B), which is exactly the "identification of immunogenic gene subtypes" figure \[17\]. With real data, `ConsensusClusterPlus::ConsensusCluster()` chooses k and returns the class vector; here the clusters are simulated and only the correlation + annotated heatmap is reproduced.
+
+```{r}
+#| label: fig-6.1ClusterCorrelation
+#| fig-cap: "z-score 标准化表达式的带标注热图：样本按共识基因聚类排序（上方标注），基因按与聚类正相关（A）与负相关（B）分为两组 signature（左侧标注）。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 6.5
+
+set.seed(4401)
+n_s <- 90; n_g <- 45
+cls3 <- rep(1:3, each = n_s / 3)             # consensus gene clusters 1/2/3
+mat <- matrix(rnorm(n_g * n_s, sd = 0.5), n_g)
+sigA <- 1:15; sigB <- 16:30                  # signature A rises in cluster 1,
+mat[sigA, cls3 == 1] <- mat[sigA, cls3 == 1] + 1.8   # signature B rises in
+mat[sigB, cls3 == 3] <- mat[sigB, cls3 == 3] + 1.8   # cluster 3 and dips in 1
+mat[sigB, cls3 == 1] <- mat[sigB, cls3 == 1] - 1.5
+rownames(mat) <- paste0("Gene", sprintf("%03d", 1:n_g))
+colnames(mat) <- paste0("Sample", 1:n_s)
+
+# Pearson r of each gene against the numeric cluster label (1/2/3)
+rs <- sapply(1:n_g, function(i) cor(mat[i, ], as.numeric(cls3)))
+out_tab <- data.frame(gene = rownames(mat), r = rs,
+                      direct = ifelse(rs > 0, "A", "B"))
+
+plotdata <- t(scale(t(mat)))                   # z-score per gene
+plotdata[plotdata > 3] <- 3                    # truncate extreme values
+plotdata[plotdata < -3] <- -3
+
+ann_col <- data.frame("Gene cluster" = c("A", "B", "C")[cls3],
+                      row.names = colnames(mat))
+ann_row <- data.frame("Signature" = out_tab$direct,
+                      row.names = out_tab$gene)
+ann_cols <- list("Gene cluster" = c(A = "#008ECB", B = "#EA921D", C = "#D14039"),
+                 Signature = c(A = "#D14039", B = "#008ECB"))
+
+pheatmap(plotdata, cluster_rows = FALSE, cluster_cols = FALSE,
+         show_rownames = FALSE, show_colnames = FALSE,
+         annotation_row = ann_row, annotation_col = ann_col,
+         annotation_colors = ann_cols,
+         color = colorRampPalette(c("#343493", "white", "#C24A45"))(64))
+```
+
+::: callout-tip
+**实践要点**
+
+-   真实数据用 `ConsensusClusterPlus::ConsensusCluster(d = as.matrix(expr), maxK = 4, reps = 1000, clusterAlg = "pam", innerLinkage = "ward.D", finalLinkage = "ward.D")`，类向量取 `result[[k]]$consensusClass`——上面的相关循环即可直接沿用。
+-   按 r 的**符号**切分 signature（而非再次聚类基因）能让 A、B 保持生物学可解释性；若基因集几乎全是同一符号，往往说明聚类编码（1/2/3）不是序数型的——可改用 one-hot 编码。
+-   截断到 ±3 之前务必按基因做 z-score 标准化：截断能防止单个离群样本使色标饱和。
+:::
+
 ## 应用场景
 
 ### 1. 基础热图

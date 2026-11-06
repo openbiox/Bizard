@@ -347,6 +347,82 @@ legend("topright", bty = "n", cex = 0.8, lwd = 2,
 - 换成真实表达数据时循环不变——把 `cand` 换成基因列，并把基因在行的表达矩阵经 `cv.glmnet(x = t(expr))` 传入。
 :::
 
+### 8. 跨队列 AUC 筛选（成对 AUC）
+
+当候选 signature 在一个队列上训练后，其预后价值必须在**独立**的测试队列中依然成立。成对 AUC 图把每个候选基因按其在队列 1 的 AUC（横轴）对队列 2 的 AUC（纵轴）散点绘制；落入右上角方框的基因在*两个*队列中均越过 AUC 阈值，即为稳健的命中基因 \[5\]。
+
+```{r}
+#| label: fig-8.1PairwiseAUC
+#| fig-cap: "跨队列 AUC 筛选。(A) 每个基因按其在队列 1 与队列 2 的 AUC 散点；蓝色 = 蛋白可检出，灰色 = 未检出，红色 = 目标基因；虚线框标记双重命中区（两者 AUC 均 > 0.6）。(B) 命中基因的平均 AUC。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.5
+
+library(patchwork)
+set.seed(4302)
+n_gene <- 60; n_s <- 90
+genes <- paste0("Gene", sprintf("%03d", 1:n_gene))
+truth <- sample(n_gene, 12)                    # 具有真实预后信号的基因
+
+# 构造一个队列：信号基因携带类别效应，噪声基因无
+mk_cohort <- function(coef, sd, seed) {
+  set.seed(seed)
+  ex <- matrix(rnorm(n_gene * n_s), n_gene)
+  cls <- sample(0:1, n_s, replace = TRUE)
+  ex[truth, ] <- sweep(ex[truth, ], 2, cls * coef, `+`)
+  ex <- ex + rnorm(n_gene * n_s, sd = sd)
+  list(ex = ex, cls = cls)
+}
+c1 <- mk_cohort(1.3, 0.7, 4302)
+c2 <- mk_cohort(1.1, 0.8, 4402)
+
+# 由 Mann-Whitney 秩统计量求 AUC（等价于 pROC::roc()$auc）
+auc_of <- function(ex, cls) apply(ex, 1, function(g) {
+  pos <- g[cls == 1]; neg <- g[cls == 0]
+  u <- sum(sapply(pos, function(p) sum(neg < p) + 0.5 * sum(neg == p)))
+  u / (length(pos) * length(neg))
+})
+auc1 <- auc_of(c1$ex, c1$cls); auc2 <- auc_of(c2$ex, c2$cls)
+auc_df <- data.frame(gene = genes, auc1 = auc1, auc2 = auc2)
+set.seed(4309)
+auc_df$detected <- runif(n_gene) > 0.3         # “蛋白可检出”过滤
+cutoff <- 0.6
+auc_df$hit <- auc_df$auc1 > cutoff & auc_df$auc2 > cutoff & auc_df$detected
+
+pL <- ggplot(auc_df, aes(auc1, auc2)) +
+  geom_point(aes(colour = detected), size = 2) +
+  scale_colour_manual(values = c(`TRUE` = "#445EAD", `FALSE` = "grey75"),
+                      labels = c(`TRUE` = "Protein-detected", `FALSE` = "Not detected"),
+                      name = NULL) +
+  geom_rect(xmin = cutoff, xmax = max(auc_df$auc1) + 0.02,
+            ymin = cutoff, ymax = max(auc_df$auc2) + 0.02,
+            fill = NA, colour = "grey40", linetype = "dashed") +
+  annotate("point", x = auc_df$auc1[1], y = auc_df$auc2[1],
+           colour = "#B2182B", size = 2.5) +
+  labs(x = "AUC in cohort 1", y = "AUC in cohort 2", title = "Cross-cohort AUC") +
+  theme_classic(base_size = 11) + theme(legend.position = "bottom")
+
+hits <- auc_df[auc_df$hit, ]
+hits$gene <- factor(hits$gene, levels = hits$gene[order((hits$auc1 + hits$auc2) / 2)])
+pR <- ggplot(hits, aes(reorder(gene, (auc1 + auc2) / 2), (auc1 + auc2) / 2)) +
+  geom_col(fill = "#445EAD", width = 0.7) +
+  coord_flip() +
+  labs(x = NULL, y = "Mean AUC", title = "Hit genes") +
+  theme_classic(base_size = 11) + theme(panel.grid.major.y = element_blank())
+
+pL + pR + plot_annotation(tag_levels = "A")
+```
+
+::: callout-tip
+**实践要点**
+
+-   由 Mann-Whitney 秩统计量求得的 AUC 等于 `pROC::roc(predictor, response)$auc`；真实队列可直接改用 `pROC`。
+-   灰色“未检出”点是真实过滤而非装饰：在组织中无可检出蛋白的基因不可能成为标志物，故其 AUC 被排除在命中判定之外。
+-   两个队列须真正独立（不同平台/机构）；内部训练/测试划分会虚增双重命中数。
+:::
+
 ## 应用
 
 Time-dependent ROC 曲线广泛用于肿瘤预后模型论文中，以报告在临床有意义的时间点（1、3、5 年）的区分能力，常与校准曲线、决策曲线分析并列出现。下图按照论文常用版式组装本教程的输出：(A) 二元模型的标准 ROC；(B) 固定时间点的 time-dependent ROC。

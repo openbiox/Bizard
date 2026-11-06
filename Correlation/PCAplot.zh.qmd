@@ -314,6 +314,66 @@ ggplot(scores3, aes(PC1, PC3, colour = group)) +
 -   `plotly` 轴不自动加标题；如上在 `layout(scene = list(...))` 中设置。
 :::
 
+### 6. 由第主成分构建 signature 得分
+
+基于 PCA 的方按，是 LASSO/Cox 系数乘表达量之外的另一条路：由两组方向相反的基因集的第主成分构建 **signature 得分**：score = signature A 的 PC1 减去 signature B 的 PC1 \[2\]。因每个 PC1 即该基因集内部的主导共变轴，两者之差就是一个紧凑的单样本标记，无需生存模型即可排列分子亚型。（真实流程中两组基因来自 Boruta 筛选后的聚类-相关 signature，见聚类-相关热图教程。）
+
+```{r}
+#| label: fig-6.1SignatureScore
+#| fig-cap: "单样本 signature 得分 PC1(A) - PC1(B)：取两组基因各自的第主成分相减，得到可排列三个分子亚型的单一坐标。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 5
+
+set.seed(4501)
+n_s <- 90
+subtype <- factor(rep(c("A", "B", "C"), each = n_s / 3),
+                  levels = c("A", "B", "C"))
+
+# signature-A genes (up in subtype A) and signature-B genes (up in subtype C)
+exprA <- matrix(rnorm(12 * n_s, sd = 0.6), 12)
+exprB <- matrix(rnorm(12 * n_s, sd = 0.6), 12)
+exprA[, subtype == "A"] <- exprA[, subtype == "A"] + 1.6
+exprB[, subtype == "C"] <- exprB[, subtype == "C"] + 1.6
+
+# z-score per sample (genes in columns), then PC1 of each signature
+exprA <- t(scale(t(exprA)))
+exprB <- t(scale(t(exprB)))
+pcA <- prcomp(t(exprA), scale. = FALSE)$x[, 1]
+pcB <- prcomp(t(exprB), scale. = FALSE)$x[, 1]
+
+score <- pcA - pcB
+# PC1 sign is arbitrary; orient so the A-signature subtype scores highest
+if (median(score[subtype == "A"]) < median(score[subtype == "C"])) score <- -score
+score_df <- data.frame(subtype = subtype, score = score)
+p_kw <- kruskal.test(score ~ subtype, data = score_df)$p.value
+
+ggplot(score_df, aes(subtype, score, fill = subtype)) +
+  geom_violin(alpha = 0.4, position = position_dodge(width = 0.75),
+              linewidth = 0.4, colour = "black") +
+  geom_boxplot(notch = TRUE, outlier.shape = NA, width = 0.22,
+               colour = "black", linewidth = 0.35, alpha = 0.7,
+               show.legend = FALSE) +
+  geom_point(shape = 21, size = 2, fill = "white", colour = "black",
+             stroke = 0.6, position = position_jitter(width = 0.12)) +
+  scale_fill_manual(values = c(A = "#008ECB", B = "#EA921D", C = "#D14039")) +
+  labs(title = sprintf("Signature score by subtype (Kruskal-Wallis %s)",
+       ifelse(p_kw < 0.001, "p < 0.001", sprintf("p = %.3f", p_kw))),
+       x = "Subtype", y = "Score (PC1_A - PC1_B)") +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+```
+
+::: callout-tip
+**实践要点**
+
+-   `prcomp()` 返回的 PC1 符号是任意的——跨运行或跨论文比较得分前，务必以已知参照亚型定向（如上）。
+-   使用真实 Boruta 步骤时，运行 `Boruta::Boruta(x = t(expr), y = factor(cluster), maxRuns = 100, ntree = 500)`，取 `attStats()` 中 `decision == "Confirmed"` 的行；A、B 两组 signature 需**分别**筛选，以免占优符号淹没少数集。
+-   在 z-score（按样本）后的表达式上计得分，避免高表达管家基因主导 PC1。
+:::
+
 ## 应用场景
 
 ::: {#fig-UpsetApplications}

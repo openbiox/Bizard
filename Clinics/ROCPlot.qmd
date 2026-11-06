@@ -349,6 +349,82 @@ legend("topright", bty = "n", cex = 0.8, lwd = 2,
 - With real expression data the loop stays identical — replace `cand` with gene columns and pass genes-as-rows expression to `cv.glmnet(x = t(expr))`.
 :::
 
+### 8. Cross-Cohort AUC Screen (Pairwise AUC)
+
+When a candidate signature is trained on one cohort, its prognostic value must hold in **independent** test cohorts. The pairwise-AUC figure plots each candidate gene by its AUC in cohort 1 (x) versus cohort 2 (y); genes in the top-right box clear the AUC cutoff in *both* cohorts and are the robust hits \[5\].
+
+```{r}
+#| label: fig-8.1PairwiseAUC
+#| fig-cap: "Cross-cohort AUC screen. (A) each gene plotted by its AUC in cohort 1 vs cohort 2; blue = protein-detected, grey = not detected, red = the gene of interest; the dashed box marks the double-hit region (AUC > 0.6 in both). (B) mean AUC of the hit genes."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.5
+
+library(patchwork)
+set.seed(4302)
+n_gene <- 60; n_s <- 90
+genes <- paste0("Gene", sprintf("%03d", 1:n_gene))
+truth <- sample(n_gene, 12)                    # genes with real prognostic signal
+
+# build one cohort: signal genes carry a class effect, noise genes do not
+mk_cohort <- function(coef, sd, seed) {
+  set.seed(seed)
+  ex <- matrix(rnorm(n_gene * n_s), n_gene)
+  cls <- sample(0:1, n_s, replace = TRUE)
+  ex[truth, ] <- sweep(ex[truth, ], 2, cls * coef, `+`)
+  ex <- ex + rnorm(n_gene * n_s, sd = sd)
+  list(ex = ex, cls = cls)
+}
+c1 <- mk_cohort(1.3, 0.7, 4302)
+c2 <- mk_cohort(1.1, 0.8, 4402)
+
+# AUC via the Mann-Whitney rank statistic (equivalent to pROC::roc()$auc)
+auc_of <- function(ex, cls) apply(ex, 1, function(g) {
+  pos <- g[cls == 1]; neg <- g[cls == 0]
+  u <- sum(sapply(pos, function(p) sum(neg < p) + 0.5 * sum(neg == p)))
+  u / (length(pos) * length(neg))
+})
+auc1 <- auc_of(c1$ex, c1$cls); auc2 <- auc_of(c2$ex, c2$cls)
+auc_df <- data.frame(gene = genes, auc1 = auc1, auc2 = auc2)
+set.seed(4309)
+auc_df$detected <- runif(n_gene) > 0.3         # "protein-detected" filter
+cutoff <- 0.6
+auc_df$hit <- auc_df$auc1 > cutoff & auc_df$auc2 > cutoff & auc_df$detected
+
+pL <- ggplot(auc_df, aes(auc1, auc2)) +
+  geom_point(aes(colour = detected), size = 2) +
+  scale_colour_manual(values = c(`TRUE` = "#445EAD", `FALSE` = "grey75"),
+                      labels = c(`TRUE` = "Protein-detected", `FALSE` = "Not detected"),
+                      name = NULL) +
+  geom_rect(xmin = cutoff, xmax = max(auc_df$auc1) + 0.02,
+            ymin = cutoff, ymax = max(auc_df$auc2) + 0.02,
+            fill = NA, colour = "grey40", linetype = "dashed") +
+  annotate("point", x = auc_df$auc1[1], y = auc_df$auc2[1],
+           colour = "#B2182B", size = 2.5) +
+  labs(x = "AUC in cohort 1", y = "AUC in cohort 2", title = "Cross-cohort AUC") +
+  theme_classic(base_size = 11) + theme(legend.position = "bottom")
+
+hits <- auc_df[auc_df$hit, ]
+hits$gene <- factor(hits$gene, levels = hits$gene[order((hits$auc1 + hits$auc2) / 2)])
+pR <- ggplot(hits, aes(reorder(gene, (auc1 + auc2) / 2), (auc1 + auc2) / 2)) +
+  geom_col(fill = "#445EAD", width = 0.7) +
+  coord_flip() +
+  labs(x = NULL, y = "Mean AUC", title = "Hit genes") +
+  theme_classic(base_size = 11) + theme(panel.grid.major.y = element_blank())
+
+pL + pR + plot_annotation(tag_levels = "A")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The AUC from the Mann-Whitney rank statistic equals `pROC::roc(predictor, response)$auc`; drop-in `pROC` for real cohorts.
+-   The grey "not detected" points are a real filter, not decoration: genes without detectable protein in the tissue cannot be biomarkers, so their AUC is excluded from the hit call.
+-   Keep the two cohorts genuinely independent (different platforms/institutions); an internal train/test split inflates the double-hit count.
+:::
+
 ## Application
 
 Time-dependent ROC curves are widely used in oncology prognostic-model papers to report discrimination at clinically meaningful horizons (1, 3, 5 years), often next to calibration curves and decision curve analysis. The panel below mirrors that publication layout with this tutorial's outputs: (A) standard ROC of the binary model and (B) time-dependent ROC at fixed horizons.
