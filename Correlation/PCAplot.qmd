@@ -318,6 +318,66 @@ ggplot(scores3, aes(PC1, PC3, colour = group)) +
 -   `plotly` axes do not auto-scale titles; set them in `layout(scene = list(...))` as above.
 :::
 
+### 6. Signature Score from the First Principal Component
+
+A PCA-based alternative to a LASSO/Cox coefficient-times-expression score builds a **signature score** from the first principal component of two opposing gene sets \[2\]: score = PC1 of signature A minus PC1 of signature B. Because each PC1 is the dominant co-variation axis within its signature, the difference is a compact per-sample marker that orders molecular subtypes without any survival model. (In a real pipeline the gene sets come from a Boruta-filtered cluster-correlation signature, as in the cluster-correlation heatmap tutorial.)
+
+```{r}
+#| label: fig-6.1SignatureScore
+#| fig-cap: "Per-sample signature score PC1(A) - PC1(B): the first principal component of each gene signature is subtracted, giving a single axis that orders the three subtypes."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 5
+
+set.seed(4501)
+n_s <- 90
+subtype <- factor(rep(c("A", "B", "C"), each = n_s / 3),
+                  levels = c("A", "B", "C"))
+
+# signature-A genes (up in subtype A) and signature-B genes (up in subtype C)
+exprA <- matrix(rnorm(12 * n_s, sd = 0.6), 12)
+exprB <- matrix(rnorm(12 * n_s, sd = 0.6), 12)
+exprA[, subtype == "A"] <- exprA[, subtype == "A"] + 1.6
+exprB[, subtype == "C"] <- exprB[, subtype == "C"] + 1.6
+
+# z-score per sample (genes in columns), then PC1 of each signature
+exprA <- t(scale(t(exprA)))
+exprB <- t(scale(t(exprB)))
+pcA <- prcomp(t(exprA), scale. = FALSE)$x[, 1]
+pcB <- prcomp(t(exprB), scale. = FALSE)$x[, 1]
+
+score <- pcA - pcB
+# PC1 sign is arbitrary; orient so the A-signature subtype scores highest
+if (median(score[subtype == "A"]) < median(score[subtype == "C"])) score <- -score
+score_df <- data.frame(subtype = subtype, score = score)
+p_kw <- kruskal.test(score ~ subtype, data = score_df)$p.value
+
+ggplot(score_df, aes(subtype, score, fill = subtype)) +
+  geom_violin(alpha = 0.4, position = position_dodge(width = 0.75),
+              linewidth = 0.4, colour = "black") +
+  geom_boxplot(notch = TRUE, outlier.shape = NA, width = 0.22,
+               colour = "black", linewidth = 0.35, alpha = 0.7,
+               show.legend = FALSE) +
+  geom_point(shape = 21, size = 2, fill = "white", colour = "black",
+             stroke = 0.6, position = position_jitter(width = 0.12)) +
+  scale_fill_manual(values = c(A = "#008ECB", B = "#EA921D", C = "#D14039")) +
+  labs(title = sprintf("Signature score by subtype (Kruskal-Wallis %s)",
+       ifelse(p_kw < 0.001, "p < 0.001", sprintf("p = %.3f", p_kw))),
+       x = "Subtype", y = "Score (PC1_A - PC1_B)") +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `prcomp()` returns an arbitrary PC1 sign — always orient it against a known reference subtype (as above) before comparing scores across runs or papers.
+-   With a real Boruta step, run `Boruta::Boruta(x = t(expr), y = factor(cluster), maxRuns = 100, ntree = 500)` and keep rows with `decision == "Confirmed"` from `attStats()`; filter the A and B signatures **separately** so the dominant sign does not drown the minority set.
+-   Score on z-scored expression (per sample) so a high-expressed housekeeping gene cannot dominate PC1.
+:::
+
 ## Application
 
 ::: {#fig-UpsetApplications}
