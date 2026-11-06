@@ -398,7 +398,52 @@ out_data |>
                summary = c("darkblue", "red"))
 ```
 
-## Application
+### 3. Cohort-Level Random-Effects Meta Forest
+
+When only the published HR and 95% CI per cohort are available — no individual-level survival data — `meta::metagen()` pools the study effects by inverse variance on the log-HR scale and `forest()` draws the random-effects summary \[6\]. Unlike the subgroup forest (raw data pooled) or the risk-table forest (per-dataset models), each study contributes just one summary row; the Q test, I\^2 and \tau\^2 print below the diamond.
+
+```{r}
+#| label: fig-3.1RandomForest
+#| fig-cap: "Three-cohort random-effects meta-analysis forest: per-cohort HR (95% CI) and P, the pooled diamond below, and the I2/Q/tau2 heterogeneity row."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 4.5
+
+set.seed(5501)
+mdata <- data.frame(
+  Groups = c("TCGA-LUAD", "GSE30219", "GSE31225"),
+  HR = c(2.83, 3.42, 2.16),
+  LCI = c(1.71, 2.03, 1.15),
+  HCI = c(4.68, 5.76, 4.05),
+  pvalue = c(0.00002, 0.0001, 0.021),
+  stringsAsFactors = FALSE)
+stopifnot(all(mdata$LCI > 1) && all(mdata$HCI > mdata$LCI))
+
+m <- metagen(TE = log(HR), seTE = (log(HCI) - log(LCI)) / (2 * 1.96),
+             sm = "HR", data = mdata, studlab = Groups)
+# log-scale pooled effect; exponentiate to read the HR off the diamond
+stopifnot(exp(m$TE.random) > 1 && exp(m$TE.random) < 10 && m$pval.random < 0.05)
+
+forest(m, comb.fixed = FALSE, comb.random = TRUE,
+       leftcols = "studlab",
+       label.left = "Cohort",
+       rightcols = c("TE", "lower", "upper"),
+       print.pval.Q = TRUE, print.I2 = TRUE, print.tau2 = TRUE,
+       col.square = "#8B0000", col.square.lines = "#8B0000",
+       col.diamond = "#8B0000", col.diamond.lines = "#8B0000",
+       xlab = "Hazard Ratio (log scale)")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Exponentiate `m$TE.random` / `m$lower` / `m$upper` to read HRs back — the object stores log-scale effects; mixing the two is a classic error.
+-   Choose the model from heterogeneity: a significant Q or I\^2 > 50% argues for random effects (`comb.random = TRUE`); with fewer than ~10 studies even that is fragile.
+-   Keep all three heterogeneity prints (`print.pval.Q/I2/tau2`): reviewers check them to decide which pooling model applies.
+:::
+
 
 ### 1. Visualization of Meta-analysis Results
 
@@ -442,3 +487,4 @@ Forest map made by the TwoSampleMR package.
 
 \[5\] Murrell, P. (2018). R Graphics (3rd ed.). Chapman & Hall/CRC.ISBN: 978-1439888417
 
+\[6\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

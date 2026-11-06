@@ -485,7 +485,118 @@ Heatmap(mat_sel, name = "Z-score", top_annotation = ha,
 - With real data, select correlated genes with `cor.test()` (Spearman) plus a cutoff on rho and P, as in the reference workflow.
 :::
 
-## Application
+### 7. Single-Cell Cluster-Mean Marker Heatmap
+
+Single-cell marker panels read best as **cluster-mean** heatmaps: average each marker gene within every cluster, z-score the rows and clip extremes so one loud gene cannot saturate the colour scale \[4\]. Rows stay in marker-set order (`cluster_rows = FALSE`) while the columns are complete-linked, and the `annotation_row` bar names the cell type each block belongs to — the diagonal marker-by-cell-type layout standard in scRNA-seq papers.
+
+```{r}
+#| label: fig-7.1ScMarkerHeatmap
+#| fig-cap: "Cluster-mean marker heatmap: four marker blocks (24 genes) across four cell types, rows z-scored and clipped so the diagonal signal reads at equal contrast; the left annotation bar colours marker sets by cell type."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 5
+
+set.seed(5101)
+clusters <- c("T", "B", "Mye", "NK")
+n_clust <- length(clusters); n_genes_per <- 6
+genes <- c(paste0("T_M", 1:n_genes_per), paste0("B_M", 1:n_genes_per),
+           paste0("M_M", 1:n_genes_per), paste0("NK_M", 1:n_genes_per))
+# cluster-mean marker expression: each marker set peaks only in its own cluster
+avg <- matrix(rnorm(length(genes) * n_clust, sd = 0.4), nrow = length(genes),
+              dimnames = list(genes, clusters))
+for (k in 1:n_clust) {
+  idx <- ((k - 1) * n_genes_per + 1):(k * n_genes_per)
+  avg[idx, k] <- avg[idx, k] + 2.5
+}
+clip_scale <- function(x, lo = -2, hi = 2)
+  matrix(pmin(pmax(x, lo), hi), nrow = nrow(x), dimnames = dimnames(x))
+# per-gene z-score, clipped to +-2 so one loud gene cannot saturate the scale
+ph_data <- clip_scale(scale(avg))
+
+ann <- data.frame(cluster = rep(clusters, each = n_genes_per))
+cl_cols <- setNames(c("#B2182B", "#2166AC", "#EABF00", "#4D9342"), clusters)
+hm <- ComplexHeatmap::pheatmap(ph_data,
+  color = colorRampPalette(c("darkblue", "white", "red3"))(99),
+  scale = "row", cluster_rows = FALSE, cluster_cols = TRUE,
+  clustering_method = "complete", show_rownames = FALSE,
+  annotation_row = ann, annotation_colors = list(cluster = cl_cols),
+  border_color = NA)
+ComplexHeatmap::draw(hm)
+
+# the simulated marker blocks must each peak in their own cluster (diagonal)
+diag_hits <- sapply(1:n_clust, function(k) {
+  idx <- ((k - 1) * n_genes_per + 1):(k * n_genes_per)
+  all(apply(avg[idx, , drop = FALSE], 1, which.max) == k)
+})
+stopifnot(sum(diag_hits) == n_clust)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `cluster_rows = FALSE` keeps marker sets contiguous; letting the rows cluster breaks the diagonal reading.
+-   Clipping at ±2 after per-gene z-scoring is what makes all four blocks equally colourful: each block is scaled by its own contrast.
+-   The `darkblue-white-red3` 99-step ramp matches the classic style; build it once with `colorRampPalette()` and reuse it across panels.
+:::
+### 8. Multi-Block Horizontal Heatmap Composition
+
+An entire publication panel — a binary trait bar, an expression matrix, and a numeric score column with in-cell labels — assembles from one row-aligned horizontal `pheatmap` list \[4\]. The `display_numbers` + `number_color` mechanism turns any block into a table-style column with per-cell control; missing values draw as `NA`.
+
+```{r}
+#| label: fig-8.1MultiBlockHeatmap
+#| fig-cap: "Three-block horizontal composition on a shared six-drug axis: a response annotation (red = sensitive), a 12-gene expression profile, and CMap scores shown as in-cell numbers with NA for missing entries."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 4.5
+
+set.seed(5301)
+drugs <- c("BI-2536", "Leptomycin", "Methotrexate",
+           "Narciclasine", "SR-II-138A", "Vincristine")
+expr_genes <- paste0("Gene", sprintf("%03d", 1:12))
+# all three blocks share nrow = 6 (drugs) — required by a horizontal list
+centre <- matrix(rnorm(12 * 6, sd = 1), nrow = 6, dimnames = list(drugs, expr_genes))
+centre[1:2, ] <- centre[1:2, ] + 1.4       # first two drugs = responders
+
+hm1 <- ComplexHeatmap::pheatmap(mat = matrix(c(1, 1, 0, 1, 0, 0), ncol = 1,
+    dimnames = list(drugs, "Response")),
+  color = c("#F7F7F7", "#B2182B"), cluster_rows = FALSE, cluster_cols = FALSE,
+  show_rownames = TRUE, show_colnames = FALSE,
+  cellwidth = 25, cellheight = 40, legend = FALSE)
+
+hm2 <- ComplexHeatmap::pheatmap(mat = centre, cluster_rows = FALSE,
+  cluster_cols = FALSE, show_rownames = FALSE, show_colnames = TRUE,
+  color = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+  cellwidth = 55, cellheight = 18, border_color = "white", legend = FALSE)
+
+score <- c(-83.13, NA, -49.61, -91.23, NA, -34.30)
+hm3 <- ComplexHeatmap::pheatmap(mat = matrix(score, ncol = 1,
+    dimnames = list(drugs, "CMap\nscore")),
+  color = c("#FDCEB9", "#FDCEB9", "#F26E5F"),
+  cluster_rows = FALSE, cluster_cols = FALSE,
+  show_rownames = FALSE, show_colnames = TRUE,
+  display_numbers = ifelse(is.na(score), "NA", sprintf("%.1f", score)),
+  number_color = ifelse(is.na(score), "black", "white"),
+  fontsize_number = 9, border_color = "white",
+  cellwidth = 40, cellheight = 40, legend = FALSE)
+
+ComplexHeatmap::draw(hm1 + hm2 + hm3)
+stopifnot(sum(is.na(score)) == 2 &&
+          identical(as.numeric(matrix(c(1, 1, 0, 1, 0, 0), ncol = 1)),
+                    c(1, 1, 0, 1, 0, 0)))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   A horizontal list requires **identical row counts** in every block (the error names each mismatched block): build all blocks on the same sample/drug vector.
+-   `draw(hm1 + hm2 + hm3)` composes left-to-right; give each block its own `cellwidth`/`cellheight` rather than one shared figure size.
+-   For blocks whose colours must not carry meaning (scores with missing values), `display_numbers` + per-cell `number_color` reads cleaner than forcing a colour ramp.
+:::
+
 
 ::: {#fig-ComplexHeatmapApplications}
 ![](../images/Correlation/ComplexHeatmap_app.jpg){fig-alt="ComplexHeatmapApp1" fig-align="center" width="60%"}

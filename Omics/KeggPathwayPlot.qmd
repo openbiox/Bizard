@@ -602,7 +602,84 @@ p15 <- pathview(gene.data = gene_data[,1:4], # Discrete variables
 Discrete data2
 :::
 
-## Application
+### 3. Three-Level KEGG Hierarchy Bar Panel
+
+Reporting a KEGG enrichment for two sample groups (GSH vs GSL here) follows the three-level KEGG classification with a three-column panel \[3\]: the level-2/level-1 hierarchy as group-coloured text, a grey "All Detected" bar column, and group-coloured "Enriched" bars — all sharing the y order, counts on log scales.
+
+```{r}
+#| label: fig-3.1KeggHierarchy
+#| fig-cap: "Three-column KEGG hierarchy panel: level-2/level-1 labels coloured by sample group (green = GSH, red = GSL), grey 'All Detected' counts, and group-coloured 'Enriched' counts on log-scaled axes."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 5.5
+
+library(ggplot2)
+library(patchwork)
+kegg_df <- data.frame(
+  ID = c("hsa04110", "hsa04115", "hsa04010", "hsa04012", "hsa03013",
+         "hsa03040", "hsa03042", "hsa00860", "hsa04910"),
+  level1 = c("Cellular Processes", "Cellular Processes",
+             "Environmental Info Processing", "Environmental Info Processing",
+             "Genetic Info Processing", "Genetic Info Processing", "Genetic Info Processing",
+             "Organic Systems", "Human Diseases"),
+  level2 = c("Cell growth and death", "Cell growth and death",
+             "Signal transduction", "Signal transduction",
+             "Translation", "Translation", "Replication and repair",
+             "Digestive system", "Infectious disease"),
+  level3 = c("Cell cycle", "Cell cycle", "MAPK signaling", "ErbB signaling",
+             "Ribosome", "Proteasome", "Mismatch repair",
+             "Glycosaminoglycan degradation", "Bacterial infection"),
+  Detected = c(120L, 98L, 310L, 260L, 75L, 61L, 40L, 22L, 130L),
+  Enriched = c(45L, 30L, 88L, 52L, 18L, 15L, 9L, 6L, 33L),
+  Direction = c("GSH", "GSL", "GSH", "GSH", "GSL", "GSH", "GSL", "GSL", "GSH"),
+  stringsAsFactors = FALSE)
+# one row per pathway; the shared y factor keeps all three columns aligned
+kegg_df$level3 <- factor(kegg_df$level3, levels = rev(unique(kegg_df$level3)))
+dir_cols <- c(GSH = "#4D9342", GSL = "#B2182B")
+
+p_lab <- ggplot(kegg_df, aes(level3, 0)) +
+  geom_text(aes(label = paste0(level2, "  |  ", level1), colour = Direction),
+            size = 2.8, hjust = 1.02) +
+  scale_colour_manual(values = dir_cols) +
+  scale_y_continuous(limits = c(-0.5, 1)) + coord_flip() +
+  theme_void(base_size = 10) + labs(x = NULL, y = NULL) +
+  theme(axis.text = element_blank(), axis.ticks = element_blank())
+
+p_det <- ggplot(kegg_df, aes(level3, Detected)) +
+  geom_col(fill = "grey75", colour = "black", width = 0.7) +
+  geom_text(aes(label = Detected), hjust = -0.3, size = 2.6) +
+  scale_y_log10(limits = c(1, 1000)) + coord_flip() +
+  theme_classic(base_size = 10) + labs(x = NULL, y = NULL, title = "All Detected") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 8),
+        panel.grid.major.y = element_blank())
+
+p_enr <- ggplot(kegg_df, aes(level3, Enriched, fill = Direction)) +
+  geom_col(colour = "black", width = 0.7) +
+  geom_text(aes(label = Enriched), hjust = -0.3, size = 2.6) +
+  scale_fill_manual(values = dir_cols) +
+  scale_y_log10(limits = c(1, 100)) + coord_flip() +
+  theme_classic(base_size = 10) +
+  labs(x = NULL, y = NULL, title = "Enriched (GSH/GSL)") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        legend.position = "bottom", plot.title = element_text(hjust = 0.5, size = 8),
+        panel.grid.major.y = element_blank())
+
+print(p_lab + p_det + p_enr +
+        plot_layout(ncol = 3, widths = c(1.7, 1, 1), guides = "collect"))
+stopifnot(all(kegg_df$Enriched <= kegg_df$Detected))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   On real data, extract the three levels from the KEGG REST JSON (`get_htext?br08901.keg`) once and cache it as a table — the browser API is rate-limited.
+-   The left label column draws `geom_text` at x = 0 on the same factor, which is what keeps all three panels row-aligned; keep `coord_flip()` in every panel.
+-   Log scales on the count axes keep small pathways visible when detected and enriched counts differ by orders of magnitude.
+:::
+
 
 ::: {#fig-KeggPathwayPlotApplications}
 ![](../images/Omics/KeggPathwayPlot_app.png){fig-alt="KeggPathwayPlotApp1" fig-align="center" width="60%"}
@@ -618,3 +695,4 @@ This figure illustrates key KEGG pathways: MAPK signaling pathway and cellular s
 
 \[2\] Lu Y, Tang D, Zheng Z, et al. Cingulin b Is Required for Zebrafish Lateral Line Development Through Regulation of Mitogen-Activated Protein Kinase and Cellular Senescence Signaling Pathways. Front Mol Neurosci. 2022;15:844668. Published 2022 May 5. doi:10.3389/fnmol.2022.844668.
 
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
