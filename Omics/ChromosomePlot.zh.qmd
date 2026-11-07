@@ -33,6 +33,7 @@ if (!requireNamespace("RIdeogram", quietly = TRUE)) {
 
 # 加载包
 library(RIdeogram)
+library(ggplot2)
 ```
 
 ```{r}
@@ -499,6 +500,74 @@ write.csv(karyotype, "karyotype.csv", row.names = FALSE)
 
 ::: callout-tip
 **坐标体系**：GTF/GFF 是 1-based，BED 是 0-based（半开区间）。`RIdeogram` 的输入要保持内部一致——如果热图、形状标记等特征表来自 BED 衍生数据，请先转换到与 karyotype 相同的坐标约定再绘图。
+:::
+
+### 12. 无 Gviz 的基因周边信号轨道（ggplot2 复现）
+
+FigureYa3genomeView 版式 \[4\] 在基因座位上堆叠逐碱基信号（ChIP-seq、ATAC、RNA-seq）并在下方给出基因模型——但 `Gviz` 会拉进 TxDb 注释包与基于 rtracklayer 的 bigWig 读取，两者都不在本仓库 lockfile 中。同一张图用朴素 ggplot2 即可复现：每 kb 覆盖度画 `geom_area()` 分面、基因模型独占一个分面轨道（内含子线上摆外显子矩形）、x 轴以 kb 计。真实数据用 rtracklayer 读 bigWig，或直接读覆盖度 tsv 替换模拟分箱：
+
+```{r}
+#| label: fig-12.1GenomeTracks
+#| fig-cap: "目标基因周边的 IGV 风格信号轨道（模拟 bigWig 分箱）：四个覆盖度分面加一个专属基因模型轨道（内含子线上的外显子矩形）；x 轴以 kb 计。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6.2
+
+set.seed(3001)
+region_start <- 0; region_end <- 120000   # TAL1 样的 120 kb 座位
+bins <- seq(region_start, region_end, by = 1000)
+peak_at <- 45000
+sig_fun <- function(amp, width) {
+  exp(-((bins - peak_at)^2) / (2 * width^2)) * amp +
+    pmax(0, rnorm(length(bins), 0, 0.02))
+}
+tracks <- data.frame(
+  bin = rep(bins, 4),
+  signal = c(sig_fun(0.95, 9000), sig_fun(0.75, 5000),
+             sig_fun(0.6, 14000), sig_fun(0.5, 18000)),
+  track = factor(rep(c("H3K27ac", "H3K4me3", "DNase", "RNA-seq"), each = length(bins))))
+exons <- data.frame(start = c(43000, 47000, 52000, 58000, 64000),
+                    end = c(44500, 48500, 53500, 59500, 66000))
+## 基因模型独占一个分面轨道
+gene_df <- data.frame(bin = rep(bins, 2), signal = 0, track = "Gene (TAL1, +)")
+exon_df <- data.frame(track = "Gene (TAL1, +)", start = exons$start, end = exons$end)
+
+ggplot(tracks, aes(bin, signal)) +
+  geom_area(aes(fill = track), colour = NA, alpha = 0.85, linewidth = 0) +
+  geom_blank(data = gene_df, aes(bin, signal), inherit.aes = FALSE) +
+  geom_rect(data = exon_df, aes(xmin = start, xmax = end, ymin = 0.15, ymax = 0.85),
+            inherit.aes = FALSE, fill = "#2166AC", colour = "#2166AC") +
+  geom_segment(data = data.frame(track = "Gene (TAL1, +)", x = min(exons$start),
+                                 xend = max(exons$end)),
+               aes(x = x, xend = xend, y = 0.5, yend = 0.5),
+               inherit.aes = FALSE, linewidth = 0.5, colour = "#2166AC") +
+  facet_grid(track ~ ., switch = "y") +
+  scale_fill_manual(values = c("H3K27ac" = "#E31A1C", "H3K4me3" = "#FF7F00",
+                               "DNase" = "#33A02C", "RNA-seq" = "#1F78B4"),
+                    name = NULL,
+                    breaks = c("RNA-seq", "DNase", "H3K4me3", "H3K27ac")) +
+  scale_x_continuous(labels = function(x) paste0(x / 1000, " kb"),
+                     expand = expansion(mult = c(0.01, 0.01))) +
+  labs(x = "chr1 position", y = NULL,
+       title = "Signal tracks around the promoter of a target gene (simulated bigWig)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(),
+        strip.placement = "outside",
+        strip.background = element_blank(),
+        strip.text.y.left = element_text(angle = 0, hjust = 1, size = 8.5),
+        axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        legend.position = "top") +
+  coord_cartesian(ylim = c(0, 1))
+```
+
+::: callout-tip
+**实践要点**
+
+-   基因模型必须放在**专属分面轨道**——把它叠到每个信号面板上是经典错误（没有分面列的图层会在所有面板重复出现）。
+-   逐碱基 bigWig 数据可能很大：作图前先聚合成固定宽度分箱（此处 1 kb）；座位尺度下肉眼无差别。
+-   `switch = "y"` 配 `strip.text.y.left` 把轨道名放到 IGV 的位置，基因组轴只在底部出现一次。
 :::
 
 ## 应用

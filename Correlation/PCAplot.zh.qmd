@@ -505,6 +505,81 @@ ggplot() +
 -   混淆矩阵断言在图先于肉眼拦下失败运行：真实队列恢复率低于 ~0.9 即提示重审 k 或修剪特征。
 :::
 
+### 9. Top-N 载荷箭头 + 多层置信椭圆
+
+FigureYa38 配方 \[2\] 弥补朴素 PCA 图的可解释性缺口：按基因对展示平面的贡献排序（载荷 × sqrt(特征值)，对 PC1/PC2 求和），为 **Top N 基因画箭头**让读者看到是哪些基因拉开各组，并用**嵌套置信椭圆**（实线 95% 内套虚线 90%）包裹每个组。ggord/gglayer 以交互方式做这件事；下版本是无依赖的 ggplot2 实现，运行在模拟的三癌种 30 基因面板上：
+
+```{r}
+#| label: fig-9.1LoadingArrows
+#| fig-cap: "模拟三癌种面板（30 基因）的 PCA：箭头指向贡献前三的基因（PC1-PC2 上的载荷 × sqrt(特征值)）；每组带嵌套的 90%（虚线）与 95%（实线）置信椭圆。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 6
+
+set.seed(3801)
+grp2 <- factor(rep(c("BRCA", "OV", "LUSC"), each = 20))
+expr_pg <- matrix(rnorm(30 * 60, 5, 1), 60, 30)
+expr_pg[grp2 == "BRCA", 1:2] <- expr_pg[grp2 == "BRCA", 1:2] + 2.4
+expr_pg[grp2 == "OV", 3:4] <- expr_pg[grp2 == "OV", 3:4] + 2.2
+expr_pg[grp2 == "LUSC", 5] <- expr_pg[grp2 == "LUSC", 5] + 2.0
+colnames(expr_pg) <- c("GATA3", "XBP1", "MUC1", "FOLR1", "KRT17",
+                       paste0("G", sprintf("%02d", 6:30)))
+pca_pg <- prcomp(expr_pg, center = TRUE, scale. = FALSE)
+pv_pg <- summary(pca_pg)$importance[2, ]
+contrib <- rowSums(abs(pca_pg$rotation[, 1:2]) * pv_pg[1:2])
+top_genes <- names(sort(contrib, decreasing = TRUE))[1:3]
+scores_pg <- as.data.frame(pca_pg$x[, 1:2])
+scores_pg$grp <- grp2
+
+## 两个覆盖水平的嵌套协方差椭圆
+ell <- do.call(rbind, lapply(c(0.9, 0.95), function(pro) {
+  do.call(rbind, lapply(levels(grp2), function(g) {
+    d <- scores_pg[scores_pg$grp == g, 1:2]
+    ctr <- colMeans(d); eg <- eigen(cov(d))
+    ang <- seq(0, 2 * pi, length.out = 120)
+    r <- sqrt(qchisq(pro, df = 2))
+    data.frame(
+      x = ctr[1] + r * (cos(ang) * sqrt(eg$values[1]) * eg$vectors[1, 1] -
+                          sin(ang) * sqrt(eg$values[2]) * eg$vectors[1, 2]),
+      y = ctr[2] + r * (cos(ang) * sqrt(eg$values[1]) * eg$vectors[2, 1] -
+                          sin(ang) * sqrt(eg$values[2]) * eg$vectors[2, 2]),
+      grp = g, pro = pro)
+  }))
+}))
+
+sc_arrow <- max(abs(scores_pg[, 1:2])) * 0.32
+load_top <- pca_pg$rotation[top_genes, 1:2]
+load_top <- load_top / apply(abs(load_top), 1, max) * sc_arrow
+
+ggplot(scores_pg, aes(PC1, PC2, colour = grp)) +
+  geom_point(size = 2, alpha = 0.75) +
+  geom_path(data = ell, aes(x, y, colour = grp, linetype = factor(pro)),
+            linewidth = 0.6, inherit.aes = FALSE, show.legend = FALSE) +
+  geom_segment(data = as.data.frame(load_top),
+               aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               arrow = arrow(length = unit(0.14, "cm")),
+               colour = "brown", linewidth = 0.7, inherit.aes = FALSE) +
+  geom_text(data = as.data.frame(load_top),
+            aes(x = PC1 * 1.15, y = PC2 * 1.15, label = top_genes),
+            colour = "brown", size = 3.4, fontface = "bold", inherit.aes = FALSE) +
+  scale_linetype_manual(values = c("0.9" = 2, "0.95" = 1), guide = "none") +
+  labs(x = sprintf("PC1 (%.0f%%)", 100 * pv_pg[1]),
+       y = sprintf("PC2 (%.0f%%)", 100 * pv_pg[2]),
+       title = "PCA with top-3 loading arrows and 90/95% ellipses",
+       colour = NULL) +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+::: callout-tip
+**实践要点**
+
+-   载荷排序要**用载荷 × sqrt(特征值)** 且恰好针对展示的 PC——只按 PC1 原始载荷排序会漏掉经由 PC2 起作用的基因。
+-   箭头的缩放是展示选择：把每个载荷向量归一化到图面范围（上例 `sc_arrow`）——可解释的是*方向*，不是跨页可比的长度。
+-   嵌套椭圆（0.9 内套 0.95）兼任样本量的诚实性检查：小组的 95% 椭圆会吞掉整个面板——请标注各组 n。
+:::
+
 ## 应用场景
 
 ::: {#fig-UpsetApplications}

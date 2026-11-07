@@ -808,6 +808,96 @@ ggplot() +
 -   白色标签在深色端点上清晰，在 `pattern_fill2` 的浅色中心上不行——把标签锚定在较深的部分，或给文字加描边。
 :::
 
+### 11. 参考线柱形图与发散式灰/彩柱形图
+
+FigureYa39bar 的两种论文版式 \[13\]。第一种（NEJM 瀑布风格）给**每个癌种一种颜色**、在临床有意义的值处画虚线参考线（RECIST 边界 −30 与 +20，加零线），当一根柱远高于其余时——用 `coord_cartesian()` 裁剪 y 轴并在柱上标出真实值：
+
+```{r}
+#| label: fig-11.1ResponseBars
+#| fig-cap: "模拟的各癌种最佳肿瘤响应瀑布图：每癌种一色，-30/0/+20 处的 RECIST 虚线参考线；y 轴截断于 50，超出的柱标注真实值。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 5.5
+
+set.seed(3901)
+df1 <- data.frame(ID = c("NSCLC", "CRC", "Melanoma", "RCC", "HNSCC", "Breast",
+                         "Ovarian", "Prostate", "Pancreas", "HCC", "Cervix", "Sarcoma"),
+                  score = c(-58, -46, -39, -33, -28, -22, -18, -12, 8, 14, 19, 62))
+df1 <- df1[order(df1$score, decreasing = TRUE), ]
+df1$index <- seq_len(nrow(df1))
+
+ggplot(df1, aes(index, score, fill = ID)) +
+  geom_col(width = 0.8) +
+  scale_fill_brewer(type = "Qualitative", palette = "Paired") +
+  scale_y_continuous(breaks = seq(-100, 100, 10), expand = c(0, 0)) +
+  scale_x_continuous(expand = expansion(mult = c(0.01, 0))) +
+  geom_hline(yintercept = c(-30, 0, 20), linetype = 5, linewidth = 0.3) +
+  coord_cartesian(ylim = c(-90, 50)) +
+  geom_text(data = subset(df1, score > 50),
+            aes(index, 48, label = round(score)), size = 3.2) +
+  labs(x = NULL, y = "Maximum change in tumour size (%)",
+       title = "Response by tumour type (one colour per type)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), panel.border = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.line.x = element_blank(), axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "bottom") +
+  guides(fill = guide_legend(ncol = 4, title = NULL, override.aes = list(size = 3)))
+```
+
+第二种（Nature Medicine 富集风格）把带符号的 GSVA 风格 t 值画成**水平发散柱**，名字贴在每根柱旁，|t| 低于显著性阈值显示灰色，只有显著的才有颜色：
+
+```{r}
+#| label: fig-11.2DivergingBars
+#| fig-cap: "发散式 GSVA 风格 t 值柱（内皮细胞，肿瘤 vs 非肿瘤，模拟）：超过 |t| = 4 的柱按方向着色，其余灰色；名字贴在柱旁。"
+#| out.width: "65%"
+#| warning: false
+#| message: false
+#| fig-width: 5.5
+#| fig-height: 7.5
+
+df2 <- data.frame(ID = c("VEGFA", "ANGPT2", "CXCL8", "PDGFB", "MMP9", "TNFSF15",
+                         "ANGPT1", "TEK", "NID2", "COL4A1", "LAMA4", "SPARCL1",
+                         "KDR", "PECAM1", "VWF", "CDH5"),
+                  score = c(7.2, 5.8, 4.9, 4.1, 3.4, -2.6, -3.3, -4.2, -5.1,
+                            -6.3, 2.4, 1.8, 3.1, 2.8, -1.6, 1.2))
+df2$group <- cut(df2$score, breaks = c(-Inf, -4, 4, Inf), labels = c(1, 2, 3))
+df2 <- df2[order(df2$score, decreasing = FALSE), ]
+df2$index <- seq_len(nrow(df2))
+
+ggplot(df2, aes(index, score, fill = group)) +
+  geom_col(width = 0.8) +
+  scale_fill_manual(values = c("palegreen3", "snow3", "dodgerblue4")) +
+  scale_x_continuous(expand = expansion(add = 0.6)) +
+  scale_y_continuous(breaks = seq(-30, 20, 5)) +
+  coord_flip() +
+  geom_hline(yintercept = c(-4, 4), colour = "white", linetype = 2, linewidth = 0.3) +
+  geom_text(data = subset(df2, score > 0),
+            aes(index, -0.3, label = ID, colour = group), size = 3, hjust = "inward") +
+  geom_text(data = subset(df2, score < 0),
+            aes(index, 0.3, label = ID, colour = group), size = 3, hjust = "outward") +
+  scale_colour_manual(values = c("snow3", "black", "black")) +
+  labs(x = NULL, y = "t value of GSVA score, tumour vs non-malignant",
+       title = "Endothelial cells, tumour vs non-malignant") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(linewidth = 0.6, fill = NA),
+        axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  guides(fill = "none", colour = "none")
+```
+
+::: callout-tip
+**实践要点**
+
+-   `coord_cartesian(ylim = ...)` 裁的是*绘图*而非数据——高柱保持完整的 `geom_col` 高度，只有标签揭示真实值；`scale_y_continuous(limits = ...)` 则会把柱整根丢弃。
+-   发散版式里名字住在柱的**空白半区**（按符号取 hjust "inward"/"outward"），无需单独的轴标签；非显著用灰色把颜色预算留给发现。
+-   社区公认边界（RECIST ±30/+20）处的参考线带有网格线没有的含义——请在图注中引用其出处。
+:::
+
 ## 应用场景
 
 ### 1. 基础条形图

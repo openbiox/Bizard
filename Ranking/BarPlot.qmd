@@ -809,6 +809,96 @@ ggplot() +
 -   White labels stay legible on the dark endpoint, not on `pattern_fill2`'s light centre — anchor labels to the darker part or outline the text.
 :::
 
+### 11. Reference-Line Bars and Diverging Gray/Colored Bars
+
+Two publication layouts from FigureYa39bar \[13\]. The first (NEJM waterfall style) gives **every tumour type its own colour**, draws dashed reference lines at the clinically meaningful values (RECIST boundaries at −30 and +20, plus zero), and — when one bar towers over the rest — clips the y axis with `coord_cartesian()` and prints the true value on the bar:
+
+```{r}
+#| label: fig-11.1ResponseBars
+#| fig-cap: "Waterfall of simulated best tumour-response by type: one colour per type, dashed RECIST reference lines at -30/0/+20; the y axis is clipped at 50 and the towering bar carries its true value."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 5.5
+
+set.seed(3901)
+df1 <- data.frame(ID = c("NSCLC", "CRC", "Melanoma", "RCC", "HNSCC", "Breast",
+                         "Ovarian", "Prostate", "Pancreas", "HCC", "Cervix", "Sarcoma"),
+                  score = c(-58, -46, -39, -33, -28, -22, -18, -12, 8, 14, 19, 62))
+df1 <- df1[order(df1$score, decreasing = TRUE), ]
+df1$index <- seq_len(nrow(df1))
+
+ggplot(df1, aes(index, score, fill = ID)) +
+  geom_col(width = 0.8) +
+  scale_fill_brewer(type = "Qualitative", palette = "Paired") +
+  scale_y_continuous(breaks = seq(-100, 100, 10), expand = c(0, 0)) +
+  scale_x_continuous(expand = expansion(mult = c(0.01, 0))) +
+  geom_hline(yintercept = c(-30, 0, 20), linetype = 5, linewidth = 0.3) +
+  coord_cartesian(ylim = c(-90, 50)) +
+  geom_text(data = subset(df1, score > 50),
+            aes(index, 48, label = round(score)), size = 3.2) +
+  labs(x = NULL, y = "Maximum change in tumour size (%)",
+       title = "Response by tumour type (one colour per type)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), panel.border = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.line.x = element_blank(), axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "bottom") +
+  guides(fill = guide_legend(ncol = 4, title = NULL, override.aes = list(size = 3)))
+```
+
+The second (Nature Medicine enrichment style) shows signed GSVA-style t-values as a **horizontal diverging bar** with names beside each bar, gray for |t| below the significance threshold and colour only for the significant ones:
+
+```{r}
+#| label: fig-11.2DivergingBars
+#| fig-cap: "Diverging GSVA-style t-value bars (endothelial cells, tumour vs non-malignant, simulated): bars beyond |t| = 4 are coloured by direction, the rest gray; names sit beside each bar."
+#| out.width: "65%"
+#| warning: false
+#| message: false
+#| fig-width: 5.5
+#| fig-height: 7.5
+
+df2 <- data.frame(ID = c("VEGFA", "ANGPT2", "CXCL8", "PDGFB", "MMP9", "TNFSF15",
+                         "ANGPT1", "TEK", "NID2", "COL4A1", "LAMA4", "SPARCL1",
+                         "KDR", "PECAM1", "VWF", "CDH5"),
+                  score = c(7.2, 5.8, 4.9, 4.1, 3.4, -2.6, -3.3, -4.2, -5.1,
+                            -6.3, 2.4, 1.8, 3.1, 2.8, -1.6, 1.2))
+df2$group <- cut(df2$score, breaks = c(-Inf, -4, 4, Inf), labels = c(1, 2, 3))
+df2 <- df2[order(df2$score, decreasing = FALSE), ]
+df2$index <- seq_len(nrow(df2))
+
+ggplot(df2, aes(index, score, fill = group)) +
+  geom_col(width = 0.8) +
+  scale_fill_manual(values = c("palegreen3", "snow3", "dodgerblue4")) +
+  scale_x_continuous(expand = expansion(add = 0.6)) +
+  scale_y_continuous(breaks = seq(-30, 20, 5)) +
+  coord_flip() +
+  geom_hline(yintercept = c(-4, 4), colour = "white", linetype = 2, linewidth = 0.3) +
+  geom_text(data = subset(df2, score > 0),
+            aes(index, -0.3, label = ID, colour = group), size = 3, hjust = "inward") +
+  geom_text(data = subset(df2, score < 0),
+            aes(index, 0.3, label = ID, colour = group), size = 3, hjust = "outward") +
+  scale_colour_manual(values = c("snow3", "black", "black")) +
+  labs(x = NULL, y = "t value of GSVA score, tumour vs non-malignant",
+       title = "Endothelial cells, tumour vs non-malignant") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(linewidth = 0.6, fill = NA),
+        axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  guides(fill = "none", colour = "none")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `coord_cartesian(ylim = ...)` clips the *drawing*, not the data — the towering bar keeps its full `geom_col` height and only the label reveals its value; `scale_y_continuous(limits = ...)` would instead drop the bar entirely.
+-   In the diverging layout the names live **inside** the bars' empty half (hjust "inward"/"outward" by sign), so no separate axis labelling is needed; gray for non-significant keeps the colour budget for the findings.
+-   Reference lines at community-accepted boundaries (RECIST ±30/+20) carry meaning a gridline cannot — quote them in the caption.
+:::
+
 ## Applications
 
 ### 1. Basic bar plot

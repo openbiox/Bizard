@@ -24,7 +24,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`GGally`; `corrplot`; `ggcorrplot`; `corrgram`
+-   依赖包：`GGally`; `corrplot`; `ggcorrplot`; `corrgram`; `circlize`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # 安装包
@@ -46,6 +46,7 @@ library(GGally)
 library(corrplot)
 library(ggcorrplot)
 library(corrgram)
+library(circlize)
 ```
 
 ```{r}
@@ -303,6 +304,98 @@ ggplot(cor_df, aes(r, reorder(gene, r), fill = sig)) +
 -   Spearman 相关将 `cor.test(method = "pearson")` 替换为 `method = "spearman"` 即可。
 :::
 
+### 6. 环形相关弦图（circlize）
+
+FigureYa37 版式 \[8\] 把基因-基因相关表变成**弦图**：每个基因是圆周上的一条彩色弧，每对选出的基因之间一条连线，**宽度编码 |cor|**、颜色编码带符号的系数（绿负红正）。连线接到按累计宽度切分的弧段子段上，因此参与多个相关关系的基因会被按比例"切片"。下块保留参考文档的构造方式，从 10 基因模拟面板中筛出 Spearman 相关最强的 16 对：
+
+```{r}
+#| label: fig-6.1CorrChord
+#| fig-cap: "10 个模拟基因中最强 16 对的 Spearman 相关弦图：基因弧用 d3 配色，连线宽度 = |cor|，颜色 = 带符号系数（绿 = 负、红 = 正），底部渐变条即图例。"
+#| out.width: "70%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 7.5
+
+set.seed(3701)
+n_s <- 120
+genes10 <- paste0("GENE", sprintf("%02d", 1:10))
+expr_c <- matrix(rnorm(n_s * 10), n_s, 10, dimnames = list(NULL, genes10))
+expr_c[, 2] <- expr_c[, 1] * 0.85 + rnorm(n_s, 0, 0.5)
+expr_c[, 3] <- -expr_c[, 1] * 0.8 + rnorm(n_s, 0, 0.5)
+expr_c[, 5] <- expr_c[, 4] * 0.9 + rnorm(n_s, 0, 0.4)
+expr_c[, 6] <- -expr_c[, 4] * 0.75 + rnorm(n_s, 0, 0.5)
+expr_c[, 8] <- expr_c[, 7] * 0.8 + rnorm(n_s, 0, 0.5)
+
+cors <- expand.grid(Gene_1 = genes10, Gene_2 = genes10, stringsAsFactors = FALSE)
+cors <- cors[cors$Gene_1 < cors$Gene_2, ]
+cors$cor <- mapply(function(a, b) cor(expr_c[, a], expr_c[, b], method = "spearman"),
+                   cors$Gene_1, cors$Gene_2)
+cors <- cors[order(-abs(cors$cor)), ][1:16, ]
+
+## 把每个基因的弧按 |cor| 切成逐对子段
+pairs <- cors
+long <- rbind(data.frame(pid = seq_len(nrow(pairs)), gene = pairs$Gene_1, cor = pairs$cor),
+              data.frame(pid = seq_len(nrow(pairs)), gene = pairs$Gene_2, cor = pairs$cor))
+long <- long[order(long$gene), ]
+seg <- do.call(rbind, lapply(split(long, long$gene), function(x) {
+  end <- cumsum(abs(x$cor))
+  data.frame(key = paste(x$gene, x$pid, sep = "_"),
+             gene = x$gene[1], start = c(0, head(end, -1)), end = end)
+}))
+key1 <- paste(pairs$Gene_1, seq_len(nrow(pairs)), sep = "_")
+key2 <- paste(pairs$Gene_2, seq_len(nrow(pairs)), sep = "_")
+pairs$start_1 <- seg$start[match(key1, seg$key)]; pairs$end_1 <- seg$end[match(key1, seg$key)]
+pairs$start_2 <- seg$start[match(key2, seg$key)]; pairs$end_2 <- seg$end[match(key2, seg$key)]
+
+gene_sum <- tapply(abs(long$cor), long$gene, sum)
+GeneID <- data.frame(gene = names(gene_sum), Gene_End = as.numeric(gene_sum))
+GeneID$Gene_Start <- 0
+GeneID <- GeneID[order(GeneID$gene), ]
+GeneID$Color <- ggsci::pal_d3("category20")(nrow(GeneID))
+
+color_ramp <- colorRampPalette(c("#67BE54", "#FFFFFF", "#F82C2B"))(201)
+pairs$color <- color_ramp[round((pairs$cor + 1) / 2 * 200) + 1]
+
+circos.clear()
+circos.par(start.degree = 90, gap.degree = 5, track.margin = c(0, 0.23),
+           cell.padding = c(0, 0, 0, 0))
+circos.initialize(factors = GeneID$gene, xlim = cbind(GeneID$Gene_Start, GeneID$Gene_End))
+circos.trackPlotRegion(ylim = c(0, 1), factors = GeneID$gene, track.height = 0.05,
+                       panel.fun = function(x, y) {
+                         name <- get.cell.meta.data("sector.index")
+                         i <- get.cell.meta.data("sector.numeric.index")
+                         xlim <- get.cell.meta.data("xlim")
+                         ylim <- get.cell.meta.data("ylim")
+                         circos.text(x = mean(xlim), y = 1, labels = name, cex = 0.95,
+                                     niceFacing = TRUE, facing = "bending",
+                                     adj = c(0.5, -2.6), font = 2)
+                         circos.rect(xlim[1], ylim[1], xlim[2], ylim[2],
+                                     col = GeneID$Color[i], border = GeneID$Color[i])
+                       })
+for (i in seq_len(nrow(pairs))) {
+  circos.link(sector.index1 = pairs$Gene_1[i],
+              point1 = c(pairs$start_1[i], pairs$end_1[i]),
+              sector.index2 = pairs$Gene_2[i],
+              point2 = c(pairs$start_2[i], pairs$end_2[i]),
+              col = paste0(pairs$color[i], "C9"), border = FALSE, rou = 0.7)
+}
+i0 <- seq(0, 0.995, 0.005)
+rect(-1 + i0 / 2, -1, -0.9975 + i0 / 2, -0.96,
+     col = paste0(as.character(color_ramp), "FF"),
+     border = paste0(as.character(color_ramp), "FF"))
+text(-0.97, -1.03, "-1"); text(-0.51, -1.03, "1")
+circos.clear()
+```
+
+::: callout-tip
+**实践要点**
+
+-   先按 |cor| 筛选再作图：10 个基因的完整 45 对弦图无法阅读，前 16 对足以保留强结构。
+-   子段切分（每个基因内 `cumsum(abs(cor))`）是连线宽度诚实的关键——改画全宽连线，枢纽基因的六条连线会夸大其最强相关。
+-   `circos.clear()` 前后都要调用：残留的 circos 布局会劫持下一张 base 图。
+:::
+
 ## 应用场景
 
 ::: {#fig-CorrelogramApplications}
@@ -336,3 +429,5 @@ ggplot(cor_df, aes(r, reorder(gene, r), fill = sig)) +
 \[6\] Wright K (2021). *corrgram: Plot a Correlogram*. R package version 1.14, [CRAN: Package corrgram](https://CRAN.R-project.org/package=corrgram).
 
 \[7\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[8\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
