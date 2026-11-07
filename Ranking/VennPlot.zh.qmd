@@ -286,7 +286,7 @@ p <- venn.diagram(
 
 ### 4. 处理真实的差异分析结果表
 
-实际工作中输入往往不是现成的 list，而是多张差异分析结果表（来自 DESeq2/edgeR/limma 或不同比较组合）。常见工作流 \[5\] 是：按 FDR（和上调方向）筛选每张表，把显著基因 ID 收进一个**命名 list**，绘制韦恩图，再把各重叠区域的基因导出为补充表格。
+实际工作中输入往往不是现成的 list，而是多张差异分析结果表（来自 DESeq2/edgeR/limma 或不同比较组合）。常见工作流 \[2\] 是：按 FDR（和上调方向）筛选每张表，把显著基因 ID 收进一个**命名 list**，绘制韦恩图，再把各重叠区域的基因导出为补充表格。
 
 ```{r}
 #| label: fig-4.1RealDEG
@@ -340,7 +340,7 @@ openxlsx::write.xlsx(region_export, file.path(tempdir(), "venn_regions.xlsx"), r
 
 ### 5. 百分比标签 + 按区域计数渐变填充
 
-经典的 venny 网页工具有一套流行约定：**颜色深浅按区域大小缩放**，标签可以显示百分比 \[6\]。ggVennDiagram 两者都支持：填充渐变本来就由各区域 count 驱动，`label = "percent"` 把标签切换为占并集的比例。在四集合图上使用这一组合，即可复现 `colorfulVennPlot::plotVenn4d()` 参考工作流的效果，而无需手工计算 15 个区域的计数。
+经典的 venny 网页工具有一套流行约定：**颜色深浅按区域大小缩放**，标签可以显示百分比 \[3\]。ggVennDiagram 两者都支持：填充渐变本来就由各区域 count 驱动，`label = "percent"` 把标签切换为占并集的比例。在四集合图上使用这一组合，即可复现 `colorfulVennPlot::plotVenn4d()` 参考工作流的效果，而无需手工计算 15 个区域的计数。
 
 ```{r}
 #| label: fig-5.1PercentFill
@@ -371,6 +371,56 @@ ggVennDiagram(sets4, label = "percent", label_alpha = 0,
 - 超过四个集合时圆形布局会退化——请改用 UpSet（见 [UpSet Plot](UpSetPlot.html)），参考工作流同样如此建议。
 :::
 
+
+### 6. 带多重集交集精确检验 p 值的韦恩图
+
+当韦恩图承载论点（三个 PDX 模型*共有*哪些通路？）时，三重重叠需要一个统计量：在集合相互独立的零模型下给出 P 值并印在图下方 \[4\]。Wang et al. 的 MSET 检验将其推广到多集合；常见的三集合情形，下面这个自足、零依赖的精确上侧二项检验即可胜任。
+
+
+```{r}
+#| label: fig-6.1MultisetP
+#| fig-cap: "Three PDX-model pathway sets with the exact multiset-intersection test below: the 52-member planted core makes the triple overlap astronomically richer than independent sampling allows (P < 1e-30)."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 6
+
+set.seed(1639)
+n_bg  <- 800                                    # background: pathway universe
+bg    <- paste0("P", sprintf("%04d", seq_len(n_bg)))
+core  <- sample(bg, 52)                          # pathways shared by all three models
+sz    <- c(158, 172, 141)
+S1 <- unique(c(core, sample(setdiff(bg, core), sz[1] - length(core))))
+S2 <- unique(c(core, sample(setdiff(bg, core), sz[2] - length(core))))
+S3 <- unique(c(core, sample(setdiff(bg, core), sz[3] - length(core))))
+dat <- list(PDX_95 = S1, PDX_112 = S2, PDX_207 = S3)
+
+## exact upper-tail test of the triple intersection under independent sets:
+## the observed triple-overlap count vs Binomial(n, p1*p2*p3)
+t3 <- length(intersect(intersect(S1, S2), S3))
+pval <- binom.test(t3, n = n_bg, p = prod(sz / n_bg),
+                   alternative = "greater")$p.value
+
+venn <- venn.diagram(x = dat, filename = NULL,
+                     fill = c("red", "steelblue", "yellow"))
+grid::grid.newpage()
+grid::grid.draw(venn)
+grid::grid.text(sprintf("Exact test of multiset intersections:  P = %.2e", pval),
+                x = unit(0.5, "npc"), y = unit(0.05, "npc"),
+                gp = gpar(fontsize = 11, col = "#B2182B"))
+cat(sprintf("Triple overlap: %d pathways (sizes %s), P = %.2e\n",
+            t3, paste(sz, collapse = "/"), pval))
+```
+
+::: callout-tip
+**实践要点**
+
+-   p 值必须来自读者默认的那个**零模型**：背景大小是你抽样自的通路/基因宇宙，而非所画集合的并集；n 取错会在无声中夸大显著性。
+-   每换新设计就用 Monte-Carlo 零模型对拍一次：以相同集合大小抽独立集合，确认观测重叠从不随机出现——一旦出现，你的 p 值就在撒谎。
+-   SuperExactTest 等包实现了完整的多重集精确检验（Wang et al. 2015）；此处的二项尾是其在独立集合下的特例——足以回答常见的"这重叠超出预期吗"。
+:::
+
 ## 应用场景
 
 ::: {#fig-HistApplications}
@@ -379,14 +429,16 @@ ggVennDiagram(sets4, label = "percent", label_alpha = 0,
 韦恩图应用
 :::
 
-此图中R1-R4为四种不同的基因型，由于R2 R4在目的基因处基因型完全相同，因此R2R4共有的差异表达基因可能就是目的基因的下游 \[4\]。
+此图中R1-R4为四种不同的基因型，由于R2 R4在目的基因处基因型完全相同，因此R2R4共有的差异表达基因可能就是目的基因的下游 \[1\]。
 
 ## 参考文献
 
 \[1\] Yu Y, Li W, Liu Y, Liu Y, Zhang Q, Ouyang Y, Ding W, Xue Y, Zou Y, Yan J, Jia A, Yan J, Hao X, Gou Y, Zhai Z, Liu L, Zheng Y, Zhang B, Xu J, Yang N, Xiao Y, Zhuo L, Lai Z, Yin P, Liu HJ, Fernie AR, Jackson D, Yan J. A Zea genus-specific micropeptide controls kernel dehydration in maize. Cell. 2025 Jan 9;188(1):44-59.e21. doi: 10.1016/j.cell.2024.10.030. Epub 2024 Nov 12. PMID: 39536747.
 
-\[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[2\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
 
-\[6\] venny 2.1.0 交互式网页工具. <http://bioinfogp.cnb.csic.es/tools/venny/>
+\[3\] venny 2.1.0 交互式网页工具. <http://bioinfogp.cnb.csic.es/tools/venny/>
+
+\[4\] Xiaofan Lu, et al. FigureYa283vennyPvalue 参考图：带多重集交集精确 P 值的韦恩图。FigureYa 文档。<https://ying-ge.github.io/FigureYa/>
 

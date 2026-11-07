@@ -967,6 +967,67 @@ Heatmap(z_d, name = "Expression (z)",
 -   The reference workflow derives the specific sets from paired RNA-seq DE (edgeR); t-tests on log expression give the same selection on microarray-style data.
 :::
 
+
+#### 4.9 Pan-Cancer m6A-Regulator Heatmap
+
+Regulator families (m6A readers / writers / erasers) are typically profiled as one **tumour-vs-normal log2 fold-change matrix across many cohorts**. `pheatmap` draws it natively: `annotation_row` carries the functional class as a colour strip, `clustering_method = "ward.D"` groups the rows, and a five-stop ramp anchored white at zero keeps up and down readable \[19\].
+
+```{r pan-m6a-check, eval=FALSE}
+# Real-data route: per cohort i, limma tumour-vs-normal contrast ->
+# lfc[gene, cohort]; see the reference workflow's twoclasslimma loop.
+```
+
+```{r}
+#| label: fig-4.9PanM6AHeatmap
+#| fig-cap: "Pan-cancer m6A-regulator heatmap: tumour-vs-normal log2FC for 18 writers/readers/erasers across 10 TCGA cohorts; ward.D row clustering keeps each functional class together, the left strip annotates it."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6
+
+set.seed(1609)
+tumors <- c("BLCA", "BRCA", "CESC", "CHOL", "COAD",
+            "LUAD", "LUSC", "PAAD", "PRAD", "UCEC")
+m6a_genes <- paste0(rep(c("Reader", "Writer", "Eraser"), each = 6),
+                    rep(seq_len(6), 3))
+m6a_class <- rep(c("Readers", "Writers", "Erasers"), each = 6)
+
+## simulated tumour-vs-normal log2FC matrix; readers move up, writers down,
+## erasers stay flat (the real workflow takes these from per-cohort limma contrasts)
+lfc <- matrix(rnorm(18 * 10, 0, 0.28), 18, 10, dimnames = list(m6a_genes, tumors))
+lfc[1:6, ]   <- lfc[1:6, ]   + 0.95
+lfc[7:12, ]  <- lfc[7:12, ]  - 0.85
+lfc[13:18, ] <- lfc[13:18, ] + rnorm(60, 0, 0.25)
+
+annRow <- data.frame(row.names = m6a_genes,
+                     class = factor(m6a_class, levels = c("Readers", "Writers", "Erasers")),
+                     stringsAsFactors = FALSE)
+annColors <- list(class = c(Readers = "#51B743", Writers = "#FAC67A",
+                            Erasers = "#5AC9FA"))
+colPattern <- c("#183869", "#4195C1", "white", "#CB5746", "#62011D")
+
+hm <- pheatmap(as.matrix(lfc),
+               border_color = "black",
+               cluster_rows = TRUE, cluster_cols = FALSE,
+               clustering_method = "ward.D",
+               show_rownames = TRUE, show_colnames = TRUE,
+               annotation_row = annRow, annotation_colors = annColors,
+               cellwidth = 22, cellheight = 14,
+               color = colorRampPalette(colPattern)(64),
+               name = "log2FoldChange")
+hm
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `clustering_method = "ward.D"` minimises within-cluster variance and keeps each functional class contiguous when the rows truly share an effect - a wrong method silently scrambles the biological message.
+-   With a qualitative row grouping, pass it as `annotation_row` + `annotation_colors` instead of colouring gene names: the strip is read at a glance and survives black-and-white printing.
+-   Anchor the diverging ramp on **white at 0** (`#183869/#4195C1/white/#CB5746/#62011D`): log2FC is signed, and an unanchored ramp makes tiny non-zero values look like effects.
+:::
+
+
 ### 5. complexheatmap Heatmaps
 
 The `ComplexHeatmap` package, based on the `grid` package, uses an object-oriented approach to implement heatmaps and their components. It mainly includes the following classes:
@@ -1326,4 +1387,5 @@ Abbreviations: ARS: Autonomous Replicating Sequence, FKH: Forkhead, ORC: Origin 
 15. Becker, R. A., Wilks, A. R., & Brownrigg, R. (2021). *lattice: The lattice package for R*. <https://cran.r-project.org/package=lattice>\
 16. Auguie, B. (2017). gridExtra: Miscellaneous Functions for "Grid" Graphics. <https://cran.r-project.org/package=gridExtra>
 17. Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
-18. Xiaofan Lu, et al. FigureYa144DiagHeatmap reference figure: diagonally split heatmap. FigureYapy/FigureYa documentation. https://ying-ge.github.io/FigureYa/
+18. Xiaofan Lu, et al. FigureYa144DiagHeatmap reference figure: diagonally split heatmap. FigureYapy/FigureYa documentation. https://ying-ge.github.io/FigureYa/\
+19. Xiaofan Lu, et al. FigureYa266panHeatmap reference figure: pan-cancer regulator log2FC heatmap with ward.D clustering. FigureYapy/FigureYa documentation. https://ying-ge.github.io/FigureYa/

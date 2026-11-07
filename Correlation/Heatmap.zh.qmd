@@ -973,6 +973,67 @@ Heatmap(z_d, name = "Expression (z)",
 -   参考工作流的特异基因集来自配对 RNA-seq DE（edgeR）；microarray 型数据上 t 检验给出相同选择。
 :::
 
+
+#### 4.9 泛癌 m6A 调控因子热图
+
+调控因子家族（m6A readers / writers / erasers）通常以**跨多个癌种的肿瘤-正常 log2 倍数变化矩阵**呈现。`pheatmap` 原生支持：`annotation_row` 用颜色条承载功能类别，`clustering_method = "ward.D"` 完成行聚类，以 0 为白锚的五段色带保证上下调可读 \[19\]。
+
+```{r pan-m6a-check, eval=FALSE}
+# 真实数据路线：每个癌种 i 跑 limma 肿瘤-正常对比 ->
+# lfc[基因, 癌种]；见参考工作流的 twoclasslimma 循环。
+```
+
+```{r}
+#| label: fig-4.9PanM6AHeatmap
+#| fig-cap: "Pan-cancer m6A-regulator heatmap: tumour-vs-normal log2FC for 18 writers/readers/erasers across 10 TCGA cohorts; ward.D row clustering keeps each functional class together, the left strip annotates it."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6
+
+set.seed(1609)
+tumors <- c("BLCA", "BRCA", "CESC", "CHOL", "COAD",
+            "LUAD", "LUSC", "PAAD", "PRAD", "UCEC")
+m6a_genes <- paste0(rep(c("Reader", "Writer", "Eraser"), each = 6),
+                    rep(seq_len(6), 3))
+m6a_class <- rep(c("Readers", "Writers", "Erasers"), each = 6)
+
+## simulated tumour-vs-normal log2FC matrix; readers move up, writers down,
+## erasers stay flat (the real workflow takes these from per-cohort limma contrasts)
+lfc <- matrix(rnorm(18 * 10, 0, 0.28), 18, 10, dimnames = list(m6a_genes, tumors))
+lfc[1:6, ]   <- lfc[1:6, ]   + 0.95
+lfc[7:12, ]  <- lfc[7:12, ]  - 0.85
+lfc[13:18, ] <- lfc[13:18, ] + rnorm(60, 0, 0.25)
+
+annRow <- data.frame(row.names = m6a_genes,
+                     class = factor(m6a_class, levels = c("Readers", "Writers", "Erasers")),
+                     stringsAsFactors = FALSE)
+annColors <- list(class = c(Readers = "#51B743", Writers = "#FAC67A",
+                            Erasers = "#5AC9FA"))
+colPattern <- c("#183869", "#4195C1", "white", "#CB5746", "#62011D")
+
+hm <- pheatmap(as.matrix(lfc),
+               border_color = "black",
+               cluster_rows = TRUE, cluster_cols = FALSE,
+               clustering_method = "ward.D",
+               show_rownames = TRUE, show_colnames = TRUE,
+               annotation_row = annRow, annotation_colors = annColors,
+               cellwidth = 22, cellheight = 14,
+               color = colorRampPalette(colPattern)(64),
+               name = "log2FoldChange")
+hm
+```
+
+::: callout-tip
+**实践要点**
+
+-   `clustering_method = "ward.D"` 最小化簇内方差，行确实共享效应时能让每个功能类别保持连续——方法选错会悄悄打散生物学信息。
+-   有定性行分组时，用 `annotation_row` + `annotation_colors` 传注释条，别给基因名上色：色条一眼可读，且黑白打印不失效。
+-   发散色带务必**以 0 为白色锚点**（`#183869/#4195C1/white/#CB5746/#62011D`）：log2FC 带符号，无锚色带会让微小非零值看起来像效应。
+:::
+
+
 ### 5. complexheatmap 热图
 
 `ComplexHeatmap`包是基于`grid`包的，使用面向对象的方式实现热图及其组件，主要包含以下几个类：
@@ -1329,4 +1390,5 @@ pheatmap(plotdata, cluster_rows = FALSE, cluster_cols = FALSE,
 15. Becker, R. A., Wilks, A. R., & Brownrigg, R. (2021). *lattice: The lattice package for R*. <https://cran.r-project.org/package=lattice>\
 16. Auguie, B. (2017). gridExtra: Miscellaneous Functions for "Grid" Graphics. <https://cran.r-project.org/package=gridExtra>
 17. Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
-18. Xiaofan Lu, et al. FigureYa144DiagHeatmap 参考图：对角分割热图。FigureYa 文档。https://ying-ge.github.io/FigureYa/
+18. Xiaofan Lu, et al. FigureYa144DiagHeatmap 参考图：对角分割热图。FigureYa 文档。https://ying-ge.github.io/FigureYa/\
+19. Xiaofan Lu, et al. FigureYa266panHeatmap 参考图：泛癌调控因子 log2FC 热图（ward.D 聚类）。FigureYa 文档。https://ying-ge.github.io/FigureYa/

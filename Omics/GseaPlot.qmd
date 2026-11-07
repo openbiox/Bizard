@@ -536,6 +536,71 @@ print(p_b)
 -   Keep the non-significant cells visible via `na.value` instead of dropping them; the empty cross of cancers x pathways is itself information.
 :::
 
+
+### 9. Multi-Gene Single-Pathway Pan-Cancer Enrichment
+
+The transpose of the NES grid above: one **pathway**, many genes. For a signature panel (here a ferroptosis gene list), GSEA is run per tumour type on the high-vs-low split of each gene, and the single pathway's NES fills a gene x tumour grid \[8\] - it answers at a glance in which cancers the panel's genes drive the pathway.
+
+```{r gene-nes-ref, eval=FALSE}
+# Reference workflow (real data): for every tumour x gene, rank by limma
+# high-vs-low log2FC and run one fgsea::fGSEA() against the single GMT term;
+# keep term/NES/pvalue/p.adj per cell -> the tab data frame below.
+```
+
+```{r}
+#| label: fig-9.1GeneNesGrid
+#| fig-cap: "Single-pathway pan-cancer NES grid with genes on the y-axis: ferroptosis-panel genes across ten tumour types, colour = NES, size = -log10(FDR); the planted first-half-up/second-half-down pattern reads as designed."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 6
+
+set.seed(1629)
+tumors <- c("BLCA", "BRCA", "CESC", "CHOL", "COAD",
+            "LUAD", "LUSC", "PAAD", "PRAD", "UCEC")
+genes <- c("GPX4", "SLC7A11", "NFE2L2", "NCOA4", "ACSL4", "ALOX15", "FANCD2",
+           "CISD1", "TP53", "HMOX1", "ATF4", "CHAC1", "SLC3A2", "GCLM")
+
+## simulated single-pathway NES per gene x tumour (real pipeline: fgsea::fGSEA()
+## on the per-cohort high-vs-low contrast of each gene's expression)
+nes <- matrix(rnorm(10 * 14, 0, 1.1), 10, 14, dimnames = list(tumors, genes))
+upg <- 1:7                                    # first-half panel moves EMT up
+for (k in seq_along(tumors)) {
+  nes[k, upg]  <- nes[k, upg] + 1.7
+  nes[k, -upg] <- nes[k, -upg] - 1.5
+}
+fdr <- matrix(10^(-(abs(as.numeric(nes)) * 0.9 + runif(length(nes), 0, 1.1))), 10)
+rownames(fdr) <- tumors; colnames(fdr) <- genes
+
+tab <- do.call(rbind, lapply(tumors, function(t)
+  data.frame(tumor = t, gene = genes, NES = nes[t, ], FDR = fdr[t, ],
+             stringsAsFactors = FALSE)))
+mypal <- colorRampPalette(c("#303B7F", "#EECA1F", "#D51113"))(n = 128)
+
+ggplot(tab, aes(tumor, gene)) +
+  geom_point(aes(size = -log10(FDR), colour = NES)) +
+  scale_colour_gradientn("NES", colours = mypal, limits = c(-3, 3),
+                          na.value = "grey88") +
+  scale_size_continuous(range = c(0.5, 6), guide = "none") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+        axis.title = element_blank(), panel.border = element_rect(linewidth = 0.6),
+        legend.position = "bottom") +
+  labs(x = NULL, y = NULL,
+       title = "HALLMARK_EMT NES: ferroptosis genes x tumour types")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Which axis carries the genes is a design choice: genes-on-Y answers "which of *my* genes move this pathway where", pathways-on-Y answers "which pathway moves in this cohort" - fix it before choosing the aspect ratio.
+-   One colour scale for the whole panel: the same `limits = c(-3, 3)` as the pathways-on-Y companion keeps the two grids directly comparable.
+-   Pre-filter by `FDR` in the data, not by alpha in the theme; greyed-out non-significant cells (`na.value`) preserve the missing-data cross.
+:::
+
+
 ## Application
 
 Running-score GSEA plots are the standard figure for pathway-level interpretation of transcriptomic contrasts: tumor-vs-normal signatures, drug perturbation screens, and single-cell cluster markers. The panel below mirrors a typical publication layout: (A) the canonical single-set plot with p-value table and (B) the multi-set overlay.
@@ -557,3 +622,5 @@ Running-score GSEA plots are the standard figure for pathway-level interpretatio
 \[6\] GSEA desktop application output format. Broad Institute. https://gseapab.github.io/
 
 \[7\] Pedersen TL. ggraph: An Implementation of Grammar of Graphics for Graphs and Networks. https://ggraph.data-imaginist.com/
+
+\[8\] Xiaofan Lu, et al. FigureYa279panGeneGSEA reference figure: pan-cancer single-pathway NES grid with genes on the y-axis. FigureYapy/FigureYa documentation. <https://ying-ge.github.io/FigureYa/>
