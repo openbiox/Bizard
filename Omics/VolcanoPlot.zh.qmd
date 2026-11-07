@@ -339,6 +339,79 @@ ggplot(plot.data, aes(logFC, logPadj, color = status)) +
 -   两个带标签的事件作为阅读锚点——每个方向一个——其余交给颜色。
 :::
 
-## 参考文献
+### 5. 分层"酷炫"火山图（FigureYa59volcanoV2）
+
+当筛选结果要交给下游功能验证时，参考文档的高级火山图 \[1\] 一次编码**三个显著性层级**：点色随嵌套门槛加深（|logFC| > 1.5 且 P < 0.05 → > 2.5 且 P < 1e-4 → > 5 且 P < 1e-5），点大小随层级增大，选去做功能验证的基因按通路重新着色、加黑圈并打标签。门槛由数据驱动，图在大动态范围下无需轴截断：
+
+```{r}
+#| label: fig-5.1TieredVolcano
+#| fig-cap: "900 个模拟事件的分层火山图：|logFC| = 1.5/2.5/5 与校正 P = 0.05/1e-4/1e-5 的嵌套门槛决定颜色深浅与点大小；按通路着色、黑圈、带标签的点为验证候选。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 6.2
+
+set.seed(5901)
+n_v2 <- 900
+v2 <- data.frame(
+  gsym = paste0("G", 1:n_v2),
+  logFC = rnorm(n_v2, 0, 1.4),
+  adjP = 10^(-rexp(n_v2, 0.9)))
+v2$adjP <- pmin(1, v2$adjP)
+sel <- sample(n_v2, 10)
+v2$adjP[sel[1:6]] <- 10^(-runif(6, 5, 12)); v2$logFC[sel[1:4]] <- rnorm(4, 4.5, 0.7)
+v2$adjP[sel[7:10]] <- 10^(-runif(4, 5, 10)); v2$logFC[sel[7:10]] <- rnorm(4, -4.5, 0.7)
+v2$pathway <- sample(c("Pathway A", "Pathway B", "Pathway C"), n_v2, TRUE,
+                     prob = c(0.05, 0.05, 0.9))
+v2$pathway[sel] <- rep(c("Pathway A", "Pathway B"), c(6, 4))
+selected <- v2[sel, ]
+selected$pathway <- factor(selected$pathway, levels = c("Pathway A", "Pathway B"))
+
+logFCcut <- 1.5; pvalCut <- 0.05
+logFCcut2 <- 2.5; pvalCut2 <- 1e-4
+logFCcut3 <- 5; pvalCut3 <- 1e-5
+pathcol <- c("Pathway A" = "darkgreen", "Pathway B" = "chocolate4", "Pathway C" = "blueviolet")
+
+v2$y <- -log10(v2$adjP)
+v2$tier <- 1
+v2$tier[abs(v2$logFC) > logFCcut & v2$adjP < pvalCut] <- 2
+v2$tier[abs(v2$logFC) > logFCcut2 & v2$adjP < pvalCut2] <- 3
+v2$tier[abs(v2$logFC) > logFCcut3 & v2$adjP < pvalCut3] <- 4
+v2$col <- "grey75"
+v2$col[v2$tier == 2] <- "grey45"
+v2$col[v2$tier == 3 & v2$logFC > 0] <- "#F49A9A"
+v2$col[v2$tier == 3 & v2$logFC < 0] <- "#8FB2E0"
+v2$col[v2$tier == 4 & v2$logFC > 0] <- "#D93F3C"
+v2$col[v2$tier == 4 & v2$logFC < 0] <- "#184A8C"
+v2$col[sel] <- pathcol[v2$pathway[sel]]
+v2$size <- c(1, 1.6, 2.2, 3)[v2$tier]
+lab_df <- selected
+lab_df$y <- -log10(lab_df$adjP)
+
+ggplot(v2, aes(logFC, y)) +
+  geom_point(colour = v2$col, size = v2$size, alpha = 0.9) +
+  geom_vline(xintercept = c(-logFCcut, logFCcut), linetype = "dashed", colour = "grey40") +
+  geom_hline(yintercept = -log10(pvalCut), linetype = "dashed", colour = "grey40") +
+  geom_point(data = lab_df, aes(logFC, y), shape = 21, colour = "black",
+             size = 3.4, fill = NA, stroke = 0.8, inherit.aes = FALSE) +
+  geom_label_repel(data = lab_df, aes(label = gsym, colour = pathway),
+                   size = 3.2, fontface = "bold", box.padding = 0.5,
+                   show.legend = FALSE, max.overlaps = 20) +
+  scale_colour_manual(values = pathcol, name = "Selected pathway") +
+  labs(x = "log2 fold change", y = "-log10 adjusted P",
+       title = "Tiered volcano: thresholds at 1.5/2.5/5 and 0.05/1e-4/1e-5") +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+::: callout-tip
+**实践要点**
+
+-   分层赋值写成**显式有序表**（`tier <- 1; tier[gate2] <- 2; ...`）——每行一个门槛可审计；四重阈值的 `ifelse()` 链不可审计。
+-   验证候选带*三重*编码（通路色、黑圈、标签）——标签被 repel 推走时黑圈仍会存活，两者都要保留。
+-   在图注中逐字写出门槛；"更显著"会诱导读者发明你没有用过的阈值。
+:::
+
+## 参考文献## 参考文献
 
 \[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

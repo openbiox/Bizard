@@ -562,7 +562,81 @@ Applications of Violin Plot with Boxplot
 
 @fig-ViolinPlotApplications4 D shows the expected median MSD and distribution of droplets attached to the substrate (noise) and in water (stimulation), as well as the nanoscale RMS displacement \[4\].
 
-## Reference
+### 5. Pan-Cancer Split Violin with Quartile Marks (FigureYa55panCancer_violinV2)
+
+The TOIL-harmonised TCGA + GTEx comparison (FigureYa55panCancer_violinV2 \[15\]) puts every cancer type on the x axis and **splits each violin in half**: tumour (right, red) against matched normal (left, yellow, GTEx or TCGA solid-normal), with quartile lines inside each half and per-tissue significance stars. `ggdist::stat_halfeye(side = ...)` gives the split halves without the archived `GeomSplitViolin` helper; quartile dashes and Wilcoxon stars are drawn from the data:
+
+```{r}
+#| label: fig-5.1PanCancerSplit
+#| fig-cap: "Pan-cancer split violin of a simulated TP53-like TPM matrix across 10 tissues: tumour (right, red) vs matched normal (left, yellow); dashes = quartiles per half; stars = per-tissue Wilcoxon tests (***: p < 0.001)."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 5
+
+set.seed(5501)
+tissues <- c("BRCA", "COAD", "HNSC", "KIRC", "LUAD", "LUSC", "PRAD", "STAD", "THCA", "UCEC")
+n_per <- 120
+tp53_base <- c(BRCA = 2.6, COAD = 2.2, HNSC = 2.8, KIRC = 2.4, LUAD = 2.5,
+               LUSC = 2.9, PRAD = 2.3, STAD = 2.7, THCA = 2.2, UCEC = 2.5)
+pan <- do.call(rbind, lapply(tissues, function(t) {
+  tumor <- rnorm(n_per, tp53_base[t] + 0.9, 0.75)
+  normal <- rnorm(n_per, tp53_base[t] - 0.4, 0.6)
+  rbind(data.frame(tissue = t, type2 = "tumor", tpm = tumor),
+        data.frame(tissue = t, type2 = "normal", tpm = normal))
+}))
+pan$type2 <- factor(pan$type2, levels = c("tumor", "normal"))
+pan$tissue <- factor(pan$tissue, levels = tissues)
+pan$side <- ifelse(pan$type2 == "tumor", "right", "left")
+wt <- do.call(rbind, lapply(tissues, function(t) {
+  d1 <- pan$tpm[pan$tissue == t & pan$type2 == "tumor"]
+  d0 <- pan$tpm[pan$tissue == t & pan$type2 == "normal"]
+  data.frame(tissue = t, p = wilcox.test(d1, d0)$p.value)
+}))
+star_df <- data.frame(tissue = factor(wt$tissue, levels = tissues),
+                      y = max(pan$tpm) + 0.55,
+                      lab = ifelse(wt$p < 0.001, "***",
+                                   ifelse(wt$p < 0.01, "**",
+                                          ifelse(wt$p < 0.05, "*", ""))))
+## quartile marks: tiny horizontal dashes offset into each half
+qd106 <- do.call(rbind, lapply(tissues, function(t) do.call(rbind, lapply(c("tumor", "normal"), function(g) {
+  x <- pan$tpm[pan$tissue == t & pan$type2 == g]
+  data.frame(tissue = t, type2 = g, q = quantile(x, c(0.25, 0.5, 0.75)))
+}))))
+qd106$tissue <- factor(qd106$tissue, levels = tissues)
+qd106$type2 <- factor(qd106$type2, levels = c("tumor", "normal"))
+qd106$xc <- as.numeric(qd106$tissue) + ifelse(qd106$type2 == "tumor", 0.13, -0.13)
+
+ggplot(pan, aes(tissue, tpm, fill = type2)) +
+  ggdist::stat_halfeye(aes(side = side), density = "bounded",
+                       point_interval = NULL,
+                       linewidth = 0.3, colour = "black", alpha = 0.95) +
+  geom_segment(data = qd106,
+               aes(x = xc - 0.025, xend = xc + 0.025, y = q, yend = q,
+                   colour = type2),
+               inherit.aes = FALSE, linewidth = 0.55) +
+  geom_text(data = star_df, aes(tissue, y, label = lab),
+            inherit.aes = FALSE, size = 4.2, colour = "grey10") +
+  scale_fill_manual(values = c(tumor = "#DF2020", normal = "#DDDF21"), name = NULL) +
+  scale_colour_manual(values = c(tumor = "#7a1010", normal = "#8a8a20"), guide = "none") +
+  scale_y_continuous(limits = c(-2, max(pan$tpm) + 1.1)) +
+  labs(x = NULL, y = "TP53 expression (log2 TPM, simulated)",
+       title = "Pan-cancer split violin: tumour vs matched normal (GTEx-like)") +
+  theme_classic(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5),
+        legend.position = "top")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `stat_halfeye(side = ...)` needs one row per observation with the side computed from the group — never two overlapping full violins, which double-count the density.
+-   `point_interval = NULL` removes the median-CI whisker ggdist draws by default (and its cryptic `-.width` legend); the quartile dashes above replace it with the reference figure's marks.
+-   Real analysis: fetch TOIL TPM from UCSC Xena (`tcga_RSEM_gene_tpm.gz` + `gtex_RSEM_gene_tpm.gz`), map tissues with the GEPIA TCGA-GTEx pair table — the reference documents the whole pipeline.
+:::
+
+## Reference## Reference
 
 \[1\] Zheng Q, Bao C, Guo W, Li S, Chen J, Chen B, Luo Y, Lyu D, Li Y, Shi G, Liang L, Gu J, He X, Huang S. Circular RNA profiling reveals an abundant circHIPK3 that regulates cell growth by sponging multiple miRNAs. Nat Commun. 2016 Apr 6;7:11215. doi: 10.1038/ncomms11215. PMID: 27050392; PMCID: PMC4823868.
 
@@ -591,3 +665,5 @@ Applications of Violin Plot with Boxplot
 \[13\] Horst AM, Hill AP, Gorman KB (2020). palmerpenguins: Palmer Archipelago (Antarctica) penguin data. R package version 0.1.0. https://allisonhorst.github.io/palmerpenguins/. doi: 10.5281/zenodo.3960218.
 
 \[14\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[15\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

@@ -488,7 +488,62 @@ ggplot(prof_long, aes(window, signal, colour = sample)) +
 -   给基因体区域上底色并用虚线标 TSS/TTS——不读图注时读者唯一能解读的两个位置就是它们。
 :::
 
-## 应用场景
+### 4. 单样本、多区域类别：单 bigWig 剖面图
+
+§3 的姊妹版式（FigureYa57profile_1bw \[13\]）：**一份 bigWig 样本**、若干*区域类别*——例如按 CpG 含量分组的启动子（HCP / ICP / LCP）——每类用自己的 BED 平均，每类一条彩色线。对比的是基因组背景之间而非样本之间；高 CpG 启动子与低 CpG 启动子的 H3K4me3 差异是参考文档的经典示例。与 §3 一样，均值窗口矩阵在此模拟，替代 bigWig 提取：
+
+```{r}
+#| label: fig-4.1RegionProfile
+#| fig-cap: "按启动子类别的单样本元基因剖面（模拟）：高（HCP）、中（ICP）、低 CpG（LCP）启动子在 TSS ±2 kb 的平均 H3K4me3 密度；虚线标记 TSS 与基因体末端。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+set.seed(5701)
+resol <- 10
+span <- 2000
+up_win <- span / resol
+body_win <- 40
+amp <- c(HCP = 1.0, ICP = 0.45, LCP = 0.15)
+prof108 <- do.call(rbind, lapply(names(amp), function(cl) {
+  a <- amp[[cl]]
+  up <- exp(-(seq_len(up_win) - max(seq_len(up_win)))^2 / (2 * (up_win / 2.0)^2)) * a
+  body <- rep(0.15 * a + 0.1, body_win)
+  dn <- rep(0.08 * a, up_win)
+  data.frame(window = seq_len(up_win + body_win + up_win),
+             signal = pmax(0, c(up, body, dn) +
+                             rnorm(length(up) + body_win + up_win, 0, 0.015)),
+             region = cl)
+}))
+prof108$region <- factor(prof108$region, levels = c("HCP", "ICP", "LCP"))
+ggplot(prof108, aes(window, signal, colour = region)) +
+  geom_line(linewidth = 1.1) +
+  geom_vline(xintercept = c(up_win + 0.5, up_win + body_win + 0.5),
+             linetype = 2, colour = "grey55") +
+  annotate("text", x = up_win / 2, y = 1.05, label = "-2 kb", size = 2.9, colour = "grey30") +
+  annotate("text", x = up_win + body_win / 2, y = 1.05, label = "TSS + gene body", size = 2.9, colour = "grey30") +
+  annotate("text", x = up_win + body_win + up_win / 2, y = 1.05, label = "+2 kb", size = 2.9, colour = "grey30") +
+  scale_x_continuous(breaks = c(1, up_win, up_win + body_win, length(unique(prof108$window))),
+                     labels = c("-2 kb", "TSS", "TTS", "+2 kb"),
+                     expand = expansion(mult = c(0.01, 0.01))) +
+  scale_colour_manual(values = c(HCP = "darkorange", ICP = "navy", LCP = "darkgreen"), name = NULL) +
+  labs(x = NULL, y = "H3K4me3 tag density (simulated)",
+       title = "One sample, three CpG classes: promoter signal by region type") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), legend.position = "top")
+```
+
+::: callout-tip
+**实践要点**
+
+-   先按类别划分区域再提取信号，每类一个 BED（参考文档的 `mm9_HCP_tss.bed` / ICP / LCP 命名）；跨类平均会抹掉这张图要展示的对比本身。
+-   多类别时线条更细、靠顶部图例承载身份——三条曲线互不相交，颜色即身份；打印前检查灰度可分性。
+-   `span` 与基因体窗口数必须是 `resolution` 的整数倍，否则压缩 body 重采样会错位 TSS/TTS。
+:::
+
+## 应用场景## 应用场景
 
 ### 1. 基础平行图
 
@@ -543,3 +598,5 @@ ggplot(prof_long, aes(window, signal, colour = sample)) +
 \[11\] Neuwirth, E. (2023). RColorBrewer: ColorBrewer Palettes. https://cran.r-project.org/package=RColorBrewer
 
 \[12\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[13\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

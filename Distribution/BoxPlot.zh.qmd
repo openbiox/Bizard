@@ -630,7 +630,62 @@ Figure D & Figure F: MDA-MB-453 （D）或 HEK293（F） 中所示 H2A 过表达
 
 Figure C: 具有不含有（左）或含有（右）所示残基的 H2A 的生物体的基因组大小的箱线图。\[2\]
 
-## 参考文献
+### 4. 泛癌箱线图 + 逐组织显著性（FigureYa55plus）
+
+泛癌小提琴的箱线图伴侣（FigureYa55plus_pancancer_boxplot \[14\]）：同一份 TOIL TCGA-vs-normal 矩阵，`ggpubr::ggboxplot()` 加抖动点、肿瘤/正常填色，并逐组织在图上方标注 Wilcoxon 星号。ggpubr 的 `stat_compare_means(comparisons = ...)` 无法一次扇出到 10 个组织，星号需手工计算摆放——与 ggpubr 官方多面板示例同思路：
+
+```{r}
+#| label: fig-4.1PanCancerBox
+#| fig-cap: "模拟 TP53 样矩阵的泛癌箱线图：逐组织肿瘤/正常箱体叠加抖动点；各组织上方星号为逐组织 Wilcoxon 检验。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 5
+
+set.seed(5501)
+tissues <- c("BRCA", "COAD", "HNSC", "KIRC", "LUAD", "LUSC", "PRAD", "STAD", "THCA", "UCEC")
+n_per <- 120
+tp53_base <- c(BRCA = 2.6, COAD = 2.2, HNSC = 2.8, KIRC = 2.4, LUAD = 2.5,
+               LUSC = 2.9, PRAD = 2.3, STAD = 2.7, THCA = 2.2, UCEC = 2.5)
+pan <- do.call(rbind, lapply(tissues, function(t) {
+  rbind(data.frame(tissue = t, type2 = "tumor", tpm = rnorm(n_per, tp53_base[t] + 0.9, 0.75)),
+        data.frame(tissue = t, type2 = "normal", tpm = rnorm(n_per, tp53_base[t] - 0.4, 0.6)))
+}))
+pan$type2 <- factor(pan$type2, levels = c("tumor", "normal"))
+pan$tissue <- factor(pan$tissue, levels = tissues)
+wt <- do.call(rbind, lapply(tissues, function(t) {
+  d1 <- pan$tpm[pan$tissue == t & pan$type2 == "tumor"]
+  d0 <- pan$tpm[pan$tissue == t & pan$type2 == "normal"]
+  data.frame(tissue = t, p = wilcox.test(d1, d0)$p.value)
+}))
+star_df <- data.frame(tissue = factor(wt$tissue, levels = tissues),
+                      y = max(pan$tpm) + 0.55,
+                      lab = ifelse(wt$p < 0.001, "***",
+                                   ifelse(wt$p < 0.01, "**",
+                                          ifelse(wt$p < 0.05, "*", ""))))
+
+ggpubr::ggboxplot(pan, x = "tissue", y = "tpm", fill = "type2",
+                  color = "black", palette = c("#DF2020", "#DDDF21"),
+                  ylab = "TP53 expression (log2 TPM, simulated)", xlab = NULL,
+                  add = "jitter", jitter = 0.18,
+                  add.params = list(size = 0.5, alpha = 0.35, color = "type2"),
+                  outlier.shape = NA) +
+  geom_text(data = star_df, aes(tissue, y, label = lab),
+            inherit.aes = FALSE, size = 4.2, colour = "grey10") +
+  scale_y_continuous(limits = c(min(pan$tpm) - 0.5, max(pan$tpm) + 1.1)) +
+  theme(legend.position = "top")
+```
+
+::: callout-tip
+**实践要点**
+
+-   `outlier.shape = NA` 加 `add = "jitter"` 让每个样本只出现一次——箱线图离群点与抖动点会把同一样本画两遍。
+-   星号要在**定好 y 范围**（`limits`）之后再放：星号行必须高于最高的须线且不引起箱体重缩放。
+-   单基因的 10 个逐组织检验是 10 次独立检验——标注星号时写明星号反映的校正方式（不校正 / BH）。
+:::
+
+## 参考文献## 参考文献
 
 \[1\] Volkmann C, Brings N, Becker M, Hobeika E, Yang J, Reth M. Molecular requirements of the B-cell antigen receptor for sensing monovalent antigens. EMBO J. 2016 Nov 2;35(21):2371-2381. doi: 10.15252/embj.201694177. Epub 2016 Sep 15. PMID: 27634959; PMCID: PMC5090217.
 
@@ -650,3 +705,4 @@ Figure C: 具有不含有（左）或含有（右）所示残基的 H2A 的生�
 
 \[9\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
+\[14\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

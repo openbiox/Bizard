@@ -340,7 +340,80 @@ ggplot(plot.data, aes(logFC, logPadj, color = status)) +
 -   Keep the two labeled events as the reading anchors — one per direction — and let colour do the rest.
 :::
 
-## Reference
+### 5. The Tiered "Cool" Volcano (FigureYa59volcanoV2)
+
+When a screen feeds downstream validation, the reference's advanced volcano \[2\] encodes **three significance tiers at once**: point colour darkens through nested gates (|logFC| > 1.5 & P < 0.05, then > 2.5 & P < 1e-4, then > 5 & P < 1e-5), point size grows with the tier, and the handful of genes chosen for functional validation are recoloured by pathway, circled black and labeled. The gates are data-driven, so the plot survives huge dynamic ranges without axis clipping:
+
+```{r}
+#| label: fig-5.1TieredVolcano
+#| fig-cap: "Tiered volcano of 900 simulated events: nested gates at |logFC| = 1.5/2.5/5 and adjusted P = 0.05/1e-4/1e-5 drive colour darkness and point size; pathway-coloured, black-circled and labeled points are the validation picks."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 6.2
+
+set.seed(5901)
+n_v2 <- 900
+v2 <- data.frame(
+  gsym = paste0("G", 1:n_v2),
+  logFC = rnorm(n_v2, 0, 1.4),
+  adjP = 10^(-rexp(n_v2, 0.9)))
+v2$adjP <- pmin(1, v2$adjP)
+sel <- sample(n_v2, 10)
+v2$adjP[sel[1:6]] <- 10^(-runif(6, 5, 12)); v2$logFC[sel[1:4]] <- rnorm(4, 4.5, 0.7)
+v2$adjP[sel[7:10]] <- 10^(-runif(4, 5, 10)); v2$logFC[sel[7:10]] <- rnorm(4, -4.5, 0.7)
+v2$pathway <- sample(c("Pathway A", "Pathway B", "Pathway C"), n_v2, TRUE,
+                     prob = c(0.05, 0.05, 0.9))
+v2$pathway[sel] <- rep(c("Pathway A", "Pathway B"), c(6, 4))
+selected <- v2[sel, ]
+selected$pathway <- factor(selected$pathway, levels = c("Pathway A", "Pathway B"))
+
+logFCcut <- 1.5; pvalCut <- 0.05
+logFCcut2 <- 2.5; pvalCut2 <- 1e-4
+logFCcut3 <- 5; pvalCut3 <- 1e-5
+pathcol <- c("Pathway A" = "darkgreen", "Pathway B" = "chocolate4", "Pathway C" = "blueviolet")
+
+v2$y <- -log10(v2$adjP)
+v2$tier <- 1
+v2$tier[abs(v2$logFC) > logFCcut & v2$adjP < pvalCut] <- 2
+v2$tier[abs(v2$logFC) > logFCcut2 & v2$adjP < pvalCut2] <- 3
+v2$tier[abs(v2$logFC) > logFCcut3 & v2$adjP < pvalCut3] <- 4
+v2$col <- "grey75"
+v2$col[v2$tier == 2] <- "grey45"
+v2$col[v2$tier == 3 & v2$logFC > 0] <- "#F49A9A"
+v2$col[v2$tier == 3 & v2$logFC < 0] <- "#8FB2E0"
+v2$col[v2$tier == 4 & v2$logFC > 0] <- "#D93F3C"
+v2$col[v2$tier == 4 & v2$logFC < 0] <- "#184A8C"
+v2$col[sel] <- pathcol[v2$pathway[sel]]
+v2$size <- c(1, 1.6, 2.2, 3)[v2$tier]
+lab_df <- selected
+lab_df$y <- -log10(lab_df$adjP)
+
+ggplot(v2, aes(logFC, y)) +
+  geom_point(colour = v2$col, size = v2$size, alpha = 0.9) +
+  geom_vline(xintercept = c(-logFCcut, logFCcut), linetype = "dashed", colour = "grey40") +
+  geom_hline(yintercept = -log10(pvalCut), linetype = "dashed", colour = "grey40") +
+  geom_point(data = lab_df, aes(logFC, y), shape = 21, colour = "black",
+             size = 3.4, fill = NA, stroke = 0.8, inherit.aes = FALSE) +
+  geom_label_repel(data = lab_df, aes(label = gsym, colour = pathway),
+                   size = 3.2, fontface = "bold", box.padding = 0.5,
+                   show.legend = FALSE, max.overlaps = 20) +
+  scale_colour_manual(values = pathcol, name = "Selected pathway") +
+  labs(x = "log2 fold change", y = "-log10 adjusted P",
+       title = "Tiered volcano: thresholds at 1.5/2.5/5 and 0.05/1e-4/1e-5") +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Write the tier assignment as an **explicit ordered table** (`tier <- 1; tier[gate2] <- 2; ...`) — one gate per line is auditable; a chain of `ifelse()` over four thresholds is not.
+-   Validation picks get *three* encodings (pathway colour, black circle, label) — the circle is what survives when the label is repelled away, so keep both.
+-   Say the gates in the caption exactly as coded; "more significant" invites readers to invent thresholds you did not use.
+:::
+
+## Reference## Reference
 
 \[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
