@@ -474,6 +474,66 @@ ggraph(graph, layout = "dendrogram", circular = TRUE) +
 -   气泡只能承载大小（|logFC|）——方向交给颜色。更深的层级（通路 → 子通路 → 基因）只需扩展边表。
 :::
 
+### 8. 泛癌 NES 泡点矩阵
+
+running-score 主图的泛癌姊妹篇把多个癌种并排：每个癌种 × 通路一格一泡，颜色携带标准化富集分（NES），大小携带显著性 \[4\]——一眼即可回答哪些通路在哪些癌中变动。下面模拟的 NES 矩阵内建了连贯模式（增殖型队列拉动细胞周期/p53，代谢型队列拉动缺氧/糖酵解），使面板的判读顺序可验证；真实流程中该矩阵来自对各队列 limma 对比结果运行 `fgsea::fGSEA()`。
+
+```{r}
+#| label: fig-8.1PanCancerNesGrid
+#| fig-cap: "泛癌 NES 泡点矩阵：癌种横排、通路纵列；颜色=标准化富集分，大小=-log10(FDR)；内建的增殖/代谢模式如设计般可辨。"
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 6.5
+
+library(colorspace)
+set.seed(7201)
+tumors <- c("BLCA", "BRCA", "CESC", "CHOL", "COAD", "LUAD", "LUSC", "PAAD", "PRAD", "UCEC")
+terms <- c("P53_PATHWAY", "CELL_CYCLE", "APOPTOSIS", "GLYCOLYSIS", "HYPOXIA",
+           "EMT", "INFLAMMATION", "ANGIOGENESIS", "OXPHOS", "DNA_REPAIR")
+nes <- matrix(rnorm(length(tumors) * length(terms), 0, 1.25),
+              nrow = length(tumors), dimnames = list(tumors, terms))
+# coherent biology: proliferative cohorts move cell-cycle/p53/DNA-repair up and
+# apoptosis down; metabolic cohorts move hypoxia/glycolysis up
+prolif <- c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, TRUE)
+metab  <- !prolif
+for (k in seq_along(tumors)) {
+  if (prolif[k]) { nes[k, c("CELL_CYCLE", "P53_PATHWAY", "DNA_REPAIR")] <-
+                     nes[k, c("CELL_CYCLE", "P53_PATHWAY", "DNA_REPAIR")] + 1.7
+                   nes[k, "APOPTOSIS"] <- nes[k, "APOPTOSIS"] - 1.4 }
+  if (metab[k])  { nes[k, c("HYPOXIA", "GLYCOLYSIS")] <-
+                     nes[k, c("HYPOXIA", "GLYCOLYSIS")] + 1.8 }
+}
+fdr <- matrix(10^(-(abs(as.numeric(nes)) * 0.9 + runif(length(nes), 0, 1.2))),
+              nrow = length(tumors))
+rownames(fdr) <- tumors; colnames(fdr) <- terms
+tab <- do.call(rbind, lapply(tumors, function(t)
+  data.frame(tumor = t, term = colnames(nes), NES = nes[t, ], FDR = fdr[t, ],
+             stringsAsFactors = FALSE)))
+stopifnot(sum(tab$FDR < 0.05 & abs(tab$NES) > 1.6) >= 12)
+mypal <- colorRampPalette(c("#303B7F", "#EECA1F", "#D51113"))(n = 128)
+p_b <- ggplot(tab, aes(tumor, term)) +
+  geom_point(aes(size = -log10(FDR), colour = NES)) +
+  scale_colour_gradientn("NES", colours = mypal, limits = c(-3, 3), na.value = "grey88") +
+  scale_size_continuous(range = c(0.5, 6), guide = "none") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+        axis.title = element_blank(), panel.border = element_rect(linewidth = 0.6),
+        legend.position = "bottom") +
+  labs(x = NULL, y = NULL)
+print(p_b)
+```
+
+::: callout-tip
+**实践要点**
+
+-   用 `limits = c(-3, 3)` 锁定色标：并排比较的面板必须共享同一 NES 映射，否则比较作废。
+-   大小映射 `-log10(FDR)` 并隐去其图例——读者应读颜色（方向与强度），而非同时对抗两种编码。
+-   非显著格用 `na.value` 保留而非删除；癌种 × 通路的空白十字本身也是信息。
+:::
+
 ## Application
 
 运行得分 GSEA 图是转录组差异通路水平解读的标准配图：肿瘤-正常特征、药物扰动筛选和单细胞聚类标志基因。下图模拟典型论文版式：(A) 带p值表的经典单集图，(B) 多集叠加图。

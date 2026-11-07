@@ -423,6 +423,61 @@ pL + pR + plot_annotation(tag_levels = "A")
 -   两个队列须真正独立（不同平台/机构）；内部训练/测试划分会虚增双重命中数。
 :::
 
+### 9. 多标志物 ROC 面板与 AUC 置信区间
+
+当需要并列评判多个候选标志物时，经典 \[5\] 的 base 图形面板仍是最佳载体：平滑曲线共置同一坐标框，对角线作机会参照，图例直接打印带置信区间的 AUC，读者无需查表即可排序。`pROC` 三步俱备——平滑、bootstrap 置信区间，以及用 `roc.test()` 对两端极值的配对比较。
+
+```{r}
+#| label: fig-9.1MultiBiomarkerROC
+#| fig-cap: "四条候选生物标志物的平滑 ROC 曲线对照机会对角线；图例打印 AUC 及其 bootstrap 95% 置信区间——M4 可区分队列，M1 不能。"
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 6.2
+#| fig-height: 5.6
+
+set.seed(7101)
+n <- 260
+cls <- rep(c("Control", "Case"), each = n / 2)
+# four markers with graded separation strength
+mu_case <- c(0.15, 0.55, 0.95, 1.35)     # M1..M4 case-mean shift
+sd_m <- c(1.0, 1.05, 1.0, 1.1)
+mk <- function(mu, s) c(rnorm(n / 2, 0, s), rnorm(n / 2, mu, s))
+mat <- as.data.frame(lapply(seq_along(mu_case), function(k) mk(mu_case[k], sd_m[k])))
+colnames(mat) <- paste0("M", 1:4)
+dat <- cbind(data.frame(cls = cls), mat)
+
+auc_tab <- list(); cols <- c(M1 = "#2166AC", M2 = "#4D9342", M3 = "#B2182B", M4 = "#E08214")
+plot(NA, NA, xlim = c(0, 1), ylim = c(0, 1), xlab = "1 - Specificity",
+     ylab = "Sensitivity", bty = "n", pch = NA,
+     main = "Diagnostic ROC of four candidate biomarkers")
+abline(0, 1, lty = 2, col = "grey60", lwd = 1)
+for (m in paste0("M", 1:4)) {
+  r <- roc(dat$cls == "Case", dat[[m]], ci = TRUE, smooth = TRUE)
+  a <- as.numeric(r$auc); ci <- as.numeric(r$ci[c(1, 3)])
+  lines(1 - r$spec, r$sens, col = cols[[m]], lwd = 2.2)
+  auc_tab[[m]] <- data.frame(marker = m, auc = a, lo = ci[1], hi = ci[2])
+}
+auc_df <- do.call(rbind, auc_tab)
+rownames(auc_df) <- NULL
+leg <- paste0(auc_df$marker, "  AUC ", sprintf("%.3f", auc_df$auc),
+              " [", sprintf("%.3f", auc_df$lo), "-", sprintf("%.3f", auc_df$hi), "]")
+legend("bottomright", legend = leg, col = cols, lwd = 2.2, bty = "n", cex = 0.85)
+# gates: the strong pair is clearly diagnostic, the weak pair stays near chance,
+# and the two extremes differ beyond noise under a bootstrap comparison
+stopifnot(min(auc_df$auc[c(3, 4)]) > 0.72 && max(auc_df$auc[1:2]) < 0.70)
+tt <- roc.test(dat$cls == "Case", dat$M4, dat$M1, method = "bootstrap", nb = 300)
+stopifnot(tt$p.value < 0.02)
+```
+
+::: callout-tip
+**实践要点**
+
+-   `smooth = TRUE` 拟合双正态 ROC；样本小或分布不平时，经验曲线（`smooth = FALSE`）更诚实，平滑曲线在印刷上更好读。
+-   报告 AUC 务必连置信区间一起——在 n < 300 时，裸点估计掩盖了 0.65 与 0.72 之间其实微不足道的差距。
+-   `roc.test(..., method = "bootstrap")` 比较同批样本上的两条曲线；标志物多于两个时，成对 p 值宜放入补充材料，不要堆上图面。
+:::
+
 ## 应用
 
 Time-dependent ROC 曲线广泛用于肿瘤预后模型论文中，以报告在临床有意义的时间点（1、3、5 年）的区分能力，常与校准曲线、决策曲线分析并列出现。下图按照论文常用版式组装本教程的输出：(A) 二元模型的标准 ROC；(B) 固定时间点的 time-dependent ROC。

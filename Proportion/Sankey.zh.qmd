@@ -238,6 +238,62 @@ p5_2 <- ggplot(drug,
 p5_2
 ```
 
+### 3. 三层桑基图：基因到突变类别到亚型
+
+一个队列有多少注释就有多少身份：同一个突变样本同时是一个基因、一种突变类别和一个亚型。桑基形式 \[11\] 把这些层并排摆放，让层间流动自己说话——哪个基因的病例落入哪个亚型、经由哪种突变类别。`ggalluvial::to_lodes_form()` 把宽注释表转成 lode 格式，stratum 路线从第一层起逐层着墨：方块高度携带计数，流带携带交叉。
+
+```{r}
+#| label: fig-3.1ThreeLayerAlluvium
+#| fig-cap: "模拟队列的三层桑基图：基因、突变类别与亚型为层；方块高度即计数，流带让基因-亚型的交叉一目了然。"
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 7.0
+#| fig-height: 5.0
+
+set.seed(7501)
+n <- 420
+genes <- c("TP53", "KRAS", "EGFR", "PIK3CA")
+gprob <- c(0.34, 0.26, 0.22, 0.18)
+mutlv <- c("Mis", "Non", "Fs", "Sil")
+dfE <- data.frame(gene = sample(genes, n, replace = TRUE, prob = gprob),
+                  stringsAsFactors = FALSE)
+dfE$mutation <- ifelse(dfE$gene == "TP53",
+                       sample(c("Mis", "Non", "Fs", "Sil"), n, replace = TRUE, prob = c(.5, .2, .2, .1)),
+                       sample(mutlv, n, replace = TRUE, prob = c(.4, .25, .2, .15)))
+dfE$subtype <- ifelse(dfE$gene %in% c("TP53"),
+                      sample(c("Basal", "Luminal", "Normal"), n, replace = TRUE, prob = c(.5, .3, .2)),
+                      sample(c("Basal", "Luminal", "Normal"), n, replace = TRUE, prob = c(.2, .5, .3)))
+loE <- to_lodes_form(dfE[, c("gene", "mutation", "subtype")], key = "Gene", axes = 1:3, id = "Cohort")
+stopifnot(sum(is.na(loE$stratum)) == 0 && nrow(loE) > 0)
+mycol <- rep(c("#223D6C", "#D20A13", "#FFD121", "#088247", "#11AA4D", "#58CDD9",
+               "#7A142C", "#5D90BA", "#029149", "#431A3D", "#91612D", "#6E568C",
+               "#E0367A", "#D8D155", "#64495D", "#7CC767"), 2)
+p_e <- ggplot(loE, aes(x = Gene, stratum = stratum, alluvium = Cohort,
+                       fill = stratum, label = stratum)) +
+  scale_x_discrete(expand = c(0, 0)) +
+  geom_flow(width = 1 / 9) +
+  geom_stratum(alpha = 0.92, width = 1 / 11) +
+  geom_text(stat = "stratum", size = 2.5, colour = "black") +
+  scale_fill_manual(values = mycol, guide = "none") +
+  labs(x = NULL, y = NULL) +
+  theme_void(base_size = 11) +
+  theme(panel.grid = element_blank(), axis.line = element_blank(),
+        axis.ticks = element_blank(), axis.text = element_blank())
+print(p_e)
+# gate: every gene reaches >= 2 subtypes - the crossing the alluvium exists to show
+cross <- with(dfE, tapply(subtype, gene, function(z) length(unique(z))))
+stopifnot(all(cross >= 2))
+```
+
+::: callout-tip
+**实践要点**
+
+-   `to_lodes_form()` 要求每观测一行；若表已聚合为计数，请改用 `aes(y = Freq, axis1 = ..., axis2 = ...)` 配 `geom_flow(stat = "alluvium")` 路线。
+-   层本身是故事时给 stratum 着色；出发点是故事时按源层给流带上色——选一种编码，不要两种都要。
+-   `geom_text(stat = "stratum")` 身兼层标签与计数两职——趁早删掉坐标轴，免得两者打架。
+:::
+
 ## 应用场景
 
 ::: {#fig-SankeyApplications}
@@ -270,4 +326,4 @@ p5_2
 
 \[10\] Brunson JC, Read QD. ggalluvial: Alluvial Plots in 'ggplot2'. R package version 0.12.5. 2023. [https://CRAN.R-project.org/package=ggalluvial](https://cran.r-project.org/package=ggalluvial)
 
-
+\[11\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
