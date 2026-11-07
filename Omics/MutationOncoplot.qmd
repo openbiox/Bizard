@@ -502,7 +502,7 @@ p_sig / p_expo + patchwork::plot_layout(heights = c(1.2, 1))
 
 ### 9. Mutation-Context Lego/Heatmap with Class Pie
 
-Mutation signatures read best as a **6 × 16 grid**: six substitution classes, sixteen 3'-flanking contexts per class, bar height or colour depth for counts. The reference figure renders this as a 3D lego plot (`barplot3d` + `rgl`); the 2D heatmap twin carries the same information without the 3D dependency, and the class pie summarises the six-way split \[5\].
+Mutation signatures read best as a **6 × 16 grid**: six substitution classes, sixteen 3'-flanking contexts per class, bar height or colour depth for counts. The reference figure renders this as a 3D lego plot (`barplot3d` + `rgl`); the 2D heatmap twin carries the same information without the 3D dependency, and the class pie summarises the six-way split \[4\].
 
 ```{r}
 #| label: fig-9.1ContextHeatmap
@@ -562,6 +562,92 @@ patchwork::wrap_elements(full = p_heat) |
 -   The 4 × 4 block inside each colour class is the lego plot's advantage over the classic 96-bar chart: the two flanking bases read as a matrix, so context preferences (e.g. TpC for APOBEC) pop out.
 -   The 3D lego version needs `barplot3d` + `rgl` (screen-only, saved via `rgl.postscript`); this 2D heatmap + pie pair is publication-portable and renders identically on CI.
 -   With a real MAF, `maftools::trinucleotideMatrix()` builds the same 96-vector (needs `BSgenome.Hsapiens`); feed `count` from it and keep the plotting half.
+:::
+
+### 10. Mutation Landscape with Signature Contribution Track
+
+The reference molecular-landscape panel stacks four evidence layers on one sample axis - alteration matrix, burden, subtype, signature contribution - and orders the samples by the signature that explains their mutation pattern \[4\]. `ComplexHeatmap` composes exactly this: an `oncoPrint` block with `anno_barplot` burden and a class strip, `%v%`-stacked with a `pheatmap` signature block whose columns share the oncoprint sample order.
+
+```{r}
+#| label: fig-10.1LandscapeSignature
+#| fig-cap: "Two blocks stacked on one sample axis: the oncoprint (top TMB bars, bottom iCS colour strip) over a three-row APOBEC/AFR2/OTHER signature-contribution heatmap, samples sorted by subtype then signature share."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 4.5
+
+set.seed(6501)
+genes_e <- c("TP53", "EGFR", "KRAS", "STK11", "KEAP1", "PIK3CA", "PTEN", "RB1", "CDKN2A", "NF1")
+n_e <- 48
+subt <- rep(c("iCS-1", "iCS-2", "iCS-3"), c(18, 16, 14))
+# 各亚型的突变概率：亚型特异性驱动基因
+pa <- c(.65, .55, .25, .10, .15, .20, .10, .15, .10, .05)
+pb <- c(.20, .10, .60, .55, .10, .15, .35, .25, .05, .10)
+pcx <- c(.15, .20, .20, .15, .75, .10, .10, .10, .55, .40)
+samples_e <- sprintf("T%02d", 1:n_e)
+mat_e <- matrix("", nrow = length(genes_e), ncol = n_e, dimnames = list(genes_e, samples_e))
+tmb_e <- integer(n_e)
+for (j in 1:n_e) {
+  p_use <- switch(subt[j], "iCS-1" = pa, "iCS-2" = pb, pcx)
+  hits <- genes_e[runif(length(genes_e)) < p_use]
+  if (length(hits) == 0) { mat_e[genes_e[1], j] <- "Mis"; tmb_e[j] <- 1L; next }
+  for (g in hits) {
+    mat_e[g, j] <- sample(c("Mis", "Non", "Fs"), 1, prob = c(0.6, 0.25, 0.15))
+    tmb_e[j] <- tmb_e[j] + 1L
+  }
+}
+# APOBEC 签名占比 = 原图景观的排序键
+sig_key <- ifelse(as.character(subt) == "iCS-1", 0.62,
+              ifelse(as.character(subt) == "iCS-2", 0.30, 0.18)) + runif(n_e, -0.05, 0.05)
+sig_mat <- rbind(APOBEC = sig_key,
+                 AFR2  = 1 - sig_key + runif(n_e, -0.05, 0.05),
+                 OTHER = runif(n_e, 0.02, 0.20))
+dimnames(sig_mat) <- list(c("APOBEC", "AFR2", "OTHER"), samples_e)
+# 先按亚型、亚型内再按签名占比降序
+ord <- order(factor(subt, levels = c("iCS-1", "iCS-2", "iCS-3")), -sig_key)
+mat_e <- mat_e[, ord]; sig_mat <- sig_mat[, ord]; tmb_e <- tmb_e[ord]
+subt_o <- factor(subt[ord], levels = c("iCS-1", "iCS-2", "iCS-3"))
+stopifnot(all(tmb_e <= length(genes_e)) && all(tmb_e >= 1) &&
+          all(sig_mat["APOBEC", ] >= 0 & sig_mat["APOBEC", ] <= 1))
+rect_fun <- function(color) function(x, y, w, h)
+  grid.rect(x, y, w * 0.92, h * 0.92, gp = gpar(fill = color, col = NA))
+alter_fun <- list(background = rect_fun("#F4F4F4"), Mis = rect_fun("#3690C0"),
+                  Non = rect_fun("#A50F15"), Fs = rect_fun("#F16913"))
+top_anno <- HeatmapAnnotation(
+  TMB = anno_barplot(tmb_e, height = unit(1.0, "cm"),
+                     gp = gpar(fill = "#6A51A3", col = NA),
+                     axis_param = list(gp = gpar(fontsize = 6))),
+  annotation_name_gp = gpar(fontsize = 7))
+bot_anno <- HeatmapAnnotation(
+  iCS = as.character(subt_o),
+  col = list(iCS = c("iCS-1" = "#E08214", "iCS-2" = "#5E3C99", "iCS-3" = "#2A9F8F")),
+  annotation_name_side = "left", annotation_name_gp = gpar(fontsize = 7))
+op1 <- ComplexHeatmap::oncoPrint(mat_e, alter_fun = alter_fun,
+  alter_fun_is_vectorized = FALSE,
+  col = c(Mis = "#3690C0", Non = "#A50F15", Fs = "#F16913"),
+  show_column_names = FALSE, show_row_names = TRUE,
+  row_names_gp = gpar(fontsize = 7, fontface = "italic"),
+  row_title_gp = gpar(fontsize = 0.1),
+  top_annotation = top_anno, bottom_annotation = bot_anno,
+  heatmap_legend_param = list(space = "none"),
+  width = unit(8.6, "cm"), height = unit(3.4, "cm"))
+# 签名块共享样本 x 序；%v% 将其叠于 oncoprint 之下
+op2 <- ComplexHeatmap::pheatmap(mat = sig_mat,
+  color = colorRampPalette(c("white", "#B2182B"))(99),
+  cluster_rows = FALSE, cluster_cols = FALSE,
+  show_rownames = TRUE, show_colnames = FALSE,
+  cellwidth = unit(18, "pt"), cellheight = unit(11, "pt"),
+  border_color = "white", legend = FALSE)
+draw(op1 %v% op2)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Both blocks must consume the SAME `ord` permutation of samples - one reordered vector is the whole trick behind a legible stacked landscape.
+-   `heatmap_legend_param = list(space = "none")` silences the per-block legend; give legends once, in the caption or a dedicated block.
+-   Real data: take per-sample signature exposures from `maftools::get.mutationMatrix()`/SigProfiler rather than simulated shares, and let the sort key (`sig_key`) be a genuine SBS exposure.
 :::
 
 ## Applications

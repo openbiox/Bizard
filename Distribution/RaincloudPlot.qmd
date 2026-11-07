@@ -178,6 +178,61 @@ ggplot(penguins_clean) +
   coord_flip()
 ```
 
+### 4. Box-and-Density Stacked Pair
+
+A distribution and its summary say different things; stacked, they say it together: the density panel exposes bimodality or long tails the boxes average away, the box panel hands over medians, spreads and the group-comparison test \[3\]. One palette shared by both panels plus matched category axes makes the seam disappear. `aplot::annotation_boxplot()` packages the same composition with statistical brackets when needed.
+
+```{r}
+#| label: fig-4.1BoxDensityPair
+#| fig-cap: "Cisplatin AUC estimates for three response strata: density curves with rug marks on top, horizontal box plots below, both panels painted from one palette with the Kruskal-Wallis p slung along the seam."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 7
+
+library(patchwork)
+set.seed(6401)
+df <- data.frame(
+  Drug = rep("Cisplatin", 180),
+  Subtype = rep(c("Sensitive", "Intermediate", "Resistant"), each = 60),
+  AUC = c(rnorm(60, 0.62, 0.05), rnorm(60, 0.74, 0.05), rnorm(60, 0.86, 0.05)))
+# 超过两组 -> Kruskal-Wallis；恰两组时可换 t.test/wilcox.test
+p.val <- kruskal.test(AUC ~ Subtype, data = df)
+stopifnot(p.val$p.value < 0.001)
+p.lab <- paste0("P ", ifelse(p.val$p.value < 0.001, "< 0.001", round(p.val$p.value, 3)))
+# 同一套色盘驱动两面板，跨接缝颜色可直读
+pal3 <- c(Sensitive = "#C7EAB2", Intermediate = "#5FC1C2", Resistant = "#1B90BE")
+p_top <- ggplot(df, aes(AUC, colour = Subtype, fill = Subtype)) +
+  geom_density(alpha = 0.65, linewidth = 0.5) +
+  geom_rug(alpha = 0.4) +
+  scale_colour_manual(values = pal3) + scale_fill_manual(values = pal3) +
+  labs(x = paste0("Estimated AUC of ", unique(df$Drug)), y = NULL) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none", axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(), axis.line.y = element_blank(),
+        panel.grid.major.y = element_blank())
+# 下面板：coord_flip 使箱线进入同一水平流向
+p_bot <- ggplot(df, aes(Subtype, AUC, fill = Subtype, colour = Subtype)) +
+  geom_boxplot(width = 0.55, outlier.size = 1.1) +
+  scale_fill_manual(values = pal3) + scale_colour_manual(values = pal3) +
+  annotate(geom = "text", x = 1.52, y = max(df$AUC), hjust = 1,
+           size = 3.4, fontface = "bold", angle = 270, label = p.lab) +
+  coord_flip() + labs(x = NULL, y = "Estimated AUC") +
+  theme_void(base_size = 11) +
+  theme(legend.position = "none", axis.text.y = element_blank(),
+        axis.ticks = element_blank(), panel.grid.major = element_blank())
+print(p_top / p_bot + plot_layout(heights = c(2, 3)))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The p label rides at `x = 1.52` inside the flipped panel - a coordinate between the first two factor levels, rotated 270 degrees into the empty top strip.
+-   Drop the box panel x-axis and the density panel y-axis: the shared category order is the only register the reader has to track.
+-   Two-group data: swap the Kruskal-Wallis for `t.test()`/`wilcox.test()` and the layout holds unchanged; with many groups the `angle = 270` label keeps long p strings out of the boxes.
+:::
+
 ## Applications
 
 -   **Comparing distributions across groups**: the standard upgrade from bar-plus-error-bar figures whenever reviewers ask for the raw data.
@@ -190,3 +245,5 @@ ggplot(penguins_clean) +
 \[1\] 顶刊图社 | 第017期：箱线图/小提琴图/云雨图. WeChat article. <http://mp.weixin.qq.com/s?__biz=MzU5NjE2ODU0OQ==&mid=2247483936&idx=1&sn=cf22ad37b9afc52a0af1f27daf8a4711>
 
 \[2\] Allen M, Poggiali D, Whitaker K, Marshall TR, Kievit RA. Raincloud plots: a multi-platform tool for robust data visualization. Wellcome Open Res. 2019;4:63. doi:10.12688/wellcomeopenres.15191.1
+
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

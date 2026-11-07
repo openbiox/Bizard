@@ -374,6 +374,137 @@ ggplot(score_df, aes(subtype, score, fill = subtype)) +
 -   在 z-score（按样本）后的表达式上计得分，避免高表达管家基因主导 PC1。
 :::
 
+### 7. PC1 载荷解读表达程序
+
+单条主成分即可承载整条生物学梯度：样本得分给出亚型排序，变量载荷点名其背后的基因 \[2\]。将轴调向使上调标记基因集占据正载荷一侧，两个面板即可同源于一次 `prcomp` 分解直读。参考研究即沿 PC1 排开四类卵母细胞亚型，并把发育标记基因印于同一坐标之上。
+
+```{r}
+#| label: fig-7.1PCLoadings
+#| fig-cap: "左：四类卵母细胞样亚型（C1-C4）于 PC1/PC2 平面。右：六个标记基因的 PC1 载荷——卵泡发育基因集居零线一侧，减数分裂/甲基化基因集居另一侧。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.2
+
+library(patchwork)
+set.seed(6101)
+subtypes <- c("C1", "C2", "C3", "C4")
+n_cell <- 120
+cls <- rep(subtypes, each = n_cell / 4)
+prog <- as.numeric(factor(cls, levels = subtypes))      # differentiation score 1..4
+base_genes <- paste0("G", sprintf("%03d", 1:40))
+mark_up <- c("ZP1", "BMP15", "GDF9")   # folliculogenesis genes rising with C1 -> C4
+mark_dn <- c("WEE2", "AURKA", "DNMT3A")  # meiosis/methylation genes falling along it
+genes <- c(base_genes, mark_up, mark_dn)
+mu <- matrix(rnorm(length(genes) * n_cell, sd = 0.5), nrow = length(genes),
+             dimnames = list(genes, paste0("cell", 1:n_cell)))
+# 标记基因随发育梯度变化：整个矩阵即是
+for (g in mark_up) mu[g, ] <- mu[g, ] + 3.6 * (prog / max(prog))
+for (g in mark_dn) mu[g, ] <- mu[g, ] - 3.6 * (prog / max(prog))
+pc <- prcomp(t(mu), scale. = TRUE)
+score <- pc$x[, 1]; load1 <- pc$rotation[, 1]
+# 主成分轴的符号是任意的：调向使上调组占据正载荷一侧
+if (mean(load1[mark_up]) < mean(load1[mark_dn])) { load1 <- -load1; score <- -score }
+stopifnot(min(load1[mark_up]) > max(load1[mark_dn]))
+var_pct <- round(pc$sdev^2 / sum(pc$sdev^2) * 100, 1)
+df_cells <- data.frame(PC1 = score, PC2 = pc$x[, 2], subtype = cls)
+p_a <- ggplot(df_cells, aes(PC1, PC2, colour = subtype)) +
+  geom_point(size = 1.6, alpha = 0.8) +
+  scale_colour_manual(values = c(C1 = "#8E3189", C2 = "#4C72B4", C3 = "#85B846", C4 = "#C64941")) +
+  labs(x = paste0("PC1 (", var_pct[1], "%)"), y = paste0("PC2 (", var_pct[2], "%)")) +
+  theme_classic(base_size = 11)
+df_genes <- rbind(data.frame(gene = mark_up, load = load1[mark_up], set = "up"),
+                  data.frame(gene = mark_dn, load = load1[mark_dn], set = "down"))
+p_b <- ggplot(df_genes, aes(load, reorder(gene, load))) +
+  geom_segment(aes(xend = 0), colour = "grey65", linewidth = 0.5) +
+  geom_point(aes(colour = set), size = 3.2) +
+  scale_colour_manual(values = c(up = "#B2182B", down = "#2166AC"), guide = "none") +
+  geom_vline(xintercept = 0, colour = "grey30", linewidth = 0.4) +
+  labs(x = "PC1 loading", y = NULL) +
+  theme_classic(base_size = 11) + theme(panel.grid.major.x = element_blank())
+print(p_a + p_b + plot_layout(ncol = 2, guides = "collect"))
+```
+
+::: callout-tip
+**实践要点**
+
+-   `prcomp` 定主成分符号凭约定而非生物学——翻向守卫令解读跨种子稳定；缺它则同数据可印成镜像。
+-   `stopifnot(min(load1[mark_up]) > max(load1[mark_dn]))` 在真实数据上亦宜保留：当 PC1 只是噪声而非梯度时它响亮报错。
+-   `rotation` 存载荷、`x` 存得分；两面板同取一次分解，得分与载荷的叙事必然一致。
+:::
+
+### 8. K-means 簇的 PCA 平面凸包边界图
+
+聚类算法在无人能直观想象的高维空间中计算距离；把同一矩阵以 PCA 投影、并为每簇画出凸包，分区干净与否即一目了然 \[2\]——两簇凸包交叠正是 k 过拟合的视觉信号。`factoextra::fviz_pca_ind(..., addEllipses = TRUE)` 画的是高斯椭圆；凸包贴合真实样本云，对畸态簇亦不失诚。
+
+```{r}
+#| label: fig-8.1KmeansHullPCA
+#| fig-cap: "PCA 平面上的四个 k-means 簇：逐簇凸包多边形标记经验分区，防重叠标签各标注一个代表样本，坐标轴打印方差解释份额。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5.2
+
+library(patchwork)
+library(ggrepel)
+set.seed(6201)
+n_s <- 96
+lab4 <- c("G1", "G2", "G3", "G4")
+grp <- rep(lab4, each = n_s / 4)
+n_feat <- 32
+mat <- matrix(rnorm(n_feat * n_s, sd = 0.65), nrow = n_feat,
+              dimnames = list(paste0("Gene", 1:n_feat), NULL))
+# 每个真实簇携带一个高表达标记块 -> 簇间分离干净可审
+for (k in 1:4) {
+  blk <- ((k - 1) * 8 + 1):(k * 8)          # eight-gene marker block per cluster
+  mat[blk, grp == lab4[k]] <- mat[blk, grp == lab4[k]] + 3.2
+}
+set.seed(6202)
+km <- kmeans(t(mat), centers = 4, nstart = 25)   # k-means clusters the rows of x
+pa <- prcomp(t(mat), scale. = TRUE)
+dat <- data.frame(PC1 = pa$x[, 1], PC2 = pa$x[, 2],
+                  cluster = factor(paste0("C", km$cluster), levels = paste0("C", 1:4)),
+                  rownames = sprintf("S%02d", 1:n_s))
+# 可恢复性门槛：每个真实组的多数成员须落入同一簇
+tb <- table(grp, dat$cluster)
+hit <- sum(tb[cbind(seq_len(nrow(tb)), apply(tb, 1, which.max))])
+stopifnot(hit / n_s >= 0.90)
+var1 <- round(pa$sdev[1]^2 / sum(pa$sdev^2) * 100, 1)
+var2 <- round(pa$sdev[2]^2 / sum(pa$sdev^2) * 100, 1)
+hull_rows <- list()
+for (k in levels(dat$cluster)) {
+  d <- dat[dat$cluster == k, ]
+  hi <- chull(d$PC1, d$PC2)                 # re-exported by ggplot2 from scales
+  hull_rows[[k]] <- data.frame(PC1 = d$PC1[hi], PC2 = d$PC2[hi],
+                               cluster = factor(k, levels = levels(dat$cluster)))
+}
+hulls <- do.call(rbind, hull_rows)
+stopifnot(all(is.finite(c(hulls$PC1, hulls$PC2))) && nrow(hulls) >= 12)
+tag <- dat[!duplicated(dat$cluster), ]       # one labelled representative per cluster
+tag <- tag[order(as.numeric(factor(tag$cluster))), ]
+ggplot() +
+  geom_polygon(data = hulls, aes(PC1, PC2, group = cluster, fill = cluster),
+               alpha = 0.22, colour = NA) +
+  geom_point(data = dat, aes(PC1, PC2, colour = cluster), size = 2) +
+  geom_text_repel(data = tag, aes(PC1, PC2, label = rownames),
+                  size = 2.4, force = 2, max.iter = 200) +
+  scale_fill_manual(values = c(C1 = "#B2182B", C2 = "#2166AC", C3 = "#4D9342", C4 = "#EABF00")) +
+  scale_colour_manual(values = c(C1 = "#8A1B24", C2 = "#174A85", C3 = "#2F6B28", C4 = "#9E7E00")) +
+  labs(x = paste0("PC1 (", var1, "%)"), y = paste0("PC2 (", var2, "%)"),
+       title = "K-means groups on the PCA plane, hull = empirical partition") +
+  theme_bw(base_size = 11) + theme(legend.title = element_blank())
+```
+
+::: callout-tip
+**实践要点**
+
+-   k-means 对 `x` 的行聚类——行=基因的矩阵须传 `t(mat)`，且 `prcomp` 取同一朝向，得分与簇才对应同一样本序。
+-   `chull()` 经 ggplot2（自 scales 再导出）可得；逐簇求取后重建为单一数据框，簇列保持因子，`group`/`fill` 方不致错位。
+-   混淆矩阵断言在图先于肉眼拦下失败运行：真实队列恢复率低于 ~0.9 即提示重审 k 或修剪特征。
+:::
+
 ## 应用场景
 
 ::: {#fig-UpsetApplications}

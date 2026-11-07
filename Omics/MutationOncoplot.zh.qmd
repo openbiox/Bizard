@@ -500,7 +500,7 @@ p_sig / p_expo + patchwork::plot_layout(heights = c(1.2, 1))
 
 ### 9. 突变上下文乐高/热图与类别饼图
 
-突变 signature 最适合以 **6 × 16 网格**呈现：六个替换类别，每类 16 个 3' 侧翼上下文，柱高或颜色深度表示计数。参考图以 3D 乐高图（`barplot3d` + `rgl`）渲染；2D 热图孪生版携带相同信息且无 3D 依赖，类别饼图总结六分占比 \[5\]。
+突变 signature 最适合以 **6 × 16 网格**呈现：六个替换类别，每类 16 个 3' 侧翼上下文，柱高或颜色深度表示计数。参考图以 3D 乐高图（`barplot3d` + `rgl`）渲染；2D 热图孪生版携带相同信息且无 3D 依赖，类别饼图总结六分占比 \[4\]。
 
 ```{r}
 #| label: fig-9.1ContextHeatmap
@@ -562,7 +562,93 @@ patchwork::wrap_elements(full = p_heat) |
 -   真实 MAF 用 `maftools::trinucleotideMatrix()` 构建同一 96 向量（需 `BSgenome.Hsapiens`）；取其 `count` 后保留绘图半程。
 :::
 
-## 应用场景
+
+### 10. 带签名贡献轨道的突变景观图
+
+参考版分子景观面板把四层证据叠于同一样本轴——突变矩阵、负荷、亚型、签名贡献——并按能解释其突变模式的签名对样本排序 \[4\]。`ComplexHeatmap` 恰可组成此图：带 `anno_barplot` 负荷与类别色带的 `oncoPrint` 区块，以 `%v%` 叠上列序与母图共享的 `pheatmap` 签名区块。
+
+```{r}
+#| label: fig-10.1LandscapeSignature
+#| fig-cap: "两区块于单一样本轴纵向叠放：oncoprint（顶部 TMB 条、底部 iCS 色带）叠于三行 APOBEC/AFR2/OTHER 签名贡献热图之上，样本按亚型再按签名占比排序。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 4.5
+
+set.seed(6501)
+genes_e <- c("TP53", "EGFR", "KRAS", "STK11", "KEAP1", "PIK3CA", "PTEN", "RB1", "CDKN2A", "NF1")
+n_e <- 48
+subt <- rep(c("iCS-1", "iCS-2", "iCS-3"), c(18, 16, 14))
+# 各亚型的突变概率：亚型特异性驱动基因
+pa <- c(.65, .55, .25, .10, .15, .20, .10, .15, .10, .05)
+pb <- c(.20, .10, .60, .55, .10, .15, .35, .25, .05, .10)
+pcx <- c(.15, .20, .20, .15, .75, .10, .10, .10, .55, .40)
+samples_e <- sprintf("T%02d", 1:n_e)
+mat_e <- matrix("", nrow = length(genes_e), ncol = n_e, dimnames = list(genes_e, samples_e))
+tmb_e <- integer(n_e)
+for (j in 1:n_e) {
+  p_use <- switch(subt[j], "iCS-1" = pa, "iCS-2" = pb, pcx)
+  hits <- genes_e[runif(length(genes_e)) < p_use]
+  if (length(hits) == 0) { mat_e[genes_e[1], j] <- "Mis"; tmb_e[j] <- 1L; next }
+  for (g in hits) {
+    mat_e[g, j] <- sample(c("Mis", "Non", "Fs"), 1, prob = c(0.6, 0.25, 0.15))
+    tmb_e[j] <- tmb_e[j] + 1L
+  }
+}
+# APOBEC 签名占比 = 原图景观的排序键
+sig_key <- ifelse(as.character(subt) == "iCS-1", 0.62,
+              ifelse(as.character(subt) == "iCS-2", 0.30, 0.18)) + runif(n_e, -0.05, 0.05)
+sig_mat <- rbind(APOBEC = sig_key,
+                 AFR2  = 1 - sig_key + runif(n_e, -0.05, 0.05),
+                 OTHER = runif(n_e, 0.02, 0.20))
+dimnames(sig_mat) <- list(c("APOBEC", "AFR2", "OTHER"), samples_e)
+# 先按亚型、亚型内再按签名占比降序
+ord <- order(factor(subt, levels = c("iCS-1", "iCS-2", "iCS-3")), -sig_key)
+mat_e <- mat_e[, ord]; sig_mat <- sig_mat[, ord]; tmb_e <- tmb_e[ord]
+subt_o <- factor(subt[ord], levels = c("iCS-1", "iCS-2", "iCS-3"))
+stopifnot(all(tmb_e <= length(genes_e)) && all(tmb_e >= 1) &&
+          all(sig_mat["APOBEC", ] >= 0 & sig_mat["APOBEC", ] <= 1))
+rect_fun <- function(color) function(x, y, w, h)
+  grid.rect(x, y, w * 0.92, h * 0.92, gp = gpar(fill = color, col = NA))
+alter_fun <- list(background = rect_fun("#F4F4F4"), Mis = rect_fun("#3690C0"),
+                  Non = rect_fun("#A50F15"), Fs = rect_fun("#F16913"))
+top_anno <- HeatmapAnnotation(
+  TMB = anno_barplot(tmb_e, height = unit(1.0, "cm"),
+                     gp = gpar(fill = "#6A51A3", col = NA),
+                     axis_param = list(gp = gpar(fontsize = 6))),
+  annotation_name_gp = gpar(fontsize = 7))
+bot_anno <- HeatmapAnnotation(
+  iCS = as.character(subt_o),
+  col = list(iCS = c("iCS-1" = "#E08214", "iCS-2" = "#5E3C99", "iCS-3" = "#2A9F8F")),
+  annotation_name_side = "left", annotation_name_gp = gpar(fontsize = 7))
+op1 <- ComplexHeatmap::oncoPrint(mat_e, alter_fun = alter_fun,
+  alter_fun_is_vectorized = FALSE,
+  col = c(Mis = "#3690C0", Non = "#A50F15", Fs = "#F16913"),
+  show_column_names = FALSE, show_row_names = TRUE,
+  row_names_gp = gpar(fontsize = 7, fontface = "italic"),
+  row_title_gp = gpar(fontsize = 0.1),
+  top_annotation = top_anno, bottom_annotation = bot_anno,
+  heatmap_legend_param = list(space = "none"),
+  width = unit(8.6, "cm"), height = unit(3.4, "cm"))
+# 签名块共享样本 x 序；%v% 将其叠于 oncoprint 之下
+op2 <- ComplexHeatmap::pheatmap(mat = sig_mat,
+  color = colorRampPalette(c("white", "#B2182B"))(99),
+  cluster_rows = FALSE, cluster_cols = FALSE,
+  show_rownames = TRUE, show_colnames = FALSE,
+  cellwidth = unit(18, "pt"), cellheight = unit(11, "pt"),
+  border_color = "white", legend = FALSE)
+draw(op1 %v% op2)
+```
+
+::: callout-tip
+**实践要点**
+
+-   两区块必须消费同一个 `ord` 样本置换——一个重排向量便是叠放景观可读的全部机关。
+-   `heatmap_legend_param = list(space = "none")` 屏蔽逐块图例；图例只给一次，交图注或专门区块。
+-   真实数据以 `maftools::get.mutationMatrix()`/SigProfiler 取各样本签名暴露量替代模拟占比，排序键（`sig_key`）须为真实 SBS 暴露。
+:::
+
 ## 应用场景
 
 -   **队列刻画**：肿瘤基因组学研究的一线总结图，通常按亚型、分期或治疗臂拆分。

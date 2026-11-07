@@ -226,6 +226,90 @@ The H-L test here is computed on the *uncorrected* fitted probabilities (its sta
 -   Report the H-L p value with the curve, not instead of it — a non-significant test is necessary but not sufficient evidence of calibration.
 :::
 
+### 6. GiViTI Calibration Belt with Bootstrap Bands
+
+The GiViTI approach grades a binary-outcome model at a glance: when the calibration belt - the one-sided bootstrap band of a binned, weighted, forward-selected polynomial through the observed rates - never touches the identity diagonal, calibration is rejected \[5\]. CRAN's `givitiR` provides the canonical implementation; the block below rebuilds the same figure from base R so the page carries no extra dependency and the statistic stays auditable inside ten lines.
+
+```{r}
+#| label: fig-6.1GivitiBelt
+#| fig-cap: "GiViTI-style calibration belt: the observed-rate curve (binned, weighted, forward-selected polynomial) with nested one-sided 80% and 95% bootstrap bands against the ideal diagonal; the mean deviation carries a bootstrap p."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 5
+
+set.seed(6301)
+n <- 600
+age <- runif(n, 40, 90); sten <- rbinom(n, 1, 0.45); hyd <- rbinom(n, 1, 0.3)
+lin <- -2.0 + 0.09 * (age - 65) + 1.20 * sten + 1.00 * hyd
+obs <- rbinom(n, 1, plogis(lin))
+dfl <- data.frame(obs = obs, age = age, sten = sten, hyd = hyd)
+mod <- glm(obs ~ age + sten + hyd, family = binomial, data = dfl)
+pred <- as.numeric(fitted(mod))
+# GiViTI 路线：分箱观测率、加权多项式、前向选择阶数
+fit_giviti <- function(xv, yv, nbins = 14, maxDeg = 3, thres = 0.05) {
+  br <- unique(quantile(xv, seq(0, 1, length.out = nbins + 1)))
+  bi <- as.integer(cut(xv, br, include.lowest = TRUE))
+  bx <- tapply(xv, bi, mean); by <- tapply(yv, bi, mean); bw <- tapply(yv, bi, length)
+  keep <- !is.na(bx) & bw >= 8
+  bx <- bx[keep]; by <- by[keep]; bw <- bw[keep]
+  best <- 1
+  for (d in 2:maxDeg) {   # forward selection: keep the extra term if it pays off
+    f0 <- lm(by ~ poly(bx, best, raw = TRUE), weights = bw)
+    f1 <- lm(by ~ poly(bx, d, raw = TRUE), weights = bw)
+    pv <- tryCatch(anova(f0, f1)[["Pr(>F)"]][2], error = function(e) NA)
+    if (!is.na(pv) && pv < thres) best <- d else break
+  }
+  list(deg = best, coef = coef(lm(by ~ poly(bx, best, raw = TRUE), weights = bw)))
+}
+eval_curve <- function(cf, gridv) {
+  d <- length(cf) - 1
+  as.numeric(outer(gridv, 0:d, `^`) %*% cf)
+}
+gf <- fit_giviti(pred, obs)
+grid <- seq(quantile(pred, 0.02), quantile(pred, 0.98), length.out = 60)
+m <- eval_curve(gf$coef, grid)
+# bootstrap 重抽按相同阶数重拟合，否则带内混入选择噪声
+boot <- matrix(NA, nrow = 400, ncol = length(grid))
+for (b in seq_len(400)) {
+  ii <- sample.int(n, replace = TRUE)
+  gb <- tryCatch(fit_giviti(pred[ii], obs[ii], maxDeg = gf$deg), error = function(e) NULL)
+  if (!is.null(gb) && gb$deg == gf$deg) boot[b, ] <- eval_curve(gb$coef, grid)
+}
+lo80 <- apply(boot, 2, quantile, probs = 0.10, na.rm = TRUE)
+lo95 <- apply(boot, 2, quantile, probs = 0.025, na.rm = TRUE)
+ok <- complete.cases(cbind(m, lo80, lo95)) & m > -0.02 & m < 1.02
+m <- m[ok]; lo80 <- lo80[ok]; lo95 <- lo95[ok]; grid_ <- grid[ok]
+# 校准带合理性：带居拟合之下；对恒等线的偏差给出 bootstrap p
+boot_dev <- rowMeans(abs(boot[, ok, drop = FALSE] -
+              matrix(grid_, nrow = 400, ncol = sum(ok), byrow = TRUE)), na.rm = TRUE)
+obs_dev <- mean(abs(m - grid_))
+pval <- mean(boot_dev >= obs_dev, na.rm = TRUE)
+stopifnot(obs_dev < 0.05)
+dfb <- data.frame(pred = grid_, fit = m, lo80 = lo80, lo95 = lo95)
+ggplot() +
+  geom_abline(slope = 1, intercept = 0, colour = "grey45", linetype = 2) +
+  geom_ribbon(data = dfb, aes(pred, ymin = lo95, ymax = fit), fill = "#B2182B", alpha = 0.16) +
+  geom_ribbon(data = dfb, aes(pred, ymin = lo80, ymax = fit), fill = "#B2182B", alpha = 0.34) +
+  geom_line(data = dfb, aes(pred, fit), colour = "#8A1B24", linewidth = 0.8) +
+  labs(x = "Predicted probability", y = "Observed event rate",
+       title = "GiViTI-style calibration belt (inner 80%, outer 95% one-sided bands)",
+       subtitle = paste0("mean |f(x) - x| = ", round(obs_dev, 3),
+                         ", bootstrap p = ", round(pval, 3),
+                         ", selected degree = ", gf$deg)) +
+  coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+  theme_classic(base_size = 11)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Refit every bootstrap replicate at the forward-selected degree: freeing the degree per replicate folds model-selection noise into the belt and fattens it everywhere.
+-   Evaluate the curve inside the support of `pred` (the quantile window here) - local fits such as loess extrapolate badly in the sparse probability tails.
+-   The `anova()` forward step mirrors the original's `thres = 0.95`/`maxDeg = 4` machinery: these data support degree 1 only, and the thinness of the belt is itself the evidence of good calibration.
+:::
+
 ## Application
 
 Calibration curves are reported alongside nomograms in prediction-model papers, typically as "training set + validation set" pairs. The panel below mirrors that layout with this tutorial's outputs: (A) bootstrap-corrected calibration on the training sample and (B) independent-sample validation with `val.prob`.
