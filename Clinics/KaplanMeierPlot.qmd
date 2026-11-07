@@ -577,6 +577,87 @@ patchwork::wrap_plots(lapply(pl, function(x) x$plot), ncol = 2, guides = "collec
 -   The HR and CI from `survdiff` Observed/Expected are cohort-specific (cutoff optimized in the same data); report them as descriptive, not as an independent validation.
 :::
 
+### The Optimal-Split Landscape for One Marker
+
+The companion view of the batch screen above (FigureYa4bestSeparation \[3\]): rank the cohort by one marker's expression, compute the log-rank p-value and hazard ratio **at every possible split**, and plot −log10(P) against log2(HR). The dashed lines mark p = 0.05 and HR = 2 / 0.5; the red point is the split the eye would pick — and, because this is a maximally selected statistic, also the one most prone to optimism:
+
+```{r}
+#| label: fig-3.5SplitLandscape
+#| fig-cap: "The split landscape of one simulated marker (200 samples): log-rank p-value and HR at every possible dichotomisation; dashed lines at p = 0.05 and HR = 2 / 0.5; the minimum-p split is highlighted."
+#| out.width: "70%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5.2
+
+set.seed(4041)
+n_bs <- 200
+bs <- data.frame(futime = rexp(n_bs, 0.02), fustat = rbinom(n_bs, 1, 0.8),
+                 expression = rnorm(n_bs, 5, 1.3))
+bs$expression <- bs$expression - (bs$futime < quantile(bs$futime, 0.42)) * 2.0
+sortsv <- bs[order(bs$expression), ]
+pvals <- c(); hrs <- c()
+for (n in 1:(nrow(sortsv) - 1)) {
+  gp <- rep(c("low", "high"), c(n, nrow(sortsv) - n))
+  d1 <- survdiff(Surv(futime, fustat) ~ gp, data = sortsv, rho = 0)
+  pvals <- c(pvals, pchisq(d1$chisq, length(d1$n) - 1, lower.tail = FALSE))
+  hrs <- c(hrs, d1$obs[1] * d1$exp[2] / (d1$obs[2] * d1$exp[1]))
+}
+fd <- data.frame(Tag = 1:(nrow(sortsv) - 1), HR = hrs, Pvalue = pvals)
+best <- which.min(pvals)
+
+ggplot(fd, aes(log2(HR), -log10(Pvalue))) +
+  geom_point(shape = 21, aes(fill = Tag), colour = "grey25", size = 2.1) +
+  scale_fill_gradientn(colours = c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"),
+                       guide = "none") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
+  annotate("text", x = log2(hrs[best]), y = -log10(pvals[best]) + 0.6,
+           label = "min-P split", size = 3.2, colour = "#BB4444") +
+  geom_point(data = fd[best, ], aes(log2(HR), -log10(Pvalue)),
+             shape = 21, fill = "#BB4444", colour = "black", size = 3.4) +
+  labs(x = "log2 hazard ratio at each split",
+       y = "-log10(P), maximally selected log-rank",
+       title = "Every split of 200 samples ranked by expression (simulated marker)") +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+The landscape makes the *cost of choosing* visible — compare the KM curves of the min-P split against the boring median split:
+
+```{r}
+#| label: fig-3.6SplitKMs
+#| fig-cap: "KM curves of the same marker dichotomised two ways: the min-P split (left) versus the median split (right); the difference in reported p-values is the optimism the landscape warns about."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.2
+
+gp_best <- rep(c("low", "high"), c(best, nrow(sortsv) - best))
+fit_best <- survfit(Surv(futime, fustat) ~ gp_best, data = sortsv)
+gp_med <- ifelse(sortsv$expression > median(sortsv$expression), "high", "low")
+fit_med <- survfit(Surv(futime, fustat) ~ gp_med, data = sortsv)
+p_best <- ggsurvplot(fit_best, linetype = "strata", conf.int = FALSE,
+                     pval = TRUE, palette = c("#D95F02", "#1B9E77"),
+                     legend.title = "", legend.labs = c("High", "Low"),
+                     ggtheme = theme_bw(base_size = 11),
+                     title = "Best separation (min-P split)")
+p_med <- ggsurvplot(fit_med, linetype = "strata", conf.int = FALSE,
+                    pval = TRUE, palette = c("#D95F02", "#1B9E77"),
+                    legend.title = "", legend.labs = c("High", "Low"),
+                    ggtheme = theme_bw(base_size = 11),
+                    title = "Median separation")
+patchwork::wrap_plots(list(p_best$plot, p_med$plot), ncol = 2)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The `Tag` fill colour encodes the split position along the ranked expression axis — it shows that extreme splits (tiny groups) trade p-value for interpretability; a split keeping 5% of the cohort "high" is not a usable rule.
+-   Report the **median-split p-value next to the min-P one** whenever a marker is screened: the gap between the two curves' p-values is the optimism in one glance.
+-   This landscape is the manual twin of `surv_cutpoint()`; use it for one marker and the batch screen for panels.
+:::
+
 ## Application
 
 ::: {#fig-KaplanMeierPlotApplications1}

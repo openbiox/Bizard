@@ -482,6 +482,48 @@ cowplot::plot_grid(p1, p2, ncol = 1, align = "v", axis = "lr",
 -   白色中点上的点在白底面板里不可见：要么像本例这样植入真实的细胞类型间变异，要么给非显著的点加描边。
 :::
 
+### 5. 基因-概念环形网络（GOplot 风格）
+
+FigureYa52 背后的 GOplot 包已从 CRAN 下架 \[2\]，但其招牌图——基因连到 top 富集通路、基因节点按 log2 倍数变化着色——正是 `enrichplot::cnetplot()` 在 `clusterProfiler::enrichGO()` 结果上带 `foldChange` 的输出。两步关键：先 `simplify()`（BP 通路冗余极重，不去重网络不可读），并传入带名字的 log2FC 向量让基因节点携带方向：
+
+```{r}
+#| label: fig-5.1GeneConceptNet
+#| fig-cap: "3 个 top 富集 BP 通路的基因-概念网络（clusterProfiler + enrichplot）：通路枢纽节点大小 = 成员数，基因节点按 log2 倍数变化着色（蓝 = 上调、红 = 下调）；模拟的 IFN-γ 响应基因集。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 7
+
+set.seed(5201)
+de_genes <- data.frame(
+  SYMBOL = c("IFNG", "TNF", "IL2", "STAT1", "CXCL9", "CXCL10", "IRF1", "GBP1",
+             "CD8A", "GZMB", "PRF1", "LAG3", "PDCD1", "CTLA4", "ISG15", "MX1"),
+  log2fc = c(1.6, 1.4, 1.2, 1.1, 1.5, 1.3, 1.0, 0.9, 1.2, 1.5, 1.1, -1.0, -0.9, -0.8, 1.0, 0.8))
+## 先 simplify()：BP 通路冗余极重，不去重基因-概念网络不可读；
+## clusterProfiler >= 4.x 中 cnetplot 的 `layout`/`circular` 参数已迁移，
+## 这里使用默认布局
+ego52 <- clusterProfiler::enrichGO(gene = de_genes$SYMBOL, OrgDb = "org.Hs.eg.db",
+                                   keyType = "SYMBOL", ont = "BP",
+                                   pvalueCutoff = 0.01, qvalueCutoff = 0.05,
+                                   readable = TRUE)
+ego52 <- clusterProfiler::simplify(ego52, cutoff = 0.6, by = "p.adjust")
+geneList52 <- de_genes$log2fc; names(geneList52) = de_genes$SYMBOL
+enrichplot::cnetplot(ego52, showCategory = 3, foldChange = geneList52,
+                     color_edge = "grey") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom",
+        panel.background = element_rect(fill = "white", colour = NA))
+```
+
+::: callout-tip
+**实践要点**
+
+-   任何基因-概念网络前先 `simplify()`（语义冗余去除）：不做时 16 个基因输入会产生数百个近乎相同的 BP 通路，展示的 3 条通路纯属任意。
+-   `enrichGO()` 的 `readable = TRUE` 把 ENTREZ ID 映射回基因符号——网络只有在基因节点携带读者认识的符号时才有用。
+-   clusterProfiler >= 4.x 中旧的 `circular = TRUE` / `colorEdge` 参数已移除（改为 `layout`/`color_edge`）——这类"签名静默变更"值得用 `args(clusterProfiler::cnetplot)` 核对。
+:::
+
 ## 参考文献
 
 \[1\] 生信医道. 超好看的单细胞GO，KEGG富集分析图！确定不来看看吗？ \[Internet\]. 微信公众号: 生信医道. 2025 \[cited 2025 Dec 30\]. Available from: <https://mp.weixin.qq.com/s/pY1S0EJQAhdezvxeNt-SzA>

@@ -73,7 +73,7 @@ ekegg <- enrichKEGG(
   organism = 'hsa'
 )
 # KEGG results default to Entrez ID; manually convert to Symbol to match plotting data format
-ekegg <- setReadable(ekegg, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
+ekegg <- setReadable(ekegg, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID")
 
 # 3. Data Cleaning and Merging
 # Extract GO results (Rename ONTOLOGY to Category)
@@ -479,6 +479,48 @@ cowplot::plot_grid(p1, p2, ncol = 1, align = "v", axis = "lr",
 -   Keep the strip and the dot plot on the **same factor levels** — the strip's x axis is a plain character vector in most drafts, which silently re-sorts alphabetically and desynchronises the two panels.
 -   Bonferroni over pathways x cell types is what the reference uses; with `rstatix` the same workflow is `group_by(Celltypes, Pathway) |> wilcox_test() |> adjust_pvalue(method = "bonferroni")`.
 -   Dots at the white midpoint are invisible on a white panel: either plant real per-cell-type variability (as done here) or outline non-significant dots.
+:::
+
+### 5. Gene-Concept Circular Network (GOplot-Style)
+
+The GOplot package behind FigureYa52 \[2\] is no longer on CRAN, but its signature figure — genes linked to the top enriched terms, gene nodes coloured by log2 fold change — is exactly `enrichplot::cnetplot()` on a `clusterProfiler::enrichGO()` result with `foldChange` attached. Two steps matter: `simplify()` first (BP terms are massively redundant and the network becomes unreadable), and pass the named log2FC vector so gene nodes carry the direction:
+
+```{r}
+#| label: fig-5.1GeneConceptNet
+#| fig-cap: "Gene-concept network of 3 top enriched BP terms (clusterProfiler + enrichplot): term hubs sized by member count, gene nodes coloured by log2 fold change (blue = up, red = down); simulated IFN-gamma response gene set."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 7
+
+set.seed(5201)
+de_genes <- data.frame(
+  SYMBOL = c("IFNG", "TNF", "IL2", "STAT1", "CXCL9", "CXCL10", "IRF1", "GBP1",
+             "CD8A", "GZMB", "PRF1", "LAG3", "PDCD1", "CTLA4", "ISG15", "MX1"),
+  log2fc = c(1.6, 1.4, 1.2, 1.1, 1.5, 1.3, 1.0, 0.9, 1.2, 1.5, 1.1, -1.0, -0.9, -0.8, 1.0, 0.8))
+## simplify() first: BP terms are massively redundant and the gene-concept
+## network is unreadable without it; cnetplot's `layout`/`circular` args moved
+## in clusterProfiler >= 4.x, so the default layout is used here
+ego52 <- clusterProfiler::enrichGO(gene = de_genes$SYMBOL, OrgDb = "org.Hs.eg.db",
+                                   keyType = "SYMBOL", ont = "BP",
+                                   pvalueCutoff = 0.01, qvalueCutoff = 0.05,
+                                   readable = TRUE)
+ego52 <- clusterProfiler::simplify(ego52, cutoff = 0.6, by = "p.adjust")
+geneList52 <- de_genes$log2fc; names(geneList52) <- de_genes$SYMBOL
+enrichplot::cnetplot(ego52, showCategory = 3, foldChange = geneList52,
+                     color_edge = "grey") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom",
+        panel.background = element_rect(fill = "white", colour = NA))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `simplify()` (semantic redundancy removal) before any gene-concept network: without it a 16-gene input yields hundreds of near-identical BP terms and the three you display are arbitrary.
+-   `readable = TRUE` in `enrichGO()` maps ENTREZ IDs back to symbols — the network is only useful when gene nodes carry names a reader knows.
+-   In clusterProfiler >= 4.x the old `circular = TRUE` / `colorEdge` arguments are gone (`layout`/`color_edge`); the `...` errors are silent-looking signature changes worth checking with `args(clusterProfiler::cnetplot)`.
 :::
 
 ## Reference

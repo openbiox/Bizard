@@ -528,6 +528,87 @@ patchwork::wrap_plots(lapply(pl, function(x) x$plot), ncol = 2, guides = "collec
 -   由 `survdiff` Observed/Expected 计算的 HR 与 CI 是队列特异的（截断在同一数据上优化过），只能作为描述性结果，不能当作独立验证。
 :::
 
+### 单标志物的最优分离景观图
+
+上面批量筛选的姊妹视角（FigureYa4bestSeparation \[3\]）：把队列按一个标志物的表达排序，在**每一个可能的切分点**计算 log-rank p 值与 HR，然后画 −log10(P) 对 log2(HR)。虚线标记 p = 0.05 与 HR = 2 / 0.5；红点就是肉眼会选中的切分——而由于这是最大化选择统计量，它同时也是最容易乐观的那个：
+
+```{r}
+#| label: fig-3.5SplitLandscape
+#| fig-cap: "单标志物的切分景观图（200 样本）：每个可能的二分方式的 log-rank p 值与 HR；虚线在 p = 0.05 与 HR = 2 / 0.5；最小 p 切分已高亮。"
+#| out.width: "70%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5.2
+
+set.seed(4041)
+n_bs <- 200
+bs <- data.frame(futime = rexp(n_bs, 0.02), fustat = rbinom(n_bs, 1, 0.8),
+                 expression = rnorm(n_bs, 5, 1.3))
+bs$expression <- bs$expression - (bs$futime < quantile(bs$futime, 0.42)) * 2.0
+sortsv <- bs[order(bs$expression), ]
+pvals <- c(); hrs <- c()
+for (n in 1:(nrow(sortsv) - 1)) {
+  gp <- rep(c("low", "high"), c(n, nrow(sortsv) - n))
+  d1 <- survdiff(Surv(futime, fustat) ~ gp, data = sortsv, rho = 0)
+  pvals <- c(pvals, pchisq(d1$chisq, length(d1$n) - 1, lower.tail = FALSE))
+  hrs <- c(hrs, d1$obs[1] * d1$exp[2] / (d1$obs[2] * d1$exp[1]))
+}
+fd <- data.frame(Tag = 1:(nrow(sortsv) - 1), HR = hrs, Pvalue = pvals)
+best <- which.min(pvals)
+
+ggplot(fd, aes(log2(HR), -log10(Pvalue))) +
+  geom_point(shape = 21, aes(fill = Tag), colour = "grey25", size = 2.1) +
+  scale_fill_gradientn(colours = c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"),
+                       guide = "none") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
+  annotate("text", x = log2(hrs[best]), y = -log10(pvals[best]) + 0.6,
+           label = "min-P split", size = 3.2, colour = "#BB4444") +
+  geom_point(data = fd[best, ], aes(log2(HR), -log10(Pvalue)),
+             shape = 21, fill = "#BB4444", colour = "black", size = 3.4) +
+  labs(x = "log2 hazard ratio at each split",
+       y = "-log10(P), maximally selected log-rank",
+       title = "Every split of 200 samples ranked by expression (simulated marker)") +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+景观图把"选择的代价"可视化——对比 min-P 切分与朴素中位数切分的 KM 曲线：
+
+```{r}
+#| label: fig-3.6SplitKMs
+#| fig-cap: "同一标志物两种二分方式的 KM 曲线：min-P 切分（左）与中位数切分（右）；两者 p 值之差就是景观图警示的乐观量。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.2
+
+gp_best <- rep(c("low", "high"), c(best, nrow(sortsv) - best))
+fit_best <- survfit(Surv(futime, fustat) ~ gp_best, data = sortsv)
+gp_med <- ifelse(sortsv$expression > median(sortsv$expression), "high", "low")
+fit_med <- survfit(Surv(futime, fustat) ~ gp_med, data = sortsv)
+p_best <- ggsurvplot(fit_best, linetype = "strata", conf.int = FALSE,
+                     pval = TRUE, palette = c("#D95F02", "#1B9E77"),
+                     legend.title = "", legend.labs = c("High", "Low"),
+                     ggtheme = theme_bw(base_size = 11),
+                     title = "Best separation (min-P split)")
+p_med <- ggsurvplot(fit_med, linetype = "strata", conf.int = FALSE,
+                    pval = TRUE, palette = c("#D95F02", "#1B9E77"),
+                    legend.title = "", legend.labs = c("High", "Low"),
+                    ggtheme = theme_bw(base_size = 11),
+                    title = "Median separation")
+patchwork::wrap_plots(list(p_best$plot, p_med$plot), ncol = 2)
+```
+
+::: callout-tip
+**实践要点**
+
+-   `Tag` 填充色编码切分点在排序表达轴上的位置——它揭示极端切分（极小组）在用可解释性换 p 值；让 5% 样本充当"高"组的切分不是可用规则。
+-   筛选标志物时**把中位数切分的 p 值与 min-P 并排报告**：两条曲线 p 值的差距就是一眼可见的乐观量。
+-   这张景观图是 `surv_cutpoint()` 的手工孪生：单标志物用它，多标志物面板用批量筛选。
+:::
+
 ## 应用场景
 
 ### 1. 疾病分布
