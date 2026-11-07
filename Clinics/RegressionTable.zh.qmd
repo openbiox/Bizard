@@ -381,7 +381,60 @@ kableExtra::kable(tbl, booktabs = TRUE, escape = FALSE,
 -   `add_header_above()` 把队列名放到列对上方；保留 `escape = FALSE` 让括号 CI 字符串正常渲染。
 :::
 
-## 应用场景
+### 8. 批量单因素 Cox 森林图（FigureYa66UnivariateCox）
+
+FigureYa66 \[11\] 对**每个基因的表达**循环拟合 Cox 模型，把幸存者画成森林图：菱形点 = HR，误差线 = 95% CI，x 轴 log2，viridis 颜色 = p 值，HR = 1 虚线。参考文档的 `theme_ggstatsplot()` 需要外部 helper 文件，下块改用等价的朴素 `theme_bw()`。同一循环把列改名为 HR / lower / upper 后即可衔接 FigureYa6rHRs 的各种森林变体：
+
+```{r}
+#| label: tbl-8.1UnivariateCoxForest
+#| tbl-cap: "24 个模拟基因的批量单因素 Cox 筛选：仅绘制 p < 0.05 且 HR 落在 0.92-1.15 带外的基因；viridis 颜色编码 p 值。"
+#| warning: false
+#| message: false
+
+## freeze:auto 只对新 chunk 在新会话中重跑——在此重新挂载所需包
+suppressPackageStartupMessages({library(survival); library(ggplot2); library(dplyr)})
+set.seed(6601)
+n_ux <- 240
+ux <- data.frame(futime = rexp(n_ux, 0.02), fustat = rbinom(n_ux, 1, 0.8))
+gene_expr <- matrix(rnorm(n_ux * 24, 5, 1.2), n_ux, 24,
+                    dimnames = list(NULL, paste0("GENE", sprintf("%02d", 1:24))))
+## 植入一个保护基因与一个风险基因，让筛选有信号
+gene_expr[, 1] <- gene_expr[, 1] - (ux$futime < quantile(ux$futime, 0.4)) * 1.8
+gene_expr[, 5] <- gene_expr[, 5] + (ux$futime < quantile(ux$futime, 0.4)) * 1.8
+ux_all <- cbind(ux, as.data.frame(gene_expr))
+Coxoutput <- do.call(rbind, lapply(paste0("GENE", sprintf("%02d", 1:24)), function(g) {
+  sm <- summary(coxph(as.formula(paste0("Surv(futime, fustat) ~ ", g)), data = ux_all))
+  data.frame(gene = g,
+             HR = sm$coefficients[, "exp(coef)"],
+             lower = sm$conf.int[, "lower .95"],
+             upper = sm$conf.int[, "upper .95"],
+             pvalue = sm$coefficients[, "Pr(>|z|)"])
+}))
+Coxoutput <- dplyr::arrange(Coxoutput, pvalue) %>% dplyr::filter(pvalue < 0.05)
+plotCoxoutput <- dplyr::filter(Coxoutput, HR <= 0.92 | HR >= 1.15)
+
+ggplot(data = plotCoxoutput, aes(x = HR, y = gene, color = pvalue)) +
+  geom_errorbarh(aes(xmax = upper, xmin = lower), color = "black",
+                 height = 0, linewidth = 1.1) +
+  geom_point(aes(x = HR, y = gene), size = 3.5, shape = 18) +
+  geom_vline(xintercept = 1, linetype = "dashed", linewidth = 1) +
+  coord_trans(x = "log2") +
+  scale_color_viridis_c() +
+  labs(x = "Hazard ratio, univariate Cox (simulated LUAD-like cohort)",
+       y = "Gene", colour = "P value",
+       title = "Univariate Cox regression screen") +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+::: callout-tip
+**实践要点**
+
+-   筛选后还要过滤*效应量*（参考的 HR ≤ 0.92 | ≥ 1.15）：基因足够多时，纯噪声也会产生 HR 临床上毫无意义的 p < 0.05 命中。
+-   p 值色带并不提供误差线之外的信息——但它让读者的眼睛按表格顺序排列命中；保留它并写明标尺。
+-   24 个基因的 p < 0.05 筛选预期约 1 个假命中；在独立队列验证幸存者后再下结论。
+:::
+
+## 应用场景## 应用场景
 
 ::: {#fig-RegressionTableApplications1}
 ![](../images/Clinics/RegressionTable_app1.png){fig-alt="RegressionTableApp1" fig-align="center" width="60%"}

@@ -604,7 +604,59 @@ ggplot(tab, aes(tumor, gene)) +
 
 ![](../images/Omics/GseaPlot_app1.png){fig-alt="GseaPlot Application" fig-align="center" width="60%"}
 
-## Reference
+### 9. clusterProfiler GSEA 与排序列表曲线（FigureYa60GSEA_clusterProfilerV2）
+
+FigureYa60 \[8\] 对完整排序基因列表运行 `clusterProfiler::GSEA()`，并展示经典**三面板输出**：top 通路的运行富集分数线、基因排序条码、排序列表度量。clusterProfiler ≥ 4.x 中 `GSEA()` 接收 `TERM2GENE` 数据框（而非 `OrgDb`）——先由 orgDb 的 GO 映射构建，把信号植入真实 GO 成员集，再用 `enrichplot::gseaplot2()` 渲染：
+
+```{r}
+#| label: fig-9.1ClusterGSEA
+#| fig-cap: "1,500 个模拟排序基因对 GO TERM2GENE 的 GSEA：top 3 通路的运行 ES 线（免疫应答通路领先），下方为基因排序条码与排序列表度量。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 6.5
+
+set.seed(6011)
+id.fc <- data.frame(
+  ENTREZID = as.character(sample(1:20000, 1500)),
+  log2fc = c(rnorm(1500, 0, 0.8)))
+## build TERM2GENE from the orgDb (GSEA() in clusterProfiler >= 4.x takes
+## TERM2GENE, not OrgDb); do the mapping up front so the planted signal
+## targets real GO member genes
+suppressPackageStartupMessages(library(org.Hs.eg.db))
+go_map <- suppressMessages(
+  AnnotationDbi::select(org.Hs.eg.db, keys(org.Hs.eg.db, "ENTREZID"),
+                        c("GO"), "ENTREZID"))
+t2g <- na.omit(unique(go_map[, c("GO", "ENTREZID")]))
+geneList52b <- id.fc$log2fc
+names(geneList52b) <- id.fc$ENTREZID
+geneList52b <- sort(geneList52b, decreasing = TRUE)
+## plant a real GO signal: boost every gene annotated to "immune response" (GO:0006955)
+go_immune <- go_map$ENTREZID[go_map$GO == "GO:0006955"]
+geneList52b[names(geneList52b) %in% go_immune] <-
+  geneList52b[names(geneList52b) %in% go_immune] + 1.8
+geneList52b <- sort(geneList52b, decreasing = TRUE)
+gsea52b <- GSEA(geneList52b, TERM2GENE = t2g, minGSSize = 20, maxGSSize = 800,
+                pvalueCutoff = 1, eps = 0)   # keep top terms even if FDR > 0.05 for display
+top_ids <- head(as.data.frame(gsea52b)$ID, 3)
+cat("top terms:", top_ids, "\n")
+## NOTE: gseaplot2 returns a patchwork/gglist — adding a theme() layer on top
+## breaks the render (black canvas). Keep the plot unmodified.
+p112 <- enrichplot::gseaplot2(gsea52b, geneSetID = top_ids, pvalue_table = FALSE,
+                              ES_geom = "line")
+p112
+```
+
+::: callout-tip
+**实践要点**
+
+-   clusterProfiler ≥ 4.x 把 `GSEA()` 迁移到了 `TERM2GENE`——用 `AnnotationDbi::select(orgDb, keys, "GO")` 构建即可全程使用 lockfile 内的包，无需下载 GMT。
+-   信号要在**排序之后**植入**真实 GO 成员基因**——给随机基因加效应会得到零个达标通路和一张空的 gseaplot2。
+-   `gseaplot2()` 的输出是 patchwork/gglist：在顶层加 `theme()` 会在部分设备渲染成黑色画布——请原样打印。
+:::
+
+## Reference## Reference
 
 \[1\] Subramanian A, Tamayo P, Mootha VK, et al. Gene set enrichment analysis: a knowledge-based approach for interpreting genome-wide expression profiles. Proc Natl Acad Sci USA. 2005;102(43):15545-15550. doi:10.1073/pnas.0506580102
 
@@ -621,3 +673,5 @@ ggplot(tab, aes(tumor, gene)) +
 \[7\] Pedersen TL. ggraph: An Implementation of Grammar of Graphics for Graphs and Networks. https://ggraph.data-imaginist.com/
 
 \[8\] Xiaofan Lu, et al. FigureYa279panGeneGSEA 参考图：基因在 Y 轴的泛癌单通路 NES 矩阵。FigureYa 文档。<https://ying-ge.github.io/FigureYa/>
+
+\[8\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

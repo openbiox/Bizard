@@ -199,7 +199,56 @@ p3_1
 
 三个角代表上皮细胞的三个亚群，分别对应基底细胞、管腔祖细胞（LP）和成熟管腔细胞（ML）。从图中可以看出不同阶段的细胞类型组成和分化情况，以及对应簇的亚群状态。
 
-## 参考文献
+### 4. 三个亚型间的突变频率构成（FigureYa64triangle）
+
+FigureYa64 \[10\] 把突变放进**三元图**：每个突变在三种胶质瘤亚型（pGBM / LGG / sGBM）中的改变频率归一化为和为 1，每个点的读法是"该突变集中在哪个亚型"——顶角意味着亚型特异，中心意味着共享。点大小编码总体改变频率；参考文档的分段缩放（大 f 用 10^f × 3，小 f 用线性 50f）让稀有突变可见而不被一个巨型突变吞掉整个面板：
+
+```{r}
+#| label: fig-4.1TernaryMut
+#| fig-cap: "22 个模拟突变在 pGBM/LGG/sGBM 上的三元图：轴为突变内亚型频率占比（和 = 1）；点大小采用参考的分段缩放（0.1 以上用 10^f × 3，以下线性 50f）。"
+#| out.width: "65%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 6
+
+## freeze:auto 只对新 chunk 在新会话中重跑——在此重新挂载所需包
+suppressPackageStartupMessages({library(ggtern); library(ggplot2)})
+set.seed(6411)
+df114 <- data.frame(
+  Mutation = paste0("Mut", sprintf("%02d", 1:22)),
+  pGBM = runif(22, 0.1, 0.8),
+  LGG = runif(22, 0.05, 0.5),
+  sGBM = runif(22, 0.05, 0.5))
+## 逐行归一化为构成比（频率之和必须为 1）
+df114 <- transform(df114,
+                   pGBM = pGBM / (pGBM + LGG + sGBM),
+                   LGG = LGG / (pGBM + LGG + sGBM),
+                   sGBM = sGBM / (pGBM + LGG + sGBM))
+afreq <- runif(22, 0.02, 0.35)
+## 分段大小缩放：稀有者线性、常见者指数——稀有突变可见，巨型突变不吞面板
+df114$allfrequency <- ifelse(afreq >= 0.1, 10^(afreq) * 3, 50 * afreq)
+
+ggtern(data = df114,
+       aes(x = pGBM, y = LGG, z = sGBM)) +
+  geom_point(size = df114$allfrequency, shape = 21,
+             fill = "#5E9BD3", colour = "grey25") +
+  labs(x = "pGBM", y = "LGG", z = "sGBM",
+       title = "Mutation frequency composition across three glioma subtypes (simulated)") +
+  theme_bw(base_size = 11) +
+  theme(tern.panel.background = element_rect(fill = "grey97", colour = NA),
+        tern.axis.text = element_text(size = 9))
+```
+
+::: callout-tip
+**实践要点**
+
+-   轴是**突变内占比**而非原始频率：逐行归一化（f / sum(f)），否则点会无故散到图外。
+-   分段缩放规则要连同阈值（此处 0.1）写进图注——大小轴非线性，读者会 1:1 比较点大小。
+-   ggtern 必须以 `ggtern(...)` 作为基础调用（而非 `ggplot()`），并使用其专属主题钩子（`tern.panel.background`）；混用普通 ggplot2 主题元素会静默失效。
+:::
+
+## 参考文献## 参考文献
 
 \[1\] Zhang L, Zhang M, Huang S, Li L, Gao Q, Wang Y, Zhang S, Huang S, Yuan L, Wen Y, Liu K, Yu X, Li D, Zhang L, Xu X, Wei H, He P, Zhou W, Philippot L, Ai C. A highly conserved core bacterial microbiota with nitrogen-fixation capacity inhabits the xylem sap in maize plants. Nat Commun. 2022 Jun 11;13(1):3361. doi: 10.1038/s41467-022-31113-w. PMID: 35688828; PMCID: PMC9187771.
 
@@ -209,5 +258,4 @@ p3_1
 
 \[4\] Arnold, J. (2024). ggthemes: Extra Themes, Scales and Geoms for 'ggplot2' \[R package\]. [https://CRAN.R-project.org/package=ggthemes](https://cran.r-project.org/package=ggthemes)
 
-
-
+\[10\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

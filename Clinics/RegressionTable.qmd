@@ -382,7 +382,61 @@ kableExtra::kable(tbl, booktabs = TRUE, escape = FALSE,
 -   `add_header_above()` places the cohort names over the column pairs; keep `escape = FALSE` so the bracketed CI strings render.
 :::
 
-## Application
+### 8. Batch Univariate Cox Forest Plot (FigureYa66UnivariateCox)
+
+FigureYa66 \[11\] loops a Cox model over **every gene's expression** and draws the survivors as a forest: diamond point = HR, error bars = 95% CI, x on log2, viridis colour = p-value, HR = 1 dashed. The reference's `theme_ggstatsplot()` needs a sourced helper file, so the block below uses the plain `theme_bw()` equivalent. The same loop feeds FigureYa6rHRs forest variants by renaming the columns to HR / lower / upper:
+
+```{r}
+#| label: tbl-8.1UnivariateCoxForest
+#| tbl-cap: "Batch univariate Cox screen of 24 simulated genes: only genes with p < 0.05 and HR outside the 0.92-1.15 band are drawn; viridis colour encodes the p-value."
+#| warning: false
+#| message: false
+
+## freeze:auto re-executes only new chunks in a fresh session —
+## re-attach the needed packages here
+suppressPackageStartupMessages({library(survival); library(ggplot2); library(dplyr)})
+set.seed(6601)
+n_ux <- 240
+ux <- data.frame(futime = rexp(n_ux, 0.02), fustat = rbinom(n_ux, 1, 0.8))
+gene_expr <- matrix(rnorm(n_ux * 24, 5, 1.2), n_ux, 24,
+                    dimnames = list(NULL, paste0("GENE", sprintf("%02d", 1:24))))
+## plant one protective and one risk gene so the screen has a signal
+gene_expr[, 1] <- gene_expr[, 1] - (ux$futime < quantile(ux$futime, 0.4)) * 1.8
+gene_expr[, 5] <- gene_expr[, 5] + (ux$futime < quantile(ux$futime, 0.4)) * 1.8
+ux_all <- cbind(ux, as.data.frame(gene_expr))
+Coxoutput <- do.call(rbind, lapply(paste0("GENE", sprintf("%02d", 1:24)), function(g) {
+  sm <- summary(coxph(as.formula(paste0("Surv(futime, fustat) ~ ", g)), data = ux_all))
+  data.frame(gene = g,
+             HR = sm$coefficients[, "exp(coef)"],
+             lower = sm$conf.int[, "lower .95"],
+             upper = sm$conf.int[, "upper .95"],
+             pvalue = sm$coefficients[, "Pr(>|z|)"])
+}))
+Coxoutput <- dplyr::arrange(Coxoutput, pvalue) %>% dplyr::filter(pvalue < 0.05)
+plotCoxoutput <- dplyr::filter(Coxoutput, HR <= 0.92 | HR >= 1.15)
+
+ggplot(data = plotCoxoutput, aes(x = HR, y = gene, color = pvalue)) +
+  geom_errorbarh(aes(xmax = upper, xmin = lower), color = "black",
+                 height = 0, linewidth = 1.1) +
+  geom_point(aes(x = HR, y = gene), size = 3.5, shape = 18) +
+  geom_vline(xintercept = 1, linetype = "dashed", linewidth = 1) +
+  coord_trans(x = "log2") +
+  scale_color_viridis_c() +
+  labs(x = "Hazard ratio, univariate Cox (simulated LUAD-like cohort)",
+       y = "Gene", colour = "P value",
+       title = "Univariate Cox regression screen") +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Screen, then filter for *effect size too* (the reference's HR ≤ 0.92 | ≥ 1.15): with enough genes, pure noise still produces p < 0.05 hits whose HR is clinically meaningless.
+-   The p-value colour ramp adds nothing the error bars don't already show — but it makes the reader's eye rank the hits exactly as the table would; keep it and say the scale.
+-   Like any p < 0.05 screen over 24 genes, expect ~1 false hit; validate the survivors in an independent cohort before drawing conclusions.
+:::
+
+## Application## Application
 
 ::: {#fig-RegressionTableApplications1}
 ![](../images/Clinics/RegressionTable_app1.png){fig-alt="RegressionTableApp1" fig-align="center" width="60%"}
