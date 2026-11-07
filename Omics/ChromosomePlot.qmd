@@ -21,7 +21,7 @@ The image shows a chromosome ideogram with dual-line labels, plotted using the b
 
 -   Programming language: R
 
--   Dependent packages: `RIdeogram`
+-   Dependent packages: `RIdeogram`; `ggplot2`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Install packages
@@ -31,6 +31,7 @@ if (!requireNamespace("RIdeogram", quietly = TRUE)) {
 
 # Load packages
 library(RIdeogram)
+library(ggplot2)
 ```
 
 ```{r}
@@ -497,6 +498,74 @@ write.csv(karyotype, "karyotype.csv", row.names = FALSE)
 
 ::: callout-tip
 **Coordinate systems:** GTF/GFF files are 1-based; BED files are 0-based (half-open). `RIdeogram` input should be kept internally consistent — if your feature tables (heatmap, marker tracks) come from BED-derived data, convert them to the same convention as the karyotype before plotting.
+:::
+
+### 12. Signal Tracks Around a Gene Without Gviz (ggplot2 Recreation)
+
+The FigureYa3genomeView layout \[4\] stacks per-base signals (ChIP-seq, ATAC, RNA-seq) over a gene locus with the gene model underneath — but `Gviz` pulls in TxDb annotation packages and bigWig reading via rtracklayer, neither of which is in this repository's lockfile. The same figure is reproducible with plain ggplot2: per-kilobase coverage as `geom_area()` facets, the gene model as its own facet track (exon rectangles on an intron line), and a kb-scaled axis. Swap the simulated bins for real data read from a bigWig with rtracklayer, or from a coverage tsv:
+
+```{r}
+#| label: fig-12.1GenomeTracks
+#| fig-cap: "IGV-style signal tracks around a target gene (simulated bigWig bins): four coverage facets plus a dedicated gene-model track with exon rectangles on the intron line; x axis in kilobases."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6.2
+
+set.seed(3001)
+region_start <- 0; region_end <- 120000   # a TAL1-like 120 kb locus
+bins <- seq(region_start, region_end, by = 1000)
+peak_at <- 45000
+sig_fun <- function(amp, width) {
+  exp(-((bins - peak_at)^2) / (2 * width^2)) * amp +
+    pmax(0, rnorm(length(bins), 0, 0.02))
+}
+tracks <- data.frame(
+  bin = rep(bins, 4),
+  signal = c(sig_fun(0.95, 9000), sig_fun(0.75, 5000),
+             sig_fun(0.6, 14000), sig_fun(0.5, 18000)),
+  track = factor(rep(c("H3K27ac", "H3K4me3", "DNase", "RNA-seq"), each = length(bins))))
+exons <- data.frame(start = c(43000, 47000, 52000, 58000, 64000),
+                    end = c(44500, 48500, 53500, 59500, 66000))
+## the gene model lives in its own facet track
+gene_df <- data.frame(bin = rep(bins, 2), signal = 0, track = "Gene (TAL1, +)")
+exon_df <- data.frame(track = "Gene (TAL1, +)", start = exons$start, end = exons$end)
+
+ggplot(tracks, aes(bin, signal)) +
+  geom_area(aes(fill = track), colour = NA, alpha = 0.85, linewidth = 0) +
+  geom_blank(data = gene_df, aes(bin, signal), inherit.aes = FALSE) +
+  geom_rect(data = exon_df, aes(xmin = start, xmax = end, ymin = 0.15, ymax = 0.85),
+            inherit.aes = FALSE, fill = "#2166AC", colour = "#2166AC") +
+  geom_segment(data = data.frame(track = "Gene (TAL1, +)", x = min(exons$start),
+                                 xend = max(exons$end)),
+               aes(x = x, xend = xend, y = 0.5, yend = 0.5),
+               inherit.aes = FALSE, linewidth = 0.5, colour = "#2166AC") +
+  facet_grid(track ~ ., switch = "y") +
+  scale_fill_manual(values = c("H3K27ac" = "#E31A1C", "H3K4me3" = "#FF7F00",
+                               "DNase" = "#33A02C", "RNA-seq" = "#1F78B4"),
+                    name = NULL,
+                    breaks = c("RNA-seq", "DNase", "H3K4me3", "H3K27ac")) +
+  scale_x_continuous(labels = function(x) paste0(x / 1000, " kb"),
+                     expand = expansion(mult = c(0.01, 0.01))) +
+  labs(x = "chr1 position", y = NULL,
+       title = "Signal tracks around the promoter of a target gene (simulated bigWig)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(),
+        strip.placement = "outside",
+        strip.background = element_blank(),
+        strip.text.y.left = element_text(angle = 0, hjust = 1, size = 8.5),
+        axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        legend.position = "top") +
+  coord_cartesian(ylim = c(0, 1))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The gene model must occupy its **own facet track** — layering it onto every signal panel is the classic mistake (each layer without a facet column repeats in all panels).
+-   Per-base bigWig data can be heavy: aggregate to fixed-width bins (1 kb here) before plotting; at locus scale the eye cannot tell the difference.
+-   `switch = "y"` with `strip.text.y.left` puts track names where IGV puts them, keeping the genomic axis at the bottom only.
 :::
 
 ## Application

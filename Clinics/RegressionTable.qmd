@@ -20,7 +20,7 @@ The figure below shows a regression analysis based on the pbc dataset built into
 
 -   Programming language: R
 
--   Dependent packages: `survival`, `gtsummary`, `dplyr`, `datawizard`
+-   Dependent packages: `survival`, `gtsummary`, `dplyr`, `datawizard`, `kableExtra`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing packages
@@ -45,7 +45,13 @@ library(survival)
 library(gtsummary)
 library(dplyr)
 library(datawizard)
+# Install kableExtra if missing (used by the grouped HR table)
+if (!requireNamespace("kableExtra", quietly = TRUE)) {
+  install.packages("kableExtra", repos = "https://cloud.r-project.org")
+}
 library(broom.helpers)
+library(kableExtra)
+library(kableExtra)
 ```
 
 ```{r}
@@ -279,7 +285,158 @@ tbl_stack(list(t1, t2), group_header = c("Patients without hepato", "Patients wi
 
 This table uses `tbl_stack` to longitudinally integrate the results of the Cox proportional hazards model for the two groups of pdb patients with and without hepato.
 
-## Application
+### 7. HR Table: Univariate + Multivariate, Training vs Validation Cohorts
+
+The FigureYa47 layout \[3\] is the publication-grade companion table: every covariate runs through **batch univariate Cox**, the p < 0.05 survivors enter a **multivariate model**, and the whole thing repeats on an independent validation cohort — printed as one grouped kable table with `HR (95% CI)` and p-value columns per cohort:
+
+```{r}
+#| label: tbl-7.1HrTable
+#| tbl-cap: "Univariate and multivariate Cox analyses of simulated covariates: training cohort (70%) and validation cohort (30%); multivariate columns only carry the covariates significant in the training univariate screen."
+#| warning: false
+#| message: false
+
+set.seed(4701)
+n_hr <- 260
+hrdata <- data.frame(
+  age = factor(ifelse(rnorm(n_hr, 62, 10) > 62, ">=median", "<median"),
+               levels = c("<median", ">=median")),
+  stage = factor(sample(c("I-II", "III-IV"), n_hr, TRUE), levels = c("I-II", "III-IV")),
+  invasion = factor(sample(c("no", "yes"), n_hr, TRUE, c(0.6, 0.4)), levels = c("no", "yes")),
+  marker = factor(ifelse(rnorm(n_hr) > 0, ">=median", "<median"),
+                  levels = c("<median", ">=median")))
+lp <- -3.4 + 0.35 * (hrdata$stage == "III-IV") + 0.5 * (hrdata$invasion == "yes") -
+  0.45 * (hrdata$marker == ">=median")
+hrdata$time <- rexp(n_hr, exp(lp) * 0.02)
+hrdata$event <- rbinom(n_hr, 1, 0.8)
+vars <- c("age", "stage", "invasion", "marker")
+
+uni_cox <- function(dat) {
+  do.call(rbind, lapply(vars, function(v) {
+    sm <- summary(coxph(as.formula(paste0("Surv(time, event) ~ ", v)), data = dat))
+    data.frame(characteristics = v,
+               HR = round(sm$coefficients[, "exp(coef)"], 2),
+               CI = paste0(round(sm$conf.int[, "lower .95"], 2), "-",
+                           round(sm$conf.int[, "upper .95"], 2)),
+               p = sm$coefficients[, "Pr(>|z|)"])
+  }))
+}
+set.seed(4702)
+train_idx <- sample(n_hr, round(n_hr * 0.7))
+tr <- hrdata[train_idx, ]; va <- hrdata[-train_idx, ]
+uni_tr <- uni_cox(tr); uni_va <- uni_cox(va)
+sig_vars <- uni_tr$characteristics[uni_tr$p < 0.05]
+
+mk_rows <- function(sm, sig_vars) {
+  cm <- sm$coefficients; ci <- sm$conf.int
+  do.call(rbind, lapply(vars, function(v) {
+    idx <- which(startsWith(rownames(cm), v))   # factor contrasts: "stageIII-IV"
+    if (length(idx) == 1) {
+      data.frame(characteristics = v, HR = round(cm[idx, "exp(coef)"], 2),
+                 CI = paste0(round(ci[idx, "lower .95"], 2), "-",
+                             round(ci[idx, "upper .95"], 2)),
+                 p = ifelse(cm[idx, "Pr(>|z|)"] < 0.001, "< 0.001",
+                            round(cm[idx, "Pr(>|z|)"], 3)))
+    } else {
+      data.frame(characteristics = v, HR = NA, CI = NA, p = NA)
+    }
+  }))
+}
+m_tr <- mk_rows(summary(coxph(as.formula(paste("Surv(time, event) ~",
+                                               paste(sig_vars, collapse = "+"))), data = tr)), sig_vars)
+m_va <- mk_rows(summary(coxph(as.formula(paste("Surv(time, event) ~",
+                                               paste(sig_vars, collapse = "+"))), data = va)), sig_vars)
+
+fmt <- function(df) dplyr::mutate(
+  df,
+  characteristics = dplyr::case_when(
+    characteristics == "age" ~ "Age (>=median vs <median)",
+    characteristics == "stage" ~ "Stage (III-IV vs I-II)",
+    characteristics == "invasion" ~ "Lymphatic invasion (yes vs no)",
+    characteristics == "marker" ~ "Marker score (>=median vs <median)"),
+  `HR (95% CI)` = ifelse(is.na(HR), "", paste0(HR, " (", CI, ")")),
+  `P value` = ifelse(is.na(p), "", as.character(p))) %>%
+  dplyr::select(characteristics, `HR (95% CI)`, `P value`)
+
+tbl <- data.frame(
+  characteristics = c("", "Training cohort (n = 182)", fmt(uni_tr)$characteristics,
+                      "Validation cohort (n = 78)", fmt(uni_va)$characteristics),
+  uni_hr = c("", "", fmt(uni_tr)$`HR (95% CI)`, "", fmt(uni_va)$`HR (95% CI)`),
+  uni_p = c("", "", fmt(uni_tr)$`P value`, "", fmt(uni_va)$`P value`),
+  multi_hr = c("HR (95% CI)", "", fmt(m_tr)$`HR (95% CI)`, "", fmt(m_va)$`HR (95% CI)`),
+  multi_p = c("P value", "", fmt(m_tr)$`P value`, "", fmt(m_va)$`P value`),
+  stringsAsFactors = FALSE)
+
+kableExtra::kable(tbl, booktabs = TRUE, escape = FALSE,
+                  col.names = c("Characteristics", "Univariate analysis", "",
+                                "Multivariate analysis", ""),
+                  caption = "Univariate and multivariate Cox analyses, training vs validation (simulated)") %>%
+  kableExtra::kable_styling(c("striped", "scale_down"), font_size = 11) %>%
+  kableExtra::add_header_above(c(" " = 1, "Training cohort" = 2, "Validation cohort" = 2))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Factor contrast rows in a Cox summary are named `stageIII-IV`, not `stage` — match them with `startsWith(rownames(cm), v)` when assembling the table programmatically, or the multivariate column silently fills with blanks.
+-   The multivariate column shows **only the covariates that survived the training univariate screen**, and the same formula (not re-screened) is applied to the validation cohort — re-screening per cohort is a subtle double-dipping.
+-   `add_header_above()` places the cohort names over the column pairs; keep `escape = FALSE` so the bracketed CI strings render.
+:::
+
+### 8. Batch Univariate Cox Forest Plot (FigureYa66UnivariateCox)
+
+FigureYa66 \[11\] loops a Cox model over **every gene's expression** and draws the survivors as a forest: diamond point = HR, error bars = 95% CI, x on log2, viridis colour = p-value, HR = 1 dashed. The reference's `theme_ggstatsplot()` needs a sourced helper file, so the block below uses the plain `theme_bw()` equivalent. The same loop feeds FigureYa6rHRs forest variants by renaming the columns to HR / lower / upper:
+
+```{r}
+#| label: tbl-8.1UnivariateCoxForest
+#| tbl-cap: "Batch univariate Cox screen of 24 simulated genes: only genes with p < 0.05 and HR outside the 0.92-1.15 band are drawn; viridis colour encodes the p-value."
+#| warning: false
+#| message: false
+
+## freeze:auto re-executes only new chunks in a fresh session —
+## re-attach the needed packages here
+suppressPackageStartupMessages({library(survival); library(ggplot2); library(dplyr)})
+set.seed(6601)
+n_ux <- 240
+ux <- data.frame(futime = rexp(n_ux, 0.02), fustat = rbinom(n_ux, 1, 0.8))
+gene_expr <- matrix(rnorm(n_ux * 24, 5, 1.2), n_ux, 24,
+                    dimnames = list(NULL, paste0("GENE", sprintf("%02d", 1:24))))
+## plant one protective and one risk gene so the screen has a signal
+gene_expr[, 1] <- gene_expr[, 1] - (ux$futime < quantile(ux$futime, 0.4)) * 1.8
+gene_expr[, 5] <- gene_expr[, 5] + (ux$futime < quantile(ux$futime, 0.4)) * 1.8
+ux_all <- cbind(ux, as.data.frame(gene_expr))
+Coxoutput <- do.call(rbind, lapply(paste0("GENE", sprintf("%02d", 1:24)), function(g) {
+  sm <- summary(coxph(as.formula(paste0("Surv(futime, fustat) ~ ", g)), data = ux_all))
+  data.frame(gene = g,
+             HR = sm$coefficients[, "exp(coef)"],
+             lower = sm$conf.int[, "lower .95"],
+             upper = sm$conf.int[, "upper .95"],
+             pvalue = sm$coefficients[, "Pr(>|z|)"])
+}))
+Coxoutput <- dplyr::arrange(Coxoutput, pvalue) %>% dplyr::filter(pvalue < 0.05)
+plotCoxoutput <- dplyr::filter(Coxoutput, HR <= 0.92 | HR >= 1.15)
+
+ggplot(data = plotCoxoutput, aes(x = HR, y = gene, color = pvalue)) +
+  geom_errorbarh(aes(xmax = upper, xmin = lower), color = "black",
+                 height = 0, linewidth = 1.1) +
+  geom_point(aes(x = HR, y = gene), size = 3.5, shape = 18) +
+  geom_vline(xintercept = 1, linetype = "dashed", linewidth = 1) +
+  coord_trans(x = "log2") +
+  scale_color_viridis_c() +
+  labs(x = "Hazard ratio, univariate Cox (simulated LUAD-like cohort)",
+       y = "Gene", colour = "P value",
+       title = "Univariate Cox regression screen") +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Screen, then filter for *effect size too* (the reference's HR ≤ 0.92 | ≥ 1.15): with enough genes, pure noise still produces p < 0.05 hits whose HR is clinically meaningless.
+-   The p-value colour ramp adds nothing the error bars don't already show — but it makes the reader's eye rank the hits exactly as the table would; keep it and say the scale.
+-   Like any p < 0.05 screen over 24 genes, expect ~1 false hit; validate the survivors in an independent cohort before drawing conclusions.
+:::
+
+## Application## Application
 
 ::: {#fig-RegressionTableApplications1}
 ![](../images/Clinics/RegressionTable_app1.png){fig-alt="RegressionTableApp1" fig-align="center" width="60%"}
@@ -302,3 +459,5 @@ This regression analysis table shows the independent predictors of late total mo
 \[1\] CHEN J X, HUANG W T, ZHANG Q Y, et al. The optimal intravesical maintenance chemotherapy scheme for the intermediate-risk group non-muscle-invasive bladder cancer[J]. BMC Cancer, 2023,23(1): 1018.
 
 \[2\] BENKE K, ÁGG B, SZABÓ L, et al. Bentall procedure: quarter century of clinical experiences of a single surgeon[J]. J Cardiothorac Surg, 2016,11: 19.
+
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

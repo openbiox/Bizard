@@ -220,7 +220,7 @@ VennDiagram包的核心函数为`venn.diagram`，该函数不能直接将图像�
 #| warning: false
 #| message: false
 
-p <- venn.diagram(x,filename = NULL);grid::grid.draw(p)
+p <- venn.diagram(x, filename = NULL, disable.logging = TRUE);grid::grid.draw(p)
 ```
 
 VennDiagram集合颜色设置于ggVennDiagram最大的区别在于颜色是根据不同集合设置的离散型颜色，设置方法如下：
@@ -234,7 +234,7 @@ VennDiagram集合颜色设置于ggVennDiagram最大的区别在于颜色是根�
 
 # 仅输入一个颜色时，所有集合显示同一个颜色，当输入颜色数量与集合数量一致时每个集合各自一个颜色，也可以使用指定命名的方式精确设置集合的颜色
 p <- venn.diagram(
-  x, filename = NULL,
+  x, filename = NULL, disable.logging = TRUE,
   fill = c("A"="#2E75A2","B"="#FBD75F","C"="#379337","D"="#C13A3C"),
   alpha= 0.3);grid::grid.draw(p)
 ```
@@ -249,7 +249,7 @@ p <- venn.diagram(
 #| message: false
 
 p <- venn.diagram(
-  x, filename = NULL,
+  x, filename = NULL, disable.logging = TRUE,
   col = c("A"="#2E75A2","B"="#FBD75F","C"="#379337","D"="#C13A3C"),
   lwd = 0.3, lty = 2);grid::grid.draw(p)
 ```
@@ -264,7 +264,7 @@ p <- venn.diagram(
 #| message: false
 
 p <- venn.diagram(
-  x, filename = NULL, 
+  x, filename = NULL, disable.logging = TRUE, 
   cat.col =c("A"="#2E75A2","B"="#FBD75F","C"="#379337","D"="#C13A3C"),
   label.col = "red");grid::grid.draw(p)
 ```
@@ -280,7 +280,7 @@ p <- venn.diagram(
 
 p <- venn.diagram(
   x[c("A","B")], filename = NULL, fill= c("A"="#2E75A2","B"="#FBD75F"),
-  scaled = T
+  scaled = T, disable.logging = TRUE
 );grid::grid.draw(p)
 ```
 
@@ -372,14 +372,14 @@ ggVennDiagram(sets4, label = "percent", label_alpha = 0,
 :::
 
 
-### 6. 带多重集交集精确检验 p 值的韦恩图
+### 6. 带多重集交集检验 p 值的韦恩图
 
-当韦恩图承载论点（三个 PDX 模型*共有*哪些通路？）时，三重重叠需要一个统计量：在集合相互独立的零模型下给出 P 值并印在图下方 \[4\]。Wang et al. 的 MSET 检验将其推广到多集合；常见的三集合情形，下面这个自足、零依赖的精确上侧二项检验即可胜任。
+当韦恩图承载论点（三个 PDX 模型*共有*哪些通路？）时，三重重叠需要一个统计量：在集合相互独立的零模型下给出 P 值并印在图下方 \[4\]。Wang et al. 的精确 MSET 检验（SuperExactTest）可处理任意数量集合、固定集合大小的情形；SuperExactTest 不在本仓库 lockfile 中，因此本节给出一个自足的**二项近似**：把背景每个成员视为以概率 |S_i|/N 独立落入集合 i，将三重交集计数对 Binomial(N, p1·p2·p3) 做上侧检验。固定集合大小会使"三重入选"事件呈轻度负相关，因此二项尾略**保守**——不会夸大显著性。
 
 
 ```{r}
 #| label: fig-6.1MultisetP
-#| fig-cap: "Three PDX-model pathway sets with the exact multiset-intersection test below: the 52-member planted core makes the triple overlap astronomically richer than independent sampling allows (P < 1e-30)."
+#| fig-cap: "Three PDX-model pathway sets with a binomial-approximation test of the triple intersection below: the 52-member planted core makes the overlap far richer than independent sampling allows (P < 1e-30)."
 #| out.width: "85%"
 #| warning: false
 #| message: false
@@ -396,18 +396,19 @@ S2 <- unique(c(core, sample(setdiff(bg, core), sz[2] - length(core))))
 S3 <- unique(c(core, sample(setdiff(bg, core), sz[3] - length(core))))
 dat <- list(PDX_95 = S1, PDX_112 = S2, PDX_207 = S3)
 
-## exact upper-tail test of the triple intersection under independent sets:
-## the observed triple-overlap count vs Binomial(n, p1*p2*p3)
+## 三重交集检验的二项近似（独立入选零模型）：观测三重交集计数 vs
+## Binomial(n, p1*p2*p3)；在真实固定大小零模型下略保守
 t3 <- length(intersect(intersect(S1, S2), S3))
 pval <- binom.test(t3, n = n_bg, p = prod(sz / n_bg),
                    alternative = "greater")$p.value
 
 venn <- venn.diagram(x = dat, filename = NULL,
-                     fill = c("red", "steelblue", "yellow"))
+                     fill = c("red", "steelblue", "yellow"),
+                     disable.logging = TRUE)  # keep VennDiagram from dropping .log files in the working dir
 grid::grid.newpage()
 grid::grid.draw(venn)
-grid::grid.text(sprintf("Exact test of multiset intersections:  P = %.2e", pval),
-                x = unit(0.5, "npc"), y = unit(0.05, "npc"),
+grid::grid.text(sprintf("Binomial tail test of the triple intersection:  P = %.2e", pval),
+                x = unit(0.5, "npc"), y = unit(0.105, "npc"),
                 gp = gpar(fontsize = 11, col = "#B2182B"))
 cat(sprintf("Triple overlap: %d pathways (sizes %s), P = %.2e\n",
             t3, paste(sz, collapse = "/"), pval))
@@ -418,7 +419,7 @@ cat(sprintf("Triple overlap: %d pathways (sizes %s), P = %.2e\n",
 
 -   p 值必须来自读者默认的那个**零模型**：背景大小是你抽样自的通路/基因宇宙，而非所画集合的并集；n 取错会在无声中夸大显著性。
 -   每换新设计就用 Monte-Carlo 零模型对拍一次：以相同集合大小抽独立集合，确认观测重叠从不随机出现——一旦出现，你的 p 值就在撒谎。
--   SuperExactTest 等包实现了完整的多重集精确检验（Wang et al. 2015）；此处的二项尾是其在独立集合下的特例——足以回答常见的"这重叠超出预期吗"。
+-   二项尾假设集合成员相互独立；固定集合大小下的精确零模型是 SuperExactTest `MSET()` 的多重集超几何级联（Wang et al. 2015）——发表级结论请用它（需另行安装，不在本仓库 lockfile 中）。
 :::
 
 ## 应用场景

@@ -45,7 +45,7 @@ sessioninfo::session_info("attached")
 
 ## Data Preparation
 
-The reference workflow trains a random forest / elastic-net model on RNA-seq from control vs tumour samples and scores external cohorts. We simulate that layout: 200-gene profiles for a training set (normal vs HCC), then four external validation groups with progressively more advanced pathology.
+The reference workflow trains a random forest / elastic-net model on RNA-seq from control vs tumour samples and scores external cohorts. We simulate that layout: 50-gene profiles for a training set (normal vs HCC), then four external validation groups with progressively more advanced pathology.
 
 ```{r load data, message=FALSE, warning=FALSE}
 set.seed(1501)
@@ -69,7 +69,7 @@ val_lab  <- factor(rep(stages, each = 30), levels = stages)
 colnames(val_expr) <- paste0("VA_", sprintf("%04d", 1:n_gene))
 ```
 
-## Train the Model and Score the Validation Cohorts
+## Score the Validation Cohorts with a Signature-Based Tumor Index
 
 ```{r model, message=FALSE, warning=FALSE}
 ## Elastic-net logistic on the training split (the reference uses random
@@ -107,7 +107,7 @@ ggplot(val_df, aes(stage, TI, fill = stage)) +
   stat_compare_means(method = "kruskal.test", label.y = max(val_df$TI) + 0.06) +
   scale_fill_manual(values = c(Normal = "#4D4D4D", Fibrosis = "#445EAD",
                                Dysplasia = "#EABF00", HCC = "#B2182B")) +
-  labs(x = "Pathological stage", y = "Tumor index (0 = normal, 1 = cancer)",
+  labs(x = "Pathological stage", y = "Tumor index (mean of up genes − mean of down genes)",
        fill = "Stage") +
   theme_classic(base_size = 11) +
   theme(legend.position = "top", legend.key.size = unit(3, "mm"))
@@ -125,12 +125,15 @@ ggplot(val_df, aes(stage, TI, fill = stage)) +
 #| fig-height: 4
 
 ## two simulated external cohorts to mirror the multi-panel layout
-val_df$cohort <- ifelse(seq_len(nrow(val_df)) <= 60, "GSE36376-like", "GSE6764-like")
+## alternate samples into two cohorts so each spans all four stages
+## (a block split would confound cohort with stage)
+val_df$cohort <- ifelse(seq_len(nrow(val_df)) %% 2 == 1,
+                        "GSE36376-like", "GSE6764-like")
 
 ggplot(val_df, aes(stage, TI, fill = stage)) +
   geom_boxplot(outlier.shape = NA, width = 0.6) +
   facet_wrap(~cohort, nrow = 1) +
-  stat_compare_means(method = "kruskal.test", label.x = 0.6, size = 3.2) +
+  stat_compare_means(method = "kruskal.test", label.x = 2, size = 3.2) +
   scale_fill_manual(values = c(Normal = "#4D4D4D", Fibrosis = "#445EAD",
                                Dysplasia = "#EABF00", HCC = "#B2182B")) +
   labs(x = NULL, y = "Tumor index", fill = "Stage") +

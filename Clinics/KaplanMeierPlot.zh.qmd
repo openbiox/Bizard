@@ -16,7 +16,7 @@ author:
 ```{r}
 #| echo: false
 #| output: asis
-bizard_setup("survival", "survminer", "ggplot2", "dplyr", "tidyr", "zoo", "patchwork", lang = "zh")
+bizard_setup("survival", "survminer", "ggplot2", "dplyr", "tidyr", "zoo", "patchwork", "ggpp", "gridExtra", "RColorBrewer", lang = "zh")
 ```
 
 ```{r}
@@ -306,7 +306,7 @@ final_plot
 
 ### 多组生存曲线与置信区间带
 
-两臂与三臂比较沿用同一个 `ggsurvplot()` 调用：为每个分层在 `palette` 中传入一种颜色，在 `legend.labs` 中传入各组标签，并用 `conf.int` 开启置信区间带 \[7\]。
+两臂与三臂比较沿用同一个 `ggsurvplot()` 调用：为每个分层在 `palette` 中传入一种颜色，在 `legend.labs` 中传入各组标签，并用 `conf.int` 开启置信区间带 \[3\]。
 
 ```{r}
 #| label: fig-2.2MultiGroupKM
@@ -351,7 +351,7 @@ ggsurvplot(fit3, data = km3,
 
 ### Risk Table（风险表）
 
-KM 曲线下方的**风险表**展示每个时间点仍在随访的患者数 \[7\]——审稿人用它评估曲线在晚期随访时的可靠性。`survminer::ggsurvplot()` 通过 `risk.table = TRUE` 绘制。
+KM 曲线下方的**风险表**展示每个时间点仍在随访的患者数 \[3\]——审稿人用它评估曲线在晚期随访时的可靠性。`survminer::ggsurvplot()` 通过 `risk.table = TRUE` 绘制。
 
 ```{r}
 #| label: fig-risktable
@@ -391,6 +391,224 @@ ggsurvplot(fit_rt, data = km_data,
 -   `tables.theme = theme_cleantable()` 去除表格网格线，使画面更干净。
 :::
 
+### 多组间的两两 log-rank 比较
+
+三组及以上分层时，单一的总体 log-rank p 值只回答"曲线在某处是否存在差异"，回答不了"具体哪两组不同" \[3\]。自然的补充是 `survminer::pairwise_survdiff()` 给出的两两 log-rank 检验矩阵，与曲线一起呈现——这正是 FigureYa284pairwiseLogrank 的版式：复现某软组织肉瘤研究中五个 PAM50 样分层的 Fig. 2a \[3\]。下面用五个不同风险率的模拟分层（A–E）绘制带风险表的 KM 曲线，标注总体 log-rank p 值，并用 `ggpp::geom_table()` 把完整的两两比较矩阵嵌入面板左下角的空白区。
+
+```{r}
+#| label: fig-2.3pairwise
+#| fig-cap: "五分层 KM 曲线 + 风险表；左下表格为 Holm 校正的两两 log-rank p 值（列为组、行为组），总体 log-rank 检验 p < 0.001。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 8.5
+
+set.seed(4284)
+n_g <- 60
+grp <- factor(rep(c("A", "B", "C", "D", "E"), each = n_g),
+              levels = c("A", "B", "C", "D", "E"))
+rate <- c(A = 0.030, B = 0.022, C = 0.008, D = 0.016, E = 0.012)
+t_event <- rexp(5 * n_g, rate = rate[as.character(grp)])
+t_cens  <- rexp(5 * n_g, rate = 0.008)
+km5 <- data.frame(OS.time = pmin(t_event, t_cens),
+                  OS = as.integer(t_event <= t_cens),
+                  group = grp)
+
+# 总体 log-rank 检验
+fitd <- survdiff(Surv(OS.time, OS) ~ group, data = km5)
+p_overall <- 1 - pchisq(fitd$chisq, length(fitd$n) - 1)
+p_lab <- paste0("Log-rank test P",
+                ifelse(p_overall < 0.001, " < 0.001",
+                       paste0(" = ", round(p_overall, 3))))
+
+# 两两 log-rank 检验，Holm 校正（survminer 默认；原文为与已发表表格一致使用了不校正）
+ps <- pairwise_survdiff(Surv(OS.time, OS) ~ group, data = km5,
+                        p.adjust.method = "holm")
+
+fit <- survfit(Surv(OS.time, OS) ~ group, data = km5)
+names(fit$strata) <- gsub("group=", "", names(fit$strata))
+mycol <- brewer.pal(n = 10, "Paired")[c(2, 4, 6, 8, 10)]
+
+addTab <- as.data.frame(as.matrix(ifelse(round(ps$p.value, 3) < 0.001,
+                                         "<0.001", round(ps$p.value, 3))))
+addTab[is.na(addTab)] <- "-"
+
+p <- ggsurvplot(fit, data = km5,
+                conf.int = FALSE,
+                risk.table = TRUE, risk.table.col = "strata",
+                palette = mycol,
+                xlim = c(0, 120), break.time.by = 24,
+                size = 0.9,
+                legend.title = "",
+                xlab = "Time (months)", ylab = "Overall survival",
+                risk.table.y.text = FALSE,
+                tables.height = 0.28,
+                ggtheme = theme_classic(base_size = 11))
+
+p$plot <- p$plot +
+  annotate("text", x = 55, y = 0.95, hjust = 0, fontface = 4, size = 3.4,
+           label = p_lab) +
+  annotate("text", x = 0, y = 0.315, hjust = 0, size = 3, fontface = 3,
+           label = "Pairwise log-rank P (Holm)") +
+  geom_table(data = tibble::tibble(x = 0, y = 0.02, tb = list(addTab)),
+             aes(x = x, y = y, label = tb),
+             table.rownames = TRUE,
+             table.theme = ttheme_minimal(base_size = 8,
+                                          core = list(fg_params = list(fontsize = 7.5))))
+p
+```
+
+::: callout-tip
+**实践要点**
+
+-   优先使用校正后的两两 p 值（`p.adjust.method = "holm"`，包默认值）；原文为与已发表表格一致打印了未校正的检验——两种做法都可以，但要在方法学部分说明。
+-   矩阵是对称的，对角线为 `-`；只打印下三角，且行/列顺序与曲线图例顺序保持一致。
+-   `geom_table()` 以数据坐标为锚点：KM 面板左下角通常是空的（曲线从生存率 = 1 开始），是安全的锚点；导出前检查是否与晚期下降的曲线重叠。
+:::
+
+### 批量最优截断值（最佳分离）
+
+为大量标志物筛选"最佳分离"截断值用 `survminer::surv_cutpoint()`——它对每个变量扫描截断点、最大化 log-rank 统计量（`minprop = 0.3` 保证两组各占队列至少 30%），再用 `surv_categorize()` 应用所得截断。参考工作流（FigureYa35batch_bestSeparationV3_update \[3\]）把所得高/低组逐个过 KM 曲线，并用 `survdiff` 的 Observed/Expected 比值计算 HR 与 95% CI：
+
+```{r}
+#| label: fig-3.4BestSeparation
+#| fig-cap: "8 个模拟标志物的批量最佳分离筛选：对最大化 log-rank p 通过 0.05 的标志物绘制 KM 曲线，面板内打印最优截断值、各组 n、HR 与 95% CI。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+set.seed(3511)
+n_km <- 160
+svdata <- data.frame(futime = rexp(n_km, 0.02), fustat = rbinom(n_km, 1, 0.75))
+g_expr <- matrix(rnorm(n_km * 8, 5, 1.2), n_km, 8,
+                 dimnames = list(NULL, paste0("GENE", 1:8)))
+## 植入效应：GENE1 高表达 = 更差，GENE3 高表达 = 保护，GENE5 = 无效应
+g_expr[, 1] <- g_expr[, 1] + (svdata$futime < quantile(svdata$futime, 0.45)) * 2.2
+g_expr[, 3] <- g_expr[, 3] - (svdata$futime < quantile(svdata$futime, 0.45)) * 2.0
+svdata <- cbind(svdata, as.data.frame(g_expr))
+
+res.cut <- surv_cutpoint(svdata, time = "futime", event = "fustat",
+                         variables = paste0("GENE", 1:8), minprop = 0.3)
+res.cat <- surv_categorize(res.cut)
+cuts <- summary(res.cut)$cutpoint
+
+my.surv <- with(res.cat, Surv(futime, fustat))
+pl <- list()
+for (i in paste0("GENE", 1:8)) {
+  group <- factor(res.cat[[i]], levels = c("low", "high"))
+  sd1 <- survdiff(my.surv ~ group)
+  p.val <- 1 - pchisq(sd1$chisq, length(sd1$n) - 1)
+  HR <- (sd1$obs[2] / sd1$exp[2]) / (sd1$obs[1] / sd1$exp[1])
+  up95 <- exp(log(HR) + qnorm(0.975) * sqrt(1 / sd1$exp[2] + 1 / sd1$exp[1]))
+  low95 <- exp(log(HR) - qnorm(0.975) * sqrt(1 / sd1$exp[2] + 1 / sd1$exp[1]))
+  if (p.val > 0.05) next
+  fit <- survfit(my.surv ~ group)
+  svsort <- svdata[order(svdata[, i]), ]
+  pl[[i]] <- ggsurvplot(fit, data = data.frame(group = group),
+                        conf.int = FALSE, censor = FALSE,
+                        palette = c("#D95F02", "#1B9E77"),
+                        legend.title = i,
+                        legend.labs = c(paste0("high >", round(svsort[fit$n[2], i], 2), " (n=", fit$n[1], ")"),
+                                        paste0("low  <=", round(svsort[fit$n[2], i], 2), " (n=", fit$n[2], ")")),
+                        pval = paste(ifelse(p.val < 0.001, "p < 0.001", paste0("p = ", round(p.val, 3))),
+                                     paste0("HR = ", round(HR, 2)),
+                                     paste0("95% CI: ", round(low95, 2), "-", round(up95, 2)), sep = "\n"))
+}
+patchwork::wrap_plots(lapply(pl, function(x) x$plot), ncol = 2, guides = "collect")
+```
+
+::: callout-tip
+**实践要点**
+
+-   最大化选择统计量会搜索"最讨好数据"的截断——8 个标志物按 p > 0.05 筛选，纯随机也有约三分之一的批次出现假命中（上图的 GENE7 正是这种边界命中）。请用多重检验校正确认（如 0.05/8 的 Bonferroni），或明确作为探索性结果，并在独立队列验证截断值。
+-   `minprop = 0.3` 防止把一小撮长生存者单独隔离——这是"虚假显著"分离的经典来源。
+-   由 `survdiff` Observed/Expected 计算的 HR 与 CI 是队列特异的（截断在同一数据上优化过），只能作为描述性结果，不能当作独立验证。
+:::
+
+### 单标志物的最优分离景观图
+
+上面批量筛选的姊妹视角（FigureYa4bestSeparation \[3\]）：把队列按一个标志物的表达排序，在**每一个可能的切分点**计算 log-rank p 值与 HR，然后画 −log10(P) 对 log2(HR)。虚线标记 p = 0.05 与 HR = 2 / 0.5；红点就是肉眼会选中的切分——而由于这是最大化选择统计量，它同时也是最容易乐观的那个：
+
+```{r}
+#| label: fig-3.5SplitLandscape
+#| fig-cap: "单标志物的切分景观图（200 样本）：每个可能的二分方式的 log-rank p 值与 HR；虚线在 p = 0.05 与 HR = 2 / 0.5；最小 p 切分已高亮。"
+#| out.width: "70%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5.2
+
+set.seed(4041)
+n_bs <- 200
+bs <- data.frame(futime = rexp(n_bs, 0.02), fustat = rbinom(n_bs, 1, 0.8),
+                 expression = rnorm(n_bs, 5, 1.3))
+bs$expression <- bs$expression - (bs$futime < quantile(bs$futime, 0.42)) * 2.0
+sortsv <- bs[order(bs$expression), ]
+pvals <- c(); hrs <- c()
+for (n in 1:(nrow(sortsv) - 1)) {
+  gp <- rep(c("low", "high"), c(n, nrow(sortsv) - n))
+  d1 <- survdiff(Surv(futime, fustat) ~ gp, data = sortsv, rho = 0)
+  pvals <- c(pvals, pchisq(d1$chisq, length(d1$n) - 1, lower.tail = FALSE))
+  hrs <- c(hrs, d1$obs[1] * d1$exp[2] / (d1$obs[2] * d1$exp[1]))
+}
+fd <- data.frame(Tag = 1:(nrow(sortsv) - 1), HR = hrs, Pvalue = pvals)
+best <- which.min(pvals)
+
+ggplot(fd, aes(log2(HR), -log10(Pvalue))) +
+  geom_point(shape = 21, aes(fill = Tag), colour = "grey25", size = 2.1) +
+  scale_fill_gradientn(colours = c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"),
+                       guide = "none") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
+  annotate("text", x = log2(hrs[best]), y = -log10(pvals[best]) + 0.6,
+           label = "min-P split", size = 3.2, colour = "#BB4444") +
+  geom_point(data = fd[best, ], aes(log2(HR), -log10(Pvalue)),
+             shape = 21, fill = "#BB4444", colour = "black", size = 3.4) +
+  labs(x = "log2 hazard ratio at each split",
+       y = "-log10(P), maximally selected log-rank",
+       title = "Every split of 200 samples ranked by expression (simulated marker)") +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+景观图把"选择的代价"可视化——对比 min-P 切分与朴素中位数切分的 KM 曲线：
+
+```{r}
+#| label: fig-3.6SplitKMs
+#| fig-cap: "同一标志物两种二分方式的 KM 曲线：min-P 切分（左）与中位数切分（右）；两者 p 值之差就是景观图警示的乐观量。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.2
+
+gp_best <- rep(c("low", "high"), c(best, nrow(sortsv) - best))
+fit_best <- survfit(Surv(futime, fustat) ~ gp_best, data = sortsv)
+gp_med <- ifelse(sortsv$expression > median(sortsv$expression), "high", "low")
+fit_med <- survfit(Surv(futime, fustat) ~ gp_med, data = sortsv)
+p_best <- ggsurvplot(fit_best, linetype = "strata", conf.int = FALSE,
+                     pval = TRUE, palette = c("#D95F02", "#1B9E77"),
+                     legend.title = "", legend.labs = c("High", "Low"),
+                     ggtheme = theme_bw(base_size = 11),
+                     title = "Best separation (min-P split)")
+p_med <- ggsurvplot(fit_med, linetype = "strata", conf.int = FALSE,
+                    pval = TRUE, palette = c("#D95F02", "#1B9E77"),
+                    legend.title = "", legend.labs = c("High", "Low"),
+                    ggtheme = theme_bw(base_size = 11),
+                    title = "Median separation")
+patchwork::wrap_plots(list(p_best$plot, p_med$plot), ncol = 2)
+```
+
+::: callout-tip
+**实践要点**
+
+-   `Tag` 填充色编码切分点在排序表达轴上的位置——它揭示极端切分（极小组）在用可解释性换 p 值；让 5% 样本充当"高"组的切分不是可用规则。
+-   筛选标志物时**把中位数切分的 p 值与 min-P 并排报告**：两条曲线 p 值的差距就是一眼可见的乐观量。
+-   这张景观图是 `surv_cutpoint()` 的手工孪生：单标志物用它，多标志物面板用批量筛选。
+:::
+
 ## 应用场景
 
 ### 1. 疾病分布
@@ -411,4 +629,4 @@ ggsurvplot(fit_rt, data = km_data,
 
 
 
-\[7\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

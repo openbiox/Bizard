@@ -205,6 +205,62 @@ regplot(lihccox,
 美化诺莫图2
 :::
 
+### 3. 校准诺莫图
+
+诺莫图是一个预测模型，因此在使用（或发表）之前必须做**校准**：预测的生存概率与观测值是否一致？参考工作流 \[3\] 用 `rms::cph(..., surv = TRUE, time.inc = ...)` 拟合同一个 Cox 模型，再用 `rms::calibrate()`（bootstrap 偏差校正，观测值取 horizon 时刻的 Kaplan–Meier 估计）。理想的诺莫图贴着 45° 虚线；表观（×）与偏差校正（•）曲线之间的距离显示了乐观校正所扣除的过拟合量。
+
+```{r}
+#| label: fig-3.1Calibration3y
+#| fig-cap: "Cox 诺莫图 3 年（u = 1095 天）的 bootstrap 校准：表观（×）与偏差校正（•）生存相对 45° 理想线。"
+#| out.width: "65%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 5.5
+
+## 合并 TCGA 分期标签（Stage IA/IB -> Stage I），保证每个水平都有足够样本
+lihc_cal <- LIHC
+lihc_cal$stage3 <- factor(sub("[ABCD]$", "", as.character(lihc_cal$stage)))
+lihc_cal$gender <- factor(lihc_cal$gender)
+lihc_cal <- lihc_cal[complete.cases(lihc_cal[, c("time", "status", "age", "gender", "stage3")]), ]
+dd2 <- datadist(lihc_cal)
+options(datadist = "dd2")
+
+f3y <- cph(Surv(time, status) ~ age + gender + stage3, data = lihc_cal,
+           x = TRUE, y = TRUE, surv = TRUE, time.inc = 1095)
+cal3y <- calibrate(f3y, cmethod = "KM", method = "boot", u = 1095, B = 200)
+plot(cal3y, xlab = "Predicted 3-year survival probability",
+     ylab = "Observed survival (KM)", subtitles = FALSE)
+```
+
+```{r}
+#| label: fig-3.2Calibration5y
+#| fig-cap: "Cox 诺莫图 5 年（u = 1825 天）的 bootstrap 校准：模型在 bootstrap 误差条内贴合理想线。"
+#| out.width: "65%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 5.5
+
+f5y <- cph(Surv(time, status) ~ age + gender + stage3, data = lihc_cal,
+           x = TRUE, y = TRUE, surv = TRUE, time.inc = 1825)
+cal5y <- calibrate(f5y, cmethod = "KM", method = "boot", u = 1825, B = 200)
+plot(cal5y, xlab = "Predicted 5-year survival probability",
+     ylab = "Observed survival (KM)", subtitles = FALSE)
+```
+
+::: callout-tip
+**实践要点**
+
+-   `time.inc` 与 `u` 必须是**同一个 horizon**，且拟合时要设 `surv = TRUE`——`calibrate()` 复用拟合对象内部保存的生存函数；horizon 不一致会静默地校准错误的终点。
+-   `cmethod = "KM"` 在预测分带内与 Kaplan–Meier 估计比较；请报告 B（此处 200）——B 太小会让误差条本身不可靠。
+-   两个 horizon 并排展示（3 年与 5 年）是标准的临床呈现：模型可能早期校准良好、晚期漂移。
+
+::: callout-note
+**交互式变体。** FigureYa30Plus 提供一个基于浏览器的诺莫图应用（可离线打开的 PWA）：<https://github.com/ying-ge/FigureYa/tree/main/FigureYa30Plus_nomogram_app>。临床医生拖动各变量即可即时读出预测概率——适合教学与临床讨论；发表论文时，静态诺莫图加上文所示的校准曲线仍是必需组合。
+:::
+:::
+
 ## 应用场景
 
 ::: {#fig-NomogramApplications}
@@ -220,4 +276,6 @@ regplot(lihccox,
 \[1\] Goldman MJ, Craft B, Hastie M, et al. Visualizing and interpreting cancer genomics data via the Xena platform. Nat Biotechnol. 2020;38(6):675-678. doi:10.1038/s41587-020-0546-8
 
 \[2\] Zhang JX, Song W, Chen ZH, et al. Prognostic and predictive value of a microRNA signature in stage II colon cancer: a microRNA expression analysis [published correction appears in Lancet Oncol. 2014 Jan;15(1):e4]. Lancet Oncol. 2013;14(13):1295-1306. doi:10.1016/S1470-2045(13)70491-1
+
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 

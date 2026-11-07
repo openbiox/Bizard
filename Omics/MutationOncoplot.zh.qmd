@@ -431,11 +431,11 @@ ggdraw(combined) +
 
 ### 8. 从头突变 signature 分解
 
-体细胞突变目录可分解为 **signature**——特征性的 96 通道三核苷酸上下文谱（APOBEC、烟草、UV、衰老等突变过程）\[4\]。maftools/MutationalPatterns 路线需要参考基因组；其版式本身可由模拟的通道矩阵经 NMF 分解复现：
+体细胞突变目录可分解为 **signature**——特征性的三核苷酸上下文谱（完整 SBS 约定为 96 通道；APOBEC、烟草、UV、衰老等突变过程）\[4\]。maftools/MutationalPatterns 路线需要参考基因组；其版式本身可由模拟的 **48 通道**（6 类 × 8 简化上下文）矩阵经 NMF 分解复现：
 
 ```{r}
 #| label: fig-8.1SignatureNMF
-#| fig-cap: "模拟 96 通道突变目录的从头分解：NMF 提取的 signature 谱（上）与各样本的 signature 暴露（下）。"
+#| fig-cap: "模拟 48 通道突变目录的从头分解：NMF 提取的 signature 谱（上）与各样本的 signature 暴露（下）。"
 #| out.width: "95%"
 #| warning: false
 #| message: false
@@ -448,7 +448,7 @@ channels <- paste0(rep(bases, each = 8), "_", rep(1:8, times = 6))
 n_ch <- length(channels); n_samp <- 40
 
 sig_apobec <- c(2, 6, 8, 6, 2, 1, 1, 1)   # TCW motif 富集（简化形状）
-sig_aging  <- c(5, 4, 6, 5, 4, 3, 2, 2)   # 平坦、C>T 倾斜
+sig_aging  <- c(5, 4, 6, 5, 4, 3, 2, 2)   # 平坦形状（此处各类共享）
 W_true <- cbind(rep(sig_apobec, 6), rep(sig_aging, 6))
 W_true <- W_true / colSums(W_true)
 expo <- t(cbind(c(rep(0.7, 15), rep(0.05, 25)), rep(0.5, n_samp)))  # 2 signatures x 40 samples
@@ -518,7 +518,7 @@ names(type_cols) <- mut_types
 contexts <- c("A_C", "C_C", "G_C", "T_C", "A_G", "C_G", "G_G", "T_G",
               "A_T", "C_T", "G_T", "T_T", "A_A", "C_A", "G_A", "T_A")
 
-## 模拟带 C>T（类衰老）倾斜的 96 通道计数向量
+## 模拟 96 通道计数向量；每类内上下文分布相同（示意目录——真实 SBS1/衰老 signature 偏向 C>T）
 counts <- rmultinom(1, 6000,
                     prob = rep(c(4, 2, 3, 1, 2, 2, 3, 1,
                                  6, 3, 4, 2, 1, 1, 1, 1), times = 6))
@@ -646,7 +646,70 @@ draw(op1 %v% op2)
 
 -   两区块必须消费同一个 `ord` 样本置换——一个重排向量便是叠放景观可读的全部机关。
 -   `heatmap_legend_param = list(space = "none")` 屏蔽逐块图例；图例只给一次，交图注或专门区块。
--   真实数据以 `maftools::get.mutationMatrix()`/SigProfiler 取各样本签名暴露量替代模拟占比，排序键（`sig_key`）须为真实 SBS 暴露。
+-   真实数据以 `maftools::trinucleotideMatrix()` + NMF 或 SigProfiler 取各样本签名暴露量替代模拟占比，排序键（`sig_key`）须为真实 SBS 暴露。
+:::
+
+### 11. 01 矩阵 oncoprint：按通路拆分 + 临床注释
+
+panel 测序报告常常给出 **01 矩阵**——每基因每样本突变与否、无变异类型——基因带通路注释、旁边附临床表。FigureYa42oncoprintV2 版式 \[4\] 把它直接喂给 `ComplexHeatmap::oncoPrint()`：`row_split = pathway` 堆叠通路分组，`show_pct = FALSE` 用基因名替换百分比轴，`bottom_annotation` 携带临床协变量，让突变模式与表型对照阅读：
+
+```{r}
+#| label: fig-11.1PathwayOncoprint
+#| fig-cap: "40 个模拟样本中 12 个基因的 01 矩阵 oncoprint：行按通路拆分（RTK/RAS、PI3K、p53/cell cycle），绿色 = 突变，底部注释行携带吸烟、分期与治疗；顶栏统计每样本突变数。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10.5
+#| fig-height: 6.5
+
+set.seed(4201)
+genes_path <- data.frame(
+  gene = c("EGFR", "ERBB2", "KRAS", "NRAS", "BRAF", "PIK3CA", "PTEN", "AKT1",
+           "TP53", "MDM2", "CDKN2A", "RB1"),
+  pathway = c("RTK/RAS", "RTK/RAS", "RTK/RAS", "RTK/RAS", "RTK/RAS",
+              "PI3K", "PI3K", "PI3K", "p53/cell cycle", "p53/cell cycle",
+              "p53/cell cycle", "p53/cell cycle"))
+n_sm <- 40
+freq <- c(0.35, 0.2, 0.3, 0.12, 0.25, 0.4, 0.15, 0.1, 0.55, 0.18, 0.22, 0.12)
+mat01 <- sapply(freq, function(f) sample(c("mut", ""), n_sm, TRUE, prob = c(f, 1 - f)))
+mat01 <- t(mat01)
+rownames(mat01) <- genes_path$gene
+colnames(mat01) <- paste0("P", sprintf("%02d", 1:n_sm))
+mygene <- as.data.frame(mat01)
+mygene$pathway <- genes_path$pathway
+clin <- data.frame(
+  row.names = colnames(mat01),
+  Smoking = factor(sample(c("ever", "never"), n_sm, TRUE)),
+  Stage = factor(sample(c("I-II", "III-IV"), n_sm, TRUE)),
+  Treatment = factor(sample(c("chemo", "ICI", "TKI"), n_sm, TRUE, prob = c(0.4, 0.4, 0.2))))
+alter_fun <- list(
+  background = function(x, y, w, h) grid.rect(x, y, w - unit(0.5, "mm"), h - unit(0.5, "mm"),
+                                              gp = gpar(fill = NA, col = NA)),
+  mut = function(x, y, w, h) grid.rect(x, y, w - unit(0.5, "mm"), h - unit(0.5, "mm"),
+                                       gp = gpar(fill = "#008000", col = NA)))
+col_g <- c("mut" = "#008000")
+my_annotation <- HeatmapAnnotation(df = clin,
+                                   col = list(Smoking = c(ever = "#7A142C", never = "#D8D155"),
+                                              Stage = c("I-II" = "#58CDD9", "III-IV" = "#223D6C"),
+                                              Treatment = c(chemo = "#088247", ICI = "#D20A13", TKI = "#FFD121")),
+                                   annotation_name_side = "left",
+                                   annotation_name_gp = gpar(fontsize = 8))
+draw(oncoPrint(mygene[, colnames(mat01)], get_type = function(x) x,
+               alter_fun = alter_fun, col = col_g,
+               show_pct = FALSE,
+               bottom_annotation = my_annotation,
+               row_split = mygene$pathway,
+               show_heatmap_legend = FALSE,
+               column_title = "01-matrix oncoprint split by pathway, clinical data below",
+               column_title_gp = gpar(fontsize = 11)))
+```
+
+::: callout-tip
+**实践要点**
+
+-   `oncoPrint()` 要求矩阵值是与 `alter_fun`/`col` 名字匹配的字符串——先用 `mat01[mat01 == 1] <- "mut"; mat01[mat01 == 0] <- ""` 转换 01 矩阵再作图。
+-   `get_type = function(x) x` 告诉 oncoPrint 每个格子已经原样携带变异标签（单类型 01 输入）；多类型 MAF 数据请保留默认解析器。
+-   临床注释行控制在 2-4 个因子：底部色条是用来读突变-表型对齐的，不是第二张热图。
 :::
 
 ## 应用场景

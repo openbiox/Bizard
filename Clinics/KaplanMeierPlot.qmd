@@ -19,7 +19,7 @@ Survival analysis studies the time that passes before an event occurs. The most 
 
 -   Programming language: R
 
--   Dependent packages: `survival`, `survminer`, `ggplot2`, `dplyr`, `tidyr`, `zoo`, `patchwork`
+-   Dependent packages: `survival`, `survminer`, `ggplot2`, `dplyr`, `tidyr`, `zoo`, `patchwork`, `ggpp`, `gridExtra`, `RColorBrewer`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Install packages
@@ -44,15 +44,27 @@ if (!requireNamespace("zoo", quietly = TRUE)) {
 if (!requireNamespace("patchwork", quietly = TRUE)) {
   install.packages("patchwork")
 }
+if (!requireNamespace("ggpp", quietly = TRUE)) {
+  install.packages("ggpp")
+}
+if (!requireNamespace("gridExtra", quietly = TRUE)) {
+  install.packages("gridExtra")
+}
+if (!requireNamespace("RColorBrewer", quietly = TRUE)) {
+  install.packages("RColorBrewer")
+}
 
 # Load packages
-library(survival)    
-library(survminer)   
-library(ggplot2)     
+library(survival)
+library(survminer)
+library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(zoo)
 library(patchwork)
+library(ggpp)
+library(gridExtra)
+library(RColorBrewer)
 ```
 
 ```{r}
@@ -342,7 +354,7 @@ Beautified survival curve
 
 ### Multi-Group Survival Curves with Confidence Ribbons
 
-Two- and three-arm comparisons extend the same `ggsurvplot()` call: pass one colour per stratum to `palette`, per-group labels to `legend.labs`, and switch on the confidence ribbon with `conf.int` \[7\].
+Two- and three-arm comparisons extend the same `ggsurvplot()` call: pass one colour per stratum to `palette`, per-group labels to `legend.labs`, and switch on the confidence ribbon with `conf.int` \[3\].
 
 ```{r}
 #| label: fig-2.2MultiGroupKM
@@ -387,7 +399,7 @@ ggsurvplot(fit3, data = km3,
 
 ### Risk Table Below the KM Curve
 
-The **risk table** below a KM curve shows the number of patients at risk at each time point \[7\] — it is what reviewers check to assess the reliability of the curve at late follow-up times. `survminer::ggsurvplot()` draws it with `risk.table = TRUE`.
+The **risk table** below a KM curve shows the number of patients at risk at each time point \[3\] — it is what reviewers check to assess the reliability of the curve at late follow-up times. `survminer::ggsurvplot()` draws it with `risk.table = TRUE`.
 
 ```{r}
 #| label: fig-risktable
@@ -427,6 +439,225 @@ ggsurvplot(fit_rt, data = km_data,
 -   `tables.theme = theme_cleantable()` removes the table grid lines for a cleaner look.
 :::
 
+### Pairwise Log-rank Comparisons Across Many Groups
+
+With three or more strata, the single overall log-rank p-value answers *"do the curves differ somewhere?"* but not *"which pairs differ?"* \[3\]. The natural companion is a matrix of pairwise log-rank tests from `survminer::pairwise_survdiff()`, reported next to the curves — the layout of FigureYa284pairwiseLogrank, which reproduces Fig. 2a of a soft-tissue-sarcoma study with five PAM50-like strata \[3\]. Below, five simulated strata (A–E) with different hazard rates are plotted with their risk table, the overall log-rank p-value, and the full pairwise matrix embedded in the empty lower-left corner of the panel via `ggpp::geom_table()`.
+
+```{r}
+#| label: fig-2.3pairwise
+#| fig-cap: "Five-stratum KM curves with risk table; the lower-left table gives Holm-adjusted pairwise log-rank p-values (columns vs rows), and the overall log-rank test gives p < 0.001."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 8.5
+
+set.seed(4284)
+n_g <- 60
+grp <- factor(rep(c("A", "B", "C", "D", "E"), each = n_g),
+              levels = c("A", "B", "C", "D", "E"))
+rate <- c(A = 0.030, B = 0.022, C = 0.008, D = 0.016, E = 0.012)
+t_event <- rexp(5 * n_g, rate = rate[as.character(grp)])
+t_cens  <- rexp(5 * n_g, rate = 0.008)
+km5 <- data.frame(OS.time = pmin(t_event, t_cens),
+                  OS = as.integer(t_event <= t_cens),
+                  group = grp)
+
+# overall log-rank test
+fitd <- survdiff(Surv(OS.time, OS) ~ group, data = km5)
+p_overall <- 1 - pchisq(fitd$chisq, length(fitd$n) - 1)
+p_lab <- paste0("Log-rank test P",
+                ifelse(p_overall < 0.001, " < 0.001",
+                       paste0(" = ", round(p_overall, 3))))
+
+# pairwise log-rank tests, Holm-adjusted (the survminer default;
+# the source figure used p.adjust.method = "none" to match its published table)
+ps <- pairwise_survdiff(Surv(OS.time, OS) ~ group, data = km5,
+                        p.adjust.method = "holm")
+
+fit <- survfit(Surv(OS.time, OS) ~ group, data = km5)
+names(fit$strata) <- gsub("group=", "", names(fit$strata))
+mycol <- brewer.pal(n = 10, "Paired")[c(2, 4, 6, 8, 10)]
+
+addTab <- as.data.frame(as.matrix(ifelse(round(ps$p.value, 3) < 0.001,
+                                         "<0.001", round(ps$p.value, 3))))
+addTab[is.na(addTab)] <- "-"
+
+p <- ggsurvplot(fit, data = km5,
+                conf.int = FALSE,
+                risk.table = TRUE, risk.table.col = "strata",
+                palette = mycol,
+                xlim = c(0, 120), break.time.by = 24,
+                size = 0.9,
+                legend.title = "",
+                xlab = "Time (months)", ylab = "Overall survival",
+                risk.table.y.text = FALSE,
+                tables.height = 0.28,
+                ggtheme = theme_classic(base_size = 11))
+
+p$plot <- p$plot +
+  annotate("text", x = 55, y = 0.95, hjust = 0, fontface = 4, size = 3.4,
+           label = p_lab) +
+  annotate("text", x = 0, y = 0.315, hjust = 0, size = 3, fontface = 3,
+           label = "Pairwise log-rank P (Holm)") +
+  geom_table(data = tibble::tibble(x = 0, y = 0.02, tb = list(addTab)),
+             aes(x = x, y = y, label = tb),
+             table.rownames = TRUE,
+             table.theme = ttheme_minimal(base_size = 8,
+                                          core = list(fg_params = list(fontsize = 7.5))))
+p
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Prefer adjusted pairwise p-values (`p.adjust.method = "holm"`, the package default); the reproduced paper printed unadjusted tests to match its published table — either is fine, but state the choice in your methods.
+-   The matrix is symmetric with `-` on the diagonal; print the lower triangle only, and keep the row/column order identical to the legend order of the curves.
+-   `geom_table()` anchors the table at data coordinates: the lower-left of a KM panel is usually empty (curves start at survival = 1), so it is a safe anchor; check for overlap with late-descending curves before export.
+:::
+
+### Batch Optimal Cutpoints (Best Separation)
+
+Screening many markers for the cutoff that best splits a cohort is `survminer::surv_cutpoint()` — for each variable it scans cutpoints and maximises the log-rank statistic (`minprop = 0.3` keeps both groups ≥30% of the cohort), then `surv_categorize()` applies the found cutoffs. The reference workflow (FigureYa35batch_bestSeparationV3_update \[3\]) loops the resulting high/low groups through KM curves with HR + 95% CI computed from `survdiff` Observed/Expected ratios:
+
+```{r}
+#| label: fig-3.4BestSeparation
+#| fig-cap: "Batch best-separation screen of 8 simulated markers: KM curves for the markers whose maximally-selected log-rank p passes 0.05, with the optimal cutoff, n per group, HR and 95% CI printed in each panel."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+set.seed(3511)
+n_km <- 160
+svdata <- data.frame(futime = rexp(n_km, 0.02), fustat = rbinom(n_km, 1, 0.75))
+g_expr <- matrix(rnorm(n_km * 8, 5, 1.2), n_km, 8,
+                 dimnames = list(NULL, paste0("GENE", 1:8)))
+## plant effects: GENE1 high = worse, GENE3 high = protective, GENE5 = no effect
+g_expr[, 1] <- g_expr[, 1] + (svdata$futime < quantile(svdata$futime, 0.45)) * 2.2
+g_expr[, 3] <- g_expr[, 3] - (svdata$futime < quantile(svdata$futime, 0.45)) * 2.0
+svdata <- cbind(svdata, as.data.frame(g_expr))
+
+res.cut <- surv_cutpoint(svdata, time = "futime", event = "fustat",
+                         variables = paste0("GENE", 1:8), minprop = 0.3)
+res.cat <- surv_categorize(res.cut)
+cuts <- summary(res.cut)$cutpoint
+
+my.surv <- with(res.cat, Surv(futime, fustat))
+pl <- list()
+for (i in paste0("GENE", 1:8)) {
+  group <- factor(res.cat[[i]], levels = c("low", "high"))
+  sd1 <- survdiff(my.surv ~ group)
+  p.val <- 1 - pchisq(sd1$chisq, length(sd1$n) - 1)
+  HR <- (sd1$obs[2] / sd1$exp[2]) / (sd1$obs[1] / sd1$exp[1])
+  up95 <- exp(log(HR) + qnorm(0.975) * sqrt(1 / sd1$exp[2] + 1 / sd1$exp[1]))
+  low95 <- exp(log(HR) - qnorm(0.975) * sqrt(1 / sd1$exp[2] + 1 / sd1$exp[1]))
+  if (p.val > 0.05) next
+  fit <- survfit(my.surv ~ group)
+  svsort <- svdata[order(svdata[, i]), ]
+  pl[[i]] <- ggsurvplot(fit, data = data.frame(group = group),
+                        conf.int = FALSE, censor = FALSE,
+                        palette = c("#D95F02", "#1B9E77"),
+                        legend.title = i,
+                        legend.labs = c(paste0("high >", round(svsort[fit$n[2], i], 2), " (n=", fit$n[1], ")"),
+                                        paste0("low  <=", round(svsort[fit$n[2], i], 2), " (n=", fit$n[2], ")")),
+                        pval = paste(ifelse(p.val < 0.001, "p < 0.001", paste0("p = ", round(p.val, 3))),
+                                     paste0("HR = ", round(HR, 2)),
+                                     paste0("95% CI: ", round(low95, 2), "-", round(up95, 2)), sep = "\n"))
+}
+patchwork::wrap_plots(lapply(pl, function(x) x$plot), ncol = 2, guides = "collect")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Maximally selected statistics search the cutoff that flatters the data — screening 8 markers at p > 0.05 lets chance hit ~1 in 3 screens (GENE7 above is exactly such a borderline hit). Confirm the screen with a multiple-testing correction (e.g. Bonferroni at 0.05/8) or treat it as exploratory and validate the cutoff in an independent cohort.
+-   `minprop = 0.3` prevents a cutoff that isolates a handful of long survivors — the classic source of spuriously "significant" splits.
+-   The HR and CI from `survdiff` Observed/Expected are cohort-specific (cutoff optimized in the same data); report them as descriptive, not as an independent validation.
+:::
+
+### The Optimal-Split Landscape for One Marker
+
+The companion view of the batch screen above (FigureYa4bestSeparation \[3\]): rank the cohort by one marker's expression, compute the log-rank p-value and hazard ratio **at every possible split**, and plot −log10(P) against log2(HR). The dashed lines mark p = 0.05 and HR = 2 / 0.5; the red point is the split the eye would pick — and, because this is a maximally selected statistic, also the one most prone to optimism:
+
+```{r}
+#| label: fig-3.5SplitLandscape
+#| fig-cap: "The split landscape of one simulated marker (200 samples): log-rank p-value and HR at every possible dichotomisation; dashed lines at p = 0.05 and HR = 2 / 0.5; the minimum-p split is highlighted."
+#| out.width: "70%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5.2
+
+set.seed(4041)
+n_bs <- 200
+bs <- data.frame(futime = rexp(n_bs, 0.02), fustat = rbinom(n_bs, 1, 0.8),
+                 expression = rnorm(n_bs, 5, 1.3))
+bs$expression <- bs$expression - (bs$futime < quantile(bs$futime, 0.42)) * 2.0
+sortsv <- bs[order(bs$expression), ]
+pvals <- c(); hrs <- c()
+for (n in 1:(nrow(sortsv) - 1)) {
+  gp <- rep(c("low", "high"), c(n, nrow(sortsv) - n))
+  d1 <- survdiff(Surv(futime, fustat) ~ gp, data = sortsv, rho = 0)
+  pvals <- c(pvals, pchisq(d1$chisq, length(d1$n) - 1, lower.tail = FALSE))
+  hrs <- c(hrs, d1$obs[1] * d1$exp[2] / (d1$obs[2] * d1$exp[1]))
+}
+fd <- data.frame(Tag = 1:(nrow(sortsv) - 1), HR = hrs, Pvalue = pvals)
+best <- which.min(pvals)
+
+ggplot(fd, aes(log2(HR), -log10(Pvalue))) +
+  geom_point(shape = 21, aes(fill = Tag), colour = "grey25", size = 2.1) +
+  scale_fill_gradientn(colours = c("#4477AA", "#77AADD", "#FFFFFF", "#EE9988", "#BB4444"),
+                       guide = "none") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
+  annotate("text", x = log2(hrs[best]), y = -log10(pvals[best]) + 0.6,
+           label = "min-P split", size = 3.2, colour = "#BB4444") +
+  geom_point(data = fd[best, ], aes(log2(HR), -log10(Pvalue)),
+             shape = 21, fill = "#BB4444", colour = "black", size = 3.4) +
+  labs(x = "log2 hazard ratio at each split",
+       y = "-log10(P), maximally selected log-rank",
+       title = "Every split of 200 samples ranked by expression (simulated marker)") +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+The landscape makes the *cost of choosing* visible — compare the KM curves of the min-P split against the boring median split:
+
+```{r}
+#| label: fig-3.6SplitKMs
+#| fig-cap: "KM curves of the same marker dichotomised two ways: the min-P split (left) versus the median split (right); the difference in reported p-values is the optimism the landscape warns about."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.2
+
+gp_best <- rep(c("low", "high"), c(best, nrow(sortsv) - best))
+fit_best <- survfit(Surv(futime, fustat) ~ gp_best, data = sortsv)
+gp_med <- ifelse(sortsv$expression > median(sortsv$expression), "high", "low")
+fit_med <- survfit(Surv(futime, fustat) ~ gp_med, data = sortsv)
+p_best <- ggsurvplot(fit_best, linetype = "strata", conf.int = FALSE,
+                     pval = TRUE, palette = c("#D95F02", "#1B9E77"),
+                     legend.title = "", legend.labs = c("High", "Low"),
+                     ggtheme = theme_bw(base_size = 11),
+                     title = "Best separation (min-P split)")
+p_med <- ggsurvplot(fit_med, linetype = "strata", conf.int = FALSE,
+                    pval = TRUE, palette = c("#D95F02", "#1B9E77"),
+                    legend.title = "", legend.labs = c("High", "Low"),
+                    ggtheme = theme_bw(base_size = 11),
+                    title = "Median separation")
+patchwork::wrap_plots(list(p_best$plot, p_med$plot), ncol = 2)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The `Tag` fill colour encodes the split position along the ranked expression axis — it shows that extreme splits (tiny groups) trade p-value for interpretability; a split keeping 5% of the cohort "high" is not a usable rule.
+-   Report the **median-split p-value next to the min-P one** whenever a marker is screened: the gap between the two curves' p-values is the optimism in one glance.
+-   This landscape is the manual twin of `surv_cutpoint()`; use it for one marker and the batch screen for panels.
+:::
+
 ## Application
 
 ::: {#fig-KaplanMeierPlotApplications1}
@@ -445,4 +676,4 @@ This figure shows the comparison of the generated survival time between the thre
 
 
 
-\[7\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

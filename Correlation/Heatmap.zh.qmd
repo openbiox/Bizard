@@ -477,7 +477,7 @@ p
 
 #### 2.5 对角分割热图：每格承载两个对立水平
 
-当每个单元格携带**两个对立数值**——例如每个基因在各癌种中的拷贝数扩增（上三角）与缺失（下三角）\[8\]——就把每格切成两个三角形。单一 diverging 色标（红 = 扩增，蓝 = 缺失）用一个图例编码两个水平，`geom_polygon()` 负责切分：
+当每个单元格携带**两个对立数值**——例如每个基因在各癌种中的拷贝数扩增（上三角）与缺失（下三角）\[17\]——就把每格切成两个三角形。单一 diverging 色标（红 = 扩增，蓝 = 缺失）用一个图例编码两个水平，`geom_polygon()` 负责切分：
 
 ```{r}
 #| label: fig-DiagSplitHeatmap
@@ -852,7 +852,7 @@ pheatmap(status,
 
 #### 4.7 带组间比较 P 值的表达热图
 
-表达热图加上每行的**组间比较 P 值**就成为证据图 \[11\]：四种检验覆盖所有设计（两组用 t.test/Wilcoxon，多组用 ANOVA/Kruskal-Wallis），BH 校正后把结论以颜色标注列放在热图旁。
+表达热图加上每行的**组间比较 P 值**就成为证据图 \[17\]：四种检验覆盖所有设计（两组用 t.test/Wilcoxon，多组用 ANOVA/Kruskal-Wallis），BH 校正后把结论以颜色标注列放在热图旁。
 
 ```{r}
 #| label: fig-4.7PvalueHeatmap
@@ -911,7 +911,7 @@ Heatmap(z_mat, name = "Expression (z)",
 
 #### 4.8 亚型特异性对角热图
 
-≥3 个亚型时，one-vs-rest 差异检验产生**每个亚型特异的基因集**；把这些集合堆进同一张不聚类的 z-score 表达热图，就得到对角线布局 \[12\]——每个亚型的特异基因只在它自己的列亮起。
+≥3 个亚型时，one-vs-rest 差异检验产生**每个亚型特异的基因集**；把这些集合堆进同一张不聚类的 z-score 表达热图，就得到对角线布局 \[17\]——每个亚型的特异基因只在它自己的列亮起。
 
 ```{r}
 #| label: fig-4.8DiagonalSubtype
@@ -1013,16 +1013,16 @@ annColors <- list(class = c(Readers = "#51B743", Writers = "#FAC67A",
                             Erasers = "#5AC9FA"))
 colPattern <- c("#183869", "#4195C1", "white", "#CB5746", "#62011D")
 
-hm <- pheatmap(as.matrix(lfc),
-               border_color = "black",
-               cluster_rows = TRUE, cluster_cols = FALSE,
-               clustering_method = "ward.D",
-               show_rownames = TRUE, show_colnames = TRUE,
-               annotation_row = annRow, annotation_colors = annColors,
-               cellwidth = 22, cellheight = 14,
-               color = colorRampPalette(colPattern)(64),
-               name = "log2FoldChange")
-hm
+## pheatmap draws when called; keep it as the bare last expression so the
+## figure renders exactly once (no `name=` legend title exists in pheatmap)
+pheatmap(as.matrix(lfc),
+         border_color = "black",
+         cluster_rows = TRUE, cluster_cols = FALSE,
+         clustering_method = "ward.D",
+         show_rownames = TRUE, show_colnames = TRUE,
+         annotation_row = annRow, annotation_colors = annColors,
+         cellwidth = 22, cellheight = 14,
+         color = colorRampPalette(colPattern)(64))
 ```
 
 ::: callout-tip
@@ -1033,6 +1033,90 @@ hm
 -   发散色带务必**以 0 为白色锚点**（`#183869/#4195C1/white/#CB5746/#62011D`）：log2FC 带符号，无锚色带会让微小非零值看起来像效应。
 :::
 
+
+### 4.10 亚型质心热图 + signature 评分注释（PAM50 风格）
+
+分子分型论文（FigureYa311 背后的 PAM50 图 \[17\]）在同一张热图里叠三层：样本**按预测亚型排序**（列分块）、分类器基因的均值中心化表达矩阵、以及携带亚型判定与连续 signature 评分的**顶部注释**。分类器本身是最近质心规则——训练集上建质心、按相关性给留出样本分类——此处替代 `genefu::intrinsic.cluster.predict()`（PAM50 需要该包与基因 ID 映射，不在本仓库 lockfile 中）；signature 评分用简单的基因集均值，即本站其他页面使用的 GSVA 免依赖替身。
+
+```{r}
+#| label: fig-4.10SubtypeCentroid
+#| fig-cap: "亚型质心热图（50 个模拟 PAM50 风格基因，60 个样本）：样本按最近质心预测排序分块；顶部注释为亚型判定、两条 signature 评分线（AR 样：Basal 高；增殖：LumB 高）与 AR 表型。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 11
+#| fig-height: 6
+
+set.seed(3110)
+subtypes <- c("LumA", "LumB", "Basal")
+n_per <- 20
+genes <- paste0("PAM50_", sprintf("%02d", 1:50))
+n_samp <- length(subtypes) * n_per
+sub_lab <- factor(rep(subtypes, each = n_per), levels = subtypes)
+base <- matrix(rnorm(50 * n_samp, sd = 0.6), 50, n_samp,
+               dimnames = list(genes, paste0("S", sprintf("%02d", 1:n_samp))))
+sig_blocks <- list(
+  LumA  = list(up = 1:10,  dn = NULL,  eff = 1.1),
+  LumB  = list(up = 11:20, dn = NULL,  eff = 1.2),
+  Basal = list(up = 21:30, dn = 31:40, eff = 1.3))
+for (st in subtypes) {
+  idx <- which(sub_lab == st)
+  base[sig_blocks[[st]]$up, idx] <- base[sig_blocks[[st]]$up, idx] + sig_blocks[[st]]$eff
+  if (!is.null(sig_blocks[[st]]$dn))
+    base[sig_blocks[[st]]$dn, idx] <- base[sig_blocks[[st]]$dn, idx] - sig_blocks[[st]]$eff
+}
+## 增殖基因：仅在 LumB 中高表达
+base[41:50, sub_lab == "LumB"] <- base[41:50, sub_lab == "LumB"] + 1.2
+
+## 训练折上的最近质心分类（SSP 替身）
+train <- c(TRUE, FALSE)[rep(1:2, length.out = n_samp)]
+cent <- sapply(subtypes, function(st) rowMeans(base[, train & sub_lab == st]))
+pred <- apply(base[, !train], 2, function(x) {
+  corrs <- sapply(seq_len(ncol(cent)), function(k) cor(x, cent[, k]))
+  subtypes[which.max(corrs)] })
+pred <- factor(pred, levels = subtypes)
+cat("held-out accuracy:", round(mean(pred == sub_lab[!train]), 2), "\n")
+
+sig_scores <- rbind(
+  `AR score`  = colMeans(base[21:30, ]) - colMeans(base[31:40, ]),  # Basal 高
+  `Prolif score` = colMeans(base[41:50, ]))                          # LumB 高
+pheno <- ifelse(sig_scores["AR score", ] > 0, "AR-high", "AR-low")
+
+## 每个基因均值中心化（不缩放，即参考文献的倍数差异标度）并截断
+mat <- t(scale(t(base), center = TRUE, scale = FALSE))
+mat[mat > 4] <- 4; mat[mat < -4] <- -4
+ord <- order(pred)
+pred_o <- pred[ord]; mat_o <- mat[, ord]
+pheno_o <- factor(pheno[ord], levels = c("AR-low", "AR-high"))
+ar_o <- sig_scores["AR score", ord]; pro_o <- sig_scores["Prolif score", ord]
+
+col_fun <- colorRamp2(c(-2, 0, 2), c("#170B88", "#FFFFFF", "#D23C30"))
+ha <- HeatmapAnnotation(
+  Subtype = pred_o,
+  `AR score` = anno_lines(ar_o, border = FALSE),
+  `Prolif score` = anno_lines(pro_o, border = FALSE),
+  Phenotype = pheno_o,
+  gap = unit(2.5, "mm"),
+  annotation_name_gp = gpar(fontsize = 8.5),
+  col = list(Subtype = c(LumA = "#395790", LumB = "#6BBD2A", Basal = "#FFA652"),
+             Phenotype = c("AR-low" = "#07C7CF", "AR-high" = "#CE0706")))
+draw(Heatmap(mat_o, name = "Expression",
+             top_annotation = ha,
+             cluster_columns = FALSE,
+             column_split = pred_o,
+             column_title = "Samples ordered by predicted subtype",
+             show_row_names = FALSE, show_column_names = FALSE,
+             column_title_gp = gpar(fontsize = 10),
+             col = col_fun))
+```
+
+::: callout-tip
+**实践要点**
+
+-   热图行保持分类器自身的基因集，且**不要重新聚类行**——否则会破坏分类器所见的块结构；聚类用于呈现发现，不用于呈现预测。
+-   行只做均值中心化*不缩放*（参考文献的倍数差异标度）并截断于 ±4——z-score 会抹平不同 signature 块之间的振幅差异。
+-   在图旁报告留出集准确率（上方已打印）；按机会水平分类器排序的热图只是装饰，不是证据。
+:::
 
 ### 5. complexheatmap 热图
 
@@ -1286,7 +1370,7 @@ Heatmap(logfc_cat, name = "logFC band",
 
 ### 6. 聚类-相关性热图
 
-Unsupervised (consensus) clustering of samples splits a cohort into gene-driven subtypes; correlating **each gene with the numeric cluster label** then splits the gene set into a positively correlated signature (A) and a negatively correlated one (B), which is exactly the "identification of immunogenic gene subtypes" figure \[17\]. With real data, `ConsensusClusterPlus::ConsensusCluster()` chooses k and returns the class vector; here the clusters are simulated and only the correlation + annotated heatmap is reproduced.
+Unsupervised (consensus) clustering of samples splits a cohort into gene-driven subtypes; correlating **each gene with the numeric cluster label** then splits the gene set into a positively correlated signature (A) and a negatively correlated one (B), which is exactly the "identification of immunogenic gene subtypes" figure \[17\]. With real data, `ConsensusClusterPlus::ConsensusClusterPlus()` chooses k and returns the class vector; here the clusters are simulated and only the correlation + annotated heatmap is reproduced.
 
 ```{r}
 #| label: fig-6.1ClusterCorrelation

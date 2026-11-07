@@ -474,7 +474,7 @@ Similarly, the `heatmaply` package generates interactive heatmaps, allowing for 
 
 #### 2.5 Diagonally Split Heatmap: Two Opposing Levels per Cell
 
-When each cell carries **two opposing values** — e.g. copy-number amplification (upper triangle) versus deletion (lower triangle) per gene across cancer types \[8\] — split every cell into two triangles. A single diverging scale (red = gain, blue = loss) encodes both levels with one legend, and `geom_polygon()` does the splitting:
+When each cell carries **two opposing values** — e.g. copy-number amplification (upper triangle) versus deletion (lower triangle) per gene across cancer types \[17\] — split every cell into two triangles. A single diverging scale (red = gain, blue = loss) encodes both levels with one legend, and `geom_polygon()` does the splitting:
 
 ```{r}
 #| label: fig-DiagSplitHeatmap
@@ -761,7 +761,7 @@ These three heatmaps use different color palettes to showcase the differences in
 
 #### 4.6 Ternary Status Heatmap Against Normal Samples
 
-Pathway-dysregulation studies often encode each gene as a **three-state** variable relative to normal samples: a gene is "up" in a tumour when its log2 expression exceeds the 97.5% quantile of the normals, "down" below the 2.5% quantile, otherwise "no-change" [10]. The resulting −1/0/1 matrix, clustered with Ward's method and drawn with a three-colour scale plus the fraction of up-regulated samples in each row label, exposes subtype structure inside one pathway.
+Pathway-dysregulation studies often encode each gene as a **three-state** variable relative to normal samples: a gene is "up" in a tumour when its log2 expression exceeds the 97.5% quantile of the normals, "down" below the 2.5% quantile, otherwise "no-change" [17]. The resulting −1/0/1 matrix, clustered with Ward's method and drawn with a three-colour scale plus the fraction of up-regulated samples in each row label, exposes subtype structure inside one pathway.
 
 ```{r}
 #| label: fig-TernaryStatusPheatmap
@@ -844,7 +844,7 @@ pheatmap(status,
 
 #### 4.7 Heatmap with Per-Gene Group-Comparison P Values
 
-Expression heatmaps become evidence figures when each row carries its **group-comparison P value** \[11\]: four tests cover all designs (t.test / Wilcoxon for two groups, ANOVA / Kruskal-Wallis for more), BH-adjust, and the verdict rides next to the profile as a colour-coded annotation column.
+Expression heatmaps become evidence figures when each row carries its **group-comparison P value** \[17\]: four tests cover all designs (t.test / Wilcoxon for two groups, ANOVA / Kruskal-Wallis for more), BH-adjust, and the verdict rides next to the profile as a colour-coded annotation column.
 
 ```{r}
 #| label: fig-4.7PvalueHeatmap
@@ -904,7 +904,7 @@ Heatmap(z_mat, name = "Expression (z)",
 
 #### 4.8 Subtype-Specific Diagonal Heatmap
 
-With ≥3 subtypes, one-vs-rest differential tests produce a **subtype-specific gene set per subtype**; stacking those sets into one unclustered heatmap of z-scored expression yields the diagonal layout \[12\] — each subtype's specific genes light up only in its own columns.
+With ≥3 subtypes, one-vs-rest differential tests produce a **subtype-specific gene set per subtype**; stacking those sets into one unclustered heatmap of z-scored expression yields the diagonal layout \[17\] — each subtype's specific genes light up only in its own columns.
 
 ```{r}
 #| label: fig-4.8DiagonalSubtype
@@ -1007,16 +1007,16 @@ annColors <- list(class = c(Readers = "#51B743", Writers = "#FAC67A",
                             Erasers = "#5AC9FA"))
 colPattern <- c("#183869", "#4195C1", "white", "#CB5746", "#62011D")
 
-hm <- pheatmap(as.matrix(lfc),
-               border_color = "black",
-               cluster_rows = TRUE, cluster_cols = FALSE,
-               clustering_method = "ward.D",
-               show_rownames = TRUE, show_colnames = TRUE,
-               annotation_row = annRow, annotation_colors = annColors,
-               cellwidth = 22, cellheight = 14,
-               color = colorRampPalette(colPattern)(64),
-               name = "log2FoldChange")
-hm
+## pheatmap draws when called; keep it as the bare last expression so the
+## figure renders exactly once (no `name=` legend title exists in pheatmap)
+pheatmap(as.matrix(lfc),
+         border_color = "black",
+         cluster_rows = TRUE, cluster_cols = FALSE,
+         clustering_method = "ward.D",
+         show_rownames = TRUE, show_colnames = TRUE,
+         annotation_row = annRow, annotation_colors = annColors,
+         cellwidth = 22, cellheight = 14,
+         color = colorRampPalette(colPattern)(64))
 ```
 
 ::: callout-tip
@@ -1027,6 +1027,90 @@ hm
 -   Anchor the diverging ramp on **white at 0** (`#183869/#4195C1/white/#CB5746/#62011D`): log2FC is signed, and an unanchored ramp makes tiny non-zero values look like effects.
 :::
 
+
+### 4.10 Subtype-Centroid Heatmap with Signature-Score Annotations (PAM50-Style)
+
+Molecular-subtyping papers (the PAM50 figure behind FigureYa311 \[17\]) stack three layers in one heatmap: samples **ordered by predicted subtype** (columns split into blocks), a mean-centred expression matrix of the classifier's genes, and **top annotations** carrying the subtype call plus continuous signature scores. The classifier itself is a nearest-centroid rule — build centroids on a training split, assign each held-out sample by correlation — which here stands in for `genefu::intrinsic.cluster.predict()` (PAM50 needs the package plus gene IDs; not in this repository's lockfile), and the signature scores are simple gene-set means, the dependency-free stand-in for GSVA used elsewhere on this site.
+
+```{r}
+#| label: fig-4.10SubtypeCentroid
+#| fig-cap: "Subtype-centroid heatmap (50 simulated PAM50-style genes, 60 samples): samples ordered and split by nearest-centroid prediction; top annotations show the subtype call, two signature-score lines (AR-like: Basal-high; proliferation: LumB-high) and the AR phenotype."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 11
+#| fig-height: 6
+
+set.seed(3110)
+subtypes <- c("LumA", "LumB", "Basal")
+n_per <- 20
+genes <- paste0("PAM50_", sprintf("%02d", 1:50))
+n_samp <- length(subtypes) * n_per
+sub_lab <- factor(rep(subtypes, each = n_per), levels = subtypes)
+base <- matrix(rnorm(50 * n_samp, sd = 0.6), 50, n_samp,
+               dimnames = list(genes, paste0("S", sprintf("%02d", 1:n_samp))))
+sig_blocks <- list(
+  LumA  = list(up = 1:10,  dn = NULL,  eff = 1.1),
+  LumB  = list(up = 11:20, dn = NULL,  eff = 1.2),
+  Basal = list(up = 21:30, dn = 31:40, eff = 1.3))
+for (st in subtypes) {
+  idx <- which(sub_lab == st)
+  base[sig_blocks[[st]]$up, idx] <- base[sig_blocks[[st]]$up, idx] + sig_blocks[[st]]$eff
+  if (!is.null(sig_blocks[[st]]$dn))
+    base[sig_blocks[[st]]$dn, idx] <- base[sig_blocks[[st]]$dn, idx] - sig_blocks[[st]]$eff
+}
+## proliferation genes: high in LumB only
+base[41:50, sub_lab == "LumB"] <- base[41:50, sub_lab == "LumB"] + 1.2
+
+## nearest-centroid classification from a training split (SSP stand-in)
+train <- c(TRUE, FALSE)[rep(1:2, length.out = n_samp)]
+cent <- sapply(subtypes, function(st) rowMeans(base[, train & sub_lab == st]))
+pred <- apply(base[, !train], 2, function(x) {
+  corrs <- sapply(seq_len(ncol(cent)), function(k) cor(x, cent[, k]))
+  subtypes[which.max(corrs)] })
+pred <- factor(pred, levels = subtypes)
+cat("held-out accuracy:", round(mean(pred == sub_lab[!train]), 2), "\n")
+
+sig_scores <- rbind(
+  `AR score`  = colMeans(base[21:30, ]) - colMeans(base[31:40, ]),  # Basal-high
+  `Prolif score` = colMeans(base[41:50, ]))                          # LumB-high
+pheno <- ifelse(sig_scores["AR score", ] > 0, "AR-high", "AR-low")
+
+## mean-centre each gene (no scaling, the reference's fold-difference scale) and clip
+mat <- t(scale(t(base), center = TRUE, scale = FALSE))
+mat[mat > 4] <- 4; mat[mat < -4] <- -4
+ord <- order(pred)
+pred_o <- pred[ord]; mat_o <- mat[, ord]
+pheno_o <- factor(pheno[ord], levels = c("AR-low", "AR-high"))
+ar_o <- sig_scores["AR score", ord]; pro_o <- sig_scores["Prolif score", ord]
+
+col_fun <- colorRamp2(c(-2, 0, 2), c("#170B88", "#FFFFFF", "#D23C30"))
+ha <- HeatmapAnnotation(
+  Subtype = pred_o,
+  `AR score` = anno_lines(ar_o, border = FALSE),
+  `Prolif score` = anno_lines(pro_o, border = FALSE),
+  Phenotype = pheno_o,
+  gap = unit(2.5, "mm"),
+  annotation_name_gp = gpar(fontsize = 8.5),
+  col = list(Subtype = c(LumA = "#395790", LumB = "#6BBD2A", Basal = "#FFA652"),
+             Phenotype = c("AR-low" = "#07C7CF", "AR-high" = "#CE0706")))
+draw(Heatmap(mat_o, name = "Expression",
+             top_annotation = ha,
+             cluster_columns = FALSE,
+             column_split = pred_o,
+             column_title = "Samples ordered by predicted subtype",
+             show_row_names = FALSE, show_column_names = FALSE,
+             column_title_gp = gpar(fontsize = 10),
+             col = col_fun))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Keep the classifier's own gene set as the heatmap rows and **do not re-cluster rows** if you want the block structure the classifier saw; cluster only when presenting discovery, not prediction.
+-   Mean-centre rows *without* scaling (the reference's fold-difference scale) and clip at ±4 — z-scaling would flatten the amplitude differences between signature blocks.
+-   Report held-out accuracy next to the figure (printed above); a heatmap ordered by a classifier that predicts at chance level is decoration, not evidence.
+:::
 
 ### 5. complexheatmap Heatmaps
 
@@ -1282,7 +1366,7 @@ Heatmap(logfc_cat, name = "logFC band",
 
 ### 6. Cluster-Correlation Heatmap
 
-Unsupervised (consensus) clustering of samples splits a cohort into gene-driven subtypes; correlating **each gene with the numeric cluster label** then splits the gene set into a positively correlated signature (A) and a negatively correlated one (B), which is exactly the "identification of immunogenic gene subtypes" figure \[17\]. With real data, `ConsensusClusterPlus::ConsensusCluster()` chooses k and returns the class vector; here the clusters are simulated and only the correlation + annotated heatmap is reproduced.
+Unsupervised (consensus) clustering of samples splits a cohort into gene-driven subtypes; correlating **each gene with the numeric cluster label** then splits the gene set into a positively correlated signature (A) and a negatively correlated one (B), which is exactly the "identification of immunogenic gene subtypes" figure \[17\]. With real data, `ConsensusClusterPlus::ConsensusClusterPlus()` chooses k and returns the class vector; here the clusters are simulated and only the correlation + annotated heatmap is reproduced.
 
 ```{r}
 #| label: fig-6.1ClusterCorrelation
