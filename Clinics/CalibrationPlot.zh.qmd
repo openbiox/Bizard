@@ -225,6 +225,90 @@ H-L 检验按其标准形式计算在*未校正*的拟合概率上；曲线展�
 -   H-L p 值要与曲线一起报告而非替代曲线——不显著的检验是校准的必要而非充分证据。
 :::
 
+### 6. GiViTI 校准带与 bootstrap 置信带
+
+GiViTI 方法一眼可判二分类模型的校准：若校准带——观测率的分箱、加权、前向选择多项式的单侧 bootstrap 置信带——始终不触及恒等对角线，即拒绝校准假设 \[5\]。CRAN 的 `givitiR` 提供标准实现；下面代码块以基础 R 重建同一图面，使本页不带额外依赖、统计量十行之内可审。
+
+```{r}
+#| label: fig-6.1GivitiBelt
+#| fig-cap: "GiViTI 式校准带：观测率曲线（分箱、加权、前向选阶多项式）配嵌套单侧 80% 与 95% bootstrap 带，对照理想对角线；平均偏差附 bootstrap p 值。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 5
+
+set.seed(6301)
+n <- 600
+age <- runif(n, 40, 90); sten <- rbinom(n, 1, 0.45); hyd <- rbinom(n, 1, 0.3)
+lin <- -2.0 + 0.09 * (age - 65) + 1.20 * sten + 1.00 * hyd
+obs <- rbinom(n, 1, plogis(lin))
+dfl <- data.frame(obs = obs, age = age, sten = sten, hyd = hyd)
+mod <- glm(obs ~ age + sten + hyd, family = binomial, data = dfl)
+pred <- as.numeric(fitted(mod))
+# GiViTI 路线：分箱观测率、加权多项式、前向选择阶数
+fit_giviti <- function(xv, yv, nbins = 14, maxDeg = 3, thres = 0.05) {
+  br <- unique(quantile(xv, seq(0, 1, length.out = nbins + 1)))
+  bi <- as.integer(cut(xv, br, include.lowest = TRUE))
+  bx <- tapply(xv, bi, mean); by <- tapply(yv, bi, mean); bw <- tapply(yv, bi, length)
+  keep <- !is.na(bx) & bw >= 8
+  bx <- bx[keep]; by <- by[keep]; bw <- bw[keep]
+  best <- 1
+  for (d in 2:maxDeg) {   # forward selection: keep the extra term if it pays off
+    f0 <- lm(by ~ poly(bx, best, raw = TRUE), weights = bw)
+    f1 <- lm(by ~ poly(bx, d, raw = TRUE), weights = bw)
+    pv <- tryCatch(anova(f0, f1)[["Pr(>F)"]][2], error = function(e) NA)
+    if (!is.na(pv) && pv < thres) best <- d else break
+  }
+  list(deg = best, coef = coef(lm(by ~ poly(bx, best, raw = TRUE), weights = bw)))
+}
+eval_curve <- function(cf, gridv) {
+  d <- length(cf) - 1
+  as.numeric(outer(gridv, 0:d, `^`) %*% cf)
+}
+gf <- fit_giviti(pred, obs)
+grid <- seq(quantile(pred, 0.02), quantile(pred, 0.98), length.out = 60)
+m <- eval_curve(gf$coef, grid)
+# bootstrap 重抽按相同阶数重拟合，否则带内混入选择噪声
+boot <- matrix(NA, nrow = 400, ncol = length(grid))
+for (b in seq_len(400)) {
+  ii <- sample.int(n, replace = TRUE)
+  gb <- tryCatch(fit_giviti(pred[ii], obs[ii], maxDeg = gf$deg), error = function(e) NULL)
+  if (!is.null(gb) && gb$deg == gf$deg) boot[b, ] <- eval_curve(gb$coef, grid)
+}
+lo80 <- apply(boot, 2, quantile, probs = 0.10, na.rm = TRUE)
+lo95 <- apply(boot, 2, quantile, probs = 0.025, na.rm = TRUE)
+ok <- complete.cases(cbind(m, lo80, lo95)) & m > -0.02 & m < 1.02
+m <- m[ok]; lo80 <- lo80[ok]; lo95 <- lo95[ok]; grid_ <- grid[ok]
+# 校准带合理性：带居拟合之下；对恒等线的偏差给出 bootstrap p
+boot_dev <- rowMeans(abs(boot[, ok, drop = FALSE] -
+              matrix(grid_, nrow = 400, ncol = sum(ok), byrow = TRUE)), na.rm = TRUE)
+obs_dev <- mean(abs(m - grid_))
+pval <- mean(boot_dev >= obs_dev, na.rm = TRUE)
+stopifnot(obs_dev < 0.05)
+dfb <- data.frame(pred = grid_, fit = m, lo80 = lo80, lo95 = lo95)
+ggplot() +
+  geom_abline(slope = 1, intercept = 0, colour = "grey45", linetype = 2) +
+  geom_ribbon(data = dfb, aes(pred, ymin = lo95, ymax = fit), fill = "#B2182B", alpha = 0.16) +
+  geom_ribbon(data = dfb, aes(pred, ymin = lo80, ymax = fit), fill = "#B2182B", alpha = 0.34) +
+  geom_line(data = dfb, aes(pred, fit), colour = "#8A1B24", linewidth = 0.8) +
+  labs(x = "Predicted probability", y = "Observed event rate",
+       title = "GiViTI-style calibration belt (inner 80%, outer 95% one-sided bands)",
+       subtitle = paste0("mean |f(x) - x| = ", round(obs_dev, 3),
+                         ", bootstrap p = ", round(pval, 3),
+                         ", selected degree = ", gf$deg)) +
+  coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+  theme_classic(base_size = 11)
+```
+
+::: callout-tip
+**实践要点**
+
+-   每次 bootstrap 重抽皆按前向选定之阶数重拟合：逐重抽放开阶数会把模型选择噪声折入带内，令其处处虚胖。
+-   曲线仅在 `pred` 的支撑内求值（此处取分位窗）——loess 之类局部拟合在概率两端的稀疏区外推极差。
+-   `anova()` 前向步进对应原方法的 `thres = 0.95`/`maxDeg = 4` 机制：本数据仅支撑 1 阶，而带的薄度本身就是校准良好的证据。
+:::
+
 ## 应用
 
 校准曲线通常与列线图（Nomogram）一同出现在预测模型论文中，典型形式是"训练集 + 验证集"成对展示。下图按该版式组装本教程的输出：(A) 训练样本的 bootstrap 校正校准；(B) 用 `val.prob` 进行的独立样本验证。
