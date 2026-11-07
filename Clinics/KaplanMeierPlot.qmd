@@ -516,6 +516,67 @@ p
 -   `geom_table()` anchors the table at data coordinates: the lower-left of a KM panel is usually empty (curves start at survival = 1), so it is a safe anchor; check for overlap with late-descending curves before export.
 :::
 
+### Batch Optimal Cutpoints (Best Separation)
+
+Screening many markers for the cutoff that best splits a cohort is `survminer::surv_cutpoint()` — for each variable it scans cutpoints and maximises the log-rank statistic (`minprop = 0.3` keeps both groups ≥30% of the cohort), then `surv_categorize()` applies the found cutoffs. The reference workflow (FigureYa35batch_bestSeparationV3_update \[3\]) loops the resulting high/low groups through KM curves with HR + 95% CI computed from `survdiff` Observed/Expected ratios:
+
+```{r}
+#| label: fig-3.4BestSeparation
+#| fig-cap: "Batch best-separation screen of 8 simulated markers: KM curves for the markers whose maximally-selected log-rank p passes 0.05, with the optimal cutoff, n per group, HR and 95% CI printed in each panel."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+set.seed(3511)
+n_km <- 160
+svdata <- data.frame(futime = rexp(n_km, 0.02), fustat = rbinom(n_km, 1, 0.75))
+g_expr <- matrix(rnorm(n_km * 8, 5, 1.2), n_km, 8,
+                 dimnames = list(NULL, paste0("GENE", 1:8)))
+## plant effects: GENE1 high = worse, GENE3 high = protective, GENE5 = no effect
+g_expr[, 1] <- g_expr[, 1] + (svdata$futime < quantile(svdata$futime, 0.45)) * 2.2
+g_expr[, 3] <- g_expr[, 3] - (svdata$futime < quantile(svdata$futime, 0.45)) * 2.0
+svdata <- cbind(svdata, as.data.frame(g_expr))
+
+res.cut <- surv_cutpoint(svdata, time = "futime", event = "fustat",
+                         variables = paste0("GENE", 1:8), minprop = 0.3)
+res.cat <- surv_categorize(res.cut)
+cuts <- summary(res.cut)$cutpoint
+
+my.surv <- with(res.cat, Surv(futime, fustat))
+pl <- list()
+for (i in paste0("GENE", 1:8)) {
+  group <- factor(res.cat[[i]], levels = c("low", "high"))
+  sd1 <- survdiff(my.surv ~ group)
+  p.val <- 1 - pchisq(sd1$chisq, length(sd1$n) - 1)
+  HR <- (sd1$obs[2] / sd1$exp[2]) / (sd1$obs[1] / sd1$exp[1])
+  up95 <- exp(log(HR) + qnorm(0.975) * sqrt(1 / sd1$exp[2] + 1 / sd1$exp[1]))
+  low95 <- exp(log(HR) - qnorm(0.975) * sqrt(1 / sd1$exp[2] + 1 / sd1$exp[1]))
+  if (p.val > 0.05) next
+  fit <- survfit(my.surv ~ group)
+  svsort <- svdata[order(svdata[, i]), ]
+  pl[[i]] <- ggsurvplot(fit, data = data.frame(group = group),
+                        conf.int = FALSE, censor = FALSE,
+                        palette = c("#D95F02", "#1B9E77"),
+                        legend.title = i,
+                        legend.labs = c(paste0("high >", round(svsort[fit$n[2], i], 2), " (n=", fit$n[1], ")"),
+                                        paste0("low  <=", round(svsort[fit$n[2], i], 2), " (n=", fit$n[2], ")")),
+                        pval = paste(ifelse(p.val < 0.001, "p < 0.001", paste0("p = ", round(p.val, 3))),
+                                     paste0("HR = ", round(HR, 2)),
+                                     paste0("95% CI: ", round(low95, 2), "-", round(up95, 2)), sep = "\n"))
+}
+patchwork::wrap_plots(lapply(pl, function(x) x$plot), ncol = 2, guides = "collect")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Maximally selected statistics search the cutoff that flatters the data — screening 8 markers at p > 0.05 lets chance hit ~1 in 3 screens (GENE7 above is exactly such a borderline hit). Confirm the screen with a multiple-testing correction (e.g. Bonferroni at 0.05/8) or treat it as exploratory and validate the cutoff in an independent cohort.
+-   `minprop = 0.3` prevents a cutoff that isolates a handful of long survivors — the classic source of spuriously "significant" splits.
+-   The HR and CI from `survdiff` Observed/Expected are cohort-specific (cutoff optimized in the same data); report them as descriptive, not as an independent validation.
+:::
+
 ## Application
 
 ::: {#fig-KaplanMeierPlotApplications1}

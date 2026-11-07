@@ -273,6 +273,72 @@ ggdraw(combined)
 - `insert_xaxis_grob()` / `insert_yaxis_grob()` 来自 cowplot，且保持主面板尺寸；等价做法是 `patchwork::plot_layout` 配合 `design`——两者都需要对齐坐标范围。
 :::
 
+### 4. 小效应量筛选的尺寸编码火山图（PDUI 风格）
+
+可变多聚腺苷化筛选（FigureYa321 背后的 TC3A PDUI 分析 \[1\]）产生的**效应量很小**——有意义的 3'UTR 使用偏移是 ΔPDUI ≈ 0.1 而不是 1——常规的 |log2FC| ≥ 1 阈值完全不起作用。参考编码方式：y = −log10 校正 P，x = ΔPDUI（放宽到 ±0.05 阈值），**点大小 = |ΔPDUI × −log10 P|**，让效应与显著性共同决定视觉权重。下块在与参考一致的 `limma` 流程上运行模拟 PDUI 矩阵：
+
+```{r}
+#| label: fig-4.1PduiVolcano
+#| fig-cap: "模拟 3'UTR 使用（PDUI）事件的尺寸编码火山图：颜色 = 方向阈值（|ΔPDUI| > 0.05 且校正 P < 0.1），点大小 = |ΔPDUI × -log10 P|；两侧最强的偏移事件带标签。"
+#| out.width: "75%"
+#| warning: false
+#| message: false
+#| fig-width: 6.8
+#| fig-height: 5.6
+
+set.seed(3211)
+n_ev <- 400; n_s <- 60
+PDUI <- matrix(runif(n_ev * n_s, 0.2, 0.8), n_ev, n_s)
+rownames(PDUI) <- paste0("chr", sample(1:22, n_ev, replace = TRUE), "_",
+                         sample(1:9, n_ev, replace = TRUE), "|EV", 1:n_ev, "|")
+grp <- factor(rep(c("LIVING", "DEAD"), each = n_s / 2), levels = c("LIVING", "DEAD"))
+hit <- sample(n_ev, 18)
+PDUI[hit[1:9], grp == "DEAD"] <- pmin(1, PDUI[hit[1:9], grp == "DEAD"] + 0.2)   # 3'UTR 缩短
+PDUI[hit[10:18], grp == "DEAD"] <- pmax(0, PDUI[hit[10:18], grp == "DEAD"] - 0.2)
+
+design <- model.matrix(~0 + grp); colnames(design) <- levels(grp)
+fit <- limma::lmFit(PDUI, design)
+fit2 <- limma::contrasts.fit(fit, limma::makeContrasts(DEAD - LIVING, levels = design))
+fit2 <- limma::eBayes(fit2)
+DEGs <- limma::topTable(fit2, coef = 1, n = Inf)
+DEGs$SYMBOL <- gsub(".+\\|(EV[0-9]+)\\|.*", "\\1", rownames(DEGs))
+
+plot.data <- DEGs
+plot.data$logPadj <- -log(plot.data$adj.P.Val)
+plotgene <- rownames(plot.data)[c(which.max(plot.data$logFC), which.min(plot.data$logFC))]
+plot.data$label <- ifelse(rownames(plot.data) %in% plotgene, plot.data$SYMBOL, NA)
+plot.data$status <- "NoSig"
+plot.data$status[plot.data$logFC < -0.05 & plot.data$logPadj > 1] <- "Down"
+plot.data$status[plot.data$logFC > 0.05 & plot.data$logPadj > 1] <- "Up"
+plot.data$status <- factor(plot.data$status, levels = c("Up", "Down", "NoSig"))
+plot.data$size_v <- abs(plot.data$logFC * plot.data$logPadj)
+palette_volcano <- c(Up = "#D93F3C", Down = "#184A8C", NoSig = "#B3B3B3")
+
+ggplot(plot.data, aes(logFC, logPadj, color = status)) +
+  geom_point(alpha = 0.9, aes(size = size_v)) +
+  scale_size_continuous(range = c(1, 7), guide = "none") +
+  scale_color_manual(values = palette_volcano, drop = FALSE, name = NULL) +
+  geom_label_repel(data = subset(plot.data, !is.na(label)),
+                   aes(label = label), size = 3.4, fontface = "bold",
+                   box.padding = 0.5, show.legend = FALSE) +
+  geom_point(data = subset(plot.data, !is.na(label)), shape = 1,
+             stroke = 0.6, color = "black", size = 2.6) +
+  geom_vline(xintercept = c(-0.05, 0.05), colour = "grey40", linetype = "longdash", lwd = 0.25) +
+  geom_hline(yintercept = 1, colour = "grey40", linetype = "longdash", lwd = 0.25) +
+  labs(x = "delta PDUI (DEAD - LIVING)", y = "-log10 adjusted P",
+       title = "3'UTR usage shift by vital status (simulated TC3A-style PDUI)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), legend.position = "top")
+```
+
+::: callout-tip
+**实践要点**
+
+-   效应量小时，尺寸通道承担主要信息：`|效应 × -log10(P)|` 随证据二次增长，能把双重强的事件从拥挤的中心拉出来——请在图注中说明，否则读者会以为 size 是第三个变量。
+-   阈值必须匹配量表尺度：ΔPDUI 的阈值在 ±0.05（使用比例取值 [0, 1]）；照抄转录组火山图的 ±1 阈值会把图清空。
+-   两个带标签的事件作为阅读锚点——每个方向一个——其余交给颜色。
+:::
+
 ## 参考文献
 
 \[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

@@ -744,6 +744,85 @@ points(tgt_df$x, tgt_df$y, pch = 16, cex = 1.0, col = colmap[tgt_df$type])
 -   真实数据下坐标可交给布局算法（`igraph::layout_in_circle`、`qgraph`）；绘图代码可逐字节不动。
 :::
 
+### 5. 圆环评分对比 + 突出病例（circlize）
+
+FigureYa313 背后的 TIP 服务器图把一位患者的免疫表型评分与整个队列放在**两个同心环**上比较：每个样本是一个点，角度编码评分、所在环编码分组，径向线标记各组中位数，红色指针突出目标病例 \[11\]。`circlize` 用"备胎扇区"技巧实现——扇区跨度 = 值域 + 5% padding，坐标轴在差一点满圆处收口：
+
+```{r}
+#| label: fig-5.1CircularScores
+#| fig-cap: "双环评分对比（circlize）：外环 800 个模拟肿瘤样本、内环 120 个正常样本，灰色径向线 = 组中位数，红色指针 = 目标患者评分 20。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 7.8
+
+set.seed(3131)
+n_tumor <- 800; n_normal <- 120
+scores <- data.frame(
+  Group = c(rep("Tumor", n_tumor), rep("Normal", n_normal)),
+  Value = c(rnorm(n_tumor, 38, 11), rnorm(n_normal, 30, 10)))
+scores$Value <- pmin(pmax(scores$Value, 0), 70)
+patient_score <- 20
+
+prop <- 0.05; mark <- patient_score
+plot.region <- c(min(scores$Value), max(scores$Value))
+plot.region <- rbind(plot.region, (plot.region - min(plot.region)) * prop)
+plot.data <- split(scores[, c("Group", "Value"), drop = FALSE], scores$Group)
+deg.adjust <- 360 * 0.5 * prop
+circos.par("start.degree" = 360 - deg.adjust, track.margin = c(0.01, 0.01))
+circos.initialize(sectors = c("main", "spare"), xlim = plot.region)
+
+## 外环：肿瘤样本
+draw.sector(deg.adjust, 360 - deg.adjust, rou1 = 0.99, rou2 = 0.79,
+            clock.wise = FALSE, col = "#FF000080", border = NA)
+tumor <- plot.data[["Tumor"]]
+circos.track(sectors = rep("main", nrow(tumor)), x = tumor$Value,
+             y = runif(nrow(tumor)), panel.fun = function(x, y) {
+               circos.points(x, y, col = "deepskyblue3", bg = "deepskyblue",
+                             pch = 21, cex = 0.7)
+             }, ylim = c(0, 1), bg.border = NA)
+circos.lines(rep(median(tumor$Value), 2), c(0, 1),
+             sector.index = "main", track.index = 1, col = "#618895", lwd = 2)
+
+## 内环：正常样本
+draw.sector(deg.adjust, 360 - deg.adjust, rou1 = 0.77, rou2 = 0.57,
+            clock.wise = FALSE, col = "#B1CFC3", border = NA)
+normal <- plot.data[["Normal"]]
+circos.track(sectors = rep("main", nrow(normal)), x = normal$Value,
+             y = runif(nrow(normal)), panel.fun = function(x, y) {
+               circos.points(x, y, col = "firebrick3", bg = "firebrick1",
+                             pch = 21, cex = 0.9)
+             }, ylim = c(0, 1), bg.border = NA)
+circos.lines(rep(median(normal$Value), 2), c(0, 1),
+             sector.index = "main", track.index = 2, col = "#618895", lwd = 2)
+
+circos.xaxis(sector.index = "main", track.index = 1, h = "top",
+             labels.facing = "clockwise")
+
+## 目标患者指针线
+deg.mark.cx <- get.cell.meta.data(name = "cell.xlim", sector.index = "main")
+deg.range <- get.cell.meta.data(name = "xplot", sector.index = "main")
+deg.mark <- deg.range[1] + (mark - deg.mark.cx[1]) * diff(deg.range) / diff(deg.mark.cx)
+draw.sector(deg.mark, deg.mark, rou1 = 1, rou2 = 0, border = "#FF000080", lwd = 2)
+text(x = 0, y = 0, sprintf("Patient: %.0f", mark), cex = 0.9)
+legend("topright", inset = c(0.005, 0.02), bty = "n", cex = 0.82, xpd = NA,
+       legend = c("Tumour (n = 800)", "Normal (n = 120)",
+                  "Group median", "This patient"),
+       pch = c(21, 21, NA, NA), lty = c(NA, NA, 1, 1), lwd = c(NA, NA, 2, 2),
+       col = c("deepskyblue3", "firebrick3", "#618895", "#FF000080"),
+       pt.bg = c("deepskyblue", "firebrick1", NA, NA))
+circos.clear()
+```
+
+::: callout-tip
+**实践要点**
+
+-   `circos.track()` 内部的 `y` 只用于在环带内抖动点位防重叠——不要用它编码第二个变量（径向位置会被读者当成有含义）。
+-   本页后续若有 base 图形，`circos.clear()` 必须调用；残留的 circos 布局会静默吃掉下一张图的边距。
+-   指针线是整张图的点睛之笔：在数据单位下取值，再经 `get.cell.meta.data("cell.xlim")` / `"xplot"` 换算成角度，如上所示。
+:::
+
 ## 应用场景
 
 ### 1. 基础和弦图
@@ -799,6 +878,7 @@ CK1tau和 CK1 过表达时磷酸化位点差异之间的重叠。弦图显示了
 \[5\] Gu, Z. (2020). circlize: Circular visualization in R. https://cran.r-project.org/package=circlize
 
 \[6\] Wickham, H. (2021). readxl: Read Excel Files. https://cran.r-project.org/package=readxl
+
 
 \[7\] Wickham, H. (2021). dplyr: A Grammar of Data Manipulation. https://cran.r-project.org/package=dplyr
 

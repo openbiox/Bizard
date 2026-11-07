@@ -467,6 +467,67 @@ p
 -   `geom_table()` 以数据坐标为锚点：KM 面板左下角通常是空的（曲线从生存率 = 1 开始），是安全的锚点；导出前检查是否与晚期下降的曲线重叠。
 :::
 
+### 批量最优截断值（最佳分离）
+
+为大量标志物筛选"最佳分离"截断值用 `survminer::surv_cutpoint()`——它对每个变量扫描截断点、最大化 log-rank 统计量（`minprop = 0.3` 保证两组各占队列至少 30%），再用 `surv_categorize()` 应用所得截断。参考工作流（FigureYa35batch_bestSeparationV3_update \[3\]）把所得高/低组逐个过 KM 曲线，并用 `survdiff` 的 Observed/Expected 比值计算 HR 与 95% CI：
+
+```{r}
+#| label: fig-3.4BestSeparation
+#| fig-cap: "8 个模拟标志物的批量最佳分离筛选：对最大化 log-rank p 通过 0.05 的标志物绘制 KM 曲线，面板内打印最优截断值、各组 n、HR 与 95% CI。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+set.seed(3511)
+n_km <- 160
+svdata <- data.frame(futime = rexp(n_km, 0.02), fustat = rbinom(n_km, 1, 0.75))
+g_expr <- matrix(rnorm(n_km * 8, 5, 1.2), n_km, 8,
+                 dimnames = list(NULL, paste0("GENE", 1:8)))
+## 植入效应：GENE1 高表达 = 更差，GENE3 高表达 = 保护，GENE5 = 无效应
+g_expr[, 1] <- g_expr[, 1] + (svdata$futime < quantile(svdata$futime, 0.45)) * 2.2
+g_expr[, 3] <- g_expr[, 3] - (svdata$futime < quantile(svdata$futime, 0.45)) * 2.0
+svdata <- cbind(svdata, as.data.frame(g_expr))
+
+res.cut <- surv_cutpoint(svdata, time = "futime", event = "fustat",
+                         variables = paste0("GENE", 1:8), minprop = 0.3)
+res.cat <- surv_categorize(res.cut)
+cuts <- summary(res.cut)$cutpoint
+
+my.surv <- with(res.cat, Surv(futime, fustat))
+pl <- list()
+for (i in paste0("GENE", 1:8)) {
+  group <- factor(res.cat[[i]], levels = c("low", "high"))
+  sd1 <- survdiff(my.surv ~ group)
+  p.val <- 1 - pchisq(sd1$chisq, length(sd1$n) - 1)
+  HR <- (sd1$obs[2] / sd1$exp[2]) / (sd1$obs[1] / sd1$exp[1])
+  up95 <- exp(log(HR) + qnorm(0.975) * sqrt(1 / sd1$exp[2] + 1 / sd1$exp[1]))
+  low95 <- exp(log(HR) - qnorm(0.975) * sqrt(1 / sd1$exp[2] + 1 / sd1$exp[1]))
+  if (p.val > 0.05) next
+  fit <- survfit(my.surv ~ group)
+  svsort <- svdata[order(svdata[, i]), ]
+  pl[[i]] <- ggsurvplot(fit, data = data.frame(group = group),
+                        conf.int = FALSE, censor = FALSE,
+                        palette = c("#D95F02", "#1B9E77"),
+                        legend.title = i,
+                        legend.labs = c(paste0("high >", round(svsort[fit$n[2], i], 2), " (n=", fit$n[1], ")"),
+                                        paste0("low  <=", round(svsort[fit$n[2], i], 2), " (n=", fit$n[2], ")")),
+                        pval = paste(ifelse(p.val < 0.001, "p < 0.001", paste0("p = ", round(p.val, 3))),
+                                     paste0("HR = ", round(HR, 2)),
+                                     paste0("95% CI: ", round(low95, 2), "-", round(up95, 2)), sep = "\n"))
+}
+patchwork::wrap_plots(lapply(pl, function(x) x$plot), ncol = 2, guides = "collect")
+```
+
+::: callout-tip
+**实践要点**
+
+-   最大化选择统计量会搜索"最讨好数据"的截断——8 个标志物按 p > 0.05 筛选，纯随机也有约三分之一的批次出现假命中（上图的 GENE7 正是这种边界命中）。请用多重检验校正确认（如 0.05/8 的 Bonferroni），或明确作为探索性结果，并在独立队列验证截断值。
+-   `minprop = 0.3` 防止把一小撮长生存者单独隔离——这是"虚假显著"分离的经典来源。
+-   由 `survdiff` Observed/Expected 计算的 HR 与 CI 是队列特异的（截断在同一数据上优化过），只能作为描述性结果，不能当作独立验证。
+:::
+
 ## 应用场景
 
 ### 1. 疾病分布

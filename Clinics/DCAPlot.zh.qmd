@@ -181,6 +181,73 @@ ggplot(impact, aes(x = threshold)) +
 
 两条线之间的差值就是每个阈值下每 1000 名患者中“不必要的干预”数量——在临床相关阈值处差值越小，说明模型越有用。
 
+### 5. 一个 horizon 上的多模型比较：获益与避免过度干预
+
+FigureYa33 版式 \[5\] 把**所有候选模型放进同一张决策曲线**——包括一个刻意弱化的单变量模型——让读者同时看到临床论证的两半：高于"全部干预"基线时，模型支持对高危者*干预*（opt-in）；"避免干预数"视角则量化可以安全*放过*谁（opt-out）。下面的模拟队列对同一个 2 年死亡 horizon 构造四个风险评分：完整模型、其临床与生物标志物成分、以及单独年龄。
+
+```{r}
+#| label: fig-5.1FourModelDCA
+#| fig-cap: "四个风险模型在 2 年 horizon 的决策曲线（模拟队列，n = 500）：相对 treat-all 与 treat-none 默认策略的净获益。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 5.5
+
+set.seed(3311)
+n_dc <- 500
+lc <- data.frame(
+  age = rnorm(n_dc, 60, 9),
+  stage = factor(sample(c("I", "II", "III"), n_dc, TRUE)),
+  ecog = sample(0:2, n_dc, TRUE, prob = c(0.5, 0.35, 0.15)))
+lp <- -0.9 + 0.024 * (lc$age - 60) + c(0, 0.4, 0.8)[as.integer(lc$stage)] + 0.25 * lc$ecog
+H <- exp(lp) * 0.4                       # 730 天的累积风险
+S730 <- exp(-H)
+event_time <- -log(runif(n_dc)) / H * 730
+cens <- rexp(n_dc, 1 / 1500)
+lc$time <- pmin(event_time, cens, 1095)
+lc$event <- as.integer(event_time <= lc$time)
+## 列名即图例名（dcurves 直接用变量名）
+lc$`Full model` <- 1 - S730
+lc$`Clinical only` <- 1 - exp(-exp(-0.9 + 0.024 * (lc$age - 60) +
+                                     c(0, 0.4, 0.8)[as.integer(lc$stage)]) * 0.4)
+lc$`Biomarker only` <- pmin(0.95, pmax(0.01, 0.2 + 0.14 * lc$ecog + rnorm(n_dc, 0, 0.12)))
+lc$`Age only (weak)` <- pmin(0.9, pmax(0.01, (lc$age - 40) / 60))
+
+dca4 <- dca(Surv(time, event) ~ `Full model` + `Clinical only` +
+              `Biomarker only` + `Age only (weak)`,
+            data = lc, time = 730, thresholds = seq(0, 0.5, 0.01))
+plot(dca4, smooth = FALSE) +
+  labs(x = "Threshold probability (2-year mortality)", y = "Net benefit") +
+  theme_bw(base_size = 11) +
+  theme(legend.position = "top")
+```
+
+```{r}
+#| label: fig-5.2FourModelNIA
+#| fig-cap: "同一四个模型每 100 名患者避免的干预数：模型的价值在于同等漏检下能省下多少 treat-all 干预。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 5.5
+
+nia4 <- net_intervention_avoided(dca4, nper = 100)
+plot(nia4, smooth = FALSE) +
+  labs(x = "Threshold probability (2-year mortality)",
+       y = "Interventions avoided per 100 (vs treat all)") +
+  theme_bw(base_size = 11) +
+  theme(legend.position = "top")
+```
+
+::: callout-tip
+**实践要点**
+
+-   务必放一个**弱参照模型**（单变量或含噪声的标志物）：它锚定读者的预期——候选模型若赢不了它，就没有进临床的资格。
+-   `dcurves::dca()` 的图例直接使用变量名——把列命名为临床读者认识的名字（本例用反引号列名实现），而不是 R 变量名。
+-   净获益与避免干预数是同一条曲线的两种读法：论文问题如果是"放过谁"而非"治疗谁"，两个视角都要报告。
+:::
+
 ## 应用
 
 决策曲线通常与 ROC 曲线、校准曲线一同出现在临床预测模型研究中。下图展示典型的组合方式：(A) 各阈值下的决策曲线；(B) 临床影响曲线。
@@ -196,3 +263,5 @@ ggplot(impact, aes(x = threshold)) +
 \[3\] Sjoberg DD. dcurves: Decision Curve Analysis for Model Evaluation. R package version 0.5.1. doi:10.32614/CRAN.package.dcurves
 
 \[4\] Loprinzi CL, Laurie JA, Wieand HS, et al. Prospective evaluation of prognostic variables from patient-completed questionnaires. North Central Cancer Treatment Group. J Clin Oncol. 1994;12(3):601-607. doi:10.1200/JCO.1994.12.3.601
+
+\[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

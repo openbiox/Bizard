@@ -743,6 +743,85 @@ points(tgt_df$x, tgt_df$y, pch = 16, cex = 1.0, col = colmap[tgt_df$type])
 -   With real data the coordinates would come from layout algorithms (`igraph::layout_in_circle`, `qgraph`); the drawing code stays byte-identical.
 :::
 
+### 5. Circular Score Comparison with a Highlighted Case (circlize)
+
+The TIP-server figure behind FigureYa313 compares one patient's immunophenotype scores with a whole cohort **as two concentric rings**: each sample is a point whose angle encodes the score and whose ring encodes the group, a radial line marks each group's median, and a red pointer highlights the case of interest \[7\]. `circlize` draws it with a spare sector trick — the sector spans the value range plus 5% padding so the axis closes just short of a full circle:
+
+```{r}
+#| label: fig-5.1CircularScores
+#| fig-cap: "Two-ring score comparison (circlize): outer ring = 800 simulated tumour samples, inner ring = 120 normal samples, grey radial lines = group medians, red pointer = the index patient's score of 20."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 7.8
+
+set.seed(3131)
+n_tumor <- 800; n_normal <- 120
+scores <- data.frame(
+  Group = c(rep("Tumor", n_tumor), rep("Normal", n_normal)),
+  Value = c(rnorm(n_tumor, 38, 11), rnorm(n_normal, 30, 10)))
+scores$Value <- pmin(pmax(scores$Value, 0), 70)
+patient_score <- 20
+
+prop <- 0.05; mark <- patient_score
+plot.region <- c(min(scores$Value), max(scores$Value))
+plot.region <- rbind(plot.region, (plot.region - min(plot.region)) * prop)
+plot.data <- split(scores[, c("Group", "Value"), drop = FALSE], scores$Group)
+deg.adjust <- 360 * 0.5 * prop
+circos.par("start.degree" = 360 - deg.adjust, track.margin = c(0.01, 0.01))
+circos.initialize(sectors = c("main", "spare"), xlim = plot.region)
+
+## outer ring: tumour samples
+draw.sector(deg.adjust, 360 - deg.adjust, rou1 = 0.99, rou2 = 0.79,
+            clock.wise = FALSE, col = "#FF000080", border = NA)
+tumor <- plot.data[["Tumor"]]
+circos.track(sectors = rep("main", nrow(tumor)), x = tumor$Value,
+             y = runif(nrow(tumor)), panel.fun = function(x, y) {
+               circos.points(x, y, col = "deepskyblue3", bg = "deepskyblue",
+                             pch = 21, cex = 0.7)
+             }, ylim = c(0, 1), bg.border = NA)
+circos.lines(rep(median(tumor$Value), 2), c(0, 1),
+             sector.index = "main", track.index = 1, col = "#618895", lwd = 2)
+
+## inner ring: normal samples
+draw.sector(deg.adjust, 360 - deg.adjust, rou1 = 0.77, rou2 = 0.57,
+            clock.wise = FALSE, col = "#B1CFC3", border = NA)
+normal <- plot.data[["Normal"]]
+circos.track(sectors = rep("main", nrow(normal)), x = normal$Value,
+             y = runif(nrow(normal)), panel.fun = function(x, y) {
+               circos.points(x, y, col = "firebrick3", bg = "firebrick1",
+                             pch = 21, cex = 0.9)
+             }, ylim = c(0, 1), bg.border = NA)
+circos.lines(rep(median(normal$Value), 2), c(0, 1),
+             sector.index = "main", track.index = 2, col = "#618895", lwd = 2)
+
+circos.xaxis(sector.index = "main", track.index = 1, h = "top",
+             labels.facing = "clockwise")
+
+## the index patient's pointer line
+deg.mark.cx <- get.cell.meta.data(name = "cell.xlim", sector.index = "main")
+deg.range <- get.cell.meta.data(name = "xplot", sector.index = "main")
+deg.mark <- deg.range[1] + (mark - deg.mark.cx[1]) * diff(deg.range) / diff(deg.mark.cx)
+draw.sector(deg.mark, deg.mark, rou1 = 1, rou2 = 0, border = "#FF000080", lwd = 2)
+text(x = 0, y = 0, sprintf("Patient: %.0f", mark), cex = 0.9)
+legend("topright", inset = c(0.005, 0.02), bty = "n", cex = 0.82, xpd = NA,
+       legend = c("Tumour (n = 800)", "Normal (n = 120)",
+                  "Group median", "This patient"),
+       pch = c(21, 21, NA, NA), lty = c(NA, NA, 1, 1), lwd = c(NA, NA, 2, 2),
+       col = c("deepskyblue3", "firebrick3", "#618895", "#FF000080"),
+       pt.bg = c("deepskyblue", "firebrick1", NA, NA))
+circos.clear()
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The `y` aesthetic inside `circos.track()` only jitters points within the ring band — use it to avoid overplotting, never to encode a second variable (the radial position would look meaningful).
+-   `circos.clear()` is mandatory before any later base-graphics call on the page; a stale circos layout silently consumes the next plot's margins.
+-   The pointer is the whole point of the figure: pick the value in data units and convert to degrees through `get.cell.meta.data("cell.xlim")` / `"xplot"`, exactly as above.
+:::
+
 ## Applications
 
 ### 1. Basic chord diagram
@@ -798,6 +877,8 @@ Modular structure of the potential hippocampal connectome. A, Chord diagram of p
 \[5\] Gu, Z. (2020). circlize: Circular visualization in R. https://cran.r-project.org/package=circlize
 
 \[6\] Wickham, H. (2021). readxl: Read Excel Files. https://cran.r-project.org/package=readxl
+
+\[7\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
 \[7\] Wickham, H. (2021). dplyr: A Grammar of Data Manipulation. https://cran.r-project.org/package=dplyr
 

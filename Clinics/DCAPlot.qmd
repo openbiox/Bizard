@@ -181,6 +181,73 @@ ggplot(impact, aes(x = threshold)) +
 
 The gap between the two lines is the number of unnecessary interventions per 1000 patients at each threshold — small gaps at clinically relevant thresholds indicate a useful model.
 
+### 5. Many Models at One Horizon: Value and Over-Intervention
+
+The FigureYa33 layout \[4\] puts **every candidate model on one decision curve** — including a deliberately weak single-variable model — so the reader sees both halves of the clinical argument: above "treat all" a model justifies *intervening* on high-risk patients (opt-in), and the interventions-avoided view quantifies whom you may safely *spare* (opt-out). The simulated cohort below carries four risk scores for the same 2-year mortality horizon: a full model, its clinical-only and biomarker-only components, and age alone.
+
+```{r}
+#| label: fig-5.1FourModelDCA
+#| fig-cap: "Decision curves for four risk models at the 2-year horizon (simulated cohort, n = 500): net benefit against treat-all and treat-none defaults."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 5.5
+
+set.seed(3311)
+n_dc <- 500
+lc <- data.frame(
+  age = rnorm(n_dc, 60, 9),
+  stage = factor(sample(c("I", "II", "III"), n_dc, TRUE)),
+  ecog = sample(0:2, n_dc, TRUE, prob = c(0.5, 0.35, 0.15)))
+lp <- -0.9 + 0.024 * (lc$age - 60) + c(0, 0.4, 0.8)[as.integer(lc$stage)] + 0.25 * lc$ecog
+H <- exp(lp) * 0.4                       # cumulative hazard at 730 days
+S730 <- exp(-H)
+event_time <- -log(runif(n_dc)) / H * 730
+cens <- rexp(n_dc, 1 / 1500)
+lc$time <- pmin(event_time, cens, 1095)
+lc$event <- as.integer(event_time <= lc$time)
+## name the columns what the legend should say (dcurves uses variable names)
+lc$`Full model` <- 1 - S730
+lc$`Clinical only` <- 1 - exp(-exp(-0.9 + 0.024 * (lc$age - 60) +
+                                     c(0, 0.4, 0.8)[as.integer(lc$stage)]) * 0.4)
+lc$`Biomarker only` <- pmin(0.95, pmax(0.01, 0.2 + 0.14 * lc$ecog + rnorm(n_dc, 0, 0.12)))
+lc$`Age only (weak)` <- pmin(0.9, pmax(0.01, (lc$age - 40) / 60))
+
+dca4 <- dca(Surv(time, event) ~ `Full model` + `Clinical only` +
+              `Biomarker only` + `Age only (weak)`,
+            data = lc, time = 730, thresholds = seq(0, 0.5, 0.01))
+plot(dca4, smooth = FALSE) +
+  labs(x = "Threshold probability (2-year mortality)", y = "Net benefit") +
+  theme_bw(base_size = 11) +
+  theme(legend.position = "top")
+```
+
+```{r}
+#| label: fig-5.2FourModelNIA
+#| fig-cap: "Net interventions avoided per 100 patients for the same four models: the value of a model is how many treat-all interventions it can spare at equal missed events."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 5.5
+
+nia4 <- net_intervention_avoided(dca4, nper = 100)
+plot(nia4, smooth = FALSE) +
+  labs(x = "Threshold probability (2-year mortality)",
+       y = "Interventions avoided per 100 (vs treat all)") +
+  theme_bw(base_size = 11) +
+  theme(legend.position = "top")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Always include a **weak reference model** (one variable, or a noisy biomarker): it anchors the reader's expectations, and a candidate model that cannot beat it has no place in the clinic.
+-   `dcurves::dca()` accepts `labels =` to rename models in the legend — display model names a clinical reader knows, not R variable names.
+-   The net-benefit and interventions-avoided views are two readings of the same curve: report both when the paper's question is *whom to spare* rather than *whom to treat*.
+:::
+
 ## Application
 
 Decision curves are routinely reported in clinical prediction-model studies next to ROC and calibration curves. The panel below shows the typical pairing: (A) decision curves across thresholds and (B) the clinical impact curve.
@@ -194,5 +261,7 @@ Decision curves are routinely reported in clinical prediction-model studies next
 \[2\] Vickers AJ, van Calster B, Steyerberg EW. A simple, step-by-step guide to interpreting decision curve analysis. Diagn Progn Res. 2019;3(1):18. doi:10.1186/s41512-019-0064-7
 
 \[3\] Sjoberg DD. dcurves: Decision Curve Analysis for Model Evaluation. R package version 0.5.1. doi:10.32614/CRAN.package.dcurves
+
+\[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
 \[4\] Loprinzi CL, Laurie JA, Wieand HS, et al. Prospective evaluation of prognostic variables from patient-completed questionnaires. North Central Cancer Treatment Group. J Clin Oncol. 1994;12(3):601-607. doi:10.1200/JCO.1994.12.3.601

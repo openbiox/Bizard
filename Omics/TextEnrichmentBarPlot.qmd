@@ -372,6 +372,115 @@ stopifnot(sum(up$FDR < 0.05) + sum(dn$FDR < 0.05) >= 10)
 -   With real results, build the two arms with `clusterProfiler::compareCluster()` and feed the merged frame to the same ggplot2 layers — no enrichplot dependency needed.
 :::
 
+### 4. Pathway-Activity DE Dot Plot Across Cell Types
+
+The FigureYa318 layout \[2\] asks the two-group question **per cell type and per pathway at once**: rows = cell types, columns = pathways (grouped by a classification colour strip), dot size = FDR bins, dot colour = log2 fold change of the pathway activity score. The reference computes AUCell scores per cell and limma contrasts per cell type; here the same geometry is reproduced from simulated per-cell activity scores tested with Wilcoxon rank-sum and Bonferroni correction — swap in your own AUCell/GSVA score matrix for real data.
+
+```{r}
+#| label: fig-4.1PathwayDEDot
+#| fig-cap: "Pathway-activity differential dot plot (12 pathways x 4 cell types): dot size = Bonferroni-FDR bins, colour = log2 fold change of the activity score; the bottom strip groups pathways into Immune / Metabolism / Signaling / Proliferation."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 11
+#| fig-height: 6
+
+set.seed(3181)
+paths <- c("HALLMARK_INTERFERON_GAMMA", "HALLMARK_TNFA_SIGNALING", "HALLMARK_COMPLEMENT",
+           "HALLMARK_GLYCOLYSIS", "HALLMARK_OXIDATIVE_PHOSPH", "HALLMARK_FATTY_ACID",
+           "HALLMARK_MAPK", "HALLMARK_PI3K", "HALLMARK_NOTCH",
+           "HALLMARK_E2F", "HALLMARK_G2M", "HALLMARK_APOPTOSIS")
+class.df <- data.frame(
+  geneset = paths,
+  Classification = c("Immune", "Immune", "Immune",
+                     "Metabolism", "Metabolism", "Metabolism",
+                     "Signaling", "Signaling", "Signaling",
+                     "Proliferation", "Proliferation", "Proliferation"))
+cts <- c("CD8 T", "Macro", "Fibro", "Cancer")
+n_pc <- 40
+path_mean <- setNames(c(0.55, 0.5, 0.45, 0.35, 0.4, 0.3, 0.25, 0.3, 0.2, 0.2, 0.25, 0.3), paths)
+scores_ctl <- do.call(rbind, lapply(cts, function(ct) {
+  m <- sapply(paths, function(pw) rnorm(n_pc, path_mean[pw], 0.12))
+  data.frame(cell = ct, m, check.names = FALSE)
+}))
+scores_tr <- scores_ctl
+immune_hit <- scores_tr$cell %in% c("CD8 T", "Macro")
+scores_tr$HALLMARK_INTERFERON_GAMMA[immune_hit] <-
+  scores_tr$HALLMARK_INTERFERON_GAMMA[immune_hit] + 0.28
+scores_tr$HALLMARK_TNFA_SIGNALING[immune_hit] <-
+  scores_tr$HALLMARK_TNFA_SIGNALING[immune_hit] + 0.32
+scores_tr$HALLMARK_E2F[] <- scores_tr$HALLMARK_E2F[] - 0.22
+## null pathways get small cell-type-specific offsets in the treated arm so
+## their near-zero log2FC scatter stays visible on the white midpoint
+set.seed(3182)
+null_paths <- setdiff(paths, c("HALLMARK_INTERFERON_GAMMA", "HALLMARK_TNFA_SIGNALING", "HALLMARK_E2F"))
+for (pw in null_paths) {
+  off <- rnorm(length(cts), 0, 0.07); names(off) <- cts
+  sel <- scores_tr$cell %in% cts
+  scores_tr[sel, pw] <- scores_tr[sel, pw] + off[scores_tr$cell[sel]]
+}
+
+DP.list <- lapply(cts, function(ct) {
+  do.call(rbind, lapply(paths, function(pw) {
+    a <- scores_ctl$cell == ct; b <- scores_tr$cell == ct
+    data.frame(Celltypes = ct, Pathway = pw,
+               logFC = mean(scores_tr[[pw]][b]) - mean(scores_ctl[[pw]][a]),
+               p.val = wilcox.test(scores_tr[[pw]][b], scores_ctl[[pw]][a])$p.value)
+  }))
+})
+DPs <- do.call(rbind, DP.list)
+DPs$adj.P.Val <- p.adjust(DPs$p.val, method = "bonferroni")
+
+plot.data <- DPs
+plot.data$FDR <- cut(plot.data$adj.P.Val, breaks = c(0, 1e-10, 1e-6, 1e-3, 1),
+                     include.lowest = TRUE,
+                     labels = c("<1e-10", "1e-10~1e-6", "1e-6~1e-3", ">1e-3"))
+plot.data$FDR <- factor(as.character(plot.data$FDR),
+                        levels = c("<1e-10", "1e-10~1e-6", "1e-6~1e-3", ">1e-3"))
+plot.data$Pathway <- factor(sub("HALLMARK_", "", plot.data$Pathway),
+                            levels = sub("HALLMARK_", "", class.df$geneset))
+plot.data$Celltypes <- factor(plot.data$Celltypes, levels = rev(cts))
+
+color <- c("#4682B4", "#FFFFFF", "#CD2626")
+class.color <- c("Immune" = "#D58986", "Metabolism" = "#80554C",
+                 "Signaling" = "#71AC7A", "Proliferation" = "#E8D4B4")
+p1 <- ggplot(plot.data, aes(Pathway, Celltypes, color = logFC, size = FDR)) +
+  geom_point() +
+  scale_color_gradient2(low = color[1], mid = color[2], high = color[3],
+                        limits = c(-0.35, 0.35), name = "log2FC (score)") +
+  scale_size_manual(values = c("<1e-10" = 4.4, "1e-10~1e-6" = 3.6,
+                               "1e-6~1e-3" = 2.8, ">1e-3" = 1.6),
+                    name = "Bonferroni FDR", drop = FALSE) +
+  geom_hline(yintercept = seq(0.5, length(cts) - 0.5, 1), colour = "grey80") +
+  geom_vline(xintercept = seq(0.5, length(paths) - 0.5, 1), colour = "grey80") +
+  theme_classic(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        axis.line = element_blank())
+## the classification strip must share p1's column order: keep geneset as a
+## factor with the same level order, never a bare character vector
+class.df$geneset <- factor(sub("HALLMARK_", "", class.df$geneset),
+                           levels = sub("HALLMARK_", "", paths))
+p2 <- ggplot(class.df, aes(geneset, 1, fill = Classification)) +
+  geom_tile() +
+  scale_fill_manual(values = class.color, name = NULL) +
+  theme_void(base_size = 10) +
+  theme(legend.position = "bottom", legend.direction = "horizontal",
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7.5),
+        legend.key.size = unit(3, "mm"),
+        legend.margin = margin(0, 0, 0, 0))
+cowplot::plot_grid(p1, p2, ncol = 1, align = "v", axis = "lr",
+                   rel_heights = c(10, 1.9))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Keep the strip and the dot plot on the **same factor levels** — the strip's x axis is a plain character vector in most drafts, which silently re-sorts alphabetically and desynchronises the two panels.
+-   Bonferroni over pathways x cell types is what the reference uses; with `rstatix` the same workflow is `group_by(Celltypes, Pathway) |> wilcox_test() |> adjust_pvalue(method = "bonferroni")`.
+-   Dots at the white midpoint are invisible on a white panel: either plant real per-cell-type variability (as done here) or outline non-significant dots.
+:::
+
 ## Reference
 
 \[1\] 生信医道. 超好看的单细胞GO，KEGG富集分析图！确定不来看看吗？ \[Internet\]. 微信公众号: 生信医道. 2025 \[cited 2025 Dec 30\]. Available from: <https://mp.weixin.qq.com/s/pY1S0EJQAhdezvxeNt-SzA>
