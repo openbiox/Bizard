@@ -534,6 +534,70 @@ print(p_b)
 -   非显著格用 `na.value` 保留而非删除；癌种 × 通路的空白十字本身也是信息。
 :::
 
+
+### 9. 多基因单通路的泛癌富集分析
+
+上面 NES 矩阵的转置版：**一条通路**、多个基因。对特征面板（此处为铁死亡基因集），逐癌种以每个基因的高/低分组跑一次 GSEA，把这一条通路的 NES 填入基因 × 癌种网格 \[8\]——哪些癌种里由面板基因驱动该通路，一眼可答。
+
+```{r gene-nes-ref, eval=FALSE}
+# 参考工作流（真实数据）：对每个癌种 x 基因，以 limma 高-低 log2FC 排序，
+# 对该单一 GMT 条目跑一次 fgsea::fGSEA()；逐格取 term/NES/pvalue/p.adj -> 下方 tab 数据框。
+```
+
+```{r}
+#| label: fig-9.1GeneNesGrid
+#| fig-cap: "Single-pathway pan-cancer NES grid with genes on the y-axis: ferroptosis-panel genes across ten tumour types, colour = NES, size = -log10(FDR); the planted first-half-up/second-half-down pattern reads as designed."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 6
+
+set.seed(1629)
+tumors <- c("BLCA", "BRCA", "CESC", "CHOL", "COAD",
+            "LUAD", "LUSC", "PAAD", "PRAD", "UCEC")
+genes <- c("GPX4", "SLC7A11", "NFE2L2", "NCOA4", "ACSL4", "ALOX15", "FANCD2",
+           "CISD1", "TP53", "HMOX1", "ATF4", "CHAC1", "SLC3A2", "GCLM")
+
+## simulated single-pathway NES per gene x tumour (real pipeline: fgsea::fGSEA()
+## on the per-cohort high-vs-low contrast of each gene's expression)
+nes <- matrix(rnorm(10 * 14, 0, 1.1), 10, 14, dimnames = list(tumors, genes))
+upg <- 1:7                                    # first-half panel moves EMT up
+for (k in seq_along(tumors)) {
+  nes[k, upg]  <- nes[k, upg] + 1.7
+  nes[k, -upg] <- nes[k, -upg] - 1.5
+}
+fdr <- matrix(10^(-(abs(as.numeric(nes)) * 0.9 + runif(length(nes), 0, 1.1))), 10)
+rownames(fdr) <- tumors; colnames(fdr) <- genes
+
+tab <- do.call(rbind, lapply(tumors, function(t)
+  data.frame(tumor = t, gene = genes, NES = nes[t, ], FDR = fdr[t, ],
+             stringsAsFactors = FALSE)))
+mypal <- colorRampPalette(c("#303B7F", "#EECA1F", "#D51113"))(n = 128)
+
+ggplot(tab, aes(tumor, gene)) +
+  geom_point(aes(size = -log10(FDR), colour = NES)) +
+  scale_colour_gradientn("NES", colours = mypal, limits = c(-3, 3),
+                          na.value = "grey88") +
+  scale_size_continuous(range = c(0.5, 6), guide = "none") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+        axis.title = element_blank(), panel.border = element_rect(linewidth = 0.6),
+        legend.position = "bottom") +
+  labs(x = NULL, y = NULL,
+       title = "HALLMARK_EMT NES: ferroptosis genes x tumour types")
+```
+
+::: callout-tip
+**实践要点**
+
+-   基因放哪根轴是设计决策：基因在 Y 轴回答"我的基因在哪此癌种驱动该通路"，通路在 Y 轴回答"该癌种哪条通路在动"——定版式比例前先定方向。
+-   整张图共用一把色标：与通路在 Y 轴的姊妹图保持同一 `limits = c(-3, 3)`，两矩阵才能直接互比。
+-   用数据侧的 `FDR` 预筛，而非主题侧的透明度；非显著格用 `na.value` 留灰，保留缺失数据的十字格局。
+:::
+
+
 ## Application
 
 运行得分 GSEA 图是转录组差异通路水平解读的标准配图：肿瘤-正常特征、药物扰动筛选和单细胞聚类标志基因。下图模拟典型论文版式：(A) 带p值表的经典单集图，(B) 多集叠加图。
@@ -555,3 +619,5 @@ print(p_b)
 \[6\] GSEA desktop application output format. Broad Institute. https://gseapab.github.io/
 
 \[7\] Pedersen TL. ggraph: An Implementation of Grammar of Graphics for Graphs and Networks. https://ggraph.data-imaginist.com/
+
+\[8\] Xiaofan Lu, et al. FigureYa279panGeneGSEA 参考图：基因在 Y 轴的泛癌单通路 NES 矩阵。FigureYa 文档。<https://ying-ge.github.io/FigureYa/>

@@ -249,7 +249,7 @@ ggplot(df_heat, aes(x = 接收者, y = 发送者, fill = 权重)) +
 
 ### 5. CellPhoneDB 风格配体-受体点图
 
-CellPhoneDB 输出通常以**点热图**展示：行 = 配体-受体对，列 = 细胞类型对，点大小 = 置换 P 值，颜色 = 两配体/受体的平均表达量 \[6\]。以下配方从模拟互作表复现该版式。
+CellPhoneDB 输出通常以**点热图**展示：行 = 配体-受体对，列 = 细胞类型对，点大小 = 置换 P 值，颜色 = 两配体/受体的平均表达量 \[4\]。以下配方从模拟互作表复现该版式。
 
 ```{r}
 #| label: fig-5.1CellPhoneDB
@@ -294,6 +294,117 @@ ggplot(lr_df, aes(cell_pair, pair, size = pval, colour = mean)) +
 
 ## References
 
+
+### 6. 两条件间差异通讯
+
+刺激 vs 对照是高频比较：哪些发送|接收通道**发生了变化**。CellChat 自带 `compareInteractions()` 正为此而设，其背后的差值矩阵（`stim$count - ctrl$count`）支撑两种诚实视图 \[5\]：变化最大配对的蝴蝶条图，以及只留变化连线、把圆图"拉开"的差值网络。
+
+```{r cellchat-compare-ref, eval=FALSE}
+# 真实 CellChat 对象（参考路线）：
+cellchat <- mergeCellChat(list(CTRL = ctrl.cellchat, STIM = stim.cellchat),
+                          add.names = names(list(CTRL = 1, STIM = 2)))
+gg1 <- compareInteractions(cellchat, show.legend = FALSE, group = c(1, 2))
+gg2 <- compareInteractions(cellchat, show.legend = FALSE, group = c(1, 2),
+                           measure = "weight")
+```
+
+```{r}
+#| label: fig-6.1DiffBars
+#| fig-cap: "STIM-vs-CTRL differential communication: the top sender|receiver pairs ranked by the count difference; red = up in STIM, blue = up in CTRL, labels print the signed delta."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5.2
+
+set.seed(1619)
+cts <- c("CD14 Mono", "T CD4", "T CD8", "NK", "B", "Fibro")
+base_c <- matrix(c(0, 18, 12, 6, 8, 5,
+                   9, 0, 6, 10, 4, 3,
+                   7, 5, 0, 8, 3, 2,
+                   4, 3, 3, 0, 2, 2,
+                   14, 6, 2, 2, 0, 4,
+                   3, 2, 1, 1, 2, 0), 6, 6, byrow = TRUE,
+                 dimnames = list(cts, cts))
+## two conditions: three CD14-mono-driven links up in STIM, two links up in CTRL
+stim <- ctrl <- base_c
+stim["CD14 Mono", "T CD4"] <- stim["CD14 Mono", "T CD4"] + 46
+stim["CD14 Mono", "Fibro"] <- stim["CD14 Mono", "Fibro"] + 38
+stim["Fibro", "CD14 Mono"] <- stim["Fibro", "CD14 Mono"] + 31
+ctrl["B", "T CD4"]         <- ctrl["B", "T CD4"]         + 27
+ctrl["NK", "T CD8"]        <- ctrl["NK", "T CD8"]        + 22
+diff <- stim - ctrl                       # = STIM-count - CTRL-count matrix
+
+pairs <- expand.grid(sender = cts, receiver = cts, stringsAsFactors = FALSE)
+pairs$d <- as.numeric(diff[cbind(pairs$sender, pairs$receiver)])
+pairs <- subset(pairs, sender != receiver)
+pairs$pair <- paste0(pairs$sender, " \u2192 ", pairs$receiver)
+top <- pairs[order(-abs(pairs$d)), ]
+top <- top[!duplicated(top$pair), ][seq_len(12), ]
+
+p_bfly <- ggplot(top, aes(x = reorder(pair, d), fill = d > 0)) +
+  geom_col(aes(y = d), width = 0.72, colour = "grey25", linewidth = 0.2) +
+  geom_text(aes(y = d + sign(d) * 3.5, label = sprintf("%+d", as.integer(d))),
+            size = 2.6, hjust = 0.5) +
+  scale_fill_manual(values = c("FALSE" = "#1F5FA6", "TRUE" = "#C0272D"),
+                     guide = "none") +
+  coord_flip() +
+  labs(x = NULL, y = "STIM - CTRL interactions") +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.y = element_text(size = 8),
+        panel.grid.major.y = element_blank())
+print(p_bfly)
+```
+
+```{r}
+#| label: fig-6.2DiffCircle
+#| fig-cap: "The same difference as a circular network: node ring width scales with total communication, curved links show only the changed pairs, red thickening up in STIM, blue up in CTRL."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 6
+
+par(mar = rep(1.2, 4))
+plot(c(-1.35, 1.35), c(-1.35, 1.35), type = "n", ax = FALSE, ann = FALSE)
+ang <- seq(pi / 2, pi / 2 + 2 * pi, length.out = length(cts) + 1)[seq_along(cts)]
+pos <- cbind(cos(ang), sin(ang)); rownames(pos) <- cts
+
+circle <- function(x0, y0, r, col, lwd = 1) {
+  th <- seq(0, 2 * pi, length.out = 100)
+  lines(x0 + r * cos(th), y0 + r * sin(th), col = col, lwd = lwd)
+}
+tot <- rowSums(stim) + rowSums(ctrl)
+for (i in seq_along(cts))
+  circle(pos[i, 1], pos[i, 2], 0.09, col = "#24364A",
+         lwd = 1 + tot[i] / max(tot) * 2.2)
+
+for (s in cts) for (r in cts) if (s != r) {
+  d <- diff[s, r]
+  if (abs(d) >= 15) {
+    col <- if (d > 0) adjustcolor("#C0272D", alpha = 0.68)
+           else adjustcolor("#1F5FA6", alpha = 0.68)
+    mx <- (pos[s, 1] + pos[r, 1]) / 2 * 0.22
+    my <- (pos[s, 2] + pos[r, 2]) / 2 * 0.22
+    lines(c(pos[s, 1], mx, pos[r, 1]), c(pos[s, 2], my, pos[r, 2]),
+          col = col, lwd = 0.6 + abs(d) / 12)
+  }
+}
+text(rep(0, length(cts)), pos[, 2] * 1.22, cts, cex = 0.8, col = "#24364A")
+title("STIM vs CTRL differential circle", line = 0.2, cex.main = 1, font.main = 2)
+legend("bottomleft", legend = c("up in STIM", "up in CTRL"),
+       col = c("#C0272D", "#1F5FA6"), lwd = 3, bty = "n", cex = 0.75)
+```
+
+::: callout-tip
+**实践要点**
+
+-   给连线设阈值（`abs(d) >= 15`）：把所有非零差异都画上，圆图就成了一团乱麻——发生变化的配对才是图的论点。
+-   红/蓝**在两个面板保持同一约定**（此处红 = STIM 上调）——条图与圆图是同一 `diff` 矩阵的两种读法，绝不能互相矛盾。
+-   低计数时次数差异是泊松噪声；发文章前对抽样互作次数做泊松/二项检验，给视觉结论补统计证据。
+:::
+
+
 ## 参考文献
 
 \[1\] Jin S, Guerrero-Juarez CF, Zhang L 等. 使用 CellChat 推断和分析细胞-细胞通讯. *Nature Communications*. 2021;12(1):1088. <https://doi.org/10.1038/s41467-021-21246-9>
@@ -301,3 +412,7 @@ ggplot(lr_df, aes(cell_pair, pair, size = pval, colour = mean)) +
 \[2\] Jin S 等. 基于单细胞转录组系统分析细胞-细胞通讯的 CellChat. *Nature Protocols*. 2024. <https://doi.org/10.1038/s41596-024-01045-4>
 
 \[3\] CellChat GitHub: <https://github.com/jinworks/CellChat>
+
+\[4\] Efremova M, Gong C. CellPhoneDB: inferring intercellular communication network from single-cell transcriptomics data. *Nat Methods*. 2018;15(6):431-432.
+
+\[5\] Xiaofan Lu, et al. FigureYa267scCellChat 参考图：两条件间差异互作比较。FigureYa 文档。<https://ying-ge.github.io/FigureYa/>

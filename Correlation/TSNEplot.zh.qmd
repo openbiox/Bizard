@@ -190,6 +190,61 @@ ggplot(dfm, aes(tSNE1, tSNE2, color = marker)) +
 
 把每细胞数值（基因表达、打分、QC 指标）画上地图，正是 t-SNE 图获得解释力的方式。
 
+
+### 5. 突变报告叠加：高亮图与特征面板
+
+单细胞突变研究需要地图携带"报告器"：把目标亚群（如携带某突变的 100 个细胞）以醒目颜色画在灰化背景上，再把该突变的报告基因作为特征面板并排其上 \[4\]。此处 100 个高亮细胞位于 CD4 T 岛内、且仅在种植突变后于 Gene21 高耸——面板按构造即可核验。
+
+
+```{r}
+#| label: fig-5.1MutantReport
+#| fig-cap: "Publication-style t-SNE panel: (left) the 100 mutated cells highlighted yellow against the greyed population, (right) the mutation report marker Gene21 plus the CD4 and monocyte marker genes painted onto the same map."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 4.8
+
+set.seed(252)                         # highlight selection is stochastic too
+mut_idx <- which(ct == "CD4 T cells")[sample(sum(ct == "CD4 T cells"), 100)]
+expr_h <- expr
+expr_h[mut_idx, 21] <- expr_h[mut_idx, 21] + 3.0   # the report: mutants carry the B-lineage marker Gene21
+
+pcs_h <- prcomp(expr_h, rank. = 30)$x[, 1:30]
+ts_h <- Rtsne(pcs_h, dims = 2, perplexity = 30, pca = FALSE, verbose = FALSE)
+d_h <- data.frame(tSNE1 = ts_h$Y[, 1], tSNE2 = ts_h$Y[, 2], celltype = ct,
+                  mut = seq_len(nrow(expr_h)) %in% mut_idx, stringsAsFactors = FALSE)
+
+p_h1 <- ggplot(d_h, aes(tSNE1, tSNE2)) +
+  geom_point(data = d_h[!d_h$mut, ], colour = "grey22", size = 0.7, alpha = 0.7) +
+  geom_point(data = d_h[d_h$mut, ], colour = "#F2C500", size = 1.05) +
+  labs(title = "Mutant cells highlighted (100)", x = "t-SNE 1", y = "t-SNE 2") +
+  theme_bw(base_size = 10) +
+  theme(plot.title = element_text(size = 10, face = "bold", hjust = 0))
+
+fp_h <- function(gn, col, ttl) {
+  d_h$mn <- expr_h[, gn]
+  ggplot(d_h, aes(tSNE1, tSNE2, colour = mn)) +
+    geom_point(size = 0.7) +
+    scale_colour_gradient(low = "#DEDEDE", high = col, name = NULL) +
+    labs(x = NULL, y = NULL, title = ttl) +
+    theme_bw(base_size = 9) +
+    theme(legend.position = "none", plot.title = element_text(size = 9, hjust = 0),
+          axis.text = element_text(size = 7))
+}
+p_h1 | (fp_h(1, "#2E7D3D", "Gene1 (CD4 T)") /
+        fp_h(21, "#C0272D", "Gene21 (mutant report)") /
+        fp_h(61, "#3465A8", "Gene61 (monocyte)"))
+```
+
+::: callout-tip
+**实践要点**
+
+-   高亮某子集时，把*背景群体*涂灰（`grey22`）而非按细胞类型着色——颜色通道打架会埋掉面板唯一的论点。
+-   突变"报告"基因在普通地图上应是隐形的（本图的颜色通道无法显出这 100 个黄点）——高亮面板的价值正是证明肉眼不可见之物。
+-   高亮图与标记条共用同一嵌入（同一个 `ts_h`，一个 patchwork 版面）：只有坐标全同，读者的眼睛才能在面板间追踪细胞。
+:::
+
 ::: callout-tip
 ## 实践要点
 
@@ -213,3 +268,5 @@ t-SNE 地图是单细胞论文的门面图（细胞类型图谱、肿瘤免疫�
 \[2\] Kobak D, Berens P. The art of using t-SNE for single-cell transcriptomics. Nat Commun. 2019;10:5416. doi:10.1038/s41467-019-13056-x
 
 \[3\] Krijthe JH. Rtsne: t-Distributed Stochastic Neighbor Embedding using Barnes-Hut implementation. R package version 0.17. 2015. https://github.com/jkrijthe/Rtsne
+
+\[4\] Xiaofan Lu, et al. FigureYa27tSNE 参考图：带高亮亚群与标记特征图的突变报告 t-SNE。FigureYa 文档。<https://ying-ge.github.io/FigureYa/>

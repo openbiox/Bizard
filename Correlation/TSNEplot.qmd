@@ -190,6 +190,61 @@ ggplot(dfm, aes(tSNE1, tSNE2, color = marker)) +
 
 Painting per-cell values (gene expression, cluster score, QC metrics) onto the map is how t-SNE figures earn their interpretation.
 
+
+### 5. Mutation-Report Overlay: Highlight and Feature Panels
+
+Single-cell mutation studies need the map to carry a *reporter*: a subpopulation (say, 100 cells carrying a mutation) is drawn in one salient colour on a greyed background, and the gene that reports the mutation is painted as a feature panel next to it \[4\]. The 100 highlighted cells here sit inside the CD4 T island and tower on Gene21 only when the mutation is planted - the panel is verifiable by construction.
+
+
+```{r}
+#| label: fig-5.1MutantReport
+#| fig-cap: "Publication-style t-SNE panel: (left) the 100 mutated cells highlighted yellow against the greyed population, (right) the mutation report marker Gene21 plus the CD4 and monocyte marker genes painted onto the same map."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 4.8
+
+set.seed(252)                         # highlight selection is stochastic too
+mut_idx <- which(ct == "CD4 T cells")[sample(sum(ct == "CD4 T cells"), 100)]
+expr_h <- expr
+expr_h[mut_idx, 21] <- expr_h[mut_idx, 21] + 3.0   # the report: mutants carry the B-lineage marker Gene21
+
+pcs_h <- prcomp(expr_h, rank. = 30)$x[, 1:30]
+ts_h <- Rtsne(pcs_h, dims = 2, perplexity = 30, pca = FALSE, verbose = FALSE)
+d_h <- data.frame(tSNE1 = ts_h$Y[, 1], tSNE2 = ts_h$Y[, 2], celltype = ct,
+                  mut = seq_len(nrow(expr_h)) %in% mut_idx, stringsAsFactors = FALSE)
+
+p_h1 <- ggplot(d_h, aes(tSNE1, tSNE2)) +
+  geom_point(data = d_h[!d_h$mut, ], colour = "grey22", size = 0.7, alpha = 0.7) +
+  geom_point(data = d_h[d_h$mut, ], colour = "#F2C500", size = 1.05) +
+  labs(title = "Mutant cells highlighted (100)", x = "t-SNE 1", y = "t-SNE 2") +
+  theme_bw(base_size = 10) +
+  theme(plot.title = element_text(size = 10, face = "bold", hjust = 0))
+
+fp_h <- function(gn, col, ttl) {
+  d_h$mn <- expr_h[, gn]
+  ggplot(d_h, aes(tSNE1, tSNE2, colour = mn)) +
+    geom_point(size = 0.7) +
+    scale_colour_gradient(low = "#DEDEDE", high = col, name = NULL) +
+    labs(x = NULL, y = NULL, title = ttl) +
+    theme_bw(base_size = 9) +
+    theme(legend.position = "none", plot.title = element_text(size = 9, hjust = 0),
+          axis.text = element_text(size = 7))
+}
+p_h1 | (fp_h(1, "#2E7D3D", "Gene1 (CD4 T)") /
+        fp_h(21, "#C0272D", "Gene21 (mutant report)") /
+        fp_h(61, "#3465A8", "Gene61 (monocyte)"))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Colour the *background population* grey (`grey22`) rather than by cell type when a subset is highlighted - competing colour channels bury the one message of the panel.
+-   The mutation "report" gene should be invisible on the plain map (no colour channel here reveals the 100 yellow cells) - the highlight panel then proves what the unassisted eye could not see.
+-   Share one embedding across the highlight and the marker strip (same `ts_h`, one patchwork layout): reader's eye tracks cells between panels only when coordinates are identical.
+:::
+
 ::: callout-tip
 ## Practice tips
 
@@ -213,3 +268,5 @@ t-SNE maps are the front-page figure of single-cell papers (cell-type atlases, t
 \[2\] Kobak D, Berens P. The art of using t-SNE for single-cell transcriptomics. Nat Commun. 2019;10:5416. doi:10.1038/s41467-019-13056-x
 
 \[3\] Krijthe JH. Rtsne: t-Distributed Stochastic Neighbor Embedding using Barnes-Hut implementation. R package version 0.17. 2015. https://github.com/jkrijthe/Rtsne
+
+\[4\] Xiaofan Lu, et al. FigureYa27tSNE reference figure: mutation-report t-SNE with highlighted subpopulation and marker feature plots. FigureYapy/FigureYa documentation. <https://ying-ge.github.io/FigureYa/>
