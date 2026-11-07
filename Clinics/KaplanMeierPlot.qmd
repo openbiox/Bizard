@@ -19,7 +19,7 @@ Survival analysis studies the time that passes before an event occurs. The most 
 
 -   Programming language: R
 
--   Dependent packages: `survival`, `survminer`, `ggplot2`, `dplyr`, `tidyr`, `zoo`, `patchwork`
+-   Dependent packages: `survival`, `survminer`, `ggplot2`, `dplyr`, `tidyr`, `zoo`, `patchwork`, `ggpp`, `gridExtra`, `RColorBrewer`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Install packages
@@ -44,15 +44,27 @@ if (!requireNamespace("zoo", quietly = TRUE)) {
 if (!requireNamespace("patchwork", quietly = TRUE)) {
   install.packages("patchwork")
 }
+if (!requireNamespace("ggpp", quietly = TRUE)) {
+  install.packages("ggpp")
+}
+if (!requireNamespace("gridExtra", quietly = TRUE)) {
+  install.packages("gridExtra")
+}
+if (!requireNamespace("RColorBrewer", quietly = TRUE)) {
+  install.packages("RColorBrewer")
+}
 
 # Load packages
-library(survival)    
-library(survminer)   
-library(ggplot2)     
+library(survival)
+library(survminer)
+library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(zoo)
 library(patchwork)
+library(ggpp)
+library(gridExtra)
+library(RColorBrewer)
 ```
 
 ```{r}
@@ -342,7 +354,7 @@ Beautified survival curve
 
 ### Multi-Group Survival Curves with Confidence Ribbons
 
-Two- and three-arm comparisons extend the same `ggsurvplot()` call: pass one colour per stratum to `palette`, per-group labels to `legend.labs`, and switch on the confidence ribbon with `conf.int` \[7\].
+Two- and three-arm comparisons extend the same `ggsurvplot()` call: pass one colour per stratum to `palette`, per-group labels to `legend.labs`, and switch on the confidence ribbon with `conf.int` \[3\].
 
 ```{r}
 #| label: fig-2.2MultiGroupKM
@@ -387,7 +399,7 @@ ggsurvplot(fit3, data = km3,
 
 ### Risk Table Below the KM Curve
 
-The **risk table** below a KM curve shows the number of patients at risk at each time point \[7\] — it is what reviewers check to assess the reliability of the curve at late follow-up times. `survminer::ggsurvplot()` draws it with `risk.table = TRUE`.
+The **risk table** below a KM curve shows the number of patients at risk at each time point \[3\] — it is what reviewers check to assess the reliability of the curve at late follow-up times. `survminer::ggsurvplot()` draws it with `risk.table = TRUE`.
 
 ```{r}
 #| label: fig-risktable
@@ -427,6 +439,83 @@ ggsurvplot(fit_rt, data = km_data,
 -   `tables.theme = theme_cleantable()` removes the table grid lines for a cleaner look.
 :::
 
+### Pairwise Log-rank Comparisons Across Many Groups
+
+With three or more strata, the single overall log-rank p-value answers *"do the curves differ somewhere?"* but not *"which pairs differ?"* \[3\]. The natural companion is a matrix of pairwise log-rank tests from `survminer::pairwise_survdiff()`, reported next to the curves — the layout of FigureYa284pairwiseLogrank, which reproduces Fig. 2a of a soft-tissue-sarcoma study with five PAM50-like strata \[3\]. Below, five simulated strata (A–E) with different hazard rates are plotted with their risk table, the overall log-rank p-value, and the full pairwise matrix embedded in the empty lower-left corner of the panel via `ggpp::geom_table()`.
+
+```{r}
+#| label: fig-2.3pairwise
+#| fig-cap: "Five-stratum KM curves with risk table; the lower-left table gives Holm-adjusted pairwise log-rank p-values (columns vs rows), and the overall log-rank test gives p < 0.001."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 8.5
+
+set.seed(4284)
+n_g <- 60
+grp <- factor(rep(c("A", "B", "C", "D", "E"), each = n_g),
+              levels = c("A", "B", "C", "D", "E"))
+rate <- c(A = 0.030, B = 0.022, C = 0.008, D = 0.016, E = 0.012)
+t_event <- rexp(5 * n_g, rate = rate[as.character(grp)])
+t_cens  <- rexp(5 * n_g, rate = 0.008)
+km5 <- data.frame(OS.time = pmin(t_event, t_cens),
+                  OS = as.integer(t_event <= t_cens),
+                  group = grp)
+
+# overall log-rank test
+fitd <- survdiff(Surv(OS.time, OS) ~ group, data = km5)
+p_overall <- 1 - pchisq(fitd$chisq, length(fitd$n) - 1)
+p_lab <- paste0("Log-rank test P",
+                ifelse(p_overall < 0.001, " < 0.001",
+                       paste0(" = ", round(p_overall, 3))))
+
+# pairwise log-rank tests, Holm-adjusted (the survminer default;
+# the source figure used p.adjust.method = "none" to match its published table)
+ps <- pairwise_survdiff(Surv(OS.time, OS) ~ group, data = km5,
+                        p.adjust.method = "holm")
+
+fit <- survfit(Surv(OS.time, OS) ~ group, data = km5)
+names(fit$strata) <- gsub("group=", "", names(fit$strata))
+mycol <- brewer.pal(n = 10, "Paired")[c(2, 4, 6, 8, 10)]
+
+addTab <- as.data.frame(as.matrix(ifelse(round(ps$p.value, 3) < 0.001,
+                                         "<0.001", round(ps$p.value, 3))))
+addTab[is.na(addTab)] <- "-"
+
+p <- ggsurvplot(fit, data = km5,
+                conf.int = FALSE,
+                risk.table = TRUE, risk.table.col = "strata",
+                palette = mycol,
+                xlim = c(0, 120), break.time.by = 24,
+                size = 0.9,
+                legend.title = "",
+                xlab = "Time (months)", ylab = "Overall survival",
+                risk.table.y.text = FALSE,
+                tables.height = 0.28,
+                ggtheme = theme_classic(base_size = 11))
+
+p$plot <- p$plot +
+  annotate("text", x = 55, y = 0.95, hjust = 0, fontface = 4, size = 3.4,
+           label = p_lab) +
+  annotate("text", x = 0, y = 0.315, hjust = 0, size = 3, fontface = 3,
+           label = "Pairwise log-rank P (Holm)") +
+  geom_table(data = tibble::tibble(x = 0, y = 0.02, tb = list(addTab)),
+             aes(x = x, y = y, label = tb),
+             table.rownames = TRUE,
+             table.theme = ttheme_minimal(base_size = 8,
+                                          core = list(fg_params = list(fontsize = 7.5))))
+p
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Prefer adjusted pairwise p-values (`p.adjust.method = "holm"`, the package default); the reproduced paper printed unadjusted tests to match its published table — either is fine, but state the choice in your methods.
+-   The matrix is symmetric with `-` on the diagonal; print the lower triangle only, and keep the row/column order identical to the legend order of the curves.
+-   `geom_table()` anchors the table at data coordinates: the lower-left of a KM panel is usually empty (curves start at survival = 1), so it is a safe anchor; check for overlap with late-descending curves before export.
+:::
+
 ## Application
 
 ::: {#fig-KaplanMeierPlotApplications1}
@@ -445,4 +534,4 @@ This figure shows the comparison of the generated survival time between the thre
 
 
 
-\[7\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

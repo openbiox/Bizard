@@ -16,7 +16,7 @@ author:
 ```{r}
 #| echo: false
 #| output: asis
-bizard_setup("survival", "survminer", "ggplot2", "dplyr", "tidyr", "zoo", "patchwork", lang = "zh")
+bizard_setup("survival", "survminer", "ggplot2", "dplyr", "tidyr", "zoo", "patchwork", "ggpp", "gridExtra", "RColorBrewer", lang = "zh")
 ```
 
 ```{r}
@@ -306,7 +306,7 @@ final_plot
 
 ### 多组生存曲线与置信区间带
 
-两臂与三臂比较沿用同一个 `ggsurvplot()` 调用：为每个分层在 `palette` 中传入一种颜色，在 `legend.labs` 中传入各组标签，并用 `conf.int` 开启置信区间带 \[7\]。
+两臂与三臂比较沿用同一个 `ggsurvplot()` 调用：为每个分层在 `palette` 中传入一种颜色，在 `legend.labs` 中传入各组标签，并用 `conf.int` 开启置信区间带 \[3\]。
 
 ```{r}
 #| label: fig-2.2MultiGroupKM
@@ -351,7 +351,7 @@ ggsurvplot(fit3, data = km3,
 
 ### Risk Table（风险表）
 
-KM 曲线下方的**风险表**展示每个时间点仍在随访的患者数 \[7\]——审稿人用它评估曲线在晚期随访时的可靠性。`survminer::ggsurvplot()` 通过 `risk.table = TRUE` 绘制。
+KM 曲线下方的**风险表**展示每个时间点仍在随访的患者数 \[3\]——审稿人用它评估曲线在晚期随访时的可靠性。`survminer::ggsurvplot()` 通过 `risk.table = TRUE` 绘制。
 
 ```{r}
 #| label: fig-risktable
@@ -391,6 +391,82 @@ ggsurvplot(fit_rt, data = km_data,
 -   `tables.theme = theme_cleantable()` 去除表格网格线，使画面更干净。
 :::
 
+### 多组间的两两 log-rank 比较
+
+三组及以上分层时，单一的总体 log-rank p 值只回答"曲线在某处是否存在差异"，回答不了"具体哪两组不同" \[3\]。自然的补充是 `survminer::pairwise_survdiff()` 给出的两两 log-rank 检验矩阵，与曲线一起呈现——这正是 FigureYa284pairwiseLogrank 的版式：复现某软组织肉瘤研究中五个 PAM50 样分层的 Fig. 2a \[3\]。下面用五个不同风险率的模拟分层（A–E）绘制带风险表的 KM 曲线，标注总体 log-rank p 值，并用 `ggpp::geom_table()` 把完整的两两比较矩阵嵌入面板左下角的空白区。
+
+```{r}
+#| label: fig-2.3pairwise
+#| fig-cap: "五分层 KM 曲线 + 风险表；左下表格为 Holm 校正的两两 log-rank p 值（列为组、行为组），总体 log-rank 检验 p < 0.001。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 8.5
+
+set.seed(4284)
+n_g <- 60
+grp <- factor(rep(c("A", "B", "C", "D", "E"), each = n_g),
+              levels = c("A", "B", "C", "D", "E"))
+rate <- c(A = 0.030, B = 0.022, C = 0.008, D = 0.016, E = 0.012)
+t_event <- rexp(5 * n_g, rate = rate[as.character(grp)])
+t_cens  <- rexp(5 * n_g, rate = 0.008)
+km5 <- data.frame(OS.time = pmin(t_event, t_cens),
+                  OS = as.integer(t_event <= t_cens),
+                  group = grp)
+
+# 总体 log-rank 检验
+fitd <- survdiff(Surv(OS.time, OS) ~ group, data = km5)
+p_overall <- 1 - pchisq(fitd$chisq, length(fitd$n) - 1)
+p_lab <- paste0("Log-rank test P",
+                ifelse(p_overall < 0.001, " < 0.001",
+                       paste0(" = ", round(p_overall, 3))))
+
+# 两两 log-rank 检验，Holm 校正（survminer 默认；原文为与已发表表格一致使用了不校正）
+ps <- pairwise_survdiff(Surv(OS.time, OS) ~ group, data = km5,
+                        p.adjust.method = "holm")
+
+fit <- survfit(Surv(OS.time, OS) ~ group, data = km5)
+names(fit$strata) <- gsub("group=", "", names(fit$strata))
+mycol <- brewer.pal(n = 10, "Paired")[c(2, 4, 6, 8, 10)]
+
+addTab <- as.data.frame(as.matrix(ifelse(round(ps$p.value, 3) < 0.001,
+                                         "<0.001", round(ps$p.value, 3))))
+addTab[is.na(addTab)] <- "-"
+
+p <- ggsurvplot(fit, data = km5,
+                conf.int = FALSE,
+                risk.table = TRUE, risk.table.col = "strata",
+                palette = mycol,
+                xlim = c(0, 120), break.time.by = 24,
+                size = 0.9,
+                legend.title = "",
+                xlab = "Time (months)", ylab = "Overall survival",
+                risk.table.y.text = FALSE,
+                tables.height = 0.28,
+                ggtheme = theme_classic(base_size = 11))
+
+p$plot <- p$plot +
+  annotate("text", x = 55, y = 0.95, hjust = 0, fontface = 4, size = 3.4,
+           label = p_lab) +
+  annotate("text", x = 0, y = 0.315, hjust = 0, size = 3, fontface = 3,
+           label = "Pairwise log-rank P (Holm)") +
+  geom_table(data = tibble::tibble(x = 0, y = 0.02, tb = list(addTab)),
+             aes(x = x, y = y, label = tb),
+             table.rownames = TRUE,
+             table.theme = ttheme_minimal(base_size = 8,
+                                          core = list(fg_params = list(fontsize = 7.5))))
+p
+```
+
+::: callout-tip
+**实践要点**
+
+-   优先使用校正后的两两 p 值（`p.adjust.method = "holm"`，包默认值）；原文为与已发表表格一致打印了未校正的检验——两种做法都可以，但要在方法学部分说明。
+-   矩阵是对称的，对角线为 `-`；只打印下三角，且行/列顺序与曲线图例顺序保持一致。
+-   `geom_table()` 以数据坐标为锚点：KM 面板左下角通常是空的（曲线从生存率 = 1 开始），是安全的锚点；导出前检查是否与晚期下降的曲线重叠。
+:::
+
 ## 应用场景
 
 ### 1. 疾病分布
@@ -411,4 +487,4 @@ ggsurvplot(fit_rt, data = km_data,
 
 
 
-\[7\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
