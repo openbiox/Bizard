@@ -661,6 +661,88 @@ p
 
 This chord diagram illustrates the change in blood glucose levels before and after taking a certain medication. Interactive chord diagrams allow users to dynamically explore the data, viewing more detailed information with the mouse, thus enabling more flexible analysis of complex relationships and data flows, and improving data operability and comprehension.
 
+### 3. miRNA-Target Link Panel with Pathway Rings
+
+A chord diagram shows who talks to whom around a circle; some questions - a handful of miRNAs projecting hundreds of links into pathway groups - read better as a bipartite link panel \[11\]: the sources share one vertical rail at the left, every pathway is a ring packed with its target nodes, and the link colour tells which source class drove the connection. The reference implementation draws the layout with `crosslink`, a package outside CRAN; the panel here is assembled from plain base-graphics primitives - parametric circles plus a coordinate table - which keeps it dependency-free and fully scriptable.
+
+```{r}
+#| label: fig-3.1MirTargetLinkPanel
+#| fig-cap: "miRNA-target link panel: eight miRNAs on the left rail, five pathway rings at the right packed with 120 target nodes; link and node colour encode the high/low class, the ring number counts members."
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 6.0
+
+set.seed(7401)
+n_src <- 8; n_tgt <- 120; n_path <- 5
+sources <- paste0("miR", sprintf("%02d", 1:n_src))
+targets <- paste0("T", sprintf("%03d", 1:n_tgt))
+paths <- paste0("PATH", 1:n_path)
+src_type <- c(rep("src_up", n_src / 2), rep("src_dn", n_src / 2))
+src_type <- src_type[sample(n_src)]
+path_sizes <- c(30, 28, 24, 22, 16)
+tgt_path <- rep(paths, times = path_sizes)
+tgt_type <- sample(c("tar_up", "tar_dn"), n_tgt, replace = TRUE)
+links <- data.frame(src = sample(sources, 380, replace = TRUE),
+                    tgt = sample(targets, 380, replace = TRUE),
+                    stringsAsFactors = FALSE)
+links <- links[!duplicated(links), ]
+links$source_type <- src_type[match(links$src, sources)]
+stopifnot(nrow(links) >= 250 && all(links$source_type %in% c("src_up", "src_dn")))
+
+# geometry: sources share one vertical rail at x = 0; each pathway becomes a circle
+src_df <- data.frame(src = sources, src_type = src_type,
+                     x = 0, y = seq_along(sources) * 1.2, stringsAsFactors = FALSE)
+cen_y <- c(9, 6, 3, 6.5, 1.5)  # stagger circle rows on the right
+path_df <- data.frame(path = paths, cx = 4.2, cy = cen_y, r = 1.05,
+                      stringsAsFactors = FALSE)
+tgt_xy <- lapply(seq_along(targets), function(i) {
+  p <- which(paths == tgt_path[i])
+  tri <- runif(1, 0, 2 * pi)
+  data.frame(tgt = targets[i], path = paths[p], type = tgt_type[i],
+             x = path_df$cx[p] + path_df$r[p] * cos(tri),
+             y = path_df$cy[p] + path_df$r[p] * sin(tri), stringsAsFactors = FALSE)
+})
+tgt_df <- do.call(rbind, tgt_xy)
+colmap <- c(src_up = "#C0272D", src_dn = "#1F5FA6", tar_up = "#D85A5F", tar_dn = "#5E93D0")
+par(mar = c(2, 2, 2, 2))
+plot(NA, NA, xlim = c(-1.2, 6.2), ylim = c(-1.2, 12), xlab = NA, ylab = NA,
+     xaxt = "n", yaxt = "n", bty = "n", pch = NA, asp = 1)
+# parametric circle helper (pure base graphics)
+circle <- function(x0, y0, r, col) {
+  th <- seq(0, 2 * pi, length.out = 120)
+  lines(x0 + r * cos(th), y0 + r * sin(th), col = col, lwd = 1)
+}
+# pathway circles first, targets overlay them later
+for (k in seq_along(paths)) {
+  circle(path_df$cx[k], path_df$cy[k], path_df$r[k], "grey25")
+  cnt <- sum(tgt_df$path == paths[k])
+  text(path_df$cx[k], path_df$cy[k] + path_df$r[k] + 0.34, paths[k], cex = 0.82, col = "grey25")
+  text(path_df$cx[k], path_df$cy[k], cnt, cex = 0.9, col = "grey45")
+}
+# links coloured by source class, half transparent so the web stays readable
+for (r in seq_len(nrow(links))) {
+  x0 <- src_df$x[match(links$src[r], src_df$src)]
+  y0 <- src_df$y[match(links$src[r], src_df$src)]
+  ti <- match(links$tgt[r], tgt_df$tgt)
+  lines(c(x0, tgt_df$x[ti]), c(y0, tgt_df$y[ti]),
+        col = adjustcolor(colmap[[links$source_type[r]]], alpha = 0.55), lwd = 0.5)
+}
+# source nodes with rotated labels, then target nodes coloured by type
+points(src_df$x, src_df$y, pch = 16, cex = 1.5, col = colmap[src_df$src_type])
+text(src_df$x - 0.25, src_df$y, src_df$src, srt = 90, adj = 1, cex = 0.72)
+points(tgt_df$x, tgt_df$y, pch = 16, cex = 1.0, col = colmap[tgt_df$type])
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Draw order is part of the design: rings first, links half transparent, nodes last - each layer stays readable because it occludes only what sits beneath it.
+-   Printing the member count at each ring centre turns the figure into a density map of the target set, not just a tangle of lines.
+-   With real data the coordinates would come from layout algorithms (`igraph::layout.on.circle`, `qgraph`); the drawing code stays byte-identical.
+:::
+
 ## Applications
 
 ### 1. Basic chord diagram
@@ -725,3 +807,4 @@ Modular structure of the potential hippocampal connectome. A, Chord diagram of p
 
 \[10\] Wickham, H., & François, R. (2021). tidygraph: A tidy API for graph manipulation. https://cran.r-project.org/package=tidygraph
 
+\[11\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

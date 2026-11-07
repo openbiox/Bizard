@@ -407,7 +407,7 @@ plt
 
 ### 7. Split Violin + Raw Points (Two Groups)
 
-The reference layout puts, for each group, a **half violin + box on the left and the raw points on the right** \[6\] — statistics and individual observations share one x slot without overlapping. `ggdist::stat_halfeye()` and `ggbeeswarm::geom_beeswarm()` (both loaded above) provide the half-density and the one-sided swarm:
+The reference layout puts, for each group, a **half violin + box on the left and the raw points on the right** \[14\] — statistics and individual observations share one x slot without overlapping. `ggdist::stat_halfeye()` and `ggbeeswarm::geom_beeswarm()` (both loaded above) provide the half-density and the one-sided swarm:
 
 ```{r}
 #| label: fig-7.1SplitViolin
@@ -446,6 +446,78 @@ ggplot(dat_v, aes(group, value, fill = group)) +
 -   `position_nudge()` separates the three layers; without it the half violin, box and points stack on the same slot and the "split" reading is lost.
 -   Keep the violin on the same side for every group — alternating sides per group reads as two different encodings.
 -   For paired data, connect the raw points across groups with `geom_line(aes(group = id))` on the points half instead of the jitter.
+:::
+
+### 8. Split-Facet Violin Matrix with Adjusted p Annotations
+
+Single-cell marker surveys ask a three-way comparison at once: cell type across the columns, marker gene down the rows, condition (here young vs. old) as the two violins inside each facet \[14\]. `ggpubr::ggviolin()` arranges the two-factor grid; the per-facet Mann-Whitney tests run through `rstatix::wilcox_test()`, get Bonferroni-corrected, and land back on their facet via `stat_pvalue_manual()` - and with `hide.ns = TRUE` only the real moves speak.
+
+```{r}
+#| label: fig-8.1ScSplitFacetViolin
+#| fig-cap: "Marker x cell-type facet matrix of split violins: young vs. old in every facet, Bonferroni-adjusted Mann-Whitney p with stars printed only where the shift is real (DDX4 in oocytes, p.adj < 1e-4)."
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 7.5
+
+library(rstatix)
+set.seed(7301)
+clust <- c("OO", "GC", "SC", "EC")
+genes7 <- c("DDX4", "AMH", "COL1A2", "CDH5")
+rows <- list()
+for (cl in seq_along(clust)) {
+  for (gn in seq_along(genes7)) {
+    for (ag in seq_along(c("Y", "O"))) {
+      base <- rnorm(24, mean = 2.2 + 0.4 * cl + 0.3 * gn, sd = 0.9)
+      # marker gene: one cluster expresses high; old shifts up on the top marker
+      if (gn == cl) base <- base + 2.3
+      if (gn == 1 && cl == 1 && ag == 2) base <- base + 1.9
+      rows[[length(rows) + 1]] <- data.frame(
+        aging = c("Y", "O")[ag], cluster_short = clust[cl], gene = genes7[gn],
+        expression = base, stringsAsFactors = FALSE)
+    }
+  }
+}
+dfc <- do.call(rbind, rows)
+dfc$aging <- factor(dfc$aging, levels = c("Y", "O"))
+dfc$cluster_short <- factor(dfc$cluster_short, levels = clust)
+dfc$gene <- factor(dfc$gene, levels = genes7)
+# gate: the DDX4/OO facet is significantly higher in Old (the designed effect)
+sub <- dfc[dfc$gene == "DDX4" & dfc$cluster_short == "OO", ]
+wt <- wilcox.test(expression ~ aging, data = sub)
+stopifnot(wt$p.value < 0.01 &&
+          mean(sub$expression[sub$aging == "O"]) > mean(sub$expression[sub$aging == "Y"]))
+stat_test <- dfc %>% group_by(cluster_short, gene) %>%
+  wilcox_test(formula = expression ~ aging) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance(p.col = "p.adj", cutpoints = c(0, 1e-4, 0.001, 0.01, 0.05, 1),
+                   symbols = c("****", "***", "**", "*", "ns")) %>%
+  add_xy_position(x = "aging")
+p_c <- ggviolin(dfc, x = "aging", y = "expression", fill = "aging", color = "aging",
+                facet.by = c("gene", "cluster_short"), trim = FALSE) +
+  scale_fill_manual(values = c("#2874C5", "#EABF00"), guide = "none") +
+  scale_colour_manual(values = c("#2874C5", "#EABF00"), guide = "none") +
+  stat_pvalue_manual(stat_test, hide.ns = TRUE, tip.length = 0,
+                     label = "{p.adj} {p.adj.signif}", label.size = 2.6, vjust = -0.4) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.14))) +
+  theme_bw(base_size = 10) +
+  theme(panel.grid = element_blank(),
+        strip.text.y = element_text(angle = 0, size = 8),
+        strip.text.x = element_text(size = 8),
+        strip.background.x = element_rect(fill = "grey94", linewidth = 0, colour = NA),
+        strip.background.y = element_rect(fill = "grey88", linewidth = 0, colour = NA),
+        axis.title.x = element_blank(), legend.position = "none") +
+  labs(y = "Expression (log TPM)")
+print(p_c)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Keep the factor levels explicit (`levels = c("Y", "O")`): facet order and colour mapping both follow the factor, not the data.
+-   The p values printed on facets are already multiple-testing corrected - do not re-read single-facet raw p values from such a panel.
+-   `trim = FALSE` keeps the full KDE tails; trimming looks tidier but clips the tails that carry the rare-cell signal.
 :::
 
 ## Application
@@ -518,4 +590,4 @@ Applications of Violin Plot with Boxplot
 
 \[13\] Horst AM, Hill AP, Gorman KB (2020). palmerpenguins: Palmer Archipelago (Antarctica) penguin data. R package version 0.1.0. https://allisonhorst.github.io/palmerpenguins/. doi: 10.5281/zenodo.3960218.
 
-\[6\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[14\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

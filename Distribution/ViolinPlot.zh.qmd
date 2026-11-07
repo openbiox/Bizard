@@ -407,7 +407,7 @@ plt
 
 ### 7. 分半小提琴 + 原始点（两组）
 
-参考版式为每个组画：**左半小提琴 + 箱线，右半原始点** \[6\]——统计量与个体观测共用一个 x 槽位而不互相遮挡。`ggdist::stat_halfeye()` 与 `ggbeeswarm::geom_beeswarm()`（上文已加载）提供半密度与单侧蜂群：
+参考版式为每个组画：**左半小提琴 + 箱线，右半原始点** \[14\]——统计量与个体观测共用一个 x 槽位而不互相遮挡。`ggdist::stat_halfeye()` 与 `ggbeeswarm::geom_beeswarm()`（上文已加载）提供半密度与单侧蜂群：
 
 ```{r}
 #| label: fig-7.1SplitViolin
@@ -446,6 +446,78 @@ ggplot(dat_v, aes(group, value, fill = group)) +
 -   `position_nudge()` 把三层分开；不加 nudged 位移，半小提琴、箱线与点会叠在同一槽位，丢失"分半"读法。
 -   每组的小提琴保持同一侧——逐组交替侧会被读成两种编码。
 -   配对数据在点半侧用 `geom_line(aes(group = id))` 跨组连线替代抖动。
+:::
+
+### 8. 分面小提琴矩阵与校正 p 标注
+
+单细胞标志物普查同时要作三路比较：列是细胞类型，行是标记基因，条件（此处为年轻 vs. 年老）作为每格内的小提琴对 \[14\]。`ggpubr::ggviolin()` 铺排双因子网格；逐格 Mann-Whitney 检验经 `rstatix::wilcox_test()` 完成并做 Bonferroni 校正，再由 `stat_pvalue_manual()` 落回各自分面——配上 `hide.ns = TRUE`，只有真实的位移才开口说话。
+
+```{r}
+#| label: fig-8.1ScSplitFacetViolin
+#| fig-cap: "标记基因 × 细胞类型的分面小提琴矩阵：每格为年轻 vs. 年老，Bonferroni 校正的 Mann-Whitney p 与星标只落在真实位移处（卵母细胞中的 DDX4，p.adj < 1e-4）。"
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 7.5
+
+library(rstatix)
+set.seed(7301)
+clust <- c("OO", "GC", "SC", "EC")
+genes7 <- c("DDX4", "AMH", "COL1A2", "CDH5")
+rows <- list()
+for (cl in seq_along(clust)) {
+  for (gn in seq_along(genes7)) {
+    for (ag in seq_along(c("Y", "O"))) {
+      base <- rnorm(24, mean = 2.2 + 0.4 * cl + 0.3 * gn, sd = 0.9)
+      # marker gene: one cluster expresses high; old shifts up on the top marker
+      if (gn == cl) base <- base + 2.3
+      if (gn == 1 && cl == 1 && ag == 2) base <- base + 1.9
+      rows[[length(rows) + 1]] <- data.frame(
+        aging = c("Y", "O")[ag], cluster_short = clust[cl], gene = genes7[gn],
+        expression = base, stringsAsFactors = FALSE)
+    }
+  }
+}
+dfc <- do.call(rbind, rows)
+dfc$aging <- factor(dfc$aging, levels = c("Y", "O"))
+dfc$cluster_short <- factor(dfc$cluster_short, levels = clust)
+dfc$gene <- factor(dfc$gene, levels = genes7)
+# gate: the DDX4/OO facet is significantly higher in Old (the designed effect)
+sub <- dfc[dfc$gene == "DDX4" & dfc$cluster_short == "OO", ]
+wt <- wilcox.test(expression ~ aging, data = sub)
+stopifnot(wt$p.value < 0.01 &&
+          mean(sub$expression[sub$aging == "O"]) > mean(sub$expression[sub$aging == "Y"]))
+stat_test <- dfc %>% group_by(cluster_short, gene) %>%
+  wilcox_test(formula = expression ~ aging) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance(p.col = "p.adj", cutpoints = c(0, 1e-4, 0.001, 0.01, 0.05, 1),
+                   symbols = c("****", "***", "**", "*", "ns")) %>%
+  add_xy_position(x = "aging")
+p_c <- ggviolin(dfc, x = "aging", y = "expression", fill = "aging", color = "aging",
+                facet.by = c("gene", "cluster_short"), trim = FALSE) +
+  scale_fill_manual(values = c("#2874C5", "#EABF00"), guide = "none") +
+  scale_colour_manual(values = c("#2874C5", "#EABF00"), guide = "none") +
+  stat_pvalue_manual(stat_test, hide.ns = TRUE, tip.length = 0,
+                     label = "{p.adj} {p.adj.signif}", label.size = 2.6, vjust = -0.4) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.14))) +
+  theme_bw(base_size = 10) +
+  theme(panel.grid = element_blank(),
+        strip.text.y = element_text(angle = 0, size = 8),
+        strip.text.x = element_text(size = 8),
+        strip.background.x = element_rect(fill = "grey94", linewidth = 0, colour = NA),
+        strip.background.y = element_rect(fill = "grey88", linewidth = 0, colour = NA),
+        axis.title.x = element_blank(), legend.position = "none") +
+  labs(y = "Expression (log TPM)")
+print(p_c)
+```
+
+::: callout-tip
+**实践要点**
+
+-   因子水平要显式声明（`levels = c("Y", "O")`）：分面顺序与颜色映射都跟着因子走，不跟数据走。
+-   分面上打印的 p 值已作多重检验校正——不要再从这类面板上单读某格的原始 p 值。
+-   `trim = FALSE` 保留完整 KDE 尾部；裁剪看似更整洁，却剪掉了携带稀有细胞信号的尾巴。
 :::
 
 ## 应用场景
@@ -518,4 +590,4 @@ ggplot(dat_v, aes(group, value, fill = group)) +
 
 \[13\] Horst AM, Hill AP, Gorman KB (2020). palmerpenguins: Palmer Archipelago (Antarctica) penguin data. R package version 0.1.0. https://allisonhorst.github.io/palmerpenguins/. doi: 10.5281/zenodo.3960218.
 
-\[6\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[14\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

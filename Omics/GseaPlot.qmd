@@ -476,6 +476,66 @@ ggraph(graph, layout = "dendrogram", circular = TRUE) +
 -   Bubbles can only carry magnitude (|logFC|) — direction goes to colour. Deeper hierarchies (pathway → sub-pathway → gene) just extend the edge table.
 :::
 
+### 8. Pan-Cancer NES Bubble Grid Across Tumour Types
+
+The pan-cancer companion of the running-score figure lays many tumour types side by side: for every tumour x pathway cell one bubble, colour carrying the normalized enrichment score (NES) and size its significance \[4\] - one glance answers which pathways move in which cancers. The simulated NES matrix below has a coherent pattern built in (proliferative cohorts move cell-cycle/p53, metabolic cohorts move hypoxia/glycolysis) so the reading order of the panel is verifiable; in a real pipeline the matrix comes from `fgsea::fGSEA()` on per-cohort limma contrasts.
+
+```{r}
+#| label: fig-8.1PanCancerNesGrid
+#| fig-cap: "Pan-cancer NES bubble grid: tumour types across the base, pathways up the side; colour = normalized enrichment score, size = -log10(FDR); the built-in proliferation/metabolism pattern reads as designed."
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 6.5
+
+library(colorspace)
+set.seed(7201)
+tumors <- c("BLCA", "BRCA", "CESC", "CHOL", "COAD", "LUAD", "LUSC", "PAAD", "PRAD", "UCEC")
+terms <- c("P53_PATHWAY", "CELL_CYCLE", "APOPTOSIS", "GLYCOLYSIS", "HYPOXIA",
+           "EMT", "INFLAMMATION", "ANGIOGENESIS", "OXPHOS", "DNA_REPAIR")
+nes <- matrix(rnorm(length(tumors) * length(terms), 0, 1.25),
+              nrow = length(tumors), dimnames = list(tumors, terms))
+# coherent biology: proliferative cohorts move cell-cycle/p53/DNA-repair up and
+# apoptosis down; metabolic cohorts move hypoxia/glycolysis up
+prolif <- c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, TRUE)
+metab  <- !prolif
+for (k in seq_along(tumors)) {
+  if (prolif[k]) { nes[k, c("CELL_CYCLE", "P53_PATHWAY", "DNA_REPAIR")] <-
+                     nes[k, c("CELL_CYCLE", "P53_PATHWAY", "DNA_REPAIR")] + 1.7
+                   nes[k, "APOPTOSIS"] <- nes[k, "APOPTOSIS"] - 1.4 }
+  if (metab[k])  { nes[k, c("HYPOXIA", "GLYCOLYSIS")] <-
+                     nes[k, c("HYPOXIA", "GLYCOLYSIS")] + 1.8 }
+}
+fdr <- matrix(10^(-(abs(as.numeric(nes)) * 0.9 + runif(length(nes), 0, 1.2))),
+              nrow = length(tumors))
+rownames(fdr) <- tumors; colnames(fdr) <- terms
+tab <- do.call(rbind, lapply(tumors, function(t)
+  data.frame(tumor = t, term = colnames(nes), NES = nes[t, ], FDR = fdr[t, ],
+             stringsAsFactors = FALSE)))
+stopifnot(sum(tab$FDR < 0.05 & abs(tab$NES) > 1.6) >= 12)
+mypal <- colorRampPalette(c("#303B7F", "#EECA1F", "#D51113"))(n = 128)
+p_b <- ggplot(tab, aes(tumor, term)) +
+  geom_point(aes(size = -log10(FDR), colour = NES)) +
+  scale_colour_gradientn("NES", colours = mypal, limits = c(-3, 3), na.value = "grey88") +
+  scale_size_continuous(range = c(0.5, 6), guide = "none") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+        axis.title = element_blank(), panel.border = element_rect(linewidth = 0.6),
+        legend.position = "bottom") +
+  labs(x = NULL, y = NULL)
+print(p_b)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Fix the colour scale with `limits = c(-3, 3)`: panels compared side by side must share one NES mapping or the comparison is void.
+-   Size by `-log10(FDR)` and hide that legend - the reader should read colour (direction and strength), not fight two encodings at once.
+-   Keep the non-significant cells visible via `na.value` instead of dropping them; the empty cross of cancers x pathways is itself information.
+:::
+
 ## Application
 
 Running-score GSEA plots are the standard figure for pathway-level interpretation of transcriptomic contrasts: tumor-vs-normal signatures, drug perturbation screens, and single-cell cluster markers. The panel below mirrors a typical publication layout: (A) the canonical single-set plot with p-value table and (B) the multi-set overlay.
