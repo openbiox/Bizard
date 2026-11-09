@@ -1,0 +1,140 @@
+---
+title: "Risk-Score Survival Overview"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+A multigene prognostic signature earns its keep in one composite figure: patients ranked by **risk score**, their survival outcomes beside them, and the underlying expression pattern below — three panels sharing a single left-to-right patient order, so the reader sees the score, the deaths, and the signature move together \[1\]. The reference builds this with cowplot from a LASSO-Cox output table \[2\]; this tutorial reproduces the layout with patchwork on a simulated signature:
+
+## Example
+
+![](../images/RiskScorePlot_demo.png){fig-alt="Risk-Score Survival Overview DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+150 simulated patients with an 8-gene expression matrix (four risk genes, four protective), a risk score from planted coefficients, and Weibull survival times whose hazard scales with the score. All panels downstream sort by `order(riskscore)` and never re-sort:
+
+```{r load data}
+set.seed(14101)
+n <- 150; n_gene <- 8
+genes <- sprintf("SIG%d", 1:n_gene)
+## signature: half protective, half risk — planted so high score = worse outcome
+coef <- c(0.9, 0.7, -0.8, -0.6, 0.5, 0.4, -0.5, -0.3)
+expr <- matrix(rnorm(n * n_gene, 0, 1), n, n_gene, dimnames = list(NULL, genes))
+riskscore <- as.vector(expr %*% coef) + rnorm(n, 0, 0.4)
+rk <- order(riskscore)
+riskscore <- riskscore[rk]; expr <- expr[rk, ]
+risk <- ifelse(riskscore >= median(riskscore), "High-risk", "Low-risk")
+## survival: higher risk -> shorter time, more events
+u <- runif(n)
+lam <- exp(1.1 * scale(riskscore)[, 1])
+times <- pmin(120, qweibull(u, shape = 1, scale = 120 / lam))
+status <- rbinom(n, 1, pmin(0.9, pmax(0.02, 0.35 + 0.35 * scale(riskscore)[, 1])))
+
+rs_data <- data.frame(x = 1:n, rs = riskscore, Risk = risk)
+sv_data <- data.frame(x = 1:n, t = times,
+                      Status = factor(ifelse(status == 0, "Alive", "Dead"),
+                                      levels = c("Alive", "Dead")))
+```
+
+## Visualization
+
+### 1. Score / Outcome / Expression, One Ordering
+
+The composite: the dashed line marks the median-risk split; high-risk patients (red, right) die earlier and cluster at short survival times; the heatmap's saturated strip row encodes the group so the expression pattern reads against it:
+
+```{r}
+#| label: fig-1.1RiskTriple
+#| fig-cap: "Risk-score overview of a simulated 8-gene prognostic signature: patients ranked by ascending risk score with the median split (dashed); survival status beside it; row-scaled, winsorized signature expression with a group strip below — all three panels share one patient ordering."
+#| out.width: "75%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 9
+
+suppressPackageStartupMessages(library(patchwork))
+nlow <- sum(rs_data$Risk == "Low-risk")
+red <- "#DC0000FF"; teal <- "#00A087FF"
+
+plot.A <- ggplot(rs_data, aes(x, rs)) +
+  geom_point(aes(col = Risk), size = 0.9) +
+  geom_vline(xintercept = nlow, linetype = "dashed", linewidth = 0.5) +
+  scale_color_manual(values = c(`High-risk` = red, `Low-risk` = teal), name = "Risk score") +
+  scale_x_continuous(limits = c(0, NA), expand = c(0, 0)) +
+  labs(y = "Risk score", x = NULL, title = "Risk-score stratification (simulated signature)") +
+  theme_classic(base_size = 10) +
+  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank(),
+        axis.line.x = element_blank(), legend.position = "top")
+
+plot.B <- ggplot(sv_data, aes(x, t)) +
+  geom_point(aes(col = Status), size = 0.9) +
+  geom_vline(xintercept = nlow, linetype = "dashed", linewidth = 0.5) +
+  scale_color_manual(values = c(Alive = teal, Dead = red), name = NULL) +
+  scale_x_continuous(limits = c(0, NA), expand = c(0, 0)) +
+  labs(y = "Survival time (months)", x = "Patients (ranked by risk score)") +
+  theme_classic(base_size = 10) +
+  theme(axis.ticks.x = element_blank(), legend.position = "top")
+
+## heatmap: row-scaled expression winsorized to [-1,1], rows clustered;
+## the appended +/-1.5 group row reads the saturated strip colours
+tmp <- t(scale(expr)); tmp[tmp > 1] <- 1; tmp[tmp < -1] <- -1
+hc <- hclust(dist(tmp), method = "average"); tmp <- tmp[hc$order, ]
+tmp <- rbind(tmp, Group = ifelse(rs_data$Risk == "Low-risk", -1.5, 1.5))
+hm <- data.frame(gene = rep(rownames(tmp), n), patient = rep(seq_len(n), each = nrow(tmp)),
+                 value = as.vector(tmp))
+hm$gene <- factor(hm$gene, levels = rownames(tmp))
+plot.C <- ggplot(hm, aes(patient, gene, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = teal, mid = "white", high = red, midpoint = 0,
+                       name = "Expression\n(Z)") +
+  scale_x_continuous(limits = c(0, NA), expand = c(0, 0)) +
+  labs(y = NULL) +
+  theme_classic(base_size = 10) +
+  theme(axis.text.y = element_text(size = 6), axis.ticks.y = element_blank(),
+        axis.line = element_blank(), axis.title.x = element_blank(),
+        axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+plot.A / plot.B / plot.C + plot_layout(ncol = 1, heights = c(1, 1, 1.5))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   **One ordering, three panels**: every panel must derive its x positions from the same `order(riskscore)` — if the heatmap re-sorts columns (it clusters rows, never columns), the expression readout describes different patients than the dots.
+-   Winsorize row-scaled expression to [-1, 1] **before** appending the ±1.5 group row — that headroom is what makes the strip's colours saturate past the data's range in the same colour scale.
+-   The median split is the weakest link: report the score's Cox p-value / C-index alongside, and prefer a pre-specified or data-driven cutpoint (X-tile, maximally selected rank statistics) over a silent median when the group sizes matter clinically.
+:::
+
+## Applications
+
+::: {#fig-RiskScoreApplications1}
+![](../images/RiskScorePlot_demo.png){fig-alt="Risk-score / survival / expression overview" fig-align="center" width="60%"}
+
+Risk-score / survival / expression overview
+:::
+
+Any ranked-patient overview re-uses this stack: immunotherapy response scores with PFS status, CNV burden scores with subtype, or pathology-slide risk with recurrence — as long as one patient ordering ties the panels together.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Bai F, Zhou H, Ma M, et al. A novel RNA sequencing-based miRNA signature predicts with recurrence and outcome of hepatocellular carcinoma. Mol Oncol. 2018;12(7):1125-1137. doi:10.1002/1878-0261.12315
