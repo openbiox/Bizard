@@ -16,12 +16,9 @@ author:
 
 -   编程语言：R
 
--   依赖包：`survival`; `survMisc`; `shape`; `ggplot2`
+-   依赖包：`survival`; `shape`; `ggplot2`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
-if (!requireNamespace("survMisc", quietly = TRUE)) {
-  install.packages("survMisc", repos = "https://cloud.r-project.org")
-}
 if (!requireNamespace("shape", quietly = TRUE)) {
   install.packages("shape", repos = "https://cloud.r-project.org")
 }
@@ -39,7 +36,7 @@ sessioninfo::session_info("attached")
 280 个模拟肿瘤：CD274 与 CD8A log2 表达经一个潜在免疫活性因子相关联，少数样本带 MSI 状态；生存时间植入生物学——CD8A 高预后好、PD-L1 高/CD8A 低（免疫抑制象限）最差——使 logrank 峰落在数据范围内：
 
 ```{r load data}
-suppressPackageStartupMessages({library(survival); library(survMisc)})
+suppressPackageStartupMessages(library(survival))
 set.seed(14301)
 n <- 280
 z1 <- rnorm(n)                                   # latent immune activity
@@ -72,20 +69,26 @@ exprsurv <- cbind.data.frame(surv, expr)
 #| fig-height: 7.2
 
 suppressPackageStartupMessages(library(shape))   # Arrows()
-## logrank U per candidate cutpoint (survMisc::cutp on the Cox fit)
-cox.CD274 <- coxph(Surv(OS.time, OS) ~ CD274, data = exprsurv)
-logrank.CD274 <- as.data.frame(print(cutp(cox.CD274)))
-colnames(logrank.CD274)[1] <- "CD274"
-logrank.CD274 <- logrank.CD274[order(logrank.CD274$CD274), ]
-peak.CD274 <- logrank.CD274[which.min(logrank.CD274$CD274.p), 1]
-peak.CD274.score <- logrank.CD274[which.min(logrank.CD274$CD274.p), 2]
-
-cox.CD8A <- coxph(Surv(OS.time, OS) ~ CD8A, data = exprsurv)
-logrank.CD8A <- as.data.frame(print(cutp(cox.CD8A)))
-colnames(logrank.CD8A)[1] <- "CD8A"
-logrank.CD8A <- logrank.CD8A[order(logrank.CD8A$CD8A), ]
-peak.CD8A <- logrank.CD8A[which.min(logrank.CD8A$CD8A.p), 1]
-peak.CD8A.score <- logrank.CD8A[which.min(logrank.CD8A$CD8A.p), 2]
+## log-rank score for every candidate cutpoint — dependency-free
+## reimplementation of survMisc::cutp: the score is the survdiff chi-square of
+## the high/low split at each unique expression value; the peak marks the
+## survival-optimal cut-off (on real data survMisc::cutp(coxph) gives the
+## same curve on the U-statistic scale)
+logrank_curve <- function(gene) {
+  vals <- sort(unique(exprsurv[[gene]]))
+  vals <- vals[-length(vals)]                # last value would leave an empty group
+  score <- vapply(vals, function(v) {
+    grp <- exprsurv[[gene]] > v
+    survdiff(Surv(OS.time, OS) ~ grp, data = exprsurv)$chisq
+  }, numeric(1))
+  data.frame(cut = vals, score = score)
+}
+lr.CD274 <- logrank_curve("CD274")
+peak.CD274 <- lr.CD274$cut[which.max(lr.CD274$score)]
+peak.CD274.score <- max(lr.CD274$score)
+lr.CD8A <- logrank_curve("CD8A")
+peak.CD8A <- lr.CD8A$cut[which.max(lr.CD8A$score)]
+peak.CD8A.score <- max(lr.CD8A$score)
 
 ## quadrant percentages (peak-based grouping, I-IV naming as the paper)
 lefttop.pct <- paste0("III (", round(sum(expr$CD274 < peak.CD274 & expr$CD8A > peak.CD8A) / n, 2) * 100, "%)")
@@ -108,9 +111,9 @@ layout(matrix(c(1,1,1,1,2,
                 3,3,3,3,4), byrow = TRUE, nrow = 5))
 ## area 1: x-gene logrank scores
 par(bty = "n", mgp = c(2, 0.5, 0), mar = c(0.6, 4.1, 2.1, 0), tcl = -0.25, xpd = TRUE)
-plot(NULL, NULL, xlim = xlim, ylim = c(0, max(logrank.CD274$CD274.U) + 5),
+plot(NULL, NULL, xlim = xlim, ylim = c(0, max(lr.CD274$score) + 5),
      xaxt = "n", yaxt = "n", ann = FALSE)
-rect(logrank.CD274$CD274 - 0.012, 0, logrank.CD274$CD274 + 0.012, logrank.CD274$CD274.U, col = "black")
+rect(lr.CD274$cut - 0.012, 0, lr.CD274$cut + 0.012, lr.CD274$score, col = "black")
 Arrows(peak.CD274, peak.CD274.score + 5, peak.CD274, peak.CD274.score + 3,
        arr.length = 0.2, lwd = 2, col = blue, arr.type = "triangle")
 ## area 2: spacer
@@ -149,9 +152,9 @@ legend("bottomright", legend = c("MSI", "MSS"), col = c("black", "grey40"),
        bty = "o", xpd = TRUE, inset = c(0, -0.02))
 ## area 4: y-gene logrank scores
 par(bty = "n", mgp = c(2, 0.5, 0), mar = c(4.1, 0.6, 0, 2.1), tcl = -0.25, xpd = TRUE)
-plot(NULL, NULL, xlim = c(0, max(logrank.CD8A$CD8A.U) + 5), ylim = ylim,
+plot(NULL, NULL, xlim = c(0, max(lr.CD8A$score) + 5), ylim = ylim,
      xaxt = "n", yaxt = "n", ann = FALSE)
-rect(0, logrank.CD8A$CD8A - 0.03, logrank.CD8A$CD8A.U, logrank.CD8A$CD8A + 0.03, col = "black")
+rect(0, lr.CD8A$cut - 0.03, lr.CD8A$score, lr.CD8A$cut + 0.03, col = "black")
 Arrows(peak.CD8A.score + 5, peak.CD8A, peak.CD8A.score + 3, peak.CD8A,
        arr.length = 0.2, lwd = 2, col = blue, arr.type = "triangle")```
 
