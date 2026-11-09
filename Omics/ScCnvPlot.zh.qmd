@@ -161,6 +161,123 @@ ggplot(score_df, aes(type, score, fill = type)) +
 -   CNV 评分兼作恶性判定——参考工作流用它标记 marker 基因漏掉的恶性细胞。
 :::
 
+### 5. 深度比与 B 等位频率：双面板判定
+
+仅凭深度比无法区分 3 拷贝增益与"2 拷贝增益 + 50% 正常细胞污染"，也完全看不到拷贝数中性的杂合性缺失（LOH）。标准解法是加**第二面板**：B 等位频率（BAF）。拷贝数为 2 时杂合位点 BAF 为 0.5；为 3 时两条等位带分裂到 1/3 与 2/3；为 1 时塌缩到 0 与 1 \[4\]。把 BAF 与深度并读，才能区分"扩增"与"扩增 + LOH"，也是检查任何一个 CNV 分段最快的目视手段。
+
+```{r}
+#| label: fig-5-1CnvBafPanel
+#| fig-cap: "同一肿瘤三个克隆的深度比与 B 等位频率配对面板（chr1，1 Mb 分箱）：克隆 A 为二倍体（深度比在 2 处持平，BAF 在 0.5），克隆 B 在 20-55 Mb 携带 3 拷贝增益（BAF 带分裂在 1/3 与 2/3，蓝色虚线为期望值），克隆 C 在 20-90 Mb 为单拷贝缺失（BAF 推向 0 与 1）。红色线为分段结果，蓝色虚线是期望的 BAF 值而非拟合。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6.8
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(tibble)
+  library(patchwork)
+})
+
+set.seed(43507)
+
+## 同一样本的三个克隆，共有一个事件，另各有一个克隆特有事件。
+blocks <- data.frame(
+  clone = c("clone A", "clone B", "clone C"),
+  start = c(20, 20, 20),
+  end   = c(90, 55, 90),
+  cn    = c(2, 3, 1)
+)
+
+bins <- expand.grid(clone = c("clone A", "clone B", "clone C"),
+                    pos = seq(10, 150, by = 1),
+                    stringsAsFactors = FALSE) |>
+  as_tibble() |>
+  rowwise() |>
+  mutate(cn = {
+    hit <- blocks$cn[blocks$clone == clone & pos >= blocks$start &
+                       pos < blocks$end]
+    if (length(hit) == 0) 2 else hit[1]
+  }) |>
+  ungroup() |>
+  mutate(
+    log2r = log2(cn / 2) + rnorm(n(), 0, 0.07),
+    ## BAF: at 2 copies heterozygotes sit at 0.5; at 3 copies the two allele
+    ## bands split to 1/3 and 2/3; at 1 copy they collapse to 0 and 1.
+    baf = case_when(
+      cn == 2 ~ 0.5,
+      cn == 3 ~ sample(c(1, 2) / 3, n(), replace = TRUE),
+      cn == 1 ~ sample(c(0, 1), n(), replace = TRUE)
+    ) + rnorm(n(), 0, 0.012)
+  )
+
+## 分段：每个拷贝数恒定的区间一条线。
+seg_lines <- bins |>
+  group_by(clone) |>
+  arrange(pos, .by_group = TRUE) |>
+  mutate(cn_prev = lag(cn)) |>
+  filter(is.na(cn_prev) | cn != cn_prev) |>
+  mutate(xend = lead(pos, default = max(bins$pos) + 1),
+         y = log2(cn / 2)) |>
+  ungroup()
+
+## 两个异常克隆的期望 BAF 带；按"期望"画而非拟合，让面板明确说出"应当"是
+## 什么。
+baf_expect <- data.frame(
+  clone = factor(rep(c("clone B", "clone C"), each = 2),
+                 levels = c("clone A", "clone B", "clone C")),
+  y = c(2 / 3, 1 / 3, 1, 0),
+  x = c(20, 20, 20, 20),
+  xend = c(55, 55, 90, 90)
+)
+
+p_depth <- ggplot(bins, aes(pos, log2r)) +
+  geom_point(colour = "#7f7f7f", size = 0.22, alpha = 0.55) +
+  geom_segment(data = seg_lines, aes(x = pos, xend = xend, y = y, yend = y),
+               colour = "#b2182b", linewidth = 0.55) +
+  geom_hline(yintercept = 0, colour = "#525252", linewidth = 0.25) +
+  facet_wrap(~ clone, ncol = 1) +
+  scale_y_continuous(breaks = log2(c(1, 2, 3) / 2), labels = c("1", "2", "3"),
+                     limits = c(-1.3, 0.9),
+                     name = "拷贝数（log2 深度比）") +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(x = NULL) +
+  theme_bw(base_size = 9) +
+  theme(panel.grid.minor = element_blank(),
+        strip.text = element_text(size = 7.6, face = "bold"),
+        axis.text.x = element_blank(),
+        plot.margin = margin(4, 5, 0, 5))
+
+p_baf <- ggplot(bins, aes(pos, baf)) +
+  geom_point(colour = "#7f7f7f", size = 0.22, alpha = 0.5) +
+  geom_hline(yintercept = 0.5, colour = "#525252", linewidth = 0.25,
+             linetype = "dashed") +
+  geom_segment(data = baf_expect, aes(x = x, xend = xend, y = y, yend = y),
+               linetype = "22", colour = "#2166ac", linewidth = 0.4) +
+  facet_wrap(~ clone, ncol = 1) +
+  scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1)) +
+  scale_x_continuous(expand = c(0, 0), breaks = seq(0, 150, 30)) +
+  labs(x = "1 号染色体位置（Mb）", y = "B 等位频率") +
+  theme_bw(base_size = 9) +
+  theme(panel.grid.minor = element_blank(),
+        strip.text = element_text(size = 7.6, face = "bold", colour = "white"),
+        plot.margin = margin(0, 5, 4, 5))
+
+p_depth / p_baf + plot_layout(heights = c(1, 0.75))
+```
+
+::: callout-tip
+**实践要点**
+
+-   数据允许时，深度一定要配 BAF。只有深度的 CNV 图无法区分全基因组加倍与局部高水平扩增，也完全看不到拷贝数中性的 LOH。
+-   两个面板保持同一 x 轴、同一克隆顺序——"配对"本身就是要传达的信息。
+-   把期望 BAF 带（1/3、2/3、0、1）画成与观测点分离的图层，并标注为期望值。不要在 BAF 点云上画拟合线：点云**本身**是多峰的，拟合会说谎。
+-   把分段结果以线叠加在原始分箱上，并把拷贝数（1/2/3）写进 y 轴刻度标签，而不是只给 log2 值；不应要求读者为了知道最终判定去反解一个对数。
+-   声明分箱大小：10 kb 分箱下，5 Mb 的增益带来的等位失衡几乎不可见；5 Mb 分箱下，局部扩增子会消失。
+:::
+
 ## Application
 
 推断 CNV 图景是肿瘤单细胞 RNA-seq（HNSCC、黑色素瘤、胶质瘤）的标准质控与恶性判定；热图通常是 scRNA-seq 肿瘤研究的第一张图。
@@ -170,3 +287,7 @@ ggplot(score_df, aes(type, score, fill = type)) +
 \[1\] Puram SV, Tirosh I, Parikh AS, et al. Single-cell transcriptomic analysis of primary and metastatic tumor ecosystems in head and neck cancer. Cell. 2017;171(7):1611-1624.e24. doi:10.1016/j.cell.2017.10.044
 
 \[2\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[3\] Van Loo P, Nilsen G, Nordgard SH, et al. Analyzing cancer samples with SNP arrays. Cancer Res. 2010;70(24):10153-10163. doi:10.1158/0008-5472.CAN-10-2512
+
+\[4\] Gao R, Bai S, Henderson YC, et al. Delineating copy number and clonal substructure in human tumors from single-cell transcriptomes. Nat Biotechnol. 2021;39(5):599-608. doi:10.1038/s41587-020-00795-2

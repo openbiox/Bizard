@@ -537,6 +537,134 @@ ggplot() +
 -   结构域坐标可取 `maftools::read.protein.domains()` 按 RefSeq ID 过滤，或来自 UniProt REST API。
 :::
 
+### 7. 蛋白结构域架构、突变密度与结构域感知的棒棒糖图
+
+突变棒棒糖图只有放在它所突变的蛋白之上才可解读。ProteinPaint / nightingale 的规范 \[12,13\] 在一条残基轴上堆叠两层：**结构域架构**（肽链、Pfam 结构域、低复杂度区），以及其上方的**高斯核密度**——它把 18 根独立的杆收束成读者真正需要看到的两个热点簇。下方的棒棒糖轨道画出同一批变异，用类别编码颜色、用患者数编码点大小 \[14,15\]。
+
+```{r}
+#| label: fig-7-1ProteinDomainLollipop
+#| fig-cap: "1800 aa 蛋白的结构域感知突变棒棒糖图：上方为 Pfam 风格的结构域架构（信号肽、结构域 A–E、低复杂度区）及其上的高斯核突变密度（sd = 22 aa）；下方每个变异一根棒，按变异类别着色、按患者数调整大小，并标注类别与癌种。残基 1044 处的 PRAD 热点（n = 62）正是密度轨道的峰。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5.6
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(ggrepel)
+  library(patchwork)
+})
+
+set.seed(43509)
+options(ggrepel.max.overlaps = Inf)
+
+## 一个玩具蛋白（残基 1-1800）的结构域架构，UniProt 风格。
+domains <- data.frame(
+  start = c(35, 120, 410, 720, 1105, 1420, 1650),
+  end   = c(112, 210, 505, 845, 1180, 1500, 1790),
+  type  = c("signal", "domain", "domain", "domain", "domain", "domain",
+            "low complexity"),
+  name  = c("signal", "Pfam A", "Pfam B", "Pfam C", "Pfam D", "Pfam E",
+            "LC region"),
+  row   = c(1, 1, 1, 2, 2, 2, 3)
+)
+
+## 体细胞突变：位置、类别与癌种。
+mutations <- data.frame(
+  pos = c(184, 245, 312, 468, 512, 604, 771, 802, 918, 1044,
+          1122, 1190, 1288, 1345, 1466, 1522, 1608, 1712),
+  cls = c("missense", "missense", "nonsense", "missense", "missense",
+          "missense", "inframe del", "missense", "missense", "missense",
+          "missense", "splice", "missense", "missense", "nonsense",
+          "missense", "missense", "inframe ins"),
+  cancer = c("BRCA", "LUAD", "COAD", "BRCA", "PRAD", "LUAD", "BRCA",
+             "SKCM", "LUAD", "PRAD", "BRCA", "COAD", "LUAD", "BRCA",
+             "SKCM", "PRAD", "LUAD", "COAD")
+) |>
+  mutate(n = round(exp(rnorm(n(), 2.4, 0.9))))
+
+mut_cols <- c(missense = "#1b7837", nonsense = "#b2182b",
+              `inframe del` = "#d95f02", `inframe ins` = "#7570b3",
+              splice = "#8c510a")
+
+## 突变位置的高斯核密度，按患者数加权。
+dens <- data.frame(pos = seq(1, 1800, by = 2)) |>
+  rowwise() |>
+  mutate(d = sum(mutations$n * dnorm(pos, mutations$pos, 22)) /
+           sum(mutations$n)) |>
+  ungroup()
+
+p_arch <- ggplot() +
+  annotate("segment", x = 1, xend = 1800, y = 0, yend = 0,
+           linewidth = 0.4, colour = "#bdbdbd") +
+  geom_rect(data = domains,
+            aes(xmin = start, xmax = end, ymin = -0.13 + row * 0.3,
+                ymax = 0.13 + row * 0.3, fill = type),
+            colour = "#525252", linewidth = 0.2, alpha = 0.85) +
+  geom_text(data = domains, aes(x = (start + end) / 2, y = row * 0.3 + 0.19,
+                                label = name), size = 1.9, colour = "#252525") +
+  scale_fill_manual(values = c(signal = "#a6bddb", domain = "#9ebcda",
+                               `low complexity` = "#f0f0f0"),
+                    guide = "none") +
+  geom_area(data = dens, aes(x = pos, y = d * 650 + 1.2), fill = "#7570b3",
+            alpha = 0.22, colour = NA) +
+  geom_line(data = dens, aes(x = pos, y = d * 650 + 1.2), colour = "#542788",
+            linewidth = 0.3) +
+  annotate("text", x = 20, y = 3.2,
+           label = "mutation density (Gaussian kernel, sd = 22 aa)",
+           size = 2.2, colour = "#542788", hjust = 0) +
+  scale_y_continuous(limits = c(-0.35, 3.3), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(0, 1810), expand = c(0, 0),
+                     breaks = seq(0, 1800, 300)) +
+  labs(x = NULL, y = NULL) +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        plot.margin = margin(5, 5, 0, 5))
+
+p_lol <- ggplot(mutations, aes(pos, n)) +
+  geom_segment(aes(xend = pos, yend = 0, colour = cls), linewidth = 0.5) +
+  geom_point(aes(colour = cls, size = n), alpha = 0.95) +
+  geom_text_repel(aes(label = ifelse(n > 40,
+                                    paste0(cls, "\n(", cancer, "), n = ", n),
+                                    paste0(cls, "\n(", cancer, ")")),
+                      colour = cls),
+                  size = 1.85, show.legend = FALSE, min.segment.length = 0,
+                  segment.size = 0.15, seed = 3, direction = "both",
+                  box.padding = 0.28, point.padding = 0.12,
+                  max.overlaps = Inf, max.time = 3, max.iter = 50000) +
+  ## outline labels are placed by repel; keep the headroom for them
+  coord_cartesian(clip = "off") +
+  scale_colour_manual(values = mut_cols, name = "变异类别") +
+  scale_size_continuous(range = c(1.2, 4.2), name = "患者数") +
+  scale_y_continuous(limits = c(0, 92), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(0, 1810), expand = c(0, 0),
+                     breaks = seq(0, 1800, 300)) +
+  labs(x = "蛋白位置（氨基酸）", y = "携带该变异的患者数") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank(),
+        legend.key.size = unit(0.32, "cm"),
+        legend.text = element_text(size = 6.8),
+        legend.title = element_text(size = 7.4),
+        plot.margin = margin(0, 5, 5, 5))
+
+p_arch / p_lol + plot_layout(heights = c(0.6, 1))
+```
+
+::: callout-tip
+**实践要点**
+
+-   把结构域架构与突变放在**同一条**残基轴上。没有结构域的棒棒糖图会隐藏最关键的发现——热点是否落在功能结构域内。
+-   在杆上方加核密度带。18 个互相重叠的标签什么也没传达；两个密度峰加一个声明的带宽（sd = 22 aa）能让热点结构一眼可见。
+-   类别配色保持小而互斥（missense / nonsense / inframe / splice），并与尺寸通道（患者数）分离。不要用颜色同时编码两件事。
+-   给峰值直接标注计数。否则读者只能拿杆高去对照网格线。
+-   声明蛋白全长与坐标约定（氨基酸，1-based）；未说明参考异构体的结构域图不可复现。
+:::
+
 ## 应用场景
 
 ### 1. 棒棒糖图

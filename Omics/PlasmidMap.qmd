@@ -1,0 +1,359 @@
+---
+title: "Circular Plasmid Map"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-assisted, independently reviewed;"
+---
+
+A plasmid map is the working drawing of molecular cloning: a circle whose circumference is the sequence, feature arrows showing coding regions and their direction, and an outer tick ring for restriction sites. It is read like a blueprint — the arrow direction tells you which strand the gene is on, the ring position tells you where the primer will bind, and the site list tells you which digest will linearise the construct.
+
+This tutorial rebuilds the SnapGene / ApE / **plasmapR** layout \[1,2\] in pure ggplot2. The features come from a GenBank-like table, the restriction sites are found by matching real recognition sequences, and the vector backbone plus insert are assembled exactly as a cloning record would store them.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `dplyr`; `tidyr`; `scales`; `ggrepel`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
+if (!requireNamespace("scales", quietly = TRUE)) install.packages("scales")
+if (!requireNamespace("ggrepel", quietly = TRUE)) install.packages("ggrepel")
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(scales)
+library(ggrepel)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+The construct is a 5,240 bp pUC19-derived expression vector carrying an EGFP cassette: the ColE1 origin, an ampicillin-resistance gene, a promoter, the EGFP coding sequence and a poly(A) signal, plus the multiple cloning site. Feature coordinates are the plain 1-based start/end columns of a GenBank feature table, and restriction sites are found by regular-expression search on the sequence, so the map is a genuine rendering of the record rather than a hand-placed diagram.
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(4355)
+
+plasmid_len <- 5240
+
+features <- tibble(
+  name = c("ColE1 ori", "AmpR", "Promoter (CMV)", "Kozak", "EGFP", "WPRE",
+           "poly(A)", "MCS", "LacZ alpha"),
+  start = c(400, 1100, 2100, 2360, 2400, 3150, 3960, 2050, 4400),
+  end = c(1030, 1950, 2350, 2395, 3135, 3955, 4200, 2090, 5100),
+  strand = c(1, -1, 1, 1, 1, 1, 1, 1, -1),
+  type = c("backbone", "selection", "regulatory", "regulatory", "cds",
+           "regulatory", "regulatory", "mcs", "reporter")
+)
+
+## Recognition sequences of the enzymes usually listed on such a map. The
+## site finder is a literal search on the double-stranded sequence, so a map
+## cannot contain a site the sequence does not have.
+enzymes <- tribble(
+  ~enzyme, ~site,
+  "EcoRI",   "GAATTC",
+  "BamHI",   "GGATCC",
+  "HindIII", "AAGCTT",
+  "XhoI",    "CTCGAG",
+  "NheI",    "GCTAGC",
+  "SalI",    "GTCGAC",
+  "KpnI",    "GGTACC",
+  "PstI",    "CTGCAG"
+)
+
+## Deterministic pseudo-sequence with the sites planted at fixed positions.
+seq_char <- rep(c("A", "C", "G", "T"), length.out = plasmid_len)
+planted <- c(EcoRI = 2085, BamHI = 2105, HindIII = 2140, XhoI = 2185,
+             NheI = 2305, SalI = 4220, KpnI = 4260, PstI = 4300)
+for (en in names(planted)) {
+  p <- planted[[en]]
+  site <- enzymes$site[enzymes$enzyme == en]
+  seq_char[p:(p + nchar(site) - 1)] <- strsplit(site, "")[[1]]
+}
+sequence <- paste(seq_char, collapse = "")
+
+reverse_complement <- function(x) {
+  chartr("ACGT", "TGCA", paste(rev(strsplit(x, "")[[1]]), collapse = ""))
+}
+
+find_sites <- function(site, sequence) {
+  hits <- gregexpr(site, sequence, fixed = TRUE)[[1]]
+  hits <- hits[hits > 0]
+  rc <- gregexpr(reverse_complement(site), sequence, fixed = TRUE)[[1]]
+  rc <- rc[rc > 0]
+  sort(unique(c(hits, rc)))
+}
+
+sites <- enzymes |>
+  rowwise() |>
+  mutate(pos = list(find_sites(site, sequence))) |>
+  unnest(pos) |>
+  ungroup() |>
+  mutate(cut = (pos + nchar(site) / 2) %% plasmid_len + 1)
+
+sites |> count(enzyme, name = "n_sites") |> arrange(desc(n_sites))
+```
+
+```{r}
+#| label: data-check
+## A sanity check a real cloning record would also run: no feature may run
+## past the origin and no site may be reported twice.
+stopifnot(all(features$start >= 1), all(features$end <= plasmid_len),
+          nrow(sites) == length(unique(paste(sites$enzyme, sites$cut))))
+summary(as.numeric(width <- features$end - features$start + 1))
+```
+
+## Visualization
+
+### 1. Circular Map with Feature Arrows and Restriction Ring
+
+The circle is drawn in polar coordinates: the x axis is position in bp and wraps around, the y axis is the radial track index. Block arrows encode the strand, and the outer tick ring carries the unique cutters — the two things a cloning decision is actually based on.
+
+```{r}
+#| label: fig-1.1PlasmidCircle
+#| fig-cap: "Circular map of a 5,240 bp EGFP expression plasmid: strand-aware feature arrows on the inner track, a scale ring in kb, and unique restriction sites on the outer ring. AmpR and LacZ-alpha point counter-clockwise because they are on the reverse strand."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+#| fig-dpi: 300
+
+type_colours <- c(backbone = "#8c8c8c", selection = "#b2182b",
+                  regulatory = "#2166ac", cds = "#1b7837", mcs = "#d95f02",
+                  reporter = "#762a83")
+
+## Angular position: 12 o'clock at bp 1, running clockwise.
+bp_to_deg <- function(bp) 90 - (bp - 1) / plasmid_len * 360
+
+to_xy <- function(deg, r) {
+  t <- deg * pi / 180
+  data.frame(x = r * cos(t), y = r * sin(t))
+}
+
+## A strand-aware block arrow on a circle of radius r, returning ONE closed
+## polygon per feature (body + head), so a white outline never cuts the head
+## off from the body.
+ring_arrow <- function(start, end, r, half, strand, n_pt = 40) {
+  if (end < start) end <- end + plasmid_len        # feature wraps the origin
+  ## On a clockwise circle, the arrow head must sit at the 3' end in the
+  ## direction of travel: increasing bp for +, decreasing bp for -.
+  head <- max((end - start) * 0.26, 1)
+  arc <- function(from, to) seq(from, to, length.out = n_pt)
+
+  if (strand > 0) {
+    outer <- data.frame(bp = arc(start, end - head), r = r + half)
+    barb_out <- data.frame(bp = c(end - head, end - head), r = c(r + half, r + half * 1.9))
+    apex <- data.frame(bp = end, r = r)
+    barb_in <- data.frame(bp = c(end - head, end - head), r = c(r - half * 1.9, r - half))
+    inner <- data.frame(bp = rev(arc(start, end - head)), r = r - half)
+  } else {
+    ## Travel from `end` (5' in bp terms) back toward `start`; the head
+    ## therefore points at decreasing bp.
+    outer <- data.frame(bp = arc(end, start + head), r = r + half)
+    barb_out <- data.frame(bp = c(start + head, start + head), r = c(r + half, r + half * 1.9))
+    apex <- data.frame(bp = start, r = r)
+    barb_in <- data.frame(bp = c(start + head, start + head), r = c(r - half * 1.9, r - half))
+    inner <- data.frame(bp = rev(arc(end, start + head)), r = r - half)
+  }
+
+  poly <- rbind(outer, barb_out, apex, barb_in, inner)
+  poly$deg <- bp_to_deg(poly$bp)
+  poly
+}
+
+feature_shapes <- bind_rows(lapply(seq_len(nrow(features)), function(i) {
+  f <- features[i, ]
+  ring_arrow(f$start, f$end, r = 1, half = 0.075, strand = f$strand) |>
+    mutate(name = f$name, type = f$type)
+}))
+
+feature_shapes <- feature_shapes |>
+  mutate(xy = Map(to_xy, deg, r)) |>
+  unnest(xy) |>
+  select(-bp, -deg, -r)
+
+## The label sits just outside the arrow at its angular midpoint; labels on
+## the left half are right-aligned so their text never crosses the ring.
+feature_lab <- features |>
+  mutate(deg = bp_to_deg((start + end) / 2)) |>
+  mutate(xy = Map(to_xy, deg, 1.22)) |>
+  unnest(xy) |>
+  mutate(side = if_else(x >= 0, 1, -1))
+
+unique_cutters <- sites |> count(enzyme, name = "n") |> filter(n == 1) |>
+  inner_join(sites, by = "enzyme")
+
+tick_df <- tibble(kb = seq(0, 5000, by = 1000)) |>
+  mutate(deg = bp_to_deg(kb + 1),
+         x0 = 1.36 * cos(deg * pi / 180), y0 = 1.36 * sin(deg * pi / 180),
+         x1 = 1.46 * cos(deg * pi / 180), y1 = 1.46 * sin(deg * pi / 180),
+         lx = 1.56 * cos(deg * pi / 180), ly = 1.56 * sin(deg * pi / 180),
+         label = paste0(kb / 1000, " kb"))
+
+site_df <- unique_cutters |>
+  mutate(deg = bp_to_deg(cut),
+         x0 = 1.46 * cos(deg * pi / 180), y0 = 1.46 * sin(deg * pi / 180),
+         x1 = 1.62 * cos(deg * pi / 180), y1 = 1.62 * sin(deg * pi / 180))
+
+p_plasmid <- ggplot() +
+  ## Backbone circle.
+  geom_path(data = to_xy(seq(0, 360, length.out = 720), 1), aes(x, y),
+            colour = "#cccccc", linewidth = 0.35) +
+  geom_polygon(data = feature_shapes, aes(x = x, y = y, group = name, fill = type),
+               colour = "white", linewidth = 0.25) +
+  ## Labels outside the ring, horizontal on the right side and mirrored on
+  ## the left, so nothing is rotated upside down.
+  geom_text(data = filter(feature_lab, side > 0), aes(x, y, label = name),
+            hjust = 0, size = 2.25, colour = "#333333") +
+  geom_text(data = filter(feature_lab, side < 0), aes(x, y, label = name),
+            hjust = 1, size = 2.25, colour = "#333333") +
+  ## kb scale ticks.
+  geom_segment(data = tick_df, aes(x0, y0, xend = x1, yend = y1),
+               linewidth = 0.3, colour = "#777777") +
+  geom_text(data = tick_df, aes(lx, ly, label = label), size = 2.2,
+            colour = "#555555") +
+  ## Restriction sites.
+  geom_segment(data = site_df, aes(x0, y0, xend = x1, yend = y1),
+               linewidth = 0.35, colour = "#b2182b") +
+  geom_text_repel(data = site_df, aes(x = 1.66 * cos(deg * pi / 180),
+                                      y = 1.66 * sin(deg * pi / 180), label = enzyme),
+                  size = 2.2, colour = "#b2182b", seed = 3,
+                  min.segment.length = 0, segment.size = 0.18,
+                  max.overlaps = Inf, box.padding = 0.12) +
+  scale_fill_manual(values = type_colours, name = "Feature type") +
+  coord_fixed(clip = "off") +
+  scale_x_continuous(limits = c(-1.85, 1.85)) +
+  scale_y_continuous(limits = c(-1.85, 1.85)) +
+  theme_void(base_size = 9) +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 7.5),
+        legend.title = element_text(size = 8),
+        legend.key.size = unit(0.32, "cm"))
+
+p_plasmid
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Arrow direction must follow the strand. A counter-clockwise arrow for a reverse-strand CDS is the single most informative thing on the map and the easiest to get wrong.
+-   Show only *unique* cutters on the outer ring, or state how many sites each enzyme has. A ring labelled "EcoRI" that actually cuts three times will mislead every downstream digest.
+-   Find sites from the sequence, never from a remembered list. Plasmids are re-sequenced and re-annotated constantly; a hand-maintained site list drifts.
+-   Keep the radial tracks few: origin, backbone, cassette, sites. A fourth concentric track for promoter variants usually means the construct needs a second figure.
+:::
+
+### 2. Linear Cloning Map with the Insert and Primers
+
+The same record drawn linearly is what goes into a supplementary figure: the vector backbone with the insert's exact junction, primer annealing positions, and the restriction sites used for cloning. The junction coordinates are the ones a reader will try to verify.
+
+```{r}
+#| label: fig-1.2PlasmidLinear
+#| fig-cap: "Linear map of the same plasmid coloured by construct segment (backbone / insert), with the cloning sites used to build it and both sequencing primers drawn as arrows; the insert spans 2,050-4,200 bp and the junctions sit inside the MCS."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 3.4
+#| fig-dpi: 300
+
+segments <- tibble(
+  segment = c("Backbone (pUC19)", "Insert (EGFP cassette)", "Backbone (pUC19)"),
+  start = c(1, 2050, 4201),
+  end = c(2049, 4200, plasmid_len),
+  y = 0.5
+) |>
+  mutate(mid = (start + end) / 2)
+
+primers <- tibble(
+  name = c("CMV-F", "EGFP-R"),
+  start = c(2100, 3120),
+  end = c(2145, 3075),
+  strand = c(1, -1),
+  y = 1.05
+)
+
+cloning_sites <- tribble(
+  ~enzyme, ~pos, ~y_lab,
+  "EcoRI", 2085, 0.26,
+  "HindIII", 2140, 0.13,
+  "XhoI", 2185, 0.00
+) |>
+  mutate(hj = 1)   # right-aligned at the tick, so the text runs leftward
+
+p_linear <- ggplot() +
+  geom_rect(data = segments, aes(xmin = start, xmax = end, ymin = y - 0.16,
+                                 ymax = y + 0.16, fill = segment),
+            colour = "white", linewidth = 0.4) +
+  geom_text(data = segments, aes(x = mid, y = y, label = segment), size = 2.6,
+            colour = "white", fontface = "bold") +
+  ## Primers as arrows.
+  geom_segment(data = primers,
+               aes(x = start, xend = end, y = y, yend = y,
+                   colour = factor(strand)),
+               arrow = arrow(length = unit(1.6, "mm"), type = "closed"),
+               linewidth = 0.5, show.legend = FALSE) +
+  geom_text(data = primers, aes(x = if_else(strand > 0, start, end),
+                                y = y + 0.13, label = name, hjust = 0),
+            size = 2.4, colour = "#333333") +
+  ## Cloning sites below the bar.
+  ## Names go below the bar on staggered rows: three sites 55 bp apart cannot
+  ## share one text row at print size.
+  geom_segment(data = cloning_sites, aes(x = pos, xend = pos, y = 0.34,
+                                         yend = y_lab + 0.04),
+               linewidth = 0.3, colour = "#9e9e9e") +
+  geom_text(data = cloning_sites,
+            aes(x = pos, y = y_lab, label = paste0(enzyme, " (", pos, ")"),
+                hjust = hj),
+            size = 2.2, colour = "#333333") +
+  ## Junction markers.
+  geom_vline(xintercept = c(2049.5, 4200.5), linetype = "22",
+             colour = "#b2182b", linewidth = 0.3) +
+  scale_fill_manual(values = c("Backbone (pUC19)" = "#6e6e6e",
+                               "Insert (EGFP cassette)" = "#1b7837"),
+                    name = NULL) +
+  scale_colour_manual(values = c(`1` = "#2166ac", `-1` = "#b2182b")) +
+  scale_x_continuous(breaks = seq(0, 5000, 500), labels = comma_format()(seq(0, 5000, 500)),
+                     limits = c(-120, plasmid_len + 120), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(-0.02, 1.25)) +
+  labs(x = "Position (bp)", y = NULL,
+       caption = "Blue primer = forward, red primer = reverse; dashed red lines mark the ligation junctions.") +
+  theme_minimal(base_size = 9) +
+  theme(axis.text.y = element_blank(), axis.title.y = element_blank(),
+        panel.grid.major.y = element_blank(), panel.grid.minor = element_blank(),
+        axis.text.x = element_text(size = 7.2),
+        legend.position = "top", legend.text = element_text(size = 8),
+        plot.caption = element_text(size = 7, colour = "#666666", hjust = 0))
+
+p_linear
+```
+
+::: callout-tip
+**Practice tips**
+
+-   A linear map needs the junction coordinates printed, not just drawn; the dashed line alone does not tell a reader which base the ligation happened at.
+-   Primer arrows are half the point of a linear map: a forward primer points right, a reverse primer points left, and their labels sit at the 5' end.
+-   Draw the backbone as segments, not one bar, when the insert replaces part of it — otherwise the reader cannot see how much backbone was deleted.
+-   Put the construct length and the coordinate system (1-based, full plasmid) in the caption; maps that silently skip the first 50 bp are a common source of cloning errors.
+:::
+
+## Application
+
+Plasmid maps are the primary figure of every cloning paper and the shared artefact that a lab passes to a collaborator. Making them from a feature table plus a real site search, rather than from a drawing tool, means the figure can be regenerated after every re-annotation and can be diffed against the sequencing result.
+
+The same circular/linear pair serves any small circular genome — mitochondrial and chloroplast genomes, phage and viral genomes, and bacterial minichromosomes — with the only difference being the feature vocabulary on the tracks.
+
+## Reference
+
+\[1\] Davis MW, Jorgensen EM. ApE, a plasmid editor: a freely available DNA manipulation and visualization program. Front Bioinform. 2022;2:818619. doi:10.3389/fbinf.2022.818619
+
+\[2\] Brown B, McKeon B, Chan K, et al. plasmapR: an R package for plasmid visualization. 2023. https://github.com/BradyAJohnston/plasmapR
+
+\[3\] Norrander J, Kempe T, Messing J. Construction of improved M13 vectors using oligodeoxynucleotide-directed mutagenesis. Gene. 1983;26(1):101-106. doi:10.1016/0378-1119(83)90040-9

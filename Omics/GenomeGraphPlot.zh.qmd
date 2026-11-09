@@ -1,0 +1,280 @@
+---
+title: "基因组图（组装图/泛基因组图）"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 辅助生成，独立 AI 复核"
+---
+
+基因组图用网络取代线性参考：序列片段是节点，重叠与相邻关系是边，每个单倍型或组装体都是网络中的一条游走路径。这一图形族之所以重要，在于线性坐标无法在不丢失某个等位的情况下表示插入、重复或泛基因组 bubble。本教程从一份手工构建的小图出发，绘制组装与泛基因组工具的三种规范视图——**Bandage 风格组装图**、**sequence tube map bubble** 与 **odgi 风格一维路径排布**——使各种编码规则可以用肉眼核验。
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包： `ggplot2`; `dplyr`; `tidyr`; `igraph`; `ggraph`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
+if (!requireNamespace("igraph", quietly = TRUE)) install.packages("igraph")
+if (!requireNamespace("ggraph", quietly = TRUE)) install.packages("ggraph")
+if (!requireNamespace("patchwork", quietly = TRUE)) install.packages("patchwork")
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(igraph)
+library(ggraph)
+library(patchwork)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+真实 GFA 文件很大，但所有版式规则在十来个片段的图上都能看清。我们建模一个 2.4 kb 位点，取自三条单倍型：共享左翼、**缺失等位**、**SNP bubble**、**150 bp 插入**与共享右翼。片段长度作为独立列保存，因为节点宽度必须编码它——用等宽节点画图会掩盖哪个等位其实更长。
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(4353)
+
+## segments: GFA `S` lines (name, length, GC content for colouring)
+segments <- tibble(
+  seg    = c("s1", "s2", "s3", "s4", "s5", "s6", "s7", "ins", "del", "s8"),
+  length = c(420,  180,  150,  150,  240,  300,  210,  150,   0,   330),
+  gc     = c(0.44, 0.39, 0.61, 0.61, 0.45, 0.47, 0.40, 0.52,  NA,  0.43),
+  allele = c("shared", "SNP_A", "SNP_G", "ins_path", "shared",
+             "shared", "del_path", "insertion", "deletion", "shared")
+)
+
+## links: GFA `L` lines (from, to, orientation), with an overlap length
+links <- tibble(
+  from = c("s1", "s1", "s2", "s3", "s4", "ins", "s5", "s3", "del",
+           "s6", "s7", "s8"),
+  to   = c("s2", "s3", "s5", "s5", "s6", "s6", "s6", "del", "s7",
+           "s8", "s8", "del"),
+  ovlp = c(60, 60, 80, 80, 80, 40, 80, 0, 0, 70, 70, 0),
+  kind = c("ref", "alt", "ref", "alt", "ref", "alt", "ref", "alt", "alt",
+           "ref", "alt", "alt")
+) |>
+  filter(ovlp > 0 | from == "del" | to == "del")
+
+## walks: each haplotype as an ordered segment path
+paths <- tribble(
+  ~haplotype, ~step, ~seg,
+  "H1 (reference)", 1, "s1", "H1 (reference)", 2, "s2",
+  "H1 (reference)", 3, "s5", "H1 (reference)", 4, "s6",
+  "H1 (reference)", 5, "s8",
+  "H2 (SNP + ins)", 1, "s1", "H2 (SNP + ins)", 2, "s3",
+  "H2 (SNP + ins)", 3, "s4", "H2 (SNP + ins)", 4, "ins",
+  "H2 (SNP + ins)", 5, "s6", "H2 (SNP + ins)", 6, "s8",
+  "H3 (deletion)",  1, "s1", "H3 (deletion)",  2, "s2",
+  "H3 (deletion)",  3, "del", "H3 (deletion)",  4, "s7",
+  "H3 (deletion)",  5, "s8"
+)
+
+segments |>
+  left_join(paths |> count(seg, name = "n_paths"), by = "seg") |>
+  replace_na(list(n_paths = 0))
+```
+
+## 可视化
+
+### 1. 以片段长度为节点宽度的组装图
+
+Bandage 约定：每个片段一个节点，节点宽度与片段长度成正比，凡两片段可以相接即连一条边。这里显式画出两个 bubble——SNP bubble（参考等位 180 bp、备择等位 150 bp）与插入 bubble（300 bp 对 450 bp）——读者无需读 GFA 即可追踪每条单倍型。
+
+```{r}
+#| label: fig-1.1AssemblyGraph
+#| fig-cap: "含两个 bubble 的 1.5 kb 位点组装图：节点宽度编码片段长度，共享片段为灰色，每个 bubble 的参考与备择等位分别为蓝、红。"
+#| out.width: "96%"
+#| warning: false
+#| message: false
+#| fig-width: 9.2
+#| fig-height: 4.6
+#| fig-dpi: 300
+
+nodes <- tibble(
+  seg = c("n1", "b1r", "b1a", "j1", "n2", "b2r", "b2a", "n3"),
+  len = c(420, 180, 150, 0, 240, 300, 450, 330),
+  x   = c(1.0, 2.5, 2.5, 3.5, 4.5, 5.9, 5.9, 7.3),
+  y   = c(0, 0.55, -0.15, 0, 0, 0.55, -0.15, 0),
+  cls = c("shared", "ref", "alt", "junction", "shared", "ref", "alt", "shared")
+) |>
+  mutate(w = pmax(0.55, len / 300))
+
+edges <- tribble(
+  ~from, ~to, ~cls,
+  "n1", "b1r", "ref", "n1", "b1a", "alt",
+  "b1r", "j1", "ref", "b1a", "j1", "alt",
+  "j1", "n2", "shared",
+  "n2", "b2r", "ref", "n2", "b2a", "alt",
+  "b2r", "n3", "ref", "b2a", "n3", "alt"
+) |>
+  left_join(nodes |> select(seg, x, y), by = c("from" = "seg")) |>
+  left_join(nodes |> select(seg, xend = x, yend = y), by = c("to" = "seg"))
+
+box <- nodes |> filter(cls != "junction") |> select(seg, len, x, y, w, cls)
+
+ggplot() +
+  geom_curve(data = edges,
+             aes(x, y, xend = xend, yend = yend, colour = cls),
+             curvature = 0, linewidth = 0.7,
+             arrow = arrow(length = unit(1.3, "mm"), type = "open")) +
+  geom_segment(data = box |> mutate(x0 = x - w / 2, x1 = x + w / 2),
+               aes(x = x0, y = y, xend = x1, yend = y, colour = cls),
+               linewidth = 9, lineend = "round") +
+  geom_point(data = nodes |> filter(cls == "junction"),
+             aes(x, y), size = 2.4, colour = "#4D4D4D") +
+  geom_text(data = box,
+            aes(x, y, label = paste0(seg, "\n", len, " bp")),
+            colour = "white", size = 2.5, lineheight = 0.95,
+            fontface = "bold") +
+  annotate("rect", xmin = 1.9, xmax = 3.05, ymin = -0.42, ymax = 0.82,
+           fill = NA, colour = "#2166AC", linetype = "22", linewidth = 0.4) +
+  annotate("text", x = 2.48, y = 0.95, label = "SNP bubble",
+           size = 2.7, colour = "#2166AC") +
+  annotate("rect", xmin = 5.25, xmax = 6.65, ymin = -0.42, ymax = 0.82,
+           fill = NA, colour = "#B2182B", linetype = "22", linewidth = 0.4) +
+  annotate("text", x = 5.95, y = 0.95, label = "insertion bubble",
+           size = 2.7, colour = "#B2182B") +
+  scale_colour_manual(values = c(shared = "#4D4D4D", ref = "#2166AC",
+                                 alt = "#B2182B", junction = "#4D4D4D"),
+                      name = "Allele class") +
+  coord_cartesian(xlim = c(0.35, 8.1), ylim = c(-0.55, 1.05), clip = "off") +
+  theme_void(base_size = 10) +
+  theme(legend.position = "right")
+```
+
+### 2. Sequence tube map 分支视图
+
+sequence tube map 把每条单倍型画成一根彩色管道。在变异位点，管道物理上分开成为等位专属车道后再汇合，因此插入是一段*绕行*，而不是页边注释。这里三条单倍型管道平行行进，并在变异窗口处分叉。
+
+```{r}
+#| label: fig-1.2TubeMap
+#| fig-cap: "sequence tube map 视图：单倍型管道在 SNP 加 150 bp 插入（H2）与缺失（H3）处分叉为等位专属车道，随后在共享翼汇合。"
+#| out.width: "96%"
+#| warning: false
+#| message: false
+#| fig-width: 9.2
+#| fig-height: 4.4
+#| fig-dpi: 300
+
+tube <- tribble(
+  ~haplotype, ~x, ~y,
+  "H1 (reference)", 0.0, 0.40, "H1 (reference)", 1.4, 0.40,
+  "H1 (reference)", 2.0, 0.40, "H1 (reference)", 2.8, 0.40,
+  "H1 (reference)", 5.0, 0.40,
+  "H2 (SNP + ins)", 0.0, 0.00, "H2 (SNP + ins)", 1.4, 0.00,
+  "H2 (SNP + ins)", 1.9, 0.95, "H2 (SNP + ins)", 2.6, 0.95,
+  "H2 (SNP + ins)", 3.1, 0.00, "H2 (SNP + ins)", 5.0, 0.00,
+  "H3 (deletion)",  0.0, -0.40, "H3 (deletion)",  1.4, -0.40,
+  "H3 (deletion)",  1.9, -0.95, "H3 (deletion)",  2.4, -0.95,
+  "H3 (deletion)",  2.9, -0.40, "H3 (deletion)",  5.0, -0.40
+)
+
+tube_cols <- c("H1 (reference)" = "#4D4D4D",
+               "H2 (SNP + ins)" = "#2166AC",
+               "H3 (deletion)"  = "#1B7837")
+
+ggplot(tube, aes(x, y, colour = haplotype)) +
+  geom_path(aes(group = haplotype), linewidth = 8, lineend = "round",
+            linejoin = "round", alpha = 0.9) +
+  geom_point(data = tube |> filter(x %in% c(1.4, 2.8) | x %in% c(1.9, 3.1)),
+             aes(x, y), size = 1.2, colour = "white", alpha = 0.8) +
+  annotate("rect", xmin = 1.40, xmax = 2.85, ymin = -1.16, ymax = 1.16,
+           fill = NA, colour = "#8C510A", linetype = "22", linewidth = 0.4) +
+  annotate("text", x = 2.12, y = 1.30, size = 2.7, colour = "#8C510A",
+           label = "variant window (SNP + insertion / deletion)") +
+  annotate("text", x = 2.20, y = 0.95, size = 2.6, colour = "#2166AC",
+           label = "G allele + 150 bp insertion") +
+  annotate("text", x = 2.12, y = -0.95, size = 2.6, colour = "#1B7837",
+           label = "deletion (0 bp)") +
+  scale_colour_manual(values = tube_cols, name = "Haplotype pipe") +
+  scale_x_continuous(breaks = c(0, 1, 2, 3, 4, 5),
+                     labels = c("0", "0.6", "1.2", "1.8", "2.4", "3.0")) +
+  coord_cartesian(ylim = c(-1.22, 1.40)) +
+  labs(x = "Position along the locus (kb)", y = NULL) +
+  theme_classic(base_size = 10.5) +
+  theme(axis.line.y = element_blank(), axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(), legend.position = "right")
+```
+
+### 3. 一维路径排布
+
+大型泛基因组图的力导向排布会变成"毛线团"。odgi 约定改为按节点在选定参考路径上的位置排序，并把各路径堆叠成行——牺牲拓扑完整性，换来在数百条单倍型之间的可读性与可比性。
+
+```{r}
+#| label: fig-1.3PathLayout
+#| fig-cap: "路径引导的一维排布：每行一条单倍型，每个节点按参考顺序定位，等位框按变异类别着色。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9.2
+#| fig-height: 3.4
+#| fig-dpi: 300
+
+allele_cols <- c(shared = "#4D4D4D", SNP_A = "#2166AC", SNP_G = "#B2182B",
+                 ins_path = "#B2182B", insertion = "#8C510A",
+                 del_path = "#1B7837", deletion = "#1B7837")
+
+path_df <- paths |>
+  left_join(segments, by = "seg") |>
+  group_by(haplotype) |>
+  mutate(
+    ref_pos = cumsum(lag(replace_na(length, 0), default = 0))
+  ) |>
+  ungroup() |>
+  mutate(
+    row = as.integer(factor(haplotype, levels = c("H1 (reference)",
+                                                  "H2 (SNP + ins)",
+                                                  "H3 (deletion)"))),
+    node_y = -row * 1.0
+  )
+
+ggplot(path_df) +
+  geom_rect(aes(xmin = ref_pos, xmax = ref_pos + pmax(length, 40),
+                ymin = node_y - 0.34, ymax = node_y + 0.34,
+                fill = allele), colour = "white", linewidth = 0.7) +
+  geom_text(aes(ref_pos + pmax(length, 40) / 2, node_y, label = seg),
+            size = 2.4, colour = ifelse(path_df$gc > 0.55, "white", "#1B1B1B")) +
+  scale_fill_manual(values = allele_cols, name = "Allele class") +
+  scale_y_continuous(breaks = c(-1, -2, -3),
+                     labels = c("H1 (reference)", "H2 (SNP + ins)",
+                                "H3 (deletion)")) +
+  scale_x_continuous(expand = c(0.01, 0)) +
+  labs(x = "Reference-ordered position (bp)", y = NULL,
+       title = "Path-guided 1D layout",
+       subtitle = "节点按 H1 路径排序；分支等位保留各自长度") +
+  theme_classic(base_size = 10.5) +
+  theme(plot.title = element_text(face = "bold", size = 10.5),
+        plot.subtitle = element_text(colour = "#4D4D4D", size = 8.8),
+        axis.line.y = element_blank(), axis.ticks.y = element_blank())
+```
+
+::: callout-tip
+**实践要点**
+
+-   节点宽度必须编码片段长度。等宽节点会把长插入与单碱基 SNP 画成同一视觉对象，这是组装图最常见的误导方式。
+-   对长度为零的缺失节点给出显式标记（圆点或留空），而不是省略；缺失是两翼之间的一条边，隐藏它会让两条单倍型看起来完全相同。
+-   在 tube map 中要先把管道分开再绘制。变异位点处管道重叠不可读，并且暗示了图本身否定的等同关系。
+-   超出玩具规模时应优先用一维路径排布。力导向排布适合展示，不适合比较数十条单倍型。
+-   Bandage、BandageJS、gfaestus、gfalook、sequenceTubeMap、odgi 与 ggbandage/ggtubemap 是参考实现；其中若干是 GUI、GPU 或仅 GitHub 分发的构建，为一张静态图引入会带来沉重工具链，因此本页用 ggplot2 复现其版式规则。
+:::
+
+## 应用
+
+图版式现已是三类场景的标准做法：**从头组装**（在 scaffold 之前浏览 unitig 与 bubble）、**泛基因组分析**（说明备择等位是一条路径，而不仅是对参考的变异调用）与**结构变异解读**（断点就是一条边）。用于发表时，从 GFA 手工截取的小子图通常比整图截图更有信息量，也便于在图注中说明所采用的 overlap 与长度阈值。
+
+## 参考资料
+
+\[1\] Wick RR, Schultz MB, Zobel J, Holt KE. Bandage: interactive visualization of de novo genome assemblies. Bioinformatics. 2015;31(20):3350-3352. doi:10.1093/bioinformatics/btv383
+
+\[2\] Beyer W, Novak AM, Hickey G, et al. Sequence tube maps: making graph genomes intuitive to commuters. Bioinformatics. 2019;35(24):5318-5320. doi:10.1093/bioinformatics/btz597
+
+\[3\] Guarracino A, Heumos S, Nahnsen S, Prins P, Garrison E. ODGI: understanding pangenome graphs. Bioinformatics. 2022;38(13):3319-3326. doi:10.1093/bioinformatics/btac308
+
+\[4\] Eggertsson HP, Jonsson H, Kristmundsdottir S, et al. Graphtyper enables population-scale genotyping using pangenome graphs. Nat Genet. 2017;49(11):1654-1660. doi:10.1038/ng.3964

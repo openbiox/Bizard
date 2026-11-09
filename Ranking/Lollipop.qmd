@@ -537,6 +537,135 @@ ggplot() +
 -   Take domain coordinates from `maftools::read-protein-domains()` filtered by RefSeq ID, or from the UniProt REST API.
 :::
 
+### 7. Protein Architecture with Mutation Density and Domain-Aware Lollipops
+
+A mutation lollipop is only interpretable in front of the protein it mutates. The ProteinPaint / nightingale convention \[12,13\] stacks two tracks on one residue axis: the **domain architecture** (chain, Pfam domains, low-complexity regions) and, above it, a **Gaussian-kernel density** of the mutation positions, which turns 18 individual sticks into the two hotspot clusters a reader actually needs to see. The lollipop track below carries the same variants with class-coded colour and patient-count size \[14,15\].
+
+```{r}
+#| label: fig-7-1ProteinDomainLollipop
+#| fig-cap: "Domain-aware mutation lollipop for a 1800-aa protein: top, Pfam-style domain architecture (signal peptide, domains A-E, low-complexity region) with the Gaussian-kernel mutation density (sd = 22 aa) above it; bottom, one lollipop per variant, coloured by variant class, sized by patient count, labelled by class and cancer type. The PRAD hotspot at residue 1044 (n = 62) is the peak of the density track."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5.6
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(ggrepel)
+  library(patchwork)
+})
+
+set.seed(43509)
+options(ggrepel.max.overlaps = Inf)
+
+## Domain architecture of a toy protein (residues 1-1800), UniProt-style.
+domains <- data.frame(
+  start = c(35, 120, 410, 720, 1105, 1420, 1650),
+  end   = c(112, 210, 505, 845, 1180, 1500, 1790),
+  type  = c("signal", "domain", "domain", "domain", "domain", "domain",
+            "low complexity"),
+  name  = c("signal", "Pfam A", "Pfam B", "Pfam C", "Pfam D", "Pfam E",
+            "LC region"),
+  row   = c(1, 1, 1, 2, 2, 2, 3)
+)
+
+## Somatic mutations: position, class and cancer type.
+mutations <- data.frame(
+  pos = c(184, 245, 312, 468, 512, 604, 771, 802, 918, 1044,
+          1122, 1190, 1288, 1345, 1466, 1522, 1608, 1712),
+  cls = c("missense", "missense", "nonsense", "missense", "missense",
+          "missense", "inframe del", "missense", "missense", "missense",
+          "missense", "splice", "missense", "missense", "nonsense",
+          "missense", "missense", "inframe ins"),
+  cancer = c("BRCA", "LUAD", "COAD", "BRCA", "PRAD", "LUAD", "BRCA",
+             "SKCM", "LUAD", "PRAD", "BRCA", "COAD", "LUAD", "BRCA",
+             "SKCM", "PRAD", "LUAD", "COAD")
+) |>
+  mutate(n = round(exp(rnorm(n(), 2.4, 0.9))))
+
+mut_cols <- c(missense = "#1b7837", nonsense = "#b2182b",
+              `inframe del` = "#d95f02", `inframe ins` = "#7570b3",
+              splice = "#8c510a")
+
+## Gaussian-kernel density of the mutation positions, weighted by patients.
+dens <- data.frame(pos = seq(1, 1800, by = 2)) |>
+  rowwise() |>
+  mutate(d = sum(mutations$n * dnorm(pos, mutations$pos, 22)) /
+           sum(mutations$n)) |>
+  ungroup()
+
+p_arch <- ggplot() +
+  annotate("segment", x = 1, xend = 1800, y = 0, yend = 0,
+           linewidth = 0.4, colour = "#bdbdbd") +
+  geom_rect(data = domains,
+            aes(xmin = start, xmax = end, ymin = -0.13 + row * 0.3,
+                ymax = 0.13 + row * 0.3, fill = type),
+            colour = "#525252", linewidth = 0.2, alpha = 0.85) +
+  geom_text(data = domains, aes(x = (start + end) / 2, y = row * 0.3 + 0.19,
+                                label = name), size = 1.9, colour = "#252525") +
+  scale_fill_manual(values = c(signal = "#a6bddb", domain = "#9ebcda",
+                               `low complexity` = "#f0f0f0"),
+                    guide = "none") +
+  geom_area(data = dens, aes(x = pos, y = d * 650 + 1.2), fill = "#7570b3",
+            alpha = 0.22, colour = NA) +
+  geom_line(data = dens, aes(x = pos, y = d * 650 + 1.2), colour = "#542788",
+            linewidth = 0.3) +
+  annotate("text", x = 20, y = 3.2,
+           label = "mutation density (Gaussian kernel, sd = 22 aa)",
+           size = 2.2, colour = "#542788", hjust = 0) +
+  scale_y_continuous(limits = c(-0.35, 3.3), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(0, 1810), expand = c(0, 0),
+                     breaks = seq(0, 1800, 300)) +
+  labs(x = NULL, y = NULL) +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        plot.margin = margin(5, 5, 0, 5))
+
+p_lol <- ggplot(mutations, aes(pos, n)) +
+  geom_segment(aes(xend = pos, yend = 0, colour = cls), linewidth = 0.5) +
+  geom_point(aes(colour = cls, size = n), alpha = 0.95) +
+  geom_text_repel(aes(label = ifelse(n > 40,
+                                    paste0(cls, "\n(", cancer, "), n = ", n),
+                                    paste0(cls, "\n(", cancer, ")")),
+                      colour = cls),
+                  size = 1.85, show.legend = FALSE, min.segment.length = 0,
+                  segment.size = 0.15, seed = 3, direction = "both",
+                  box.padding = 0.28, point.padding = 0.12,
+                  max.overlaps = Inf, max.time = 3, max.iter = 50000) +
+  ## outline labels are placed by repel; keep the headroom for them
+  coord_cartesian(clip = "off") +
+  scale_colour_manual(values = mut_cols, name = "variant class") +
+  scale_size_continuous(range = c(1.2, 4.2), name = "patients") +
+  scale_y_continuous(limits = c(0, 92), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(0, 1810), expand = c(0, 0),
+                     breaks = seq(0, 1800, 300)) +
+  labs(x = "protein position (amino acid)",
+       y = "patients carrying the variant") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank(),
+        legend.key.size = unit(0.32, "cm"),
+        legend.text = element_text(size = 6.8),
+        legend.title = element_text(size = 7.4),
+        plot.margin = margin(0, 5, 5, 5))
+
+p_arch / p_lol + plot_layout(heights = c(0.6, 1))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Put the domain architecture and the mutations on **one** residue axis. A lollipop plot without domains hides the finding that matters — whether the hotspot falls inside a functional domain.
+-   Add the kernel-density band above the sticks. Eighteen overlapping labels convey nothing; two density peaks and a stated bandwidth (sd = 22 aa) convey the hotspot structure at a glance.
+-   Keep the class colour palette small and categorical (missense / nonsense / inframe / splice) and separate from the size channel (patients). Do not use colour for both.
+-   Label the peak with its own count. Without it the reader is measuring stick height against a gridline.
+-   Declare the protein length and the coordinate convention (amino acid, 1-based); a domain plot with an unstated reference isoform is not reproducible.
+:::
+
 ## Applications
 
 ### 1. Lollipop plot

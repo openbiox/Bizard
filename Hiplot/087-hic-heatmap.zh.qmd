@@ -112,4 +112,121 @@ p
 
 示例图每个小格表示每个基因，颜色深浅表示该基因表达量大小，表达量越大颜色越深（红色为上调，绿色为下调）。每行表示每个基因在不同样本中的表达量状况，每列表示每个样本所有基因的表达量情况。上方树形图表示不同组群和年龄的不同样本的聚类分析结果，左侧树形图表示来自不同样本的不同基因的聚类分析结果。
 
+### 进阶：归一化、TAD 边界与旋转视图
 
+上面的原始频率矩阵足以显示"存在接触"，却不足以显示**结构**：接触概率大致按 s^-1 随距离衰减，因此对角线主导整个面板，结构域块被淹没在梯度里。让 Hi-C 图真正有信息量的两种处理是：(i) **observed/expected 归一化**——把每个格子除以该接触距离上的平均计数；(ii) **TAD 边界标注** \[3,4\]。第三个视图补充 Juicebox 使用的**旋转（45°）呈现**：其中 TAD 变成基因组中点恒定的三角形，边界表现为一条竖直的边。
+
+```{r}
+#| label: fig-adv-1NormalizedHic
+#| fig-cap: "observed/expected 归一化后的 Hi-C 接触图（100 Mb、500 kb 分辨率，按 5 个 TAD 与 s^-1 距离衰减模拟）：左为 log2 obs/exp 矩阵的下三角，四条 TAD 边界以白色虚线画出；右为同一矩阵旋转 45° 后的呈现，基因组中点沿 x 轴、接触间隔沿 y 轴，于是每个 TAD 是一个对称三角形，每条边界是一条竖直的边。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10.5
+#| fig-height: 4.6
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(patchwork)
+})
+
+set.seed(43512)
+
+## 一条 100 Mb 染色体、500 kb 分辨率、5 个 TAD。接触以稀疏的
+## (i, j, count) 表给出，这正是 Hi-C 流程的输出形式。
+res <- 0.5
+n_bin <- 200
+tad_edges <- c(0, 22, 45, 55, 90, 100)
+tad_id <- cut(seq_len(n_bin) * res - res / 2, breaks = tad_edges,
+              labels = FALSE, include.lowest = TRUE)
+
+contacts <- expand.grid(i = seq_len(n_bin), j = seq_len(n_bin)) |>
+  as_tibble() |>
+  filter(i >= j) |>                       # Hi-C 文件只存上三角
+  mutate(
+    d = (i - j) * res,
+    decay = 1 / (1 + d),                  # P(s) ~ s^-1
+    same_tad = tad_id[i] == tad_id[j],
+    freq = decay * ifelse(same_tad, 3.2, 0.9) * rexp(n(), 1)
+  )
+
+## observed/expected：按每个接触距离上的平均计数做除法。
+## The ratio is averaged over 2.5 Mb blocks (5 x 500 kb bins), because single
+## bins are pure counting noise (Poisson CV ~ 100%) and would speckle the panel;
+## 2.5 Mb is still finer than the smallest TAD, so the TAD edges stay sharp.
+oe <- contacts |>
+  mutate(d_bin = round(d / res)) |>
+  group_by(d_bin) |>
+  mutate(mean_d = mean(freq)) |>
+  ungroup() |>
+  ## The observed/expected ratio is kept at bin resolution: a 500 kb bin holds
+  ## enough counts that the panel is read as a smooth gradient, and the
+  ## per-distance expectation removes the s^-1 decay without touching the
+  ## TAD-to-TAD contrast.
+  mutate(oe = log2((freq + 0.05) / (mean_d + 0.05)),
+         x = i * res, y = j * res)
+
+bounds <- data.frame(x = tad_edges[-c(1, length(tad_edges))])
+pal <- c("#313695", "#4575b4", "#abd9e9", "#ffffbf", "#fdae61", "#d73027",
+         "#a50026")
+
+p_tri <- ggplot() +
+  geom_raster(data = oe, aes(x, y, fill = oe),
+              interpolate = FALSE) +
+  geom_vline(data = bounds, aes(xintercept = x), colour = "white",
+             linewidth = 0.35, linetype = "22") +
+  geom_hline(data = bounds, aes(yintercept = x), colour = "white",
+             linewidth = 0.35, linetype = "22") +
+  scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
+                       oob = scales::squish) +
+  coord_fixed() +
+  scale_x_continuous(expand = c(0, 0), breaks = seq(0, 100, 25)) +
+  scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, 25)) +
+  labs(x = "位置（Mb）", y = "位置（Mb）") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid = element_blank(),
+        legend.key.height = unit(0.85, "cm"),
+        legend.text = element_text(size = 6.8),
+        legend.title = element_text(size = 7.2))
+
+## 旋转：u = 基因组中点，v = 接触间隔。
+## rotation: u = genomic midpoint, v = contact separation
+rot <- oe |> mutate(u = (i + j) * res / 2, v = (i - j) * res / 2)
+
+p_rot <- ggplot() +
+  geom_raster(data = rot, aes(u, v, fill = oe), interpolate = FALSE) +
+  geom_vline(data = data.frame(u = bounds$x), aes(xintercept = u),
+             colour = "white", linewidth = 0.3, linetype = "22") +
+  scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
+                       oob = scales::squish, guide = "none") +
+  coord_fixed(ratio = 1) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0), breaks = seq(0, 45, 15)) +
+  labs(x = "基因组中点（Mb）", y = "接触间隔（Mb）") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid = element_blank(),
+        axis.text = element_text(size = 6.8))
+
+p_tri + p_rot + plot_layout(widths = c(1, 1))
+```
+
+::: callout-tip
+**实践要点**
+
+-   先归一化再解读。原始 Hi-C 计数永远是一条明亮的对角线；obs/exp 才是让结构域结构（进而让任何关于 TAD 的结论）可见的校正。
+-   声明归一化方法：按距离的 observed/expected 最简单；ICE/KR 矩阵平衡才是多数流程实际使用的做法，两者产出的面板并不相同。
+-   把边界画成独立的、显式的图层，并注明调用方法（arrowhead、insulation score、HiCExplorer）。不带来源的虚线会把一个假设变成看似测量的结论。
+-   旋转呈现不是装饰：它把间隔放到自己的轴上，读者才能看清结构域信号在哪里终止。单个位点用旋转视图，全基因组概览保留三角面板。
+-   在标题中写明分辨率与分箱大小。500 kb 分箱下的 "TAD" 与 5 kb 分箱下的 "TAD" 是证据强度完全不同的对象。
+:::
+
+## 参考文献
+
+\[1\] Akdemir KC, Chin L. HiCPlotter integrates genomic data with interaction matrices. Genome Biol. 2015;16:198. doi:10.1186/s13059-015-0767-1
+
+\[2\] Durand NC, Robinson JT, Shamim MS, et al. Juicebox provides a visualization system for Hi-C contact maps with unlimited zoom. Cell Syst. 2016;3(1):99-101. doi:10.1016/j.cels.2015.07.012
+
+\[3\] Lieberman-Aiden E, van Berkum NL, Williams L, et al. Comprehensive mapping of long-range interactions reveals folding principles of the human genome. Science. 2009;326(5950):289-293. doi:10.1126/science.1181369
+
+\[4\] Dixon JR, Selvaraj S, Yue F, et al. Topological domains in mammalian genomes identified by analysis of chromatin interactions. Nature. 2012;485(7398):376-380. doi:10.1038/nature11082

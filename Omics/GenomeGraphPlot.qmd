@@ -1,0 +1,280 @@
+---
+title: "Genome Graph Plot"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-assisted, independently reviewed;"
+---
+
+A genome graph replaces the linear reference with a network: sequence segments are nodes, overlaps and adjacencies are edges, and each haplotype or assembly is a walk through that network. The figure family matters because a linear coordinate cannot represent an insertion, a duplication, or a pangenome bubble without losing one of the alleles. This tutorial draws the three canonical views used by assembly and pangenome tools — a **Bandage-style assembly graph**, a **sequence-tube-map bubble**, and an **odgi-style 1D path layout** — from one small hand-built graph so the encodings can be checked by eye.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `dplyr`; `tidyr`; `igraph`; `ggraph`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
+if (!requireNamespace("igraph", quietly = TRUE)) install.packages("igraph")
+if (!requireNamespace("ggraph", quietly = TRUE)) install.packages("ggraph")
+if (!requireNamespace("patchwork", quietly = TRUE)) install.packages("patchwork")
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(igraph)
+library(ggraph)
+library(patchwork)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+Real GFA files are large, but every layout rule is visible in a ten-segment graph. We model a 2.4 kb locus sampled from three haplotypes: a shared left flank, a **deletion allele**, a **SNP bubble**, a **150 bp insertion**, and a shared right flank. Segment length is carried as a column because node width must encode it — a graph drawn with uniform nodes hides which allele is actually long.
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(4353)
+
+## segments: GFA `S` lines (name, length, GC content for colouring)
+segments <- tibble(
+  seg    = c("s1", "s2", "s3", "s4", "s5", "s6", "s7", "ins", "del", "s8"),
+  length = c(420,  180,  150,  150,  240,  300,  210,  150,   0,   330),
+  gc     = c(0.44, 0.39, 0.61, 0.61, 0.45, 0.47, 0.40, 0.52,  NA,  0.43),
+  allele = c("shared", "SNP_A", "SNP_G", "ins_path", "shared",
+             "shared", "del_path", "insertion", "deletion", "shared")
+)
+
+## links: GFA `L` lines (from, to, orientation), with an overlap length
+links <- tibble(
+  from = c("s1", "s1", "s2", "s3", "s4", "ins", "s5", "s3", "del",
+           "s6", "s7", "s8"),
+  to   = c("s2", "s3", "s5", "s5", "s6", "s6", "s6", "del", "s7",
+           "s8", "s8", "del"),
+  ovlp = c(60, 60, 80, 80, 80, 40, 80, 0, 0, 70, 70, 0),
+  kind = c("ref", "alt", "ref", "alt", "ref", "alt", "ref", "alt", "alt",
+           "ref", "alt", "alt")
+) |>
+  filter(ovlp > 0 | from == "del" | to == "del")
+
+## walks: each haplotype as an ordered segment path
+paths <- tribble(
+  ~haplotype, ~step, ~seg,
+  "H1 (reference)", 1, "s1", "H1 (reference)", 2, "s2",
+  "H1 (reference)", 3, "s5", "H1 (reference)", 4, "s6",
+  "H1 (reference)", 5, "s8",
+  "H2 (SNP + ins)", 1, "s1", "H2 (SNP + ins)", 2, "s3",
+  "H2 (SNP + ins)", 3, "s4", "H2 (SNP + ins)", 4, "ins",
+  "H2 (SNP + ins)", 5, "s6", "H2 (SNP + ins)", 6, "s8",
+  "H3 (deletion)",  1, "s1", "H3 (deletion)",  2, "s2",
+  "H3 (deletion)",  3, "del", "H3 (deletion)",  4, "s7",
+  "H3 (deletion)",  5, "s8"
+)
+
+segments |>
+  left_join(paths |> count(seg, name = "n_paths"), by = "seg") |>
+  replace_na(list(n_paths = 0))
+```
+
+## Visualization
+
+### 1. Assembly Graph with Segment Length as Node Width
+
+The Bandage convention: one node per segment, node width proportional to segment length, and edges wherever two segments can follow one another. Two bubbles are drawn explicitly — a SNP bubble (180 bp reference allele versus 150 bp alternate) and an insertion bubble (300 bp versus 450 bp) — so the reader can trace each haplotype without reading the GFA.
+
+```{r}
+#| label: fig-1.1AssemblyGraph
+#| fig-cap: "Assembly graph of a 1.5 kb locus with two bubbles: node width encodes segment length, shared segments are grey, and the reference and alternate alleles of each bubble are blue and red."
+#| out.width: "96%"
+#| warning: false
+#| message: false
+#| fig-width: 9.2
+#| fig-height: 4.6
+#| fig-dpi: 300
+
+nodes <- tibble(
+  seg = c("n1", "b1r", "b1a", "j1", "n2", "b2r", "b2a", "n3"),
+  len = c(420, 180, 150, 0, 240, 300, 450, 330),
+  x   = c(1.0, 2.5, 2.5, 3.5, 4.5, 5.9, 5.9, 7.3),
+  y   = c(0, 0.55, -0.15, 0, 0, 0.55, -0.15, 0),
+  cls = c("shared", "ref", "alt", "junction", "shared", "ref", "alt", "shared")
+) |>
+  mutate(w = pmax(0.55, len / 300))
+
+edges <- tribble(
+  ~from, ~to, ~cls,
+  "n1", "b1r", "ref", "n1", "b1a", "alt",
+  "b1r", "j1", "ref", "b1a", "j1", "alt",
+  "j1", "n2", "shared",
+  "n2", "b2r", "ref", "n2", "b2a", "alt",
+  "b2r", "n3", "ref", "b2a", "n3", "alt"
+) |>
+  left_join(nodes |> select(seg, x, y), by = c("from" = "seg")) |>
+  left_join(nodes |> select(seg, xend = x, yend = y), by = c("to" = "seg"))
+
+box <- nodes |> filter(cls != "junction") |> select(seg, len, x, y, w, cls)
+
+ggplot() +
+  geom_curve(data = edges,
+             aes(x, y, xend = xend, yend = yend, colour = cls),
+             curvature = 0, linewidth = 0.7,
+             arrow = arrow(length = unit(1.3, "mm"), type = "open")) +
+  geom_segment(data = box |> mutate(x0 = x - w / 2, x1 = x + w / 2),
+               aes(x = x0, y = y, xend = x1, yend = y, colour = cls),
+               linewidth = 9, lineend = "round") +
+  geom_point(data = nodes |> filter(cls == "junction"),
+             aes(x, y), size = 2.4, colour = "#4D4D4D") +
+  geom_text(data = box,
+            aes(x, y, label = paste0(seg, "\n", len, " bp")),
+            colour = "white", size = 2.5, lineheight = 0.95,
+            fontface = "bold") +
+  annotate("rect", xmin = 1.9, xmax = 3.05, ymin = -0.42, ymax = 0.82,
+           fill = NA, colour = "#2166AC", linetype = "22", linewidth = 0.4) +
+  annotate("text", x = 2.48, y = 0.95, label = "SNP bubble",
+           size = 2.7, colour = "#2166AC") +
+  annotate("rect", xmin = 5.25, xmax = 6.65, ymin = -0.42, ymax = 0.82,
+           fill = NA, colour = "#B2182B", linetype = "22", linewidth = 0.4) +
+  annotate("text", x = 5.95, y = 0.95, label = "insertion bubble",
+           size = 2.7, colour = "#B2182B") +
+  scale_colour_manual(values = c(shared = "#4D4D4D", ref = "#2166AC",
+                                 alt = "#B2182B", junction = "#4D4D4D"),
+                      name = "Allele class") +
+  coord_cartesian(xlim = c(0.35, 8.1), ylim = c(-0.55, 1.05), clip = "off") +
+  theme_void(base_size = 10) +
+  theme(legend.position = "right")
+```
+
+### 2. Sequence-Tube-Map Bubble
+
+The sequence tube map draws each haplotype as a coloured pipe. At a variant site the pipes physically separate into allele-specific lanes and re-join afterwards, so an insertion is a *detour*, not a note in the margin. Here the three haplotype pipes travel in parallel lanes and branch at the 1.5-2.8 kb variant window.
+
+```{r}
+#| label: fig-1.2TubeMap
+#| fig-cap: "Sequence-tube-map view: haplotype pipes diverge into allele-specific lanes across a SNP plus 150 bp insertion (H2) and a deletion (H3), then re-join on the shared flank."
+#| out.width: "96%"
+#| warning: false
+#| message: false
+#| fig-width: 9.2
+#| fig-height: 4.4
+#| fig-dpi: 300
+
+tube <- tribble(
+  ~haplotype, ~x, ~y,
+  "H1 (reference)", 0.0, 0.40, "H1 (reference)", 1.4, 0.40,
+  "H1 (reference)", 2.0, 0.40, "H1 (reference)", 2.8, 0.40,
+  "H1 (reference)", 5.0, 0.40,
+  "H2 (SNP + ins)", 0.0, 0.00, "H2 (SNP + ins)", 1.4, 0.00,
+  "H2 (SNP + ins)", 1.9, 0.95, "H2 (SNP + ins)", 2.6, 0.95,
+  "H2 (SNP + ins)", 3.1, 0.00, "H2 (SNP + ins)", 5.0, 0.00,
+  "H3 (deletion)",  0.0, -0.40, "H3 (deletion)",  1.4, -0.40,
+  "H3 (deletion)",  1.9, -0.95, "H3 (deletion)",  2.4, -0.95,
+  "H3 (deletion)",  2.9, -0.40, "H3 (deletion)",  5.0, -0.40
+)
+
+tube_cols <- c("H1 (reference)" = "#4D4D4D",
+               "H2 (SNP + ins)" = "#2166AC",
+               "H3 (deletion)"  = "#1B7837")
+
+ggplot(tube, aes(x, y, colour = haplotype)) +
+  geom_path(aes(group = haplotype), linewidth = 8, lineend = "round",
+            linejoin = "round", alpha = 0.9) +
+  geom_point(data = tube |> filter(x %in% c(1.4, 2.8) | x %in% c(1.9, 3.1)),
+             aes(x, y), size = 1.2, colour = "white", alpha = 0.8) +
+  annotate("rect", xmin = 1.40, xmax = 2.85, ymin = -1.16, ymax = 1.16,
+           fill = NA, colour = "#8C510A", linetype = "22", linewidth = 0.4) +
+  annotate("text", x = 2.12, y = 1.30, size = 2.7, colour = "#8C510A",
+           label = "variant window (SNP + insertion / deletion)") +
+  annotate("text", x = 2.20, y = 0.95, size = 2.6, colour = "#2166AC",
+           label = "G allele + 150 bp insertion") +
+  annotate("text", x = 2.12, y = -0.95, size = 2.6, colour = "#1B7837",
+           label = "deletion (0 bp)") +
+  scale_colour_manual(values = tube_cols, name = "Haplotype pipe") +
+  scale_x_continuous(breaks = c(0, 1, 2, 3, 4, 5),
+                     labels = c("0", "0.6", "1.2", "1.8", "2.4", "3.0")) +
+  coord_cartesian(ylim = c(-1.22, 1.40)) +
+  labs(x = "Position along the locus (kb)", y = NULL) +
+  theme_classic(base_size = 10.5) +
+  theme(axis.line.y = element_blank(), axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(), legend.position = "right")
+```
+
+### 3. 1D Path Layout
+
+Force-directed layouts of large pangenome graphs become hairballs. The odgi convention instead orders nodes by their position along a chosen reference path and stacks paths as rows — loss of topology, gain in legibility and comparability across hundreds of haplotypes.
+
+```{r}
+#| label: fig-1.3PathLayout
+#| fig-cap: "Path-guided 1D layout: each row is a haplotype, each node is drawn at its reference-ordered position, and allele boxes are coloured by variant class."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9.2
+#| fig-height: 3.4
+#| fig-dpi: 300
+
+allele_cols <- c(shared = "#4D4D4D", SNP_A = "#2166AC", SNP_G = "#B2182B",
+                 ins_path = "#B2182B", insertion = "#8C510A",
+                 del_path = "#1B7837", deletion = "#1B7837")
+
+path_df <- paths |>
+  left_join(segments, by = "seg") |>
+  group_by(haplotype) |>
+  mutate(
+    ref_pos = cumsum(lag(replace_na(length, 0), default = 0))
+  ) |>
+  ungroup() |>
+  mutate(
+    row = as.integer(factor(haplotype, levels = c("H1 (reference)",
+                                                  "H2 (SNP + ins)",
+                                                  "H3 (deletion)"))),
+    node_y = -row * 1.0
+  )
+
+ggplot(path_df) +
+  geom_rect(aes(xmin = ref_pos, xmax = ref_pos + pmax(length, 40),
+                ymin = node_y - 0.34, ymax = node_y + 0.34,
+                fill = allele), colour = "white", linewidth = 0.7) +
+  geom_text(aes(ref_pos + pmax(length, 40) / 2, node_y, label = seg),
+            size = 2.4, colour = ifelse(path_df$gc > 0.55, "white", "#1B1B1B")) +
+  scale_fill_manual(values = allele_cols, name = "Allele class") +
+  scale_y_continuous(breaks = c(-1, -2, -3),
+                     labels = c("H1 (reference)", "H2 (SNP + ins)",
+                                "H3 (deletion)")) +
+  scale_x_continuous(expand = c(0.01, 0)) +
+  labs(x = "Reference-ordered position (bp)", y = NULL,
+       title = "Path-guided 1D layout",
+       subtitle = "Nodes ordered by the H1 path; branch alleles keep their own length") +
+  theme_classic(base_size = 10.5) +
+  theme(plot.title = element_text(face = "bold", size = 10.5),
+        plot.subtitle = element_text(colour = "#4D4D4D", size = 8.8),
+        axis.line.y = element_blank(), axis.ticks.y = element_blank())
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Node width must encode segment length. Uniform nodes turn a long insertion and a single-base SNP into the same visual object, which is the most common way an assembly graph misleads.
+-   Give the zero-length deletion node an explicit marker (a dot or a gap) instead of omitting it; a deletion is an edge between two flanks, and hiding it makes the two haplotypes look identical.
+-   In a tube map, separate the pipes before drawing them, not after. Overlapping pipes over a variant site are unreadable, and they imply identity that the graph denies.
+-   For anything beyond a toy graph, prefer the 1D path layout. Force-directed layouts are for presentation, not for comparing dozens of haplotypes.
+-   Bandage, BandageJS, gfaestus, gfalook, sequenceTubeMap, odgi, and ggbandage/ggtubemap are the reference implementations; several are GUI, GPU, or GitHub-only builds that would add a heavy toolchain for a single static figure, so this page reproduces their layout rules in ggplot2 instead.
+:::
+
+## Application
+
+Graph layouts are now standard in three settings: **de novo assembly** (navigating unitigs and bubbles before scaffolding), **pangenome analysis** (showing that an alternate allele is a path, not a variant call against a reference), and **structural-variant interpretation** (a breakpoint becomes an edge). For publication, a small subgraph hand-drawn from a GFA is usually more informative than a screenshot of the whole graph, and it lets the caption state the overlap and length thresholds that were applied.
+
+## Reference
+
+\[1\] Wick RR, Schultz MB, Zobel J, Holt KE. Bandage: interactive visualization of de novo genome assemblies. Bioinformatics. 2015;31(20):3350-3352. doi:10.1093/bioinformatics/btv383
+
+\[2\] Beyer W, Novak AM, Hickey G, et al. Sequence tube maps: making graph genomes intuitive to commuters. Bioinformatics. 2019;35(24):5318-5320. doi:10.1093/bioinformatics/btz597
+
+\[3\] Guarracino A, Heumos S, Nahnsen S, Prins P, Garrison E. ODGI: understanding pangenome graphs. Bioinformatics. 2022;38(13):3319-3326. doi:10.1093/bioinformatics/btac308
+
+\[4\] Eggertsson HP, Jonsson H, Kristmundsdottir S, et al. Graphtyper enables population-scale genotyping using pangenome graphs. Nat Genet. 2017;49(11):1654-1660. doi:10.1038/ng.3964

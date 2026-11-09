@@ -418,6 +418,135 @@ cowplot::plot_grid(p_tracks, p_gene, ncol = 2, align = "h", axis = "tb",
 -   外显子 `geom_rect()` 使用与轨道 x 轴匹配的基因组坐标；两层保持相同的 `limits`。
 :::
 
+### 4. 转录本坐标与多物种基因邻域
+
+上面的基因组坐标轨道还缺两种版式，而它们在 Gviz、plotgardener、ggtranscript 与 wiggleplotr 中都是标准做法 \[5,6\]。第一种是**转录本坐标**：把所有外显子按转录本顺序拼接，于是异构体特异的测序覆盖会落在它所支持的那个模型自己的轴上。若用基因组坐标，同一批读段会被压到同一条轴上，而各异构体跳过的外显子不同，异构体特异的峰会直接被读成基因层面的差异，而不是转录本层面的差异。第二种是**基因邻域视图**：x 轴是基因顺序而不是碱基位置，这正是让倒位表现为箭头方向、让缺失表现为空档的原因。
+
+下面两幅图沿用本教程其余部分的 `gggenes` 箭头语法，使编码在各节之间保持可比。
+
+#### 4.1 转录本坐标下的覆盖度，而非基因组坐标
+
+```{r}
+#| label: fig-4-1TranscriptCentric
+#| fig-cap: "同一基因三个异构体的覆盖度，每个异构体使用自己的转录本坐标（外显子拼接，间隔固定 30 bp）。T1 包含全部 8 个外显子，T2 跳过外显子 3 和 6，T3 跳过外显子 2 和 5；覆盖度带在每一行内部各自缩放。同一个外显子在每一行里的 x 坐标都不同，这正是要点：在基因组坐标下，三条曲线会被叠加到它们并不共享的外显子上。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 3.8
+#| fig-dpi: 300
+
+set.seed(43522)
+
+## One gene with eight exons and three isoforms. Transcript coordinates are the
+## exons concatenated with a fixed 30 bp gap; the same exon therefore has a
+## different coordinate in every isoform.
+exons <- data.frame(
+  exon = 1:8,
+  gstart = c(100, 500, 800, 1100, 1500, 1900, 2300, 2700),
+  gend   = c(300, 620, 900, 1250, 1600, 2000, 2450, 2900)
+)
+tx <- list(T1 = 1:8, T2 = c(1, 2, 4, 5, 7, 8), T3 = c(1, 3, 4, 6, 7, 8))
+gap <- 30
+
+tx_tab <- do.call(rbind, lapply(names(tx), function(t) {
+  ids <- tx[[t]]
+  e <- exons[match(ids, exons$exon), ]
+  e$x0 <- cumsum(c(0, (e$gend - e$gstart + gap)[-nrow(e)]))
+  e$x1 <- e$x0 + (e$gend - e$gstart)
+  e$tx <- t
+  e
+}))
+tx_tab$y <- as.numeric(factor(tx_tab$tx, levels = names(tx)))
+
+## Coverage in each transcript's own coordinates. In genomic coordinates the
+## same reads would be forced onto one axis and the isoform-specific peaks
+## would overlap.
+cov_tab <- do.call(rbind, lapply(names(tx), function(t) {
+  e <- tx_tab |> filter(tx == t)
+  p <- seq(0, max(e$x1), by = 5)
+  inside <- sapply(p, function(x) any(x >= e$x0 & x <= e$x1))
+  peak_at <- mean(e$x0[e$exon %in% c(1, 4)])
+  sig <- ifelse(inside, 0.35, 0.05) +
+    0.9 * exp(-((p - peak_at)^2) / (2 * 180^2)) +
+    rnorm(length(p), 0, 0.03)
+  data.frame(tx = t, pos = p, cov = pmax(sig, 0), y = unique(e$y))
+}))
+cov_tab <- cov_tab |> group_by(tx) |> mutate(cov = cov / max(cov) * 0.62) |> ungroup()
+
+## Gene neighbourhood in five species: g2 is inverted in sp3, g4 in sp4, g5 is
+## absent in sp3 and g6 is absent in sp5.
+sp <- c("sp1", "sp2", "sp3", "sp4", "sp5")
+nb <- data.frame(
+  species = rep(sp, each = 6),
+  order = rep(1:6, 5),
+  gene = c("g1","g2","g3","g4","g5","g6",
+           "g1","g2","g3","g4","g5","g6",
+           "g1","g3","g2","g4","g6","-",
+           "g1","g2","g3","g4","g5","g6",
+           "g1","g2","g3","g4","g5","-"),
+  forward = c(rep(TRUE, 6), rep(TRUE, 6),
+              TRUE, TRUE, FALSE, TRUE, TRUE, TRUE,
+              TRUE, TRUE, TRUE, FALSE, TRUE, TRUE,
+              rep(TRUE, 5), FALSE)
+) |>
+  filter(gene != "-") |>
+  mutate(x0 = (order - 1) * 1000, x1 = x0 + 820)
+
+ggplot() +
+  ## Coverage as a ribbon from the row baseline, so each isoform keeps its own
+  ## y band instead of overlapping the next one.
+  geom_ribbon(data = cov_tab, aes(x = pos, ymin = y, ymax = y + cov, group = tx),
+              fill = "#9ecae1", alpha = 0.75, colour = NA) +
+  geom_rect(data = tx_tab, aes(xmin = x0, xmax = x1, ymin = y - 0.10, ymax = y + 0.10),
+            fill = "#2c7bb6", colour = "white", linewidth = 0.2) +
+  geom_text(data = tx_tab, aes((x0 + x1) / 2, y, label = exon),
+            size = 1.7, colour = "white") +
+  scale_y_continuous(breaks = 1:3, labels = names(tx),
+                     limits = c(0.6, 3.75), expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0.01, 0.01)) +
+  labs(x = "transcript coordinate (bp, exons concatenated)", y = NULL) +
+  theme_minimal(base_size = 8) +
+  theme(panel.grid.minor = element_blank(),
+        axis.text.y = element_text(size = 7))
+```
+
+#### 4.2 基因邻域：把顺序与方向当作坐标轴
+
+```{r}
+#| label: fig-4-2GeneNeighborhood
+#| fig-cap: "六个直系同源基因在五个物种中的邻域：x 轴是基因顺序（每个位置 1 kb），箭头方向是链方向，颜色是直系同源组。sp3 丢失 g5，并在 g3 与 g4 之间携带倒位的 g2；sp4 携带倒位的 g4；sp5 丢失 g6。在碱基坐标轴上，这三个事件需要三个分别放大的面板才看得见。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 2.8
+#| fig-dpi: 300
+
+ggplot(nb, aes(xmin = x0, xmax = x1, y = species, fill = gene, forward = forward)) +
+  gggenes::geom_gene_arrow(arrowhead_height = unit(3, "mm"),
+                           arrowhead_width = unit(1, "mm")) +
+  geom_text(aes((x0 + x1) / 2, species, label = gene), size = 2.1, colour = "#222222") +
+  scale_fill_brewer(palette = "Set2", guide = "none") +
+  scale_y_discrete(limits = rev(sp)) +
+  labs(x = "gene neighbourhood coordinate (bp)", y = NULL) +
+  gggenes::theme_genes() +
+  theme(text = element_text(size = 8))
+```
+
+
+::: callout-tip
+**实践要点**
+
+-   每个面板只用一个坐标系统，并写明是哪一个。把覆盖度轨道与基因模型画在不同坐标里，看起来是对齐的，实际是错的——这是这一类图最常见的缺陷。
+-   画转录本坐标时，用固定间隔拼接外显子。这个间隔不是生物学长度，只是视觉分隔，必须写进图注。
+-   在外显子方块上保留外显子编号。它是读者把转录本坐标映射回基因组外显子的唯一线索。
+-   基因邻域用每个基因一个箭头来画，不要用矩形。方向占据了一半信息，而矩形会把它悄悄丢掉。
+-   在邻域图里写明每个顺序单位对应的宽度（这里是 1 kb）。没有它，x 轴看起来像碱基坐标，图会被读成物理图谱。
+-   不要把“有无”的主张与“长度”的主张混在一个面板里。缺失的基因是顺序轴上的空档，变短的基因是更短的箭头，这是两种不同的观察。
+:::
+
+
 ## 应用场景
 
 ::: {#fig-GeneStructurePlotApplications}
@@ -435,3 +564,9 @@ cowplot::plot_grid(p_tracks, p_gene, ncol = 2, align = "h", axis = "tb",
 
 
 \[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[5\] Alasoo K, Rodrigues J, Danesh J, Freitag DF, Paul DS, Gaffney DJ. Genetic effects on chromatin accessibility are highly context-specific. F1000Res. 2017;6:1682. doi:10.12688/f1000research.12268.1
+
+\[6\] Härle D, et al. ggtranscript: an R package for the visualization and interpretation of transcript isoforms using ggplot2. Bioinformatics. 2022;38(15):3844-3846. doi:10.1093/bioinformatics/btac409
+
+\[7\] Kramer NE, Davis ES, Wenger CD, et al. Plotgardener: cultivating precise multi-panel figures for genomic data. Bioinformatics. 2022;38(13):3402-3404. doi:10.1093/bioinformatics/btac057

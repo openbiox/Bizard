@@ -501,6 +501,133 @@ write.csv(karyotype, "karyotype.csv", row.names = FALSE)
 **坐标体系**：GTF/GFF 是 1-based，BED 是 0-based（半开区间）。`RIdeogram` 的输入要保持内部一致——如果热图、形状标记等特征表来自 BED 衍生数据，请先转换到与 karyotype 相同的坐标约定再绘图。
 :::
 
+### 12. 锚定核型、信号轨道与标记刻度
+
+`RIdeogram` 的轨道布局是固定的：热图在染色体内部，两条标签轨道分列上下。当你需要另一种堆叠——核型、任意数值轨道、标记刻度——可靠的做法是自建布局，并让各面板共享**同一条** x 轴。下面的版本把染色体首尾相接排到累积坐标上（即 "UCSC Genome Graphs" 的约定 \[8\]），再把逐窗口 Fst 轨道与标记集锚定到完全相同的比例 \[6,9\]。
+
+```{r}
+#| label: fig-12-1AnchoredIdeogram
+#| fig-cap: "累积坐标下的锚定核型：5 条染色体首尾相接（间隔 4 Mb），上方为带纹着色与着丝粒掐腰，下方为逐窗口 Fst，含两个预先植入的选择清除峰（chr2:62 Mb、chr4:20 Mb）与 0.25 的离群阈值，顶轴为标记刻度（tRNA/rRNA/miRNA/QTL）。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 4.6
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(patchwork)
+})
+
+## 与 RIdeogram 输入同形的染色体表：名称、起点、终点、着丝粒。
+## 长度为一个 5 条染色体的玩具基因组（Mb）。
+karyo <- data.frame(
+  chr = c("chr1", "chr2", "chr3", "chr4", "chr5"),
+  len = c(120, 95, 80, 60, 45),
+  cen = c(48, 34, 31, 21, 17)
+)
+set.seed(43501)
+
+## 细胞遗传带：与 G 带表一致，每个条带带一个密度值。
+banding <- do.call(rbind, lapply(seq_len(nrow(karyo)), function(i) {
+  k <- karyo[i, ]
+  starts <- seq(0, k$len, by = 6)
+  data.frame(chr = k$chr, start = starts, end = pmin(starts + 6, k$len),
+             density = round(runif(length(starts), 0, 100)))
+}))
+
+## 逐窗口 Fst，植入两个峰，使阅读顺序可验证。
+win <- do.call(rbind, lapply(seq_len(nrow(karyo)), function(i) {
+  k <- karyo[i, ]
+  mid <- seq(1, k$len - 1, by = 2)
+  fst <- 0.08 + 0.05 * abs(sin(mid / 9))
+  if (k$chr == "chr2") fst <- fst + 0.55 * exp(-((mid - 62)^2) / 40)
+  if (k$chr == "chr4") fst <- fst + 0.42 * exp(-((mid - 20)^2) / 50)
+  data.frame(chr = k$chr, mid = mid,
+             fst = pmin(0.95, fst + rnorm(length(mid), 0, 0.02)))
+}))
+
+markers <- data.frame(
+  chr = c("chr1", "chr1", "chr2", "chr2", "chr3", "chr3", "chr4", "chr5", "chr5"),
+  pos = c(12, 88, 62, 30, 41, 70, 20, 15, 38),
+  type = c("tRNA", "rRNA", "miRNA", "tRNA", "rRNA", "miRNA",
+           "QTL", "QTL", "miRNA")
+)
+
+## 累积坐标：染色体首尾相接、间隔 4 Mb，于是每个面板都能共用一条 x 轴，
+## 而不必依赖分面宽度。
+gap <- 4
+offs <- data.frame(chr = karyo$chr,
+                   offset = c(0, cumsum(karyo$len + gap)[-nrow(karyo)]))
+banding <- left_join(banding, offs, by = "chr") |>
+  mutate(x0 = offset + start, x1 = offset + end)
+win <- left_join(win, offs, by = "chr") |> mutate(x = offset + mid)
+markers <- left_join(markers, offs, by = "chr") |> mutate(x = offset + pos)
+chr_lab <- data.frame(chr = karyo$chr, x = offs$offset + karyo$len / 2)
+xmax <- max(win$x) + 3
+
+p_ideo <- ggplot() +
+  geom_rect(data = banding,
+            aes(xmin = x0, xmax = x1, ymin = 0.84, ymax = 1.16, fill = density),
+            colour = NA) +
+  geom_segment(data = left_join(karyo, offs, by = "chr"),
+               aes(x = offset + cen, xend = offset + cen, y = 0.84, yend = 1.16),
+               linewidth = 0.9, colour = "white") +
+  geom_point(data = markers, aes(x, y = 1.34, colour = type, shape = type),
+             size = 2.1) +
+  scale_fill_gradientn("band\ndensity",
+                       colours = c("#ffffff", "#c6c6c6", "#5a5a5a"),
+                       limits = c(0, 100), guide = "none") +
+  scale_colour_manual(values = c(tRNA = "#1b7837", rRNA = "#d95f02",
+                                 miRNA = "#2166ac", QTL = "#b2182b"),
+                      name = NULL) +
+  scale_shape_manual(values = c(tRNA = 17, rRNA = 15, miRNA = 16, QTL = 18),
+                     name = NULL) +
+  scale_x_continuous(limits = c(-2, xmax), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0.78, 1.46), expand = c(0, 0)) +
+  labs(x = NULL, y = NULL) +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid = element_blank(), axis.text = element_blank(),
+        axis.ticks = element_blank(), legend.position = "bottom",
+        legend.key.size = unit(0.32, "cm"),
+        legend.text = element_text(size = 7.2),
+        plot.margin = margin(2, 5, 0, 5))
+
+p_track <- ggplot(win, aes(x, fst)) +
+  geom_area(fill = "#4292c6", alpha = 0.5, colour = NA) +
+  geom_line(colour = "#08519c", linewidth = 0.32) +
+  geom_hline(yintercept = 0.25, linetype = "dashed", linewidth = 0.3,
+             colour = "#b2182b") +
+  geom_vline(xintercept = offs$offset[-1] - gap / 2, linewidth = 0.25,
+             colour = "#dedede") +
+  ## chromosome names on the track's own panel, not borrowed from above
+  annotate("text", x = chr_lab$x, y = 0.93, label = chr_lab$chr,
+           size = 2.6, colour = "#333333") +
+  scale_x_continuous(limits = c(-2, xmax), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, 0.96), breaks = c(0, 0.25, 0.5, 0.75),
+                     expand = c(0, 0)) +
+  labs(x = "累积位置（Mb；染色体首尾相接）",
+       y = "Fst") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(size = 6.5),
+        axis.text.y = element_text(size = 7),
+        plot.margin = margin(0, 5, 2, 5))
+
+p_ideo / p_track + plot_layout(heights = c(0.75, 1))
+```
+
+::: callout-tip
+**实践要点**
+
+-   每个面板栈只选一种坐标约定：独立轴（RIdeogram 的固定轨道）或带间隔的累积轴。不要在同一个图里混用——无论你是否愿意，读者都会跨面板比较 x 位置。
+-   在染色体之间插入可见间隔（此处 4 Mb）：否则上一条染色体的末端条带与下一条的起始条带会被读成同一个特征。
+-   染色体偏移表只 `left_join()` 一次，并把 offset 留在数据框里；在 `aes()` 里现算 `offset + start`，一旦某图层需要不同的汇总行就会出错。
+-   把着丝粒画成覆盖在带纹填充上的白色掐腰，而不是单独一条轨道：它是染色体的一部分，而不是沿染色体变化的一个数值。
+-   把离群阈值（此处 0.25）声明为一条显式规则；没有说明统计量的虚线只会让读者自己臆造一个。
+:::
 ## 应用
 
 ::: {#fig-ChromosomePlotApplications1}

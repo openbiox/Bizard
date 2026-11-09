@@ -112,4 +112,121 @@ p
 
 As shown in the example figure, a heat map represent the interaction frequency between any two locus. The color displays their intensity of interaction.
 
+### Advanced: normalisation, TAD boundaries and the rotated view
 
+The raw frequency matrix above is enough to see that contacts exist, but not enough to see **structure**: contact probability falls roughly as s^-1 with distance, so the diagonal dominates every panel and the domain blocks are buried in the gradient. The two corrections that make a Hi-C figure informative are (i) **observed/expected normalisation**, dividing each bin by the mean count at its contact distance, and (ii) **TAD boundary annotation** \[3,4\]. The third panel adds the **rotated (45°) presentation** that Juicebox uses, in which a TAD becomes a triangle of constant genomic midpoint and the boundary appears as a vertical edge.
+
+```{r}
+#| label: fig-adv-1NormalizedHic
+#| fig-cap: "Observed/expected Hi-C contact map (100 Mb at 500 kb resolution, simulated with five TADs and s^-1 distance decay): left, the lower triangle of the log2 obs/exp matrix with the four TAD boundaries drawn as white dashed rules; right, the same matrix rotated 45 degrees so genomic midpoint runs along x and separation along y, which makes each TAD a symmetric triangle and each boundary a vertical edge."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10.5
+#| fig-height: 4.6
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(patchwork)
+})
+
+set.seed(43512)
+
+## A 100 Mb chromosome at 500 kb resolution with five TADs. Contacts are drawn
+## as a sparse (i, j, count) table, which is what Hi-C pipelines emit.
+res <- 0.5
+n_bin <- 200
+tad_edges <- c(0, 22, 45, 55, 90, 100)
+tad_id <- cut(seq_len(n_bin) * res - res / 2, breaks = tad_edges,
+              labels = FALSE, include.lowest = TRUE)
+
+contacts <- expand.grid(i = seq_len(n_bin), j = seq_len(n_bin)) |>
+  as_tibble() |>
+  filter(i >= j) |>                       # Hi-C files store the upper triangle
+  mutate(
+    d = (i - j) * res,
+    decay = 1 / (1 + d),                  # P(s) ~ s^-1
+    same_tad = tad_id[i] == tad_id[j],
+    freq = decay * ifelse(same_tad, 3.2, 0.9) * rexp(n(), 1)
+  )
+
+## Observed/expected: divide by the mean count at each contact distance.
+## The ratio is averaged over 2.5 Mb blocks (5 x 500 kb bins), because single
+## bins are pure counting noise (Poisson CV ~ 100%) and would speckle the panel;
+## 2.5 Mb is still finer than the smallest TAD, so the TAD edges stay sharp.
+oe <- contacts |>
+  mutate(d_bin = round(d / res)) |>
+  group_by(d_bin) |>
+  mutate(mean_d = mean(freq)) |>
+  ungroup() |>
+  ## The observed/expected ratio is kept at bin resolution: a 500 kb bin holds
+  ## enough counts that the panel is read as a smooth gradient, and the
+  ## per-distance expectation removes the s^-1 decay without touching the
+  ## TAD-to-TAD contrast.
+  mutate(oe = log2((freq + 0.05) / (mean_d + 0.05)),
+         x = i * res, y = j * res)
+
+bounds <- data.frame(x = tad_edges[-c(1, length(tad_edges))])
+pal <- c("#313695", "#4575b4", "#abd9e9", "#ffffbf", "#fdae61", "#d73027",
+         "#a50026")
+
+p_tri <- ggplot() +
+  geom_raster(data = oe, aes(x, y, fill = oe),
+              interpolate = FALSE) +
+  geom_vline(data = bounds, aes(xintercept = x), colour = "white",
+             linewidth = 0.35, linetype = "22") +
+  geom_hline(data = bounds, aes(yintercept = x), colour = "white",
+             linewidth = 0.35, linetype = "22") +
+  scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
+                       oob = scales::squish) +
+  coord_fixed() +
+  scale_x_continuous(expand = c(0, 0), breaks = seq(0, 100, 25)) +
+  scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, 25)) +
+  labs(x = "position (Mb)", y = "position (Mb)") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid = element_blank(),
+        legend.key.height = unit(0.85, "cm"),
+        legend.text = element_text(size = 6.8),
+        legend.title = element_text(size = 7.2))
+
+## Rotation: u = genomic midpoint, v = contact separation.
+## rotation: u = genomic midpoint, v = contact separation
+rot <- oe |> mutate(u = (i + j) * res / 2, v = (i - j) * res / 2)
+
+p_rot <- ggplot() +
+  geom_raster(data = rot, aes(u, v, fill = oe), interpolate = FALSE) +
+  geom_vline(data = data.frame(u = bounds$x), aes(xintercept = u),
+             colour = "white", linewidth = 0.3, linetype = "22") +
+  scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
+                       oob = scales::squish, guide = "none") +
+  coord_fixed(ratio = 1) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0), breaks = seq(0, 45, 15)) +
+  labs(x = "genomic midpoint (Mb)", y = "separation (Mb)") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid = element_blank(),
+        axis.text = element_text(size = 6.8))
+
+p_tri + p_rot + plot_layout(widths = c(1, 1))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Normalise before you interpret. Raw Hi-C counts always look like a bright diagonal; obs/exp is the correction that makes domain structure (and therefore any claim about TADs) visible.
+-   Declare the normalisation: observed/expected by distance is the simplest; ICE/KR matrix balancing is what most pipelines actually use, and the two produce different-looking panels.
+-   Annotate boundaries as a separate, explicit layer with its stated caller (arrowhead, insulation score, HiCExplorer). A dashed rule that appears without provenance turns a hypothesis into an apparent measurement.
+-   The rotated presentation is not decoration: it puts separation on its own axis, so the reader can see where the domain signal stops. Use it for a single locus, and keep the triangular panel for the genome-wide overview.
+-   State the resolution and the bin size in the caption. A "TAD" at 500 kb bins and a "TAD" at 5 kb bins are different objects with different evidence.
+:::
+
+## Reference
+
+\[1\] Akdemir KC, Chin L. HiCPlotter integrates genomic data with interaction matrices. Genome Biol. 2015;16:198. doi:10.1186/s13059-015-0767-1
+
+\[2\] Durand NC, Robinson JT, Shamim MS, et al. Juicebox provides a visualization system for Hi-C contact maps with unlimited zoom. Cell Syst. 2016;3(1):99-101. doi:10.1016/j.cels.2015.07.012
+
+\[3\] Lieberman-Aiden E, van Berkum NL, Williams L, et al. Comprehensive mapping of long-range interactions reveals folding principles of the human genome. Science. 2009;326(5950):289-293. doi:10.1126/science.1181369
+
+\[4\] Dixon JR, Selvaraj S, Yue F, et al. Topological domains in mammalian genomes identified by analysis of chromatin interactions. Nature. 2012;485(7398):376-380. doi:10.1038/nature11082

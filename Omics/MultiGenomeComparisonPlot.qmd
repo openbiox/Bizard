@@ -1,0 +1,310 @@
+---
+title: "Multi-Genome Comparison"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-assisted, independently reviewed;"
+---
+
+A multi-genome comparison figure has to answer two questions that a table of alignment coordinates cannot: **which blocks are shared**, and **in what order do they appear**. Easyfig, AliTV, BRIG, CGView, gggenomes and SyntenyPortal all visualise the same object — a set of homologous blocks per genome — and differ mainly in how they lay out the tracks: stacked with ribbons, concentric with chords, or normalised against a common genome length.
+
+This tutorial builds three of those views from one hand-specified block table, so each encoding can be checked against a known layout: **stacked ribbons** for adjacency between genomes, **concentric rings with chords** for a many-genome overview, and an **absolute-versus-normalised pair** that shows what the normalisation decision actually costs.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `dplyr`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("patchwork", quietly = TRUE)) install.packages("patchwork")
+
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+Five assemblies share seven homologous blocks. Each genome is an ordered list of blocks plus a strand per block; G2 transposes E and D, G3 has lost E, G4 inverts B and C, and G4 and G5 differ from G1 in total length (+10% and -15%) so that the normalisation panel has something real to show.
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(43516)
+
+## Seven homologous blocks with their lengths in Mb, and five genome
+## assemblies described as ordered block lists. G2 transposes E and D, G3 has
+## lost E, G4 inverts B and C, and G4/G5 differ from G1 in total length by
+## +10% and -15% so that the normalisation question has a visible answer.
+blocks <- c("A", "B", "C", "D", "E", "F", "G")
+blen <- c(A = 1.20, B = 0.85, C = 0.60, D = 0.95, E = 0.45, F = 0.70, G = 0.55)
+
+order_list <- list(
+  G1 = list(b = blocks, o = rep("+", 7)),
+  G2 = list(b = c("A", "B", "C", "E", "D", "F", "G"), o = rep("+", 7)),
+  G3 = list(b = c("A", "B", "C", "D", "F", "G"), o = rep("+", 6)),
+  G4 = list(b = c("A", "C", "B", "D", "E", "F", "G"), o = c("+", "-", "-", rep("+", 4))),
+  G5 = list(b = blocks, o = rep("+", 7))
+)
+scale_factor <- c(G1 = 1.00, G2 = 1.00, G3 = 1.00, G4 = 1.10, G5 = 0.85)
+genomes <- names(order_list)
+
+## Cumulative coordinates, per-genome total and percent-of-genome position.
+ord <- do.call(rbind, lapply(genomes, function(g) {
+  e <- order_list[[g]]
+  data.frame(genome = g, block = e$b, orientation = e$o,
+             len = blen[e$b] * scale_factor[[g]], stringsAsFactors = FALSE)
+})) |>
+  group_by(genome) |>
+  mutate(x0 = cumsum(c(0, len[-n()])), x1 = cumsum(len),
+         total = sum(len), mid = (x0 + x1) / 2) |>
+  ungroup() |>
+  group_by(genome) |>
+  mutate(p0 = 100 * x0 / total, p1 = 100 * x1 / total) |>
+  ungroup()
+
+## Tracks are stacked with a fixed gap; integer y ranges keep blank space out.
+gap <- 0.55
+track_h <- 0.42
+tot <- ord |> group_by(genome) |> summarise(total = first(total), .groups = "drop")
+off <- setNames(cumsum(c(0, tot$total[-nrow(tot)] + gap)), tot$genome)
+ord <- ord |> mutate(y0 = off[genome], y1 = y0 + track_h, ymid = y0 + track_h / 2)
+
+pal <- c(A = "#4c72b0", B = "#dd8452", C = "#55a868", D = "#c44e52",
+         E = "#8172b3", F = "#937860", G = "#da8bc3")
+```
+
+## Visualization
+
+### 1. Stacked Homology Ribbons Between Adjacent Genomes
+
+EasyFig, AliTV, gggenomes and SyntenyPortal all draw multi-genome comparisons as stacked tracks joined by ribbons. The layout answers two questions at once: which blocks are shared, and where the order breaks. The distinction that matters is between the three kinds of break in the data. A **transposition** gives parallel ribbons that shift position between tracks; an **inversion** gives ribbons that cross, because the block is reverse-complemented; a **deletion** gives a gap in the ribbon fan with no partner block at all. Colour by block identity and by orientation, never by track index \[1,2\].
+
+```{r}
+#| label: fig-1MultiGenomeLinear
+#| fig-cap: "Stacked multi-genome comparison of five assemblies sharing seven homologous blocks: each track is one genome, block width encodes block length on a shared Mb axis, and ribbons join the same block in adjacent genomes. G2 is collinear except for transposed E/D, G3 has lost E (the gap in its ribbon fan), and G4 carries an inverted B-C (the crossing orange ribbons, with a white tick marking reverse-strand blocks); G5 keeps the reference order but is 15% shorter, which the absolute axis shows as a shorter track."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 4.6
+#| fig-dpi: 300
+## Ribbons between adjacent genomes: a quadrilateral per shared block. When the
+## orientation differs the bottom edge is reversed, so the ribbon crosses.
+ribbon_pairs <- function(a, b) {
+  A <- ord |> filter(genome == a)
+  B <- ord |> filter(genome == b)
+  m <- merge(A, B, by = "block", suffixes = c(".a", ".b"))
+  do.call(rbind, lapply(seq_len(nrow(m)), function(i) {
+    a0 <- c(m$x0.a[i], m$x1.a[i])
+    b0 <- c(m$x0.b[i], m$x1.b[i])
+    inv <- m$orientation.a[i] != m$orientation.b[i]
+    if (inv) b0 <- rev(b0)
+    data.frame(grp = paste0(a, "-", i), x = c(a0, b0),
+               y = c(m$y1.a[i], m$y1.a[i], m$y0.b[i], m$y0.b[i]), inv = inv)
+  }))
+}
+ribs <- rbind(ribbon_pairs("G1", "G2"), ribbon_pairs("G2", "G3"),
+              ribbon_pairs("G3", "G4"), ribbon_pairs("G4", "G5"))
+
+desc <- c(G1 = "reference", G2 = "E/D transposed", G3 = "E absent",
+          G4 = "B-C inverted", G5 = "all blocks, 15% shorter")
+lab <- data.frame(y = off + track_h / 2, lab = paste0(genomes, "  ", desc[genomes]))
+
+p_linear <- ggplot() +
+  geom_polygon(data = filter(ribs, !inv), aes(x, y, group = grp),
+               fill = "#a8a8a8", alpha = 0.36) +
+  geom_polygon(data = filter(ribs, inv), aes(x, y, group = grp),
+               fill = "#e08214", alpha = 0.55) +
+  geom_rect(data = ord, aes(xmin = x0, xmax = x1, ymin = y0, ymax = y1, fill = block),
+            colour = "white", linewidth = 0.35) +
+  geom_text(data = filter(ord, len > 0.55), aes(mid, ymid, label = block),
+            size = 2.7, colour = "#111111") +
+  geom_segment(data = filter(ord, orientation == "-"),
+               aes(x = x0 + 0.03, xend = x0 + 0.03, y = y0 + 0.04, yend = y1 - 0.04),
+               linewidth = 0.9, colour = "#ffffff") +
+  scale_fill_manual(values = pal, guide = "none") +
+  scale_y_continuous(breaks = lab$y, labels = lab$lab,
+                     expand = expansion(mult = c(0.012, 0.012))) +
+  scale_x_continuous(expand = expansion(mult = c(0.008, 0.012))) +
+  labs(x = "genome coordinate (Mb)", y = NULL,
+       caption = "grey ribbons = collinear blocks; orange = inverted block order; white tick = reverse strand") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.y = element_text(size = 7.5, colour = "#333333", hjust = 1),
+        plot.caption = element_text(size = 7.2, colour = "#525252", hjust = 0),
+        plot.caption.position = "plot",
+        plot.margin = margin(6, 10, 2, 4))
+
+p_linear
+```
+
+### 2. Concentric Rings With Chords
+
+The BRIG and CGView layout is the circular counterpart: each genome is a ring, and homologies are chords across the centre. Its advantage is that many genomes fit in one figure; its cost is that ring order and angular position carry no intrinsic meaning, so the reader must be told explicitly which ring is which and that a boundary aligns radially \[3\]. Keep the sweep, the origin and the sector gap identical between rings, or the radial alignment that the layout depends on silently breaks.
+
+```{r}
+#| label: fig-2MultiGenomeRing
+#| fig-cap: "BRIG-style concentric rings: five genomes share one 12 o'clock origin and run clockwise over the same 360 degrees, so a block boundary lines up radially and the loss of E in G3 appears as a hole in that one ring. Chords connect blocks between the outer ring (G1) and G4; the two inverted blocks (B, C) are drawn orange and cross their partners, which is the only way a circular layout can show orientation."
+#| out.width: "62%"
+#| warning: false
+#| message: false
+#| fig-width: 5.6
+#| fig-height: 5.6
+#| fig-dpi: 300
+## Concentric rings (BRIG layout) plus chords between the outermost ring (G1)
+## and the inverted genome (G4). Each ring starts at 12 o'clock and runs
+## clockwise over the same 360° sweep, so a sector boundary lines up radially
+## and the missing block in G3 shows up as a hole in that ring only.
+ring_r <- c(G1 = 1.00, G2 = 0.92, G3 = 0.84, G4 = 0.76, G5 = 0.68)
+ring_w <- 0.05
+th0 <- 90
+sweep <- 360
+ang <- function(p) th0 - sweep * p / 100
+d2r <- function(d) d * pi / 180
+
+arc_df <- do.call(rbind, lapply(seq_len(nrow(ord)), function(i) {
+  a <- ord[i, ]
+  th <- seq(ang(a$p0), ang(a$p1), length.out = 60)
+  th[1] <- th[1] - 0.4              # 0.8° gap so adjacent blocks stay separate
+  th[length(th)] <- th[length(th)] + 0.4
+  r <- ring_r[[a$genome]]
+  data.frame(grp = paste0(a$genome, a$block), block = a$block,
+             x = c(r * cos(d2r(th)), (r - ring_w) * rev(cos(d2r(th)))),
+             y = c(r * sin(d2r(th)), (r - ring_w) * rev(sin(d2r(th)))))
+}))
+
+ch <- merge(ord |> filter(genome == "G1") |> select(block, p0.a = p0, p1.a = p1),
+            ord |> filter(genome == "G4") |> select(block, p0.b = p0, p1.b = p1),
+            by = "block") |>
+  mutate(inv = block %in% c("B", "C"))
+chord_df <- do.call(rbind, lapply(seq_len(nrow(ch)), function(i) {
+  s <- seq(0, 1, length.out = 40)
+  p0a <- ch$p0.a[i]; p1a <- ch$p1.a[i]; p0b <- ch$p0.b[i]; p1b <- ch$p1.b[i]
+  if (ch$inv[i]) { tmp <- p0b; p0b <- p1b; p1b <- tmp }
+  r0 <- ring_r[["G1"]]; r1 <- ring_r[["G4"]]
+  px <- function(p, r) c(r * cos(d2r(ang(p))), r * sin(d2r(ang(p))))
+  A <- cbind(px(p0a, r0), px(p1a, r0))
+  B <- cbind(px(p0b, r1), px(p1b, r1))
+  bez <- function(p, q, ctrl = 0.6) {
+    cx <- ctrl * (p[1] + q[1]) / 2
+    cy <- ctrl * (p[2] + q[2]) / 2
+    cbind((1 - s)^2 * p[1] + 2 * (1 - s) * s * cx + s^2 * q[1],
+          (1 - s)^2 * p[2] + 2 * (1 - s) * s * cy + s^2 * q[2])
+  }
+  e1 <- bez(A[, 1], B[, 1])
+  e2 <- bez(A[, 2], B[, 2])
+  data.frame(grp = paste0("c", i), block = ch$block[i], inv = ch$inv[i],
+             x = c(e1[, 1], rev(e2[, 1])), y = c(e1[, 2], rev(e2[, 2])))
+}))
+
+p_circle <- ggplot() +
+  geom_polygon(data = chord_df, aes(x, y, group = grp, fill = inv),
+               alpha = 0.22, colour = "#8c8c8c", linewidth = 0.12) +
+  geom_polygon(data = arc_df, aes(x, y, group = grp, fill = block), colour = NA) +
+  annotate("text", x = 0, y = 0.16, label = "G1 vs G4", fontface = "bold",
+           size = 2.9, colour = "#222222") +
+  annotate("text", x = 0, y = 0.00, label = "orange chord =\ninverted block order",
+           size = 2.4, colour = "#7f3b08", lineheight = 0.9) +
+  annotate("text", x = -0.05, y = ring_r - ring_w / 2, label = names(ring_r),
+           size = 2.2, colour = "#333333", hjust = 1) +
+  scale_fill_manual(values = c(pal, `TRUE` = "#e08214", `FALSE` = "#bdbdbd"),
+                    guide = "none") +
+  coord_equal(xlim = c(-1.06, 1.02), ylim = c(-1.06, 1.06), clip = "off") +
+  theme_void()
+
+p_circle
+```
+
+### 3. Absolute Versus Normalised Coordinates
+
+This is the decision that causes most misinterpretation in multi-genome figures. On an **absolute** axis a longer genome produces a longer track, and block width is proportional to real block length. On a **percent-of-genome** axis every genome is stretched to 100%, which removes the length differences that may be the point of the figure, and which makes two blocks of very different sizes look the same width \[4\]. Neither is wrong; the figure is wrong when it does not say which one it is. Draw both when the comparison depends on length, and write the choice into the caption.
+
+```{r}
+#| label: fig-3MultiGenomeNormalised
+#| fig-cap: "The same G1/G4 comparison on an absolute axis (top) and a percent-of-genome axis (bottom). G4 is 10% longer, so its absolute track runs to 5.83 Mb while G1 ends at 5.30 Mb; on the normalised axis both tracks end at 100% and the 10% length difference disappears. The normalised panel is right for comparing block order and wrong for comparing block length."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 3.3
+#| fig-dpi: 300
+## The same two genomes on an absolute axis and on a percent-of-genome axis.
+## G4 is 10% longer than G1, so on the absolute axis its track runs to 5.83 Mb;
+## on the normalised axis both tracks end exactly at 100%.
+long <- rbind(
+  ord |> transmute(genome, block, measure = "absolute (Mb)", lo = x0, hi = x1, pos = (x0 + x1) / 2),
+  ord |> transmute(genome, block, measure = "percent of genome", lo = p0, hi = p1, pos = (p0 + p1) / 2)
+)
+
+make_panel <- function(meas, x_lim, subtitle) {
+  d <- filter(long, measure == meas)
+  m <- merge(filter(d, genome == "G1"), filter(d, genome == "G4"), by = "block")
+  links <- do.call(rbind, lapply(seq_len(nrow(m)), function(i) {
+    inv <- m$block[i] %in% c("B", "C")
+    b0 <- c(m$lo.y[i], m$hi.y[i])
+    if (inv) b0 <- rev(b0)
+    data.frame(grp = i, inv = inv, x = c(m$lo.x[i], m$hi.x[i], b0),
+               y = c(3.6, 3.6, 2.4, 2.4))
+  }))
+  ggplot() +
+    geom_polygon(data = links, aes(x, y, group = grp, fill = inv),
+                 alpha = 0.45, colour = NA) +
+    geom_rect(data = d, aes(xmin = lo, xmax = hi, ymin = 3.6, ymax = 4.0, fill = block),
+              colour = "white", linewidth = 0.3, alpha = 0.92) +
+    geom_rect(data = d, aes(xmin = lo, xmax = hi, ymin = 2.0, ymax = 2.4, fill = block),
+              colour = "white", linewidth = 0.3, alpha = 0.92) +
+    geom_text(data = filter(d, genome == "G1"), aes(pos, 3.8, label = block),
+              size = 2.3, colour = "#111111") +
+    geom_text(data = filter(d, genome == "G4"), aes(pos, 2.2, label = block),
+              size = 2.3, colour = "#111111") +
+    annotate("text", x = -0.01 * x_lim, y = c(3.8, 2.2), label = c("G1", "G4"),
+             hjust = 1, size = 2.7, fontface = "bold") +
+    annotate("text", x = x_lim * 0.5, y = 4.2, label = subtitle,
+             size = 2.5, colour = "#333333") +
+    scale_fill_manual(values = c(pal, `TRUE` = "#e08214", `FALSE` = "#bdbdbd"),
+                      guide = "none") +
+    coord_cartesian(xlim = c(0, x_lim), ylim = c(1.9, 4.3), clip = "off") +
+    labs(x = meas, y = NULL) +
+    theme_minimal(base_size = 9) +
+    theme(panel.grid.major.y = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.text.y = element_blank(),
+          plot.margin = margin(2, 8, 2, 30))
+}
+
+p_abs <- make_panel("absolute (Mb)", 6.2, "absolute axis: G4 ends at 5.83 Mb")
+p_pct <- make_panel("percent of genome", 104, "normalised axis: both end at 100%")
+
+p_abs / p_pct
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Encode orientation explicitly. A ribbon that crosses already means inversion, but add a strand marker inside the block; otherwise a crossing produced by a transposition looks the same as an inversion.
+-   Keep block width proportional to block length on the absolute panel. Equal-width blocks make a small block look like a large one and hide which rearrangement moved more sequence.
+-   Put the genome names as row labels, not as text over the ribbons. Labels placed inside the plot area collide with ribbons and with each other, and a reader cannot tell which track a label belongs to.
+-   State the coordinate system in the caption: absolute Mb or percent of genome. When both are shown, say what the reader should compare in each panel.
+-   Fix the ring origin, sweep and gap across rings. Radial alignment is the only thing that makes a concentric design readable, and it is the first property lost when the panels are produced by separate tool runs.
+-   Do not compare block lengths across a normalised figure. If length is part of the claim, the absolute panel is the only valid one.
+:::
+
+## Application
+
+Combining genomes of different sizes, or comparing a finished assembly against a draft, needs the layout that answers the question being asked. **Transposable element and plasmid comparisons** use stacked ribbons because orientation matters. **Prokaryote pan-genome summaries** use concentric rings because the number of genomes is large and only the shared core needs to be tracked. **Plant and animal comparative genomics** usually need the absolute panel, because block length itself is the result (expansion or contraction of repeat families). When the figure is going into a paper, keep the code with the figure: the normalisation choice and the ring origin both change the reading, and both are invisible in the finished PNG.
+
+## Reference
+\[1\] Sullivan MJ, Petty NK, Beatson SA. Easyfig: a genome comparison visualizer. Bioinformatics. 2011;27(7):1009-1010. doi:10.1093/bioinformatics/btr039
+
+\[2\] Ankenbrand MJ, Hohlfeld S, Hackl T, Förster F. AliTV—interactive visualization of whole genome comparisons. PeerJ Comput Sci. 2017;3:e116. doi:10.7717/peerj-cs.116
+
+\[3\] Alikhan NF, Petty NK, Ben Zakour NL, Beatson SA. BLAST Ring Image Generator (BRIG): simple prokaryote genome comparisons. BMC Genomics. 2011;12:402. doi:10.1186/1471-2164-12-402
+
+\[4\] Hackl T, Ankenbrand MJ, van Adrichem B. gggenomes: a grammar of graphics for visualising genome annotation and gene synteny. arXiv. 2024. doi:10.48550/arXiv.2411.13556
