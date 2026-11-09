@@ -413,7 +413,62 @@ ggplot(v2, aes(logFC, y)) +
 -   Say the gates in the caption exactly as coded; "more significant" invites readers to invent thresholds you did not use.
 :::
 
-## Reference## Reference
+### 6. Bubble Volcano on the Enrichment-Score Axis (FigureYa75bubble_volcano)
+
+FigureYa75's volcano swaps the usual logFC x axis for the **enrichment score** of pathway terms, and — the signature move — **bubbles grow only for the selected pathways** (A/C/H/E here): the other terms stay size-1 grey so the eye lands on the picks. Terms above the p = 0.05 dashed line and outside the |score| = 1.5 gates get their term-ID label; the y axis is already −log10(P) in the input, so no transformation is needed:
+
+```{r}
+#| label: fig-6.1BubbleVolcano
+#| fig-cap: "Bubble volcano of 40 simulated enrichment terms: x = enrichment score, y = -log10(P); bubbles sized only for the four selected pathways (coloured), grey size-1 points for the rest; dashed gates at p = 0.05 and |score| = 1.5; selected terms above the gates labeled."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 5.8
+
+## freeze:auto re-executes only new chunks in a fresh session — re-attach here
+suppressPackageStartupMessages({library(ggplot2)})
+set.seed(7501)
+n_bv <- 40
+bv <- data.frame(
+  ID = paste0("Term", sprintf("%02d", 1:n_bv)),
+  score = rnorm(n_bv, 0, 1.2),
+  `-log10P` = rexp(n_bv, 0.45) + 0.3,   # already -log10(P) scale, like the reference input
+  size = sample(4:14, n_bv, TRUE),
+  check.names = FALSE)   # keep the "-log10P" column name verbatim
+sel <- c("PathwayA", "PathwayC", "PathwayH", "PathwayE")
+bv$group <- sample(c(sel, paste0("Other", 1:4)), n_bv, TRUE,
+                   prob = c(0.15, 0.15, 0.15, 0.15, 0.1, 0.1, 0.1, 0.1))
+cols.code <- setNames(c("#1B9E77", "#D95F02", "#7570B3", "#E7298A",
+                        rep("grey65", 4)), c(sel, paste0("Other", 1:4)))
+bv$size[!bv$group %in% sel] <- 1.4
+bv$`-log10P` <- pmax(bv$`-log10P`, 0.5)
+
+ggplot(bv, aes(score, `-log10P`)) +
+  geom_point(aes(colour = group, size = size), alpha = 0.75) +
+  geom_hline(yintercept = -log10(0.05), linetype = 2, linewidth = 0.5) +
+  geom_vline(xintercept = c(-1.5, 1.5), linetype = 2, linewidth = 0.5) +
+  geom_text(data = subset(bv, group %in% sel & `-log10P` > 2),
+            aes(label = ID, colour = group), size = 2.8, vjust = -0.9,
+            show.legend = FALSE) +
+  scale_colour_manual(values = cols.code, name = NULL) +
+  scale_size_continuous(range = c(1.5, 9), guide = "none") +
+  scale_y_continuous(breaks = seq(0, 15, 3), expand = expansion(mult = c(0, 0.06))) +
+  labs(x = "Enrichment score", y = bquote(~-Log[10] ~ "P value"),
+       title = "Bubble volcano: bubbles sized only for the selected pathways",
+       colour = NULL) +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The input's `-log10P` column is **already transformed** — putting it on a log y scale flattens everything; keep linear y and break at integer multiples.
+-   Size-as-selection is the whole trick: growing every bubble by its gene count makes the 40 grey circles compete with the four picks; here only the picks have `size > 1.4`.
+-   The column name `-log10P` starts with a dash — create the data frame with `check.names = FALSE` or every later `$`-access silently returns NULL.
+:::
+
+## Reference
 
 \[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 

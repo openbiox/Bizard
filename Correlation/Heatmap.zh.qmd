@@ -1423,6 +1423,70 @@ pheatmap(plotdata, cluster_rows = FALSE, cluster_cols = FALSE,
 -   截断到 ±3 之前务必按基因做 z-score 标准化：截断能防止单个离群样本使色标饱和。
 :::
 
+### 4.11 分箱中位数相关面板（FigureYa73batchCorrelation）
+
+FigureYa73 \[11\] 展示目标基因的表达如何与其最相关的伙伴同行：样本按目标基因排序、切成 20 个等大分箱，每个伙伴的**逐箱中位数表达**对目标的分箱中位数作图，面板标题写各自的 Pearson r / P。分箱把数万个噪声点（参考文档的 ChIP-seq peak）变成干净的单调趋势；网格面板装配模拟矩阵的正负相关 top 6：
+
+```{r}
+#| label: fig-4.11BinnedCorr
+#| fig-cap: "模拟目标基因的分箱中位数相关面板：排序样本切成 20 箱；每面板画一个 top 相关伙伴的分箱中位数对目标分箱中位数，带 lm 线，标题写 r / P。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+## freeze:auto 只在新会话中重跑新 chunk——在此重新挂载包
+suppressPackageStartupMessages({library(ggplot2); library(dplyr); library(tidyr)})
+set.seed(7301)
+n_bc <- 400
+symbol <- "HDAC1"
+top6_pos <- paste0("P", 1:6); top6_neg <- paste0("N", 1:6)
+expr119 <- matrix(rnorm(n_bc * 13, 6, 1), n_bc, 13,
+                  dimnames = list(NULL, c(symbol, top6_pos, top6_neg)))
+expr119[, top6_pos] <- expr119[, top6_pos] + expr119[, 1] * 0.7
+expr119[, top6_neg] <- expr119[, top6_neg] - expr119[, 1] * 0.6
+genesexps <- as.data.frame(expr119)
+sortgenesexps <- genesexps[order(genesexps[, 1]), ]
+samplenum <- nrow(sortgenesexps)
+pointnumber <- 20
+group <- as.integer(cut(1:samplenum,
+                        breaks = c(seq(0.5, samplenum, by = samplenum / pointnumber),
+                                   samplenum + 0.5)))
+ddf <- data.frame(row.names = 1:pointnumber)
+allgenes <- colnames(expr119)
+for (i in seq_along(allgenes)) {
+  ddf[[allgenes[i]]] <- tapply(sortgenesexps[, i], group, median)
+}
+cor_df <- do.call(rbind, lapply(allgenes[-1], function(g) {
+  ct <- cor.test(expr119[, symbol], expr119[, g], method = "pearson")
+  data.frame(variable = g, r = ct$estimate, P = ct$p.value)
+}))
+mddf <- tidyr::pivot_longer(ddf, cols = -dplyr::all_of(symbol),
+                            names_to = "variable", values_to = "value")
+mddf$r <- cor_df$r[match(mddf$variable, cor_df$variable)]
+mddf$P <- cor_df$P[match(mddf$variable, cor_df$variable)]
+plist <- lapply(top6_pos[1:6], function(friend) {
+  df <- mddf[mddf$variable == friend, ]
+  ggplot(df, aes(x = .data[[symbol]], y = value)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE, colour = "#206BB5") +
+    ggtitle(paste0("r = ", round(unique(df$r), 2),
+                   "\nP = ", sprintf("%1.1e", unique(df$P)))) +
+    xlab(symbol) + ylab(friend) +
+    theme_classic(base_size = 10)
+})
+cowplot::plot_grid(plotlist = plist, ncol = 3)
+```
+
+::: callout-tip
+**实践要点**
+
+-   `cut(1:n, breaks = seq(0.5, n, by = n/pointnumber))` 恰好产生 `pointnumber` 个等大分箱；当 `pointnumber = NULL` 时参考文档画全部样本——两种模式挂在同一参数后面。
+-   面板网格共享 x 轴（目标的分箱中位数），即使每个面板有自己的 y 标度，趋势也能跨面板比较。
+-   `aes(x = .data[[symbol]])`（embrace + bang-bang）把列名放在变量里且无 rlang 歧义——`aes_string()` 已被软弃用。
+:::
+
 ## 应用场景
 
 ### 1. 基础热图

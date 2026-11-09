@@ -714,7 +714,60 @@ draw(oncoPrint(mygene[, colnames(mat01)], get_type = function(x) x,
 -   Keep clinical annotation rows to 2-4 factors; the bottom strip is for reading mutation-phenotype alignment, not a second heatmap.
 :::
 
-## Applications
+### 12. Co-occurrence / Mutual Exclusivity by Correlogram (FigureYa70mutationEvents)
+
+FigureYa70mutationEvents \[5\] asks the pairwise question behind every oncoprint: do two genes mutate together (co-occurrence, positive association) or avoid each other (mutual exclusivity, negative)? Each pair's 2x2 mutated/not table is tested with Fisher's exact test, the phi correlation coefficient is drawn as a `corrplot` ellipse coloured by sign and sized by magnitude, and the grey cross marks pairs whose test did not pass 0.05. The block below runs the full pipeline on a simulated 8-gene matrix with one exclusivity pair (TP53-KRAS) and one co-occurrence pair (APC-EGFR) planted:
+
+```{r}
+#| label: fig-12.1MutCorrplot
+#| fig-cap: "Co-occurrence / mutual exclusivity correlogram of 8 simulated genes: ellipse colour and shape encode the phi correlation of the mutated/not 2x2 tables; grey crosses mark non-significant Fisher tests (p >= 0.05)."
+#| out.width: "70%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 7
+
+## freeze:auto re-executes only new chunks in a fresh session — re-attach here
+suppressPackageStartupMessages({library(corrplot)})
+set.seed(7001)
+n_sm2 <- 220
+genes2 <- c("TP53", "KRAS", "BRAF", "PIK3CA", "PTEN", "APC", "EGFR", "RB1")
+mut <- sapply(c(0.5, 0.3, 0.22, 0.35, 0.15, 0.4, 0.12, 0.18),
+              function(f) sample(c(0, 1), n_sm2, TRUE, c(1 - f, f)))
+colnames(mut) <- genes2
+## plant one mutual-exclusivity pair (TP53-KRAS) and one co-occurrence pair (APC-EGFR)
+mut[, 2] <- ifelse(mut[, 1] == 1, sample(c(0, 1), n_sm2, TRUE, c(0.85, 0.15)),
+                   sample(c(0, 1), n_sm2, TRUE, c(0.35, 0.65)))
+mut[, 6] <- ifelse(mut[, 7] == 1, sample(c(0, 1), n_sm2, TRUE, c(0.15, 0.85)),
+                   sample(c(0, 1), n_sm2, TRUE, c(0.7, 0.3)))
+corr_mat <- matrix(NA, length(genes2), length(genes2), dimnames = list(genes2, genes2))
+pval_mat <- corr_mat
+for (i in 1:(length(genes2) - 1)) for (j in (i + 1):length(genes2)) {
+  t1 <- table(factor(mut[, i], c(0, 1)), factor(mut[, j], c(0, 1)))
+  ft <- fisher.test(t1)
+  corr_mat[i, j] <- corr_mat[j, i] <- cor(mut[, i], mut[, j])
+  pval_mat[i, j] <- pval_mat[j, i] <- ft$p.value
+}
+diag(corr_mat) <- 1; diag(pval_mat) <- 0
+
+corrplot(corr_mat, method = "ellipse", type = "upper",
+         p.mat = pval_mat, sig.level = 0.05, insig = "pch",
+         pch.cex = 2.2, pch.col = "grey30",
+         tl.col = "black", tl.srt = 45,
+         col = colorRampPalette(c("#2166AC", "#FFFFFF", "#B2182B"))(200),
+         title = "Co-occurrence / mutual exclusivity (phi, Fisher test)",
+         mar = c(1, 1, 3, 1))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The phi coefficient on a 2x2 table is the signed effect size; Fisher's exact p is the evidence — the correlogram shows **both** (ellipse = effect, cross = not significant), which is why `insig = "pch"` beats hiding non-significant pairs.
+-   The reference uses the `discover` package's tissue-adjusted test for real TCGA data; the plain Fisher test here ignores sample purity and sequencing coverage — state that caveat when substituting.
+-   Test all pairs and correct (the loop above reports raw p; run `p.adjust` over the 28 pairs before drawing if the figure goes into a paper).
+:::
+
+## Applications## Applications
 
 -   **Cohort characterization**: first-line summary of a cancer genomics study, usually split by subtype, stage or treatment arm.
 -   **Driver discovery**: recurrently altered genes and their co-occurrence or mutual exclusivity patterns.
@@ -730,3 +783,5 @@ draw(oncoPrint(mygene[, colnames(mat01)], get_type = function(x) x,
 \[3\] Gu Z, Eils R, Schlesner M. Complex heatmaps reveal patterns and correlations in multidimensional genomic data. Bioinformatics. 2016;32(18):2847-2849. doi:10.1093/bioinformatics/btw313
 
 \[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

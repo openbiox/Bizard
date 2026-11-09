@@ -656,6 +656,54 @@ p112
 -   `gseaplot2()` 的输出是 patchwork/gglist：在顶层加 `theme()` 会在部分设备渲染成黑色画布——请原样打印。
 :::
 
+### 10. ssGSEA 免疫浸润热图（FigureYa71ssGSEA_update）
+
+FigureYa71 \[8\] 用**单样本 GSEA** 量化免疫浸润：24 个免疫细胞 marker 基因集经 `GSVA::ssgseaParam()` + `gsva()` 投影到表达矩阵，样本 x 细胞类型的得分矩阵画成行标准化的 pheatmap——样本恰如参考文档那样聚成免疫热与免疫冷两组：
+
+```{r}
+#| label: fig-10.1ssGSEA
+#| fig-cap: "40 个模拟样本 x 6 类免疫细胞的 ssGSEA 浸润热图（行标准化得分）：注释条分隔植入的免疫热与免疫冷亚组；pheatmap 配 navy-white-firebrick 渐变。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 5
+
+## freeze:auto 只在新会话中重跑新 chunk——在此重新挂载包
+suppressPackageStartupMessages({library(GSVA); library(pheatmap)})
+set.seed(7101)
+n_g <- 900; n_s3 <- 40
+expr118 <- matrix(rnorm(n_g * n_s3, 8, 1), n_g, n_s3,
+                  dimnames = list(paste0("EG", 1:n_g), paste0("S", sprintf("%02d", 1:n_s3))))
+immune_sets <- list(
+  CD8_T = paste0("EG", 1:60), NK = paste0("EG", 61:110),
+  B_cell = paste0("EG", 111:170), Mono = paste0("EG", 171:230),
+  Treg = paste0("EG", 231:280), DC = paste0("EG", 281:320))
+subtype <- factor(rep(c("hot", "cold"), each = n_s3 / 2))
+for (s in names(immune_sets)) {
+  idx <- immune_sets[[s]]
+  eff <- if (s %in% c("CD8_T", "NK")) c(1.4, -0.9) else c(-0.6, 0.8)
+  expr118[idx, subtype == "hot"] <- expr118[idx, subtype == "hot"] + eff[1]
+  expr118[idx, subtype == "cold"] <- expr118[idx, subtype == "cold"] + eff[2]
+}
+params <- ssgseaParam(exprData = as.matrix(expr118), geneSets = immune_sets)
+ss_es <- t(as.data.frame(gsva(params)))
+ann <- data.frame(Subtype = subtype); rownames(ann) = colnames(expr118)
+pheatmap(ss_es, scale = "row", show_colnames = FALSE,
+         annotation_col = ann,
+         annotation_colors = list(Subtype = c(hot = "#B2182B", cold = "#2166AC")),
+         color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+         fontsize = 9)
+```
+
+::: callout-tip
+**实践要点**
+
+-   GSVA ≥ 4.x 把调用封装为显式参数对象：`ssgseaParam(exprData = as.matrix(expr), geneSets = list)` 再 `gsva(params)`——旧的 `gsva(expr, geneSets, method = "ssgsea")` 写法会报错。
+-   ssGSEA 得分**不可跨数据集比较**（参考文档自己的警告）：在同一矩阵内，热图 `scale = "row"` 正是让不同得分范围的细胞类型变得可读的手段。
+-   marker 集必须**按细胞类型去重**（`lapply(..., unique)`），重复基因会在排序游走中被双倍计数。
+:::
+
 ## Reference## Reference
 
 \[1\] Subramanian A, Tamayo P, Mootha VK, et al. Gene set enrichment analysis: a knowledge-based approach for interpreting genome-wide expression profiles. Proc Natl Acad Sci USA. 2005;102(43):15545-15550. doi:10.1073/pnas.0506580102

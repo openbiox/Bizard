@@ -712,7 +712,60 @@ draw(oncoPrint(mygene[, colnames(mat01)], get_type = function(x) x,
 -   临床注释行控制在 2-4 个因子：底部色条是用来读突变-表型对齐的，不是第二张热图。
 :::
 
-## 应用场景
+### 12. 相关图上的共发生/互斥（FigureYa70mutationEvents）
+
+FigureYa70mutationEvents \[5\] 提出每个 oncoprint 背后的配对问题：两个基因是一起突变（共发生、正相关）还是互相回避（互斥、负相关）？每对基因的 2x2 突变/非突变表用 Fisher 精确检验，phi 相关系数以 `corrplot` 椭圆呈现——颜色编码符号、形状大小编码强度，灰色叉号标记未通过 0.05 的配对。下块在模拟的 8 基因矩阵上跑完整流程，植入一对互斥（TP53-KRAS）与一对共发生（APC-EGFR）：
+
+```{r}
+#| label: fig-12.1MutCorrplot
+#| fig-cap: "8 个模拟基因的共发生/互斥相关图：椭圆的颜色与形状编码突变/非突变 2x2 表的 phi 相关；灰色叉号标记 Fisher 检验不显著（p >= 0.05）的配对。"
+#| out.width: "70%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 7
+
+## freeze:auto 只在新会话中重跑新 chunk——在此重新挂载包
+suppressPackageStartupMessages({library(corrplot)})
+set.seed(7001)
+n_sm2 <- 220
+genes2 <- c("TP53", "KRAS", "BRAF", "PIK3CA", "PTEN", "APC", "EGFR", "RB1")
+mut <- sapply(c(0.5, 0.3, 0.22, 0.35, 0.15, 0.4, 0.12, 0.18),
+              function(f) sample(c(0, 1), n_sm2, TRUE, c(1 - f, f)))
+colnames(mut) = genes2
+## 植入一对互斥（TP53-KRAS）与一对共发生（APC-EGFR）
+mut[, 2] <- ifelse(mut[, 1] == 1, sample(c(0, 1), n_sm2, TRUE, c(0.85, 0.15)),
+                   sample(c(0, 1), n_sm2, TRUE, c(0.35, 0.65)))
+mut[, 6] <- ifelse(mut[, 7] == 1, sample(c(0, 1), n_sm2, TRUE, c(0.15, 0.85)),
+                   sample(c(0, 1), n_sm2, TRUE, c(0.7, 0.3)))
+corr_mat <- matrix(NA, length(genes2), length(genes2), dimnames = list(genes2, genes2))
+pval_mat <- corr_mat
+for (i in 1:(length(genes2) - 1)) for (j in (i + 1):length(genes2)) {
+  t1 <- table(factor(mut[, i], c(0, 1)), factor(mut[, j], c(0, 1)))
+  ft <- fisher.test(t1)
+  corr_mat[i, j] = corr_mat[j, i] = cor(mut[, i], mut[, j])
+  pval_mat[i, j] = pval_mat[j, i] = ft$p.value
+}
+diag(corr_mat) = 1; diag(pval_mat) = 0
+
+corrplot(corr_mat, method = "ellipse", type = "upper",
+         p.mat = pval_mat, sig.level = 0.05, insig = "pch",
+         pch.cex = 2.2, pch.col = "grey30",
+         tl.col = "black", tl.srt = 45,
+         col = colorRampPalette(c("#2166AC", "#FFFFFF", "#B2182B"))(200),
+         title = "Co-occurrence / mutual exclusivity (phi, Fisher test)",
+         mar = c(1, 1, 3, 1))
+```
+
+::: callout-tip
+**实践要点**
+
+-   2x2 表上的 phi 系数是带符号的效应量；Fisher 精确 p 是证据——相关图**两者都展示**（椭圆 = 效应，叉 = 不显著），这也是 `insig = "pch"` 优于直接隐藏的原因。
+-   真实 TCGA 数据请用 `discover` 包的组织校正检验；此处的朴素 Fisher 检验忽略样本纯度与测序覆盖度——替代时请写明该限制。
+-   全配对检验后要校正（上例循环输出的是原始 p；若进论文，先对 28 对做 `p.adjust` 再作图）。
+:::
+
+## 应用场景## 应用场景
 
 -   **队列刻画**：肿瘤基因组学研究的一线总结图，通常按亚型、分期或治疗臂拆分。
 -   **驱动基因发现**：高频突变基因及其共现或互斥模式。
@@ -728,3 +781,5 @@ draw(oncoPrint(mygene[, colnames(mat01)], get_type = function(x) x,
 \[3\] Gu Z, Eils R, Schlesner M. Complex heatmaps reveal patterns and correlations in multidimensional genomic data. Bioinformatics. 2016;32(18):2847-2849. doi:10.1093/bioinformatics/btw313
 
 \[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[5\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

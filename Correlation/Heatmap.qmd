@@ -1419,7 +1419,71 @@ pheatmap(plotdata, cluster_rows = FALSE, cluster_cols = FALSE,
 -   Always z-score per gene before truncating to ±3: the truncation keeps one outlier sample from saturating the colour scale.
 :::
 
-## Applications
+### 4.11 Binned-Median Correlation Panels (FigureYa73batchCorrelation)
+
+FigureYa73 \[11\] shows how a target gene's expression travels with its top-correlated partners: samples are sorted by the target, split into 20 equal bins, the **per-bin median expression** of each partner is plotted against the target's binned median, and each panel titles its Pearson r / P. Binning turns tens of thousands of noisy points (the reference's ChIP-seq peaks) into a clean monotone trend; the grid assembles the six positive and six negative top genes from a simulated matrix:
+
+```{r}
+#| label: fig-4.11BinnedCorr
+#| fig-cap: "Binned-median correlation panels for a simulated target gene: 20 bins over the sorted samples; each panel plots a top-correlated partner's binned median vs the target's binned median with an lm line and titles r / P."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6
+
+## freeze:auto re-executes only new chunks in a fresh session — re-attach here
+suppressPackageStartupMessages({library(ggplot2); library(dplyr); library(tidyr)})
+set.seed(7301)
+n_bc <- 400
+symbol <- "HDAC1"
+top6_pos <- paste0("P", 1:6); top6_neg <- paste0("N", 1:6)
+expr119 <- matrix(rnorm(n_bc * 13, 6, 1), n_bc, 13,
+                  dimnames = list(NULL, c(symbol, top6_pos, top6_neg)))
+expr119[, top6_pos] <- expr119[, top6_pos] + expr119[, 1] * 0.7
+expr119[, top6_neg] <- expr119[, top6_neg] - expr119[, 1] * 0.6
+genesexps <- as.data.frame(expr119)
+sortgenesexps <- genesexps[order(genesexps[, 1]), ]
+samplenum <- nrow(sortgenesexps)
+pointnumber <- 20
+group <- as.integer(cut(1:samplenum,
+                        breaks = c(seq(0.5, samplenum, by = samplenum / pointnumber),
+                                   samplenum + 0.5)))
+ddf <- data.frame(row.names = 1:pointnumber)
+allgenes <- colnames(expr119)
+for (i in seq_along(allgenes)) {
+  ddf[[allgenes[i]]] <- tapply(sortgenesexps[, i], group, median)
+}
+cor_df <- do.call(rbind, lapply(allgenes[-1], function(g) {
+  ct <- cor.test(expr119[, symbol], expr119[, g], method = "pearson")
+  data.frame(variable = g, r = ct$estimate, P = ct$p.value)
+}))
+mddf <- tidyr::pivot_longer(ddf, cols = -dplyr::all_of(symbol),
+                            names_to = "variable", values_to = "value")
+mddf$r <- cor_df$r[match(mddf$variable, cor_df$variable)]
+mddf$P <- cor_df$P[match(mddf$variable, cor_df$variable)]
+plist <- lapply(top6_pos[1:6], function(friend) {
+  df <- mddf[mddf$variable == friend, ]
+  ggplot(df, aes(x = .data[[symbol]], y = value)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE, colour = "#206BB5") +
+    ggtitle(paste0("r = ", round(unique(df$r), 2),
+                   "\nP = ", sprintf("%1.1e", unique(df$P)))) +
+    xlab(symbol) + ylab(friend) +
+    theme_classic(base_size = 10)
+})
+cowplot::plot_grid(plotlist = plist, ncol = 3)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `cut(1:n, breaks = seq(0.5, n, by = n/pointnumber))` produces exactly `pointnumber` equal bins; when `pointnumber = NULL` the reference draws every sample — keep both modes behind the same parameter.
+-   The panel grid shares the x axis (the target's binned median), so trends are comparable across panels even though each has its own y scale.
+-   `aes(x = .data[[symbol]])` (embrace + bang-bang) keeps the column name in a variable without rlang quirks — `aes_string()` is soft-deprecated.
+:::
+
+## Application## Applications
 
 ### 1. Basic Heatmap
 

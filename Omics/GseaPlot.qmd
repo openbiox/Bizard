@@ -659,7 +659,55 @@ p112
 -   `gseaplot2()` output is a patchwork/gglist: adding a `theme()` layer on top renders a black canvas in some devices — print it unmodified.
 :::
 
-## Reference## Reference
+### 10. ssGSEA Immune-Infiltration Heatmap (FigureYa71ssGSEA_update)
+
+FigureYa71 \[8\] quantifies immune infiltration with **single-sample GSEA**: a curated list of 24 immune-cell marker gene sets is projected onto the expression matrix with `GSVA::ssgseaParam()` + `gsva()`, and the sample x cell-type score matrix is drawn as a row-scaled pheatmap — samples cluster into immune-hot and immune-cold groups exactly as in the reference:
+
+```{r}
+#| label: fig-10.1ssGSEA
+#| fig-cap: "ssGSEA immune-infiltration heatmap of 40 simulated samples x 6 immune cell types (row-scaled scores): the annotation bar separates the planted immune-hot and immune-cold subgroups; pheatmap with navy-white-firebrick ramp."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 5
+
+## freeze:auto re-executes only new chunks in a fresh session — re-attach here
+suppressPackageStartupMessages({library(GSVA); library(pheatmap)})
+set.seed(7101)
+n_g <- 900; n_s3 <- 40
+expr118 <- matrix(rnorm(n_g * n_s3, 8, 1), n_g, n_s3,
+                  dimnames = list(paste0("EG", 1:n_g), paste0("S", sprintf("%02d", 1:n_s3))))
+immune_sets <- list(
+  CD8_T = paste0("EG", 1:60), NK = paste0("EG", 61:110),
+  B_cell = paste0("EG", 111:170), Mono = paste0("EG", 171:230),
+  Treg = paste0("EG", 231:280), DC = paste0("EG", 281:320))
+subtype <- factor(rep(c("hot", "cold"), each = n_s3 / 2))
+for (s in names(immune_sets)) {
+  idx <- immune_sets[[s]]
+  eff <- if (s %in% c("CD8_T", "NK")) c(1.4, -0.9) else c(-0.6, 0.8)
+  expr118[idx, subtype == "hot"] <- expr118[idx, subtype == "hot"] + eff[1]
+  expr118[idx, subtype == "cold"] <- expr118[idx, subtype == "cold"] + eff[2]
+}
+params <- ssgseaParam(exprData = as.matrix(expr118), geneSets = immune_sets)
+ss_es <- t(as.data.frame(gsva(params)))
+ann <- data.frame(Subtype = subtype); rownames(ann) <- colnames(expr118)
+pheatmap(ss_es, scale = "row", show_colnames = FALSE,
+         annotation_col = ann,
+         annotation_colors = list(Subtype = c(hot = "#B2182B", cold = "#2166AC")),
+         color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+         fontsize = 9)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   GSVA ≥ 4.x wraps the call in an explicit param object: `ssgseaParam(exprData = as.matrix(expr), geneSets = list)` then `gsva(params)` — the old `gsva(expr, geneSets, method = "ssgsea")` form errors out.
+-   ssGSEA scores are **not comparable across datasets** (the reference's own warning): within one matrix, `scale = "row"` on the heatmap is what makes cell types with different score ranges legible.
+-   Marker sets must be **deduplicated per cell type** (`lapply(..., unique)`), or duplicated genes double-count in the rank walk.
+:::
+
+## Reference
 
 \[1\] Subramanian A, Tamayo P, Mootha VK, et al. Gene set enrichment analysis: a knowledge-based approach for interpreting genome-wide expression profiles. Proc Natl Acad Sci USA. 2005;102(43):15545-15550. doi:10.1073/pnas.0506580102
 
