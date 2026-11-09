@@ -1,0 +1,89 @@
+---
+title: "Connectivity Map（CMap）"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+Connectivity Map（CMap）按扰动药物的 expression signature **模拟**（负分）或**逆转**（正分）疾病 signature 的强度排序 \[1\]。FigureYa131 将排序后的连接分数画成带显著性门槛的发散柱状图。本教程在模拟药物扰动分数上复现该版式：
+
+## Example
+
+![](../images/Clinics/CmapPlot_demo.png){fig-alt="Connectivity Map（CMap） DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+20 个药物对疾病 signature 的模拟 CMap 连接分数：负分数意味着药物模拟疾病状态，正分数意味着逆转。仅 Fisher p 值通过 0.05 的药物以全不透明度绘制：
+
+```{r load data}
+set.seed(13101)
+drugs_cm <- paste0("Drug", LETTERS[1:20])
+cmap_scores <- rnorm(20, 0, 1.8)
+cmap_scores[sample(20, 5)] <- cmap_scores[sample(20, 5)] + rnorm(5, 0, 0.3)
+pval_cm <- 10^(-rexp(20, 1.2))
+names(cmap_scores) = drugs_cm; names(pval_cm) = drugs_cm
+ord <- order(cmap_scores)
+cmap_df <- data.frame(drug = factor(drugs_cm[ord], levels = drugs_cm[ord]),
+                      score = cmap_scores[ord], p = pval_cm[ord])
+cmap_df$sig <- cmap_df$p < 0.05
+cmap_df$direction <- ifelse(cmap_df$score < 0, "mimics", "reverses")
+```
+
+## Visualization
+
+### 发散连接柱状图
+
+CMap 风格连接分数（模拟）：蓝色柱模拟疾病 signature，红色柱逆转；不透明柱通过 Fisher p < 0.05；半透明柱不显著。
+
+```{r}
+#| label: fig-1.1CmapBar
+#| fig-cap: "CMap-style connectivity scores (simulated): blue bars mimic the disease signature, red bars reverse it; opaque bars pass Fisher p < 0.05; faded bars are not significant."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5.5
+
+ggplot(cmap_df, aes(score, drug, fill = direction, alpha = sig)) +
+  geom_col(width = 0.7) +
+  geom_vline(xintercept = 0, linewidth = 0.4) +
+  scale_fill_manual(values = c(mimics = "#2166AC", reverses = "#B2182B"), name = NULL) +
+  scale_alpha_manual(values = c(`TRUE` = 1, `FALSE` = 0.35), guide = "none") +
+  labs(x = "CMap connectivity score (simulated)", y = NULL,
+       title = "Drug perturbation connectivity (CMap-style)") +
+  theme_bw(base_size = 10) + theme(panel.grid = element_blank())```
+
+
+## 应用场景
+
+::: {#fig-CmapPlotApplications1}
+![](../images/Clinics/CmapPlot_demo.png){fig-alt="CmapPlot Application" fig-align="center" width="60%"}
+
+CMap 连接分数
+:::
+
+同一发散柱图适用于任何排序扰动列表：CRISPR 敲除分数、RNAi 筛选或药物组合协同 Z 分数。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Subramanian A, Narayan R, Corsello SM, et al. A next generation connectivity map: L1000 platform and the processing of computational task. Cell. 2017;171(6):1437-1452. doi:10.1016/j.cell.2017.10.049

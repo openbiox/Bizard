@@ -1,0 +1,119 @@
+---
+title: "CpG 岛甲基化聚类"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+CpG 岛甲基化模式将肿瘤分为 CIMP-high 和 CIMP-low 表观亚型。FigureYa121 流程按甲基化 beta 值聚类 CpG 探针并叠加亚型注释 \[1\]。本教程在模拟 CpG 矩阵（带 island/shore/open-sea 注释）上复现该热图：
+
+## Example
+
+![](../images/Omics/MethCgiClusterPlot_demo.png){fig-alt="CpG 岛甲基化聚类 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`pheatmap`; `ggplot2`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(pheatmap)
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+80 个 CpG 探针 × 50 个样本的模拟 beta 值：island 探针在 CIMP-high 样本中上升 0.15-0.45，shore 和 open-sea 探针保持低——这是定义 CIMP 表型的模式：
+
+```{r load data}
+set.seed(12101)
+n_sm3 <- 50; n_cpg <- 80
+cpg_types <- factor(rep(c("island", "shore", "open-sea"), c(30, 25, 25)))
+subtype <- factor(rep(c("CIMP-high", "CIMP-low"), each = n_sm3 / 2))
+beta <- matrix(runif(n_cpg * n_sm3, 0.1, 0.3), n_cpg, n_sm3)
+beta[cpg_types == "island", subtype == "CIMP-high"] <-
+  beta[cpg_types == "island", subtype == "CIMP-high"] + runif(30 * 25, 0.15, 0.45)
+beta <- pmin(beta, 1)
+rownames(beta) <- paste0("CpG", 1:n_cpg)
+colnames(beta) <- paste0("M", 1:n_sm3)
+ann3 <- data.frame(Subtype = subtype, row.names = colnames(beta))
+cpg_anno <- data.frame(Region = cpg_types); rownames(cpg_anno) = rownames(beta)
+```
+
+## Visualization
+
+### CpG 甲基化热图（双注释）
+
+CpG 甲基化聚类（80 探针 × 50 样本）：列注释 = CIMP 亚型，行注释 = CpG 区域类别；CIMP-high 样本的 island 探针展现特征性升高。
+
+```{r}
+#| label: fig-1.1CimpHeatmap
+#| fig-cap: "CpG methylation clustering (80 probes x 50 samples): column annotation = CIMP subtype, row annotation = CpG region class; island probes in CIMP-high samples show the characteristic gain."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 5.5
+
+pheatmap(beta, cluster_rows = TRUE, cluster_cols = TRUE,
+         annotation_col = ann3, annotation_row = cpg_anno,
+         annotation_colors = list(
+           Subtype = c(`CIMP-high` = "#B2182B", `CIMP-low` = "#2166AC"),
+           Region = c(island = "#4D9342", shore = "#EABF00", `open-sea` = "grey75")),
+         color = colorRampPalette(c("white", "#08306B"))(50),
+         show_colnames = FALSE, fontsize = 8,
+         main = "CpG island methylation clustering (simulated)")```
+
+### 区域 × 亚型的平均 beta
+
+按 CpG 区域和 CIMP 亚型的平均 beta 值：island 探针区分亚型；shore 和 open-sea 探针不区分。
+
+```{r}
+#| label: fig-2.1CimpMeans
+#| fig-cap: "Mean beta value by CpG region and CIMP subtype: island probes separate the subtypes; shore and open-sea probes do not."
+#| out.width: "70%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4.5
+
+mean_df <- data.frame(
+  Region = rep(cpg_types, n_sm3),
+  Subtype = rep(subtype, each = n_cpg),
+  Beta = as.vector(beta))
+mean_sum <- mean_df %>%
+  dplyr::group_by(Region, Subtype) %>%
+  dplyr::summarise(mean_beta = mean(Beta), se = sd(Beta) / sqrt(dplyr::n()), .groups = "drop")
+ggplot(mean_sum, aes(Region, mean_beta, fill = Subtype)) +
+  geom_col(position = position_dodge(0.7), width = 0.65,
+           colour = "grey25", linewidth = 0.3) +
+  geom_errorbar(aes(ymin = mean_beta - se, ymax = mean_beta + se),
+                position = position_dodge(0.7), width = 0.25, linewidth = 0.35) +
+  scale_fill_manual(values = c(`CIMP-high` = "#B2182B", `CIMP-low` = "#2166AC"), name = NULL) +
+  labs(y = "Mean beta value", title = "Methylation by region and CIMP subtype") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), legend.position = "top")```
+
+
+## 应用场景
+
+::: {#fig-MethCgiClusterPlotApplications1}
+![](../images/Omics/MethCgiClusterPlot_demo.png){fig-alt="MethCgiClusterPlot Application" fig-align="center" width="60%"}
+
+CIMP 亚型热图
+:::
+
+同一热图版式适用于任何甲基化芯片（450K、EPIC）或 WGBS 数据——只要 CpG 类别与肿瘤亚型是两个注释维度。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
