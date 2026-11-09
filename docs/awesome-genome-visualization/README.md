@@ -4,7 +4,7 @@ Snapshot: upstream `cmdcolin/awesome-genome-visualization` `TOOLS.json` (574 ent
 
 Every upstream entry is recorded exactly once. Entries are never dropped silently: each one ends in either an integrated page or an explicit, reasoned skip. Two skip rules come straight from the issue brief:
 
-- **>5 years without maintenance** — last `pushed_at` earlier than `2021-11-07` or repository archived → `stale-skip`.
+- **>=5 years without maintenance** — last `pushed_at` earlier than `2021-11-07` (the snapshot date minus 5 years) or repository archived → `stale-skip`.
 - **Dependency too heavy** — framework-scale dependency closures (ArchR, signac, Gviz, ggbio, pyGenomeTracks, CNVkit, SVbyEye, …) → `heavy-skip`, redrawn with ggplot2 / matplotlib instead of installed.
 
 ## Decisions
