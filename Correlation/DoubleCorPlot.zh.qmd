@@ -1,0 +1,133 @@
+---
+title: "双队列相关三角图"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+两个队列，一张相关矩阵：**右上三角**承载队列 A 的两两相关，**左下**承载队列 B——气泡面积编码 |r|，填充色编码 r 且两个三角各用一套色阶，未通过显著性的组合留空 \[1\]。参考图（KICH vs KIRC 的免疫细胞相关）用 `ComplexHeatmap` 的 `cell_fun` 绘制；本教程在两个植入模块结构的模拟免疫细胞评分矩阵上复现该配方：
+
+## Example
+
+![](../images/DoubleCorPlot_demo.png){fig-alt="双队列相关三角图 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ComplexHeatmap`; `circlize`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ComplexHeatmap)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+两个模拟队列（n = 60 与 n = 80）各 14 种免疫细胞评分，由共享的细胞毒/APC/髓系模块因子生成——队列 B 耦合更弱，其相关向零收缩、部分格跌破显著。`cor.test()` 逐对给出 R 与 P 矩阵；合并时用队列 B 覆盖队列 A 的下三角：
+
+```{r load data}
+suppressPackageStartupMessages(library(circlize))
+set.seed(15201)
+cells <- c("aDC", "B cells", "CD8 T cells", "Cytotoxic lymphocytes", "DC",
+           "Eosinophils", "Macrophages", "Mast cells", "Neutrophils",
+           "NK cells", "pDC", "T cells", "T helper cells", "T regulatory cells")
+## cohort matrices: immune-cell scores from planted module factors
+## (cytotoxic / APC / myeloid; Tregs anti-correlate with cytotoxicity)
+mk <- function(seed, n, module_scale = 1) {
+  set.seed(seed)
+  f_cyt <- rnorm(n); f_apc <- rnorm(n); f_mye <- rnorm(n)
+  base <- cbind(
+    aDC = f_apc + rnorm(n, 0, 0.7), `B cells` = rnorm(n),
+    `CD8 T cells` = f_cyt + rnorm(n, 0, 0.6),
+    `Cytotoxic lymphocytes` = f_cyt + rnorm(n, 0, 0.6),
+    DC = f_apc + rnorm(n, 0, 0.8), Eosinophils = rnorm(n),
+    Macrophages = f_mye + rnorm(n, 0, 0.7), `Mast cells` = rnorm(n),
+    Neutrophils = f_mye + rnorm(n, 0, 0.9), `NK cells` = f_cyt + rnorm(n, 0, 0.8),
+    pDC = f_apc + rnorm(n, 0, 1.0), `T cells` = f_cyt + rnorm(n, 0, 0.7),
+    `T helper cells` = f_cyt + rnorm(n, 0, 0.8),
+    `T regulatory cells` = module_scale * (-f_cyt) + rnorm(n, 0, 0.9))
+  base <- base * module_scale + rnorm(n * length(cells), 0, 0.3)
+  colnames(base) <- cells
+  R <- P <- matrix(0, length(cells), length(cells), dimnames = list(cells, cells))
+  for (i in seq_along(cells)) for (j in seq_along(cells)) {
+    ct <- cor.test(base[, i], base[, j])
+    R[i, j] <- ct$estimate; P[i, j] <- ct$p.value
+  }
+  list(R = R, P = P)
+}
+d1 <- mk(15201, 60, 1.0)          # cohort A: strong cytotoxic/APC coupling
+d2 <- mk(15299, 80, 0.55)         # cohort B: weaker coupling
+## merge: upper right = cohort A, lower left = cohort B
+datR <- d1$R; datP <- d1$P
+for (i in seq_along(cells)) { datR[i, 1:i] <- d2$R[i, 1:i]; datP[i, 1:i] <- d2$P[i, 1:i] }
+datR[datP > 0.05] <- NA           # no bubble when not significant
+```
+
+## Visualization
+
+### 分三角气泡矩阵
+
+`cell_fun` 逐格绘制：灰框、对角线灰圆、队列 A 气泡在对角线上方（绿-白-红色阶）、队列 B 在下方（黄-白-紫色阶）；植入的细胞毒模块点亮两个三角而 Treg 呈负相关——所有不显著对留白：
+
+```{r}
+#| label: fig-1.1DoubleCor
+#| fig-cap: "双队列免疫细胞相关三角（模拟）：右上气泡为队列 A（绿-白-红），左下为队列 B（黄-白-紫）；气泡半径 = |r|，颜色 = r，P > 0.05 的对留空。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 7.5
+
+suppressPackageStartupMessages(library(ComplexHeatmap))
+colCorRight <- colorRamp2(c(-1, 0, 1), c("green", "white", "#ef3b2c"))
+colCorLeft <- colorRamp2(c(-1, 0, 1), c("yellow", "white", "#762a83"))
+
+p1 <- Heatmap(datR, rect_gp = gpar(type = "none"), show_heatmap_legend = FALSE,
+              cell_fun = function(j, i, x, y, width, height, fill) {
+                grid.rect(x = x, y = y, width = width, height = height,
+                          gp = gpar(col = "grey", fill = NA))
+                if (i == j) {
+                  grid.circle(x = x, y = y, r = 0.5 * min(unit.c(width, height)),
+                              gp = gpar(fill = "grey", col = NA))
+                } else if (i > j) {
+                  if (!is.na(datR[i, j])) grid.circle(x = x, y = y,
+                      r = abs(datR[i, j]) / 2 * min(unit.c(width, height)),
+                      gp = gpar(fill = colCorLeft(datR[i, j]), col = NA))
+                } else {
+                  if (!is.na(datR[i, j])) grid.circle(x = x, y = y,
+                      r = abs(datR[i, j]) / 2 * min(unit.c(width, height)),
+                      gp = gpar(fill = colCorRight(datR[i, j]), col = NA))
+                }
+              },
+              cluster_rows = FALSE, cluster_columns = FALSE,
+              show_row_names = TRUE, show_column_names = TRUE,
+              row_names_side = "right", row_names_rot = 45,
+              row_names_gp = gpar(fontsize = 8), column_names_gp = gpar(fontsize = 8))
+lgdRight <- Legend(col_fun = colCorRight, title = "Cohort A", direction = "horizontal")
+lgdLeft <- Legend(col_fun = colCorLeft, title = "Cohort B", direction = "horizontal")
+draw(p1, annotation_legend_list = list(lgdRight, lgdLeft), annotation_legend_side = "top",
+     padding = unit(c(12, 12, 4, 4), "mm"))```
+
+
+## 应用场景
+
+::: {#fig-DoubleCorApplications1}
+![](../images/DoubleCorPlot_demo.png){fig-alt="分三角相关气泡图" fig-align="center" width="60%"}
+
+分三角相关气泡图
+:::
+
+任何"两队列 + 同一变量集"都可复用此图：原发 vs 转移、治疗前 vs 治疗后、或测量同一 panel 的两个组学平台。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Charoentong P, Finotello F, Angelova M, et al. Pan-cancer immunogenomic analyses reveal genotype-immunophenotype relationships and predictors of response to checkpoint blockade. Cell Rep. 2017;18(1):248-262. doi:10.1016/j.celrep.2016.12.019
