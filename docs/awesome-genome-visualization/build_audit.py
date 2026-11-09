@@ -162,9 +162,9 @@ def write_report():
       'silently: each one ends in either an integrated page or an explicit, '
       'reasoned skip. Two skip rules come straight from the issue brief:')
     A('')
-    A(f'- **>=5 years without maintenance** — last `pushed_at` earlier than '
-      f'`{CUT.isoformat()}` (the snapshot date minus 5 years) or repository '
-      f'archived → `stale-skip`.')
+    A(f'- **>5 years without maintenance** — last `pushed_at` strictly earlier '
+      f'than `{CUT.isoformat()}` (the snapshot date, 2026-11-07, minus five '
+      f'years) or repository archived → `stale-skip`.')
     A('- **Dependency too heavy** — framework-scale dependency closures '
       '(ArchR, signac, Gviz, ggbio, pyGenomeTracks, CNVkit, SVbyEye, …) '
       '→ `heavy-skip`, redrawn with ggplot2 / matplotlib instead of installed.')
