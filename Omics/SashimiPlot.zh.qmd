@@ -198,11 +198,11 @@ ggplot() +
 
 ### 2. PSI 面板：比率而非计数
 
-把同一批连接点写成 percent-spliced-in 即可定量刻画切换：PSI 为包含型连接点除以包含加跳跃，取值被限制在 0-100%，因而与测序深度无关。正因有界，轴必须标注 PSI——在百分比轴上画原始连接点计数是常见且误导的替代。
+把同一批连接点写成 percent-spliced-in 即可定量刻画切换：PSI 为包含型连接点除以包含加跳跃，取值被限制在 0-100%，因而与测序深度无关。本图以 E2-E3 为包含型连接点、E2-E4 为跳跃型连接点；若把 E3-E4 也计入，则需把两条包含型连接点相加。正因有界，轴必须标注 PSI——在百分比轴上画原始连接点计数是常见且误导的替代。
 
 ```{r}
 #| label: fig-1.2PSI
-#| fig-cap: "外显子 E3 的 percent-spliced-in（柱=各组均值，点=重复）：PSI 是有界比率，不同于 Sashimi 面板中的 read 计数。"
+#| fig-cap: "外显子 E3 的 percent-spliced-in（点=重复，柱与菱形=各组均值）：PSI 是有界比率，不同于 Sashimi 面板中的 read 计数。"
 #| out.width: "60%"
 #| warning: false
 #| message: false
@@ -210,6 +210,8 @@ ggplot() +
 #| fig-height: 4.2
 #| fig-dpi: 300
 
+## PSI 此处以 E2-E3 为包含型连接点、E2-E4 为跳跃型连接点。另一种定义会
+## 同时计入 E3-E4，即把两条包含型连接点相加；图注明确本图采用的定义。
 psi <- junctions |>
   filter(strand == "+", donor == 1980) |>
   mutate(event = ifelse(acceptor == 2400, "inclusion", "skipping")) |>
@@ -223,11 +225,19 @@ psi <- junctions |>
     .groups = "drop"
   )
 
-ggplot(psi, aes(group, psi * 100, fill = group)) +
-  geom_col(width = 0.5, colour = "white", linewidth = 0.5) +
-  geom_point(aes(group, psi * 100), position = position_jitter(width = 0.06,
-                                                              height = 0, seed = 1),
+psi_summary <- psi |>
+  group_by(group) |>
+  summarise(mean_psi = mean(psi), .groups = "drop")
+
+ggplot() +
+  geom_col(data = psi_summary,
+           aes(group, mean_psi * 100, fill = group),
+           width = 0.5, colour = "white", linewidth = 0.5) +
+  geom_point(data = psi, aes(group, psi * 100),
+             position = position_jitter(width = 0.06, height = 0, seed = 1),
              size = 2, colour = "#1B1B1B", inherit.aes = FALSE) +
+  geom_point(data = psi_summary, aes(group, mean_psi * 100), shape = 18,
+             size = 3.2, colour = "#1B1B1B", inherit.aes = FALSE) +
   geom_hline(yintercept = 50, linetype = "22", linewidth = 0.35, colour = "#7F7F7F") +
   scale_fill_manual(values = c(Brain = "#2166AC", Liver = "#B2182B"), guide = "none") +
   scale_y_continuous(limits = c(0, 100), expand = c(0, 0),
@@ -236,7 +246,7 @@ ggplot(psi, aes(group, psi * 100, fill = group)) +
     x = NULL,
     y = "PSI (%, exon E3 inclusion)",
     title = "PSI of exon E3",
-    subtitle = "柱=组均值；点=重复；虚线=50%"
+    subtitle = "Bars/diamonds = group mean; points = replicates; dashed line = 50%"
   ) +
   theme_classic(base_size = 11) +
   theme(plot.title = element_text(face = "bold", size = 11),

@@ -12,7 +12,7 @@ author:
 
 ![](../images/Omics/LinkageDisequilibriumPlot_demo.png){fig-alt="连锁不平衡图 DEMO" fig-align="center" width="85%"}
 
-30 个 HLA-DRB1 SNP 的连锁不平衡三角图：左侧为 D'（重组历史），右侧为 r²（统计冗余），两者使用完全相同的 SNP 顺序与颜色范围，因此可以逐格比较。在 D' 中很热、在 r² 中偏冷的区块对应等位频率不对称——只看单一指标就会把它掩盖掉。
+30 个 HLA II 类区 SNP 的连锁不平衡三角图：左侧为 D'（重组历史），右侧为 r²（统计冗余），两者使用完全相同的 SNP 顺序与颜色范围，因此可以逐格比较。在 D' 中很热、在 r² 中偏冷的区块对应等位频率不对称——只看单一指标就会把它掩盖掉。
 
 ## Setup
 
@@ -42,7 +42,7 @@ sessioninfo::session_info("attached")
 
 ## 数据准备
 
-模拟两个群体在 *HLA* II 类区约 36 kb 内的 30 个 SNP：欧洲祖源面板含两个较长的保守单倍型片段，非洲祖源面板含六个较短片段——这与两个群体 LD 延伸长度差异的既有结论一致。单倍型按片段拷贝祖先单倍型生成，因此 LD 块是构造出来的而非偶然出现；D′ 与 r² 随后按教科书公式从剂量矩阵直接计算。
+模拟两个群体在 *HLA* II 类区约 36 kb 内的 30 个 SNP：欧洲祖源面板含两个较长的保守单倍型片段，非洲祖源面板含三个较短片段——这与两个群体 LD 延伸长度差异的既有结论一致。单倍型按片段拷贝祖先单倍型生成，因此 LD 块是构造出来的而非偶然出现；D′ 与 r² 随后按教科书公式从剂量矩阵直接计算。CEU 的断点固定在 SNP 15，YRI 的断点固定在 SNP 10 与 20，确保二片段/三片段设计没有歧义；founder 单倍型、分离位点与基因型仍然由模拟生成。
 
 ```{r load data, message=FALSE, warning=FALSE}
 set.seed(4353)
@@ -55,22 +55,28 @@ snp_pos <- sort(sample(2e3:4.2e4, n_snp))
 ## one of four founder haplotypes, with a small per-site error rate. Blocks of
 ## high LD therefore appear by construction, and D' / r^2 are computed from
 ## the resulting 0/1/2 dosage matrix — no value is painted into the figure.
-simulate_pop <- function(n_ind, n_block_break, e = 0.01) {
+simulate_pop <- function(n_ind, breaks, e = 0.001, mut = 0.001) {
   ## Breakpoints split the locus into segments; each simulated haplotype
-  ## copies one of four founder haplotypes within a segment. That is the
-  ## standard four-founder / ancestral-haplotype caricature of LD.
-  breaks <- sort(sample(2:(n_snp - 1), n_block_break))
+  ## copies one founder haplotype within a segment. That is the standard
+  ## four-founder / ancestral-haplotype caricature of LD. The founder pool
+  ## is deliberately close to two ancestral states: f1 is all reference,
+  ## f2 is all alternate, and f3/f4 carry rare derived alleles.
   segment <- cumsum(c(TRUE, seq_len(n_snp - 1) %in% breaks))
   n_seg <- max(segment)
   n_hap <- 120
-  founder <- matrix(rbinom(4 * n_snp, 1, 0.5), 4, n_snp)
-  founder[1, ] <- 0L
-  founder[2, ] <- 1L
+  f1 <- rep(0L, n_snp)
+  f2 <- rep(1L, n_snp)
+  f3 <- f1; f3[runif(n_snp) < mut] <- 1L
+  f4 <- f2; f4[runif(n_snp) < mut] <- 0L
+  founder <- rbind(f1, f2, f3, f4)
   hap <- matrix(0L, n_hap, n_snp)
   for (k in seq_len(n_hap)) {
     for (seg in seq_len(n_seg)) {
       cols <- which(segment == seg)
-      h <- ((k - 1) %% 4) + 1
+      ## Draw a founder independently for every segment. A deterministic
+      ## rotation would preserve the same haplotype across a breakpoint and
+      ## silently erase the very LD boundary the example is meant to show.
+      h <- sample.int(4, 1)
       hap[k, cols] <- founder[h, cols]
       flip <- which(runif(length(cols)) < e)
       hap[k, cols[flip]] <- 1L - hap[k, cols[flip]]
@@ -82,8 +88,8 @@ simulate_pop <- function(n_ind, n_block_break, e = 0.01) {
 }
 
 pops <- list(
-  "European (CEU)" = simulate_pop(320, n_block_break = 2),
-  "African (YRI)"  = simulate_pop(300, n_block_break = 6)
+  "European (CEU)" = simulate_pop(320, breaks = 15),
+  "African (YRI)"  = simulate_pop(300, breaks = c(10, 20))
 )
 ## Sanity check: every SNP must be polymorphic before LD is meaningful.
 vapply(pops, function(p) {
@@ -124,10 +130,24 @@ ld <- bind_rows(lapply(names(pops), function(nm) ld_long(pops[[nm]]$geno, nm))) 
   left_join(tibble(i = seq_len(n_snp), pos_i = snp_pos), by = "i") |>
   left_join(tibble(j = seq_len(n_snp), pos_j = snp_pos), by = "j")
 
-ld |> group_by(pop) |>
+## Verify the construction: report the LD across each fixed breakpoint and the
+## number of strong adjacent pairs; the block figure calls blocks with the same
+## D' > 0.7 and r^2 > 0.45 rule.
+break_ld <- ld |>
+  filter(j == i + 1, i %in% c(9, 14, 19)) |>
+  group_by(pop) |>
   summarise(mean_Dprime = mean(Dprime, na.rm = TRUE),
             mean_r2 = mean(r2, na.rm = TRUE),
             .groups = "drop")
+
+n_blocks <- ld |>
+  filter(j == i + 1) |>
+  mutate(strong = !is.na(Dprime) & !is.na(r2) & Dprime > 0.7 & r2 > 0.45) |>
+  group_by(pop) |>
+  summarise(n_strong = sum(strong), n_pairs = n(), .groups = "drop") |>
+  ungroup()
+
+list(break_ld = break_ld, n_blocks = n_blocks)
 ```
 
 ## 可视化
@@ -138,7 +158,7 @@ ld |> group_by(pop) |>
 
 ```{r}
 #| label: fig-1.1LdTriangles
-#| fig-cap: "30 个 HLA 区 SNP 的连锁不平衡三角图：左为 D'（重组历史），右为 r^2（统计冗余）；两者使用完全相同的 SNP 顺序与色标范围，因此可逐格比较两种统计量。"
+#| fig-cap: "30 个 HLA II 类区 SNP 的连锁不平衡三角图：左为 D'（重组历史），右为 r^2（统计冗余）；两者使用完全相同的 SNP 顺序与色标范围，因此可逐格比较两种统计量。"
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -198,7 +218,7 @@ p_dp + p_r2 + plot_layout(ncol = 2)
 
 ```{r}
 #| label: fig-1.2LdBlocksGenes
-#| fig-cap: "按群体分面的 LD 矩阵，下方共享同一坐标轴的 HLA 基因结构轨：欧洲面板呈现较长的高 LD 块，非洲面板块更短更碎，这正是预期的 LD 衰减——传达信息的是块边界，而不是颜色深浅。"
+#| fig-cap: "按群体分面的 LD 矩阵，下方共享同一坐标轴的 HLA II 类区基因结构轨：欧洲面板呈现两个较长的高 LD 块，非洲面板呈现三个更短的块，这正是预期的 LD 衰减——传达信息的是块边界，而不是颜色深浅。"
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -212,7 +232,6 @@ blocks_of <- function(dat, thr = 0.7) {
   d <- filter(dat, j == i + 1) |>
     mutate(strong = !is.na(Dprime) & !is.na(r2) & Dprime > thr & r2 > 0.45)
   ## Consecutive strong pairs belong to the same block.
-  brk <- which(!d$strong)
   block_id <- cumsum(c(TRUE, diff(d$i) > 1 | !d$strong[-length(d$strong)]))
   tibble(i = d$i, block = block_id) |>
     mutate(block = as.integer(factor(block)))

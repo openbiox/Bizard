@@ -4,15 +4,15 @@ author:
   - "**[Editor]** ZCode (GLM) — AI-assisted, independently reviewed;"
 ---
 
-Comparing finished assemblies is not a pairwise problem: with three or more genomes the questions are "which regions are shared by all of them", "which are unique to one", and "in which orientation". A **multi-genome comparison Circos** answers all three at once by giving each assembly its own ring, drawing homologous blocks as ribbons between rings, and colouring the ribbons by orientation.
+Comparing finished assemblies is not a pairwise problem: with three or more genomes the questions are "which regions are shared by all of them", "which are unique to one", and "in which orientation". A **multi-genome comparison Circos** answers all three at once by giving each assembly its own ring, drawing homologous blocks as ribbons between rings, colouring each ribbon by the genome it connects to, and encoding orientation in the ribbon's endpoint order.
 
-This page rebuilds the `pyGenomeViz`-style multi-genome Circos layout \[1\] with plain `pyCirclize` \[2\] sectors plus matplotlib paths, so the geometry is explicit: every ribbon is an inter-ring Bezier whose width equals the block length on the source ring.
+This page rebuilds the `pyGenomeViz`-style multi-genome Circos layout \[1\] with matplotlib alone: the rings are arc segments drawn with `ax.plot`, each ribbon is an explicit `Polygon` whose two sides run along the source and target arcs, and polar positions are computed by hand so the geometry is inspectable line by line.
 
 ## Example
 
 ![](../images/Python/GenomeComparisonCircos_demo.png){fig-alt="Genome Comparison Circos (Python) DEMO" fig-align="center" width="85%"}
 
-A multi-genome comparison Circos of three E. coli assemblies with ten syntenic blocks, ribbons coloured by target genome. The 2.6 Mb inversion in ST131 makes its ribbons cross, and blocks absent from O157:H7 or ST131 are marked on their own rings, so an absence and a rearrangement are never confused.
+A multi-genome comparison Circos of three E. coli assemblies with ten syntenic blocks, ribbons coloured by target genome. The 2.13 Mb inversion in ST131 (blocks B3-B6) makes its ribbons cross, and blocks absent from O157:H7 or ST131 are marked on their own rings, so an absence and a rearrangement are never confused. Rings are labelled with their computed length (a block length times the number of shared blocks, plus a small inter-block pad).
 
 ## Setup
 
@@ -45,7 +45,7 @@ genomes = ["E. coli K-12", "E. coli O157:H7", "E. coli ST131"]
 block_colours = ["#1b7837", "#762a83", "#2166ac"]
 
 ## Ten syntenic blocks; lengths in kb. The clinical isolate carries a
-## 2.6 Mb inversion covering blocks 3-6, so those ribbons cross.
+## 2.13 Mb inversion covering blocks 3-6, so those ribbons cross.
 block_len = np.array([420, 380, 520, 610, 460, 540, 390, 480, 430, 350])
 shared = np.ones((3, 10), dtype=bool)
 shared[1, [7, 8]] = False          # plasmid isolate: two unique blocks
@@ -53,8 +53,13 @@ shared[2, [1]] = False             # clinical isolate: one unique block
 orientation = np.ones((3, 10))
 orientation[2, 2:6] = -1           # inversion
 
-genome_len = np.array([(block_len * shared[i]).sum() + 180 for i in range(3)])
-genome_len
+genome_len = (block_len * shared[i] for i in range(3))
+## PAD_KB is blank space between the drawn blocks on the ring. It is layout,
+## not sequence, so it is kept out of the length that the ring label reports.
+PAD_KB = 180
+genome_len = np.array([g.sum() + PAD_KB for g in genome_len])
+seq_len = np.array([(block_len * shared[i]).sum() for i in range(3)])
+seq_len
 ```
 
 ```{python}
@@ -77,11 +82,11 @@ blocks.head(8)
 
 ### 1. Three-Ring Genome Comparison with Oriented Ribbons
 
-Each ring carries one assembly; ticks mark 1 Mb. Homologous blocks are drawn as ribbons from the reference ring to each comparison ring, and an inversion is immediately visible because its ribbon leaves one ring clockwise and lands on the other counter-clockwise. Unique blocks are annotated on their own ring.
+Each ring carries one assembly, and unlabelled tick marks run outwards from the ring every 1 Mb. Homologous blocks are drawn as ribbons from the reference ring to each comparison ring, and an inversion is immediately visible because its ribbon leaves one ring clockwise and lands on the other counter-clockwise. Unique blocks are annotated on their own ring. Here "B3-B6" is the closed interval of four blocks, whose lengths sum to 520 + 610 + 460 + 540 kb = 2.13 Mb.
 
 ```{python}
 #| label: fig-1.1MultiGenomeCircos
-#| fig-cap: "Multi-genome comparison Circos: three E. coli assemblies, ten syntenic blocks, ribbons coloured by target genome; the 2.6 Mb inversion in ST131 makes its ribbons cross, and the blocks absent from O157:H7 / ST131 are marked on their own rings."
+#| fig-cap: "Multi-genome comparison Circos: three E. coli assemblies (4.58, 3.67 and 4.20 Mb of shared blocks, labelled on each ring), ten syntenic blocks, ribbons coloured by the genome they connect to; the 2.13 Mb inversion in ST131 (blocks B3-B6) makes its ribbons cross, the inverted blocks carry a white core on the ring, and the blocks absent from O157:H7 / ST131 are drawn as pale short arcs on their own rings."
 #| fig-width: 8.2
 #| fig-height: 8.2
 #| fig-dpi: 300
@@ -140,7 +145,7 @@ for gi, radius in enumerate(RING_R):
     ax.plot([p0[0], p1[0]], [p0[1], p1[1]], color="#9e9e9e", lw=0.6, zorder=4)
     name = GENOMES[gi]
     ax.text(p1[0] + (0.018 if p1[0] >= 0 else -0.018), p1[1],
-            f"{name}\n{genome_len[gi] / 1000:.2f} Mb",
+            f"{name}\n{seq_len[gi] / 1000:.2f} Mb",
             ha="left" if p1[0] >= 0 else "right", va="center",
             fontsize=8.0, color="#333333", linespacing=1.35, zorder=5)
     ## 1 Mb ticks on the ring.
@@ -211,7 +216,7 @@ plt.show()
 -   Ribbon width must be proportional to block length in the *source* genome. Squashing a long block to make the picture tidy silently changes the comparison.
 -   Encode orientation with the ribbon crossing (or an explicit arrow) rather than with a third colour channel; colour is already used for the target genome.
 -   Keep the unique-block labels on their own ring; a shared legend for "unique" hides which assembly owns the block.
--   State whether coordinates are absolute or length-normalised. Here each ring spans its own genome, so the outer ring's 4.5 Mb and the inner ring's 4.1 Mb are *not* the same arc length per Mb.
+-   State whether coordinates are absolute or length-normalised. Here each ring spans its own genome, so the outer ring's 4.58 Mb and the inner ring's 4.20 Mb are *not* the same arc length per Mb, and a ribbon that looks wide on the inner ring may be the narrower one biologically.
 :::
 
 ### 2. Conserved-Block Matrix Beside the Circle
@@ -220,7 +225,7 @@ The circular view shows order; the matrix shows presence. Pairing them answers t
 
 ```{python}
 #| label: fig-1.2BlockPresence
-#| fig-cap: "Presence matrix for the same ten syntenic blocks: filled = conserved forward, filled with a white arrow = conserved inverted, dashed empty = absent. Blocks B8-B9 (O157:H7) and B2 (ST131) read as holes in the otherwise shared backbone."
+#| fig-cap: "Presence matrix for the same ten syntenic blocks: filled dot = conserved forward, filled dot with a white left-pointing triangle = conserved inverted, dashed empty dot with a cross = absent. Blocks B8-B9 (O157:H7) and B2 (ST131) read as holes in the otherwise shared backbone, and B3-B6 in ST131 all carry the inverted marker."
 #| fig-width: 8.2
 #| fig-height: 3.0
 #| fig-dpi: 300
@@ -234,13 +239,14 @@ for gi in range(3):
         if present:
             ax.scatter(bi, y, s=380, facecolor=block_colours[gi],
                        edgecolor="white", linewidth=1.2, zorder=3)
-            ax.text(bi - (0.13 if inverted else 0), y, f"B{bi + 1}",
+            ax.text(bi, y + (0.155 if inverted else 0), f"B{bi + 1}",
                     ha="center", va="center", fontsize=7.0, color="white",
                     fontweight="bold", zorder=5)
             if inverted:
                 ## A left-pointing arrow is the matrix's orientation glyph;
-                ## it is visually different from the "absent" dashed ring.
-                ax.scatter(bi + 0.17, y, marker="<", s=55, facecolor="white",
+                ## it is visually different from the "absent" dashed ring, and
+                ## it sits below the dot so it never hides the block label.
+                ax.scatter(bi, y - 0.155, marker="<", s=60, facecolor="white",
                            edgecolor="none", zorder=5)
         else:
             ax.scatter(bi, y, s=380, facecolor="white",

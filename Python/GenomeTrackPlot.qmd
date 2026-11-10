@@ -129,7 +129,7 @@ ax.set_ylabel("H3K27ac\nCUT&Tag", fontsize=8.2)
 ax.set_ylim(0, h3k27ac.max() * 1.12)
 ax.text(0.004, 0.94, "H3K27ac", transform=ax.transAxes, fontsize=8.6,
         fontweight="bold", va="top", color="#7f0000")
-ax.text(0.996, 0.94, f"[0 - {h3k27ac.max():.0f}]", transform=ax.transAxes,
+ax.text(0.996, 0.94, f"[0 - {int(h3k27ac.max() * 1.12)}]", transform=ax.transAxes,
         fontsize=7, ha="right", va="top", color="#777777")
 
 ## ---- track 3: peaks ---------------------------------------------------
@@ -149,6 +149,25 @@ for _, v in variants.iterrows():
     ax.text(v["pos"] + 90, 0.30, f"{v['name']}  VAF {v['vaf']:.0%}",
             ha="left", va="center", fontsize=6.2, color="#d95f02")
 
+## The weaker H3K27ac/ATAC peak at 8.2 kb is the candidate enhancer named in
+## the caption. Mark the actual peak interval and attach the label to it, so
+## the callout is a property of the data rather than margin prose. Pick the
+## peak whose centre is nearest 8.2 kb, so the box and the label agree.
+peak_centre = peaks["start"] + peaks["width"] / 2
+enhancer_peak = peaks.loc[(peak_centre - (window_start + 8200)).abs().idxmin()]
+axes[0].annotate(
+    "candidate\nregulatory element",
+    xy=(enhancer_peak["start"] + enhancer_peak["width"] / 2,
+        atac.max() * 0.42),
+    xytext=(enhancer_peak["start"] + enhancer_peak["width"] / 2,
+            atac.max() * 0.82),
+    ha="center", va="bottom", fontsize=5.8, color="#b2182b",
+    arrowprops=dict(arrowstyle="-", color="#b2182b", lw=0.6),
+)
+axes[0].add_patch(plt.Rectangle(
+    (enhancer_peak["start"], 0), enhancer_peak["width"], atac.max() * 0.42,
+    facecolor="none", edgecolor="#b2182b", linewidth=0.7, linestyle="--"))
+
 ## ---- track 4: gene model ----------------------------------------------
 ax = axes[3]
 y = 0.5
@@ -161,9 +180,11 @@ for _, e in exons.iterrows():
     ax.add_patch(plt.Rectangle((e["cds_start"], y - 0.24),
                                e["cds_end"] - e["cds_start"], 0.48,
                                facecolor="#1b7837", edgecolor="none", zorder=3))
-## Strand arrows: exon 3 ends to the right, so the gene is on the + strand.
-for x_arrow in (exons["start"].min() + 400, window_start + 6500,
-                exons["end"].max() - 400):
+## Strand evidence: the CDS starts march rightwards across the three exons
+## (1420 -> 4300 -> 9600), which is what defines the + strand. The arrows sit
+## in introns between exons, never inside an exon or a UTR.
+for x_arrow in (window_start + 3000, window_start + 6500,
+                window_start + 11000):
     ax.annotate("", xy=(x_arrow + 260, y), xytext=(x_arrow, y),
                 arrowprops=dict(arrowstyle="-|>", color="#333333", lw=0.7))
 ax.set_ylim(0, 1)

@@ -45,7 +45,7 @@ for ln in text.splitlines():
     e = re.match(r'^- \[[ xX]\] (.+)$', ln)
     if not e: continue
     body = e.group(1)
-    lm = re.match(r'\[([^\]]+)\]\((https?://[^)]+)\)', body)
+    lm = re.match(r'\[([^\]]+)\]\(([a-z][a-z0-9+.-]*://[^)]+)\)', body)
     if lm:
         name, url = lm.group(1), lm.group(2)
     else:

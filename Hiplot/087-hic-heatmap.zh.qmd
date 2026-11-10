@@ -19,7 +19,7 @@ Hi-C 热图用于显示不同染色体上的全基因组染色质与热图的相
 
 ![](../images/Hiplot/087-hic-heatmap.png){fig-alt="Hi-C 热图" fig-align="center" width="70%"}
 
-250 Mb 基因组、500 kb 分辨率的 Hi-C 接触矩阵（500 × 500 个箱）：每个格子是两个箱之间的接触频率，颜色表示强度，因此对角线信号最强，离开对角线的衰减就是接触概率随距离下降的表现。50 Mb 的网格线让尺度可读，离对角线较远的密集方块是结构域，也是下文进阶部分要标注的对象。
+以 500 kb 分辨率稀疏存储的 Hi-C 接触图，每个格子是两个箱之间的接触计数，颜色表示强度：在矩阵完整处，对角线信号最强，离开对角线的衰减就是接触概率随基因组距离下降的表现。但这份示例矩阵**并不是**完整的 250 Mb 接触图——它是两块彼此独立的 122 Mb 接触块，且第 0 号与 244–285 号箱缺失——所以正确的读法是两个块内部的两条对角线，而不是一条全基因组对角线。正因为存在这些空缺，下文进阶部分改用一份完整的模拟矩阵。
 
 ## 环境配置
 
@@ -72,7 +72,7 @@ head(data)
 
 ```{r}
 #| label: fig-1hic-heatmap
-#| fig-cap: "Hi-C 热图"
+#| fig-cap: "随教程提供的示例矩阵在 500 kb 分箱下的 Hi-C 接触图，颜色为取对数的强度标度：两个彼此独立的 122 Mb 接触块，各块内部呈现预期的强对角线与 s^-1 衰减。"
 #| out.width: "95%"
 #| fig-height: 5
 #| fig-width: 6.5
@@ -103,9 +103,15 @@ p <- ggplot(data = data, aes(x = index_bin1 * res, y = index_bin2 * res)) +
     colours = colorRampPalette(rev(brewer.pal(11,"RdYlBu")))(500),
     limits = c(0, max(data$freq) * 1.2)
   ) +
-  scale_y_reverse() +
   scale_x_continuous(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
+  ## One scale call per aesthetic only: a second scale_*() for the same
+  ## aesthetic silently replaces the first.
   scale_y_continuous(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
+  ## Reverse the y axis inside coord_cartesian(): a trans = "reverse" scale
+  ## silently drops limits, and the panel then lands in negative space with no
+  ## data in it. coord_cartesian() keeps the limits and only flips the panel.
+  coord_cartesian(xlim = c(0, bins_num * res), ylim = c(bins_num * res, 0),
+                  expand = FALSE) +
   theme(panel.grid = element_blank(), axis.title = element_blank()) +
   labs(title = paste0("(resolution: ", res / 1000, "Kb)"), x="", y="") +
   theme_bw() +
@@ -116,15 +122,15 @@ p <- ggplot(data = data, aes(x = index_bin1 * res, y = index_bin2 * res)) +
 p
 ```
 
-示例图每个小格表示每个基因，颜色深浅表示该基因表达量大小，表达量越大颜色越深（红色为上调，绿色为下调）。每行表示每个基因在不同样本中的表达量状况，每列表示每个样本所有基因的表达量情况。上方树形图表示不同组群和年龄的不同样本的聚类分析结果，左侧树形图表示来自不同样本的不同基因的聚类分析结果。
+示例图每个小格表示两个基因组区间之间的接触计数，颜色表示强度：在矩阵完整处，对角线信号最强，离开对角线的衰减即接触概率随基因组距离下降的表现。颜色由蓝（低）经白到红（高）。
 
 ### 进阶：归一化、TAD 边界与旋转视图
 
-上面的原始频率矩阵足以显示"存在接触"，却不足以显示**结构**：接触概率大致按 s^-1 随距离衰减，因此对角线主导整个面板，结构域块被淹没在梯度里。让 Hi-C 图真正有信息量的两种处理是：(i) **observed/expected 归一化**——把每个格子除以该接触距离上的平均计数；(ii) **TAD 边界标注** \[3,4\]。第三个视图补充 Juicebox 使用的**旋转（45°）呈现**：其中 TAD 变成基因组中点恒定的三角形，边界表现为一条竖直的边。
+上面的原始频率矩阵足以显示"存在接触"，却不足以显示**结构**：接触概率大致按 s^-1 随距离衰减，因此对角线主导整个面板，结构域块被淹没在梯度里。让 Hi-C 图真正有信息量的两种处理是：(i) **observed/expected 归一化**——把每个格子除以该接触距离上的平均计数；(ii) **TAD 边界标注** \[3,4\]。右侧面板补充 Juicebox 使用的**旋转（45°）呈现**：一个 TAD 变成一个以其基因组中点为顶点的三角形，各条边界落在这顶点相交的两条对角线上。
 
 ```{r}
 #| label: fig-adv-1NormalizedHic
-#| fig-cap: "observed/expected 归一化后的 Hi-C 接触图（100 Mb、500 kb 分辨率，按 5 个 TAD 与 s^-1 距离衰减模拟）：左为 log2 obs/exp 矩阵的下三角，四条 TAD 边界以白色虚线画出；右为同一矩阵旋转 45° 后的呈现，基因组中点沿 x 轴、接触间隔沿 y 轴，于是每个 TAD 是一个对称三角形，每条边界是一条竖直的边。"
+#| fig-cap: "observed/expected 归一化后的 Hi-C 接触图（100 Mb、500 kb 分辨率，按 5 个 TAD 与 s^-1 距离衰减模拟）：左为 log2 obs/exp 矩阵的上半部分，四条 TAD 边界以深色虚线段画出；右为同一矩阵旋转 45° 后的呈现，基因组中点沿 x 轴、接触间隔沿 y 轴，于是每个 TAD 是一个以中点为顶点的对称三角形，每条边界落在顶点相交的两条对角线上。"
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -149,7 +155,7 @@ tad_id <- cut(seq_len(n_bin) * res - res / 2, breaks = tad_edges,
 
 contacts <- expand.grid(i = seq_len(n_bin), j = seq_len(n_bin)) |>
   as_tibble() |>
-  filter(i >= j) |>                       # Hi-C 文件只存上三角
+  filter(i >= j) |>                       # x = i, y = j -> keep x >= y
   mutate(
     d = (i - j) * res,
     decay = 1 / (1 + d),                  # P(s) ~ s^-1
@@ -158,18 +164,13 @@ contacts <- expand.grid(i = seq_len(n_bin), j = seq_len(n_bin)) |>
   )
 
 ## observed/expected：按每个接触距离上的平均计数做除法。
-## The ratio is averaged over 2.5 Mb blocks (5 x 500 kb bins), because single
-## bins are pure counting noise (Poisson CV ~ 100%) and would speckle the panel;
-## 2.5 Mb is still finer than the smallest TAD, so the TAD edges stay sharp.
 oe <- contacts |>
   mutate(d_bin = round(d / res)) |>
   group_by(d_bin) |>
   mutate(mean_d = mean(freq)) |>
   ungroup() |>
-  ## The observed/expected ratio is kept at bin resolution: a 500 kb bin holds
-  ## enough counts that the panel is read as a smooth gradient, and the
-  ## per-distance expectation removes the s^-1 decay without touching the
-  ## TAD-to-TAD contrast.
+  ## obs/exp 保持在分箱分辨率上（不做距离带平滑）；按距离的期望值只去掉
+  ## s^-1 衰减，不改变 TAD 之间与 TAD 内部的对比。
   mutate(oe = log2((freq + 0.05) / (mean_d + 0.05)),
          x = i * res, y = j * res)
 
@@ -180,16 +181,23 @@ pal <- c("#313695", "#4575b4", "#abd9e9", "#ffffbf", "#fdae61", "#d73027",
 p_tri <- ggplot() +
   geom_raster(data = oe, aes(x, y, fill = oe),
               interpolate = FALSE) +
-  geom_vline(data = bounds, aes(xintercept = x), colour = "white",
-             linewidth = 0.35, linetype = "22") +
-  geom_hline(data = bounds, aes(yintercept = x), colour = "white",
-             linewidth = 0.35, linetype = "22") +
+  ## 边界 b 只是对角线上的一个点 (b, b)。在数据区 x >= y 内，它只能从该点
+  ## 引出两条线段：x = b 且 0 <= y <= b，以及 y = b 且 b <= x <= 100。
+  ## 画成贯通整幅的直线会暗示矩阵里并不存在的接触。
+  geom_segment(data = bounds,
+               aes(x = x, xend = x, y = 0, yend = x),
+               colour = "grey10", linewidth = 0.4, linetype = "22") +
+  geom_segment(data = bounds,
+               aes(x = x, xend = 100, y = x, yend = x),
+               colour = "grey10", linewidth = 0.4, linetype = "22") +
   scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
                        oob = scales::squish) +
-  coord_fixed() +
-  scale_x_continuous(expand = c(0, 0), breaks = seq(0, 100, 25)) +
-  scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, 25)) +
-  labs(x = "位置（Mb）", y = "位置（Mb）") +
+  scale_x_continuous(breaks = seq(0, 100, 25)) +
+  ## y 轴反转，使对角线 x = y 自左下指向右上、三角形占据右下半个面板，
+  ## 与 Hi-C 浏览器的习惯一致。
+  scale_y_continuous(breaks = seq(0, 100, 25)) +
+  coord_cartesian(xlim = c(0, 100), ylim = c(100, 0), expand = FALSE) +
+  labs(x = "position (Mb)", y = "position (Mb)") +
   theme_minimal(base_size = 9) +
   theme(panel.grid = element_blank(),
         legend.key.height = unit(0.85, "cm"),
@@ -197,19 +205,25 @@ p_tri <- ggplot() +
         legend.title = element_text(size = 7.2))
 
 ## 旋转：u = 基因组中点，v = 接触间隔。
-## rotation: u = genomic midpoint, v = contact separation
-rot <- oe |> mutate(u = (i + j) * res / 2, v = (i - j) * res / 2)
+rot <- oe |> mutate(u = (i + j) * res / 2, v = (i - j) * res)
 
 p_rot <- ggplot() +
   geom_raster(data = rot, aes(u, v, fill = oe), interpolate = FALSE) +
-  geom_vline(data = data.frame(u = bounds$x), aes(xintercept = u),
-             colour = "white", linewidth = 0.3, linetype = "22") +
+  ## A boundary b is a point at the tip v = 0, so in the rotated plane it is
+  ## the two diagonals u = b +/- v (not the vertical u = b): the vertical rule
+  ## would only touch the boundary where v = 0.
+  geom_abline(data = transform(bounds, s = +1),
+              aes(slope = s, intercept = x), colour = "grey10",
+              linewidth = 0.3, linetype = "22") +
+  geom_abline(data = transform(bounds, s = -1),
+              aes(slope = s, intercept = x), colour = "grey10",
+              linewidth = 0.3, linetype = "22") +
   scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
                        oob = scales::squish, guide = "none") +
   coord_fixed(ratio = 1) +
   scale_x_continuous(expand = c(0, 0)) +
-  scale_y_continuous(expand = c(0, 0), breaks = seq(0, 45, 15)) +
-  labs(x = "基因组中点（Mb）", y = "接触间隔（Mb）") +
+  scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, 20)) +
+  labs(x = "genomic midpoint (Mb)", y = "separation (Mb)") +
   theme_minimal(base_size = 9) +
   theme(panel.grid = element_blank(),
         axis.text = element_text(size = 6.8))

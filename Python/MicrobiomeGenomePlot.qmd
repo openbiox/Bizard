@@ -6,7 +6,7 @@ author:
 
 A microbial pangenome has two orthogonal structures, and papers usually need both: **which genes are core, accessory or unique**, and **which strains carry which accessory blocks**. The first is a frequency curve, the second is a presence/absence matrix ordered by phylogeny. Together they are the static, publication-grade residue of an Anvi'o \[1\] pangenome session or a Chromatiblock \[2\] comparison — the parts that survive after the interactive browser is closed.
 
-This page builds both with `matplotlib` and `numpy` only. Anvi'o itself is **skipped** here (see the notes below): it is an interactive suite with a multi-gigabyte conda dependency closure, and it is not installed to produce this figure.
+This page builds both with `matplotlib`, `numpy` and `scipy` only. Anvi'o itself is **skipped** here (see the notes below): it is an interactive suite with a multi-gigabyte conda dependency closure, and it is not installed to produce this figure.
 
 ## Example
 
@@ -20,7 +20,7 @@ A pangenome frequency curve for 900 orthologous clusters across 20 S. pneumoniae
 
 -   Programming language: Python
 
--   Dependent packages: `matplotlib`; `numpy`
+-   Dependent packages: `matplotlib`; `numpy`; `scipy`
 
 ```{python}
 #| label: packages-setup
@@ -33,7 +33,7 @@ from matplotlib.patches import Rectangle
 
 ## Data Preparation
 
-Twenty *Streptococcus pneumoniae* genomes are clustered into 900 orthologous gene clusters. Each cluster is labelled core (>95% of genomes), accessory (5-95%) or unique (one genome), and each genome carries a serotype and a sequence type. These are exactly the columns `anvi-pan-genome` / `anvi-summarize` export.
+Twenty *Streptococcus pneumoniae* genomes are clustered into 900 orthologous gene clusters. Each cluster is labelled core (present in all 20 genomes), accessory (2-19) or unique (exactly one genome). The presence/absence matrix that drives every panel below is the per-cluster genome membership table that `anvi-pan-genome` / `anvi-summarize` export.
 
 ```{python}
 #| label: data-prep
@@ -74,9 +74,6 @@ for j in range(n_clusters):
         carriers.add(int(np.random.choice(foreign)))
     present[sorted(carriers), j] = True
 
-## Block structure is only visible if the genomes are ordered by clade, so
-## store that order for the matrix figure below.
-phylogenetic_order = clade_order
 present.sum(axis=0)[:12]
 ```
 
@@ -97,7 +94,7 @@ summary.groupby("class")["prevalence"].agg(["count", "median"])
 
 ### 1. Pangenome Frequency Curve
 
-The frequency curve says how the pangenome is partitioned: the left spike is the unique genome-specific fraction, the middle body is the accessory genome, the right plateau is the core. The three regions are the standard vocabulary of every pangenome paper, so they must be visible without reading the axis.
+The frequency curve says how the pangenome is partitioned: the left spike is the unique, genome-specific fraction, the middle body is the accessory genome, and the isolated tall bar at 20 is the core. Only three of the four regions of a textbook U-shape are populated here — 900 clusters over 20 genomes is too small for a smooth right-hand wall — so read the core off the single bar, not off a plateau. The three regions are still the standard vocabulary of every pangenome paper and must be visible without reading the axis.
 
 ```{python}
 #| label: fig-1.1PangenomeCurve
@@ -145,18 +142,18 @@ plt.show()
 ::: callout-tip
 **Practice tips**
 
--   The core threshold is a decision, not a fact: `>= 95%` and `== 100%` give very different core sizes. Write the threshold in the caption.
+-   The core threshold is a decision, not a fact: `>= 95%` and `== 100%` give very different core sizes. This figure defines core as presence in all 20 genomes and writes that definition in the caption.
 -   Use a log or square-root y axis if the unique spike dwarfs everything else — but say so, because it changes the visual weight of the three classes.
 -   Order the x axis by prevalence, never alphabetically by cluster ID; the curve's shape is the message.
 :::
 
 ### 2. Accessory-Genome Presence Matrix, Ordered by Phylogeny
 
-The matrix shows *which* accessory clusters travel together. Ordering genomes by a phylogeny (here a hierarchical clustering of the latent distances) turns a salt-and-pepper heatmap into blocks, which then correspond to clades and to mobile elements.
+The matrix shows *which* accessory clusters travel together. Ordering genomes by a hierarchical clustering of the Jaccard distances on presence/absence turns a salt-and-pepper heatmap into blocks, which then correspond to clades and to mobile elements.
 
 ```{python}
 #| label: fig-1.2PresenceMatrix
-#| fig-cap: "Presence matrix of 20 genomes x 900 orthologous clusters; rows are genomes ordered by hierarchical clustering of presence/absence alone, columns are clusters sorted by prevalence. Blue = cluster present; clade-specific accessory blocks appear as horizontal stripes, and the 180 core clusters form the solid right-hand block."
+#| fig-cap: "Presence matrix of 20 genomes x 900 orthologous clusters; rows are genomes ordered by hierarchical clustering of presence/absence alone, columns are clusters sorted by prevalence. Blue = cluster present; because the accessory clusters are anchored in clades, the matrix is blocky in both directions, and the 180 core clusters form the solid right-hand block."
 #| fig-width: 8.6
 #| fig-height: 5.4
 #| fig-dpi: 300
@@ -164,8 +161,8 @@ The matrix shows *which* accessory clusters travel together. Ordering genomes by
 from scipy.cluster.hierarchy import linkage, leaves_list
 from scipy.spatial.distance import pdist
 
-## Two orderings are shown side by side: the simulation's clade order and
-## the order recovered from presence/absence alone by Jaccard clustering.
+## Row order is recovered from presence/absence alone by Jaccard clustering;
+## columns are sorted by prevalence.
 order_rows = leaves_list(linkage(pdist(present.astype(float), metric="jaccard"),
                                  method="average"))
 order_cols = np.argsort(prevalence, kind="stable")
@@ -179,8 +176,8 @@ ax.imshow(mat, aspect="auto", cmap=LinearSegmentedColormap.from_list(
 ## Core block boundary: the last `core_count` columns are 100% prevalent.
 core_count = int((prevalence == n_genomes).sum())
 ax.axvline(n_clusters - core_count - 0.5, color="#b2182b", lw=1.2, ls="--")
-ax.text(n_clusters - core_count - 8, 0.9, f"core ({core_count})",
-        ha="right", va="top", fontsize=8.6, color="#b2182b", fontweight="bold")
+ax.text(n_clusters - core_count + 6, 0.9, f"core ({core_count})",
+        ha="left", va="top", fontsize=8.6, color="#b2182b", fontweight="bold")
 ax.text(8, 0.9, f"accessory + unique ({n_clusters - core_count})",
         ha="left", va="top", fontsize=8.6, color="#2166ac", fontweight="bold")
 
@@ -214,7 +211,7 @@ Pangenome papers also report how the core shrinks as genomes are added. The curv
 
 ```{python}
 #| label: fig-1.3Accumulation
-#| fig-cap: "Core- and pan-genome accumulation over 20 genomes: the core declines toward its asymptotic size while the pan-genome keeps growing, shown as a single panel with two y scales replaced by magnitude-normalised curves."
+#| fig-cap: "Core- and pan-genome accumulation over 20 genomes, both in orthologous clusters on a single shared y axis: the core declines toward its asymptotic size while the pan-genome keeps growing. No second y axis and no rescaling are used, so the gap between the two curves is the accessory genome itself."
 #| fig-width: 8.4
 #| fig-height: 4.2
 #| fig-dpi: 300

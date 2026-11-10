@@ -10,7 +10,7 @@ author:
 
 ![](../images/Omics/GenomeGraphPlot_demo.png){fig-alt="基因组组装图 DEMO" fig-align="center" width="85%"}
 
-1.5 kb 位点、含两个 bubble 的组装图：节点宽度编码片段长度，共有片段为灰色，每个 bubble 的参考与备选等位路径分别为蓝色与红色。SNP bubble 分出 180 bp 参考路径与 150 bp 备选路径；插入 bubble 分出 300 bp 与 450 bp 两条路径。线性参考无法同时表达两条路径，这正是需要图结构的原因。
+1.5 kb 参考路径、含两个变异位点的组装图：节点宽度编码片段长度，共有片段为灰色，参考等位为蓝色、备选等位为红色，长度为零的缺失节点则显式标出。SNP bubble 分出 180 bp 参考路径与 180 bp 备选路径；插入/缺失 bubble 分出 300 bp 参考、450 bp 插入与零长度缺失标记。线性参考无法同时表达两条路径，这正是需要图结构的原因。
 
 ## Setup
 
@@ -42,44 +42,37 @@ sessioninfo::session_info("attached")
 
 ## 数据准备
 
-真实 GFA 文件很大，但所有版式规则在十来个片段的图上都能看清。我们建模一个 2.4 kb 位点，取自三条单倍型：共享左翼、**缺失等位**、**SNP bubble**、**150 bp 插入**与共享右翼。片段长度作为独立列保存，因为节点宽度必须编码它——用等宽节点画图会掩盖哪个等位其实更长。
+真实 GFA 文件很大，但所有版式规则在七个节点的图上都能看清。我们建模的图取自三条单倍型——共享左翼、**SNP bubble**、**150 bp 插入**、同一第二位点的**缺失等位**以及共享右翼——长度全部由数据推导而非另写一遍：参考路径 480 + 180 + 300 + 540 = 1,500 bp，最长单倍型路径 480 + 180 + 450 + 540 = 1,650 bp，全部节点长度之和为 2,130 bp。片段长度作为独立列保存，因为节点宽度必须编码它——用等宽节点画图会掩盖哪个等位其实更长。
 
 ```{r load data, message=FALSE, warning=FALSE}
 set.seed(4353)
 
 ## segments: GFA `S` lines (name, length, GC content for colouring)
 segments <- tibble(
-  seg    = c("s1", "s2", "s3", "s4", "s5", "s6", "s7", "ins", "del", "s8"),
-  length = c(420,  180,  150,  150,  240,  300,  210,  150,   0,   330),
-  gc     = c(0.44, 0.39, 0.61, 0.61, 0.45, 0.47, 0.40, 0.52,  NA,  0.43),
-  allele = c("shared", "SNP_A", "SNP_G", "ins_path", "shared",
-             "shared", "del_path", "insertion", "deletion", "shared")
+  seg    = c("s1", "b1r", "b1a", "b2r", "b2a", "del", "s2"),
+  length = c(480,  180,   180,   300,   450,   0,   540),
+  gc     = c(0.44, 0.39,  0.61,  0.45,  0.47,  NA,  0.43),
+  allele = c("shared", "SNP_ref", "SNP_alt", "INS_ref", "INS_alt",
+             "deletion", "shared")
 )
 
 ## links: GFA `L` lines (from, to, orientation), with an overlap length
 links <- tibble(
-  from = c("s1", "s1", "s2", "s3", "s4", "ins", "s5", "s3", "del",
-           "s6", "s7", "s8"),
-  to   = c("s2", "s3", "s5", "s5", "s6", "s6", "s6", "del", "s7",
-           "s8", "s8", "del"),
-  ovlp = c(60, 60, 80, 80, 80, 40, 80, 0, 0, 70, 70, 0),
-  kind = c("ref", "alt", "ref", "alt", "ref", "alt", "ref", "alt", "alt",
-           "ref", "alt", "alt")
-) |>
-  filter(ovlp > 0 | from == "del" | to == "del")
+  from = c("s1", "s1", "b1r", "b1a", "b2r", "b2a", "b1r", "del"),
+  to   = c("b1r", "b1a", "b2r", "b2a", "s2", "s2", "del", "s2"),
+  ovlp = c(60, 60, 60, 60, 70, 70, 0, 0),
+  kind = c("ref", "alt", "ref", "alt", "ref", "alt", "deletion", "deletion")
+)
 
 ## walks: each haplotype as an ordered segment path
 paths <- tribble(
   ~haplotype, ~step, ~seg,
-  "H1 (reference)", 1, "s1", "H1 (reference)", 2, "s2",
-  "H1 (reference)", 3, "s5", "H1 (reference)", 4, "s6",
-  "H1 (reference)", 5, "s8",
-  "H2 (SNP + ins)", 1, "s1", "H2 (SNP + ins)", 2, "s3",
-  "H2 (SNP + ins)", 3, "s4", "H2 (SNP + ins)", 4, "ins",
-  "H2 (SNP + ins)", 5, "s6", "H2 (SNP + ins)", 6, "s8",
-  "H3 (deletion)",  1, "s1", "H3 (deletion)",  2, "s2",
-  "H3 (deletion)",  3, "del", "H3 (deletion)",  4, "s7",
-  "H3 (deletion)",  5, "s8"
+  "H1 (reference)", 1, "s1", "H1 (reference)", 2, "b1r",
+  "H1 (reference)", 3, "b2r", "H1 (reference)", 4, "s2",
+  "H2 (SNP + ins)", 1, "s1", "H2 (SNP + ins)", 2, "b1a",
+  "H2 (SNP + ins)", 3, "b2a", "H2 (SNP + ins)", 4, "s2",
+  "H3 (deletion)",  1, "s1", "H3 (deletion)",  2, "b1r",
+  "H3 (deletion)",  3, "del", "H3 (deletion)",  4, "s2"
 )
 
 segments |>
@@ -91,11 +84,11 @@ segments |>
 
 ### 1. 以片段长度为节点宽度的组装图
 
-Bandage 约定：每个片段一个节点，节点宽度与片段长度成正比，凡两片段可以相接即连一条边。这里显式画出两个 bubble——SNP bubble（参考等位 180 bp、备择等位 150 bp）与插入 bubble（300 bp 对 450 bp）——读者无需读 GFA 即可追踪每条单倍型。
+Bandage 约定：每个片段一个节点，节点宽度与片段长度成正比，凡两片段可以相接即连一条边。这里显式画出两个变异位点——SNP bubble（参考 180 bp、备择 180 bp）与插入/缺失 bubble（参考 300 bp、插入 450 bp、零长度缺失）——读者无需读 GFA 即可追踪每条单倍型。
 
 ```{r}
 #| label: fig-1.1AssemblyGraph
-#| fig-cap: "含两个 bubble 的 1.5 kb 位点组装图：节点宽度编码片段长度，共享片段为灰色，每个 bubble 的参考与备择等位分别为蓝、红。"
+#| fig-cap: "1.5 kb 参考路径、含两个变异位点的组装图：节点宽度编码片段长度，共享片段为灰色，参考等位为蓝色、备选等位为红色，零长度缺失节点显式标出。"
 #| out.width: "96%"
 #| warning: false
 #| message: false
@@ -103,65 +96,77 @@ Bandage 约定：每个片段一个节点，节点宽度与片段长度成正比
 #| fig-height: 4.6
 #| fig-dpi: 300
 
-nodes <- tibble(
-  seg = c("n1", "b1r", "b1a", "j1", "n2", "b2r", "b2a", "n3"),
-  len = c(420, 180, 150, 0, 240, 300, 450, 330),
-  x   = c(1.0, 2.5, 2.5, 3.5, 4.5, 5.9, 5.9, 7.3),
-  y   = c(0, 0.55, -0.15, 0, 0, 0.55, -0.15, 0),
-  cls = c("shared", "ref", "alt", "junction", "shared", "ref", "alt", "shared")
-) |>
-  mutate(w = pmax(0.55, len / 300))
+nodes <- segments |>
+  left_join(
+    tribble(
+      ~seg, ~x, ~y,
+      "s1", 1.0, 0.00,
+      "b1r", 2.5, 0.55,
+      "b1a", 2.5, -0.15,
+      "b2r", 4.8, 0.55,
+      "b2a", 4.8, -0.15,
+      "del", 4.8, -0.78,
+      "s2", 7.2, 0.00
+    ),
+    by = "seg"
+  ) |>
+  mutate(
+    cls = case_when(
+      endsWith(allele, "_ref") ~ "ref",
+      endsWith(allele, "_alt") ~ "alt",
+      allele == "deletion" ~ "deletion",
+      TRUE ~ "shared"
+    ),
+    w = pmax(0.40, length / 300)
+  )
 
-edges <- tribble(
-  ~from, ~to, ~cls,
-  "n1", "b1r", "ref", "n1", "b1a", "alt",
-  "b1r", "j1", "ref", "b1a", "j1", "alt",
-  "j1", "n2", "shared",
-  "n2", "b2r", "ref", "n2", "b2a", "alt",
-  "b2r", "n3", "ref", "b2a", "n3", "alt"
-) |>
+edges <- links |>
   left_join(nodes |> select(seg, x, y), by = c("from" = "seg")) |>
-  left_join(nodes |> select(seg, xend = x, yend = y), by = c("to" = "seg"))
+  left_join(nodes |> select(seg, xend = x, yend = y),
+            by = c("to" = "seg"))
 
-box <- nodes |> filter(cls != "junction") |> select(seg, len, x, y, w, cls)
+box <- nodes |> filter(length > 0)
+deleted <- nodes |> filter(length == 0)
 
 ggplot() +
   geom_curve(data = edges,
-             aes(x, y, xend = xend, yend = yend, colour = cls),
+             aes(x, y, xend = xend, yend = yend, colour = kind),
              curvature = 0, linewidth = 0.7,
              arrow = arrow(length = unit(1.3, "mm"), type = "open")) +
   geom_segment(data = box |> mutate(x0 = x - w / 2, x1 = x + w / 2),
                aes(x = x0, y = y, xend = x1, yend = y, colour = cls),
                linewidth = 9, lineend = "round") +
-  geom_point(data = nodes |> filter(cls == "junction"),
-             aes(x, y), size = 2.4, colour = "#4D4D4D") +
+  geom_point(data = deleted, aes(x, y), shape = 4, size = 3.8,
+             stroke = 1.0, colour = "#1B7837") +
+  geom_text(data = deleted, aes(x, y - 0.16, label = "del (0 bp)"),
+            size = 2.3, colour = "#1B7837") +
   geom_text(data = box,
-            aes(x, y, label = paste0(seg, "\n", len, " bp")),
-            colour = "white", size = 2.5, lineheight = 0.95,
+            aes(x, y, label = paste0(seg, "\n", length, " bp")),
+            colour = "white", size = 2.2, lineheight = 0.95,
             fontface = "bold") +
-  annotate("rect", xmin = 1.9, xmax = 3.05, ymin = -0.42, ymax = 0.82,
+  annotate("rect", xmin = 1.95, xmax = 3.05, ymin = -0.45, ymax = 0.82,
            fill = NA, colour = "#2166AC", linetype = "22", linewidth = 0.4) +
-  annotate("text", x = 2.48, y = 0.95, label = "SNP bubble",
+  annotate("text", x = 2.50, y = 0.95, label = "SNP bubble",
            size = 2.7, colour = "#2166AC") +
-  annotate("rect", xmin = 5.25, xmax = 6.65, ymin = -0.42, ymax = 0.82,
+  annotate("rect", xmin = 4.18, xmax = 5.42, ymin = -1.12, ymax = 0.82,
            fill = NA, colour = "#B2182B", linetype = "22", linewidth = 0.4) +
-  annotate("text", x = 5.95, y = 0.95, label = "insertion bubble",
+  annotate("text", x = 4.80, y = 0.95, label = "insertion / deletion bubble",
            size = 2.7, colour = "#B2182B") +
   scale_colour_manual(values = c(shared = "#4D4D4D", ref = "#2166AC",
-                                 alt = "#B2182B", junction = "#4D4D4D"),
+                                 alt = "#B2182B", deletion = "#1B7837"),
                       name = "Allele class") +
-  coord_cartesian(xlim = c(0.35, 8.1), ylim = c(-0.55, 1.05), clip = "off") +
+  coord_cartesian(xlim = c(0.25, 8.20), ylim = c(-1.30, 1.10), clip = "off") +
   theme_void(base_size = 10) +
   theme(legend.position = "right")
 ```
 
 ### 2. Sequence tube map 分支视图
 
-sequence tube map 把每条单倍型画成一根彩色管道。在变异位点，管道物理上分开成为等位专属车道后再汇合，因此插入是一段*绕行*，而不是页边注释。这里三条单倍型管道平行行进，并在变异窗口处分叉。
+sequence tube map 把每条单倍型画成一根彩色管道。在变异位点，管道物理上分开成为等位专属车道后再汇合，因此插入是一段*绕行*，而不是页边注释。这里三条单倍型管道平行行进，并在 0.48–0.96 kb 的变异窗口处分叉。x 轴是**比对到参考序列的位置**，因此三条管道的两翼坐标完全一致；H2 的 150 bp 插入被压缩进同一段位，H3 缺失的 300 bp 参考区段则画成管道断开。两处绕行都非等比例，图内已注明。
 
 ```{r}
 #| label: fig-1.2TubeMap
-#| fig-cap: "sequence tube map 视图：单倍型管道在 SNP 加 150 bp 插入（H2）与缺失（H3）处分叉为等位专属车道，随后在共享翼汇合。"
+#| fig-cap: "以参考比对坐标为横轴的 sequence tube map 视图（0–1.50 kb）：三条单倍型管道在 0.48–0.96 kb 的变异窗口内分叉。H2 携带 SNP 与 150 bp 插入（画成压缩形式，绕行高度不是长度声明）；H3 携带零长度缺失等位，缺失了 0.30 kb 参考序列，故其管道在此断开。三条管道起止于同一比对坐标。"
 #| out.width: "96%"
 #| warning: false
 #| message: false
@@ -169,18 +174,22 @@ sequence tube map 把每条单倍型画成一根彩色管道。在变异位点�
 #| fig-height: 4.4
 #| fig-dpi: 300
 
+## 参考序列上的比对坐标（kb）：s1 [0, 0.48]、b1/b2 [0.48, 0.96]、
+## s2 [0.96, 1.50]。因此三条管道都从 0 起、到 1.50 止，变异窗口对三者是
+## 同一段区间。
 tube <- tribble(
   ~haplotype, ~x, ~y,
-  "H1 (reference)", 0.0, 0.40, "H1 (reference)", 1.4, 0.40,
-  "H1 (reference)", 2.0, 0.40, "H1 (reference)", 2.8, 0.40,
-  "H1 (reference)", 5.0, 0.40,
-  "H2 (SNP + ins)", 0.0, 0.00, "H2 (SNP + ins)", 1.4, 0.00,
-  "H2 (SNP + ins)", 1.9, 0.95, "H2 (SNP + ins)", 2.6, 0.95,
-  "H2 (SNP + ins)", 3.1, 0.00, "H2 (SNP + ins)", 5.0, 0.00,
-  "H3 (deletion)",  0.0, -0.40, "H3 (deletion)",  1.4, -0.40,
-  "H3 (deletion)",  1.9, -0.95, "H3 (deletion)",  2.4, -0.95,
-  "H3 (deletion)",  2.9, -0.40, "H3 (deletion)",  5.0, -0.40
+  "H1 (reference)", 0.00, 0.40, "H1 (reference)", 1.50, 0.40,
+  "H2 (SNP + ins)", 0.00, 0.00, "H2 (SNP + ins)", 0.48, 0.00,
+  "H2 (SNP + ins)", 0.68, 0.95, "H2 (SNP + ins)", 0.90, 0.95,
+  "H2 (SNP + ins)", 0.96, 0.00, "H2 (SNP + ins)", 1.50, 0.00,
+  "H3 (deletion)",  0.00, -0.40, "H3 (deletion)",  0.66, -0.40,
+  "H3 (deletion)",  0.96, -0.40, "H3 (deletion)",  1.50, -0.40
 )
+
+## 缺失意味着 H3 没有参考序列 [0.66, 0.96] 这一段，所以把管道断开，
+## 而不是弯成一个凹槽。
+del_gap <- tibble(x = 0.66, xend = 0.96, y = -0.40, yend = -0.40)
 
 tube_cols <- c("H1 (reference)" = "#4D4D4D",
                "H2 (SNP + ins)" = "#2166AC",
@@ -189,21 +198,24 @@ tube_cols <- c("H1 (reference)" = "#4D4D4D",
 ggplot(tube, aes(x, y, colour = haplotype)) +
   geom_path(aes(group = haplotype), linewidth = 8, lineend = "round",
             linejoin = "round", alpha = 0.9) +
-  geom_point(data = tube |> filter(x %in% c(1.4, 2.8) | x %in% c(1.9, 3.1)),
-             aes(x, y), size = 1.2, colour = "white", alpha = 0.8) +
-  annotate("rect", xmin = 1.40, xmax = 2.85, ymin = -1.16, ymax = 1.16,
+  ## 在被缺失的 300 bp 参考区段处断开 H3。
+  geom_segment(data = del_gap, aes(x = x, xend = xend, y = y, yend = yend),
+               inherit.aes = FALSE, colour = "white", linewidth = 9) +
+  geom_point(data = tube |> filter(x %in% c(0.48, 0.96)),
+             aes(x, y), size = 0.9, colour = "white", alpha = 0.8) +
+  annotate("rect", xmin = 0.48, xmax = 0.96, ymin = -1.12, ymax = 1.12,
            fill = NA, colour = "#8C510A", linetype = "22", linewidth = 0.4) +
-  annotate("text", x = 2.12, y = 1.30, size = 2.7, colour = "#8C510A",
-           label = "variant window (SNP + insertion / deletion)") +
-  annotate("text", x = 2.20, y = 0.95, size = 2.6, colour = "#2166AC",
-           label = "G allele + 150 bp insertion") +
-  annotate("text", x = 2.12, y = -0.95, size = 2.6, colour = "#1B7837",
-           label = "deletion (0 bp)") +
+  annotate("text", x = 0.72, y = 1.34, size = 2.7, colour = "#8C510A",
+           label = "variant window (alignment 0.48-0.96 kb; not to scale)") +
+  annotate("text", x = 0.79, y = 1.05, size = 2.6, colour = "#2166AC",
+           label = "SNP (G) + 150 bp insertion, shown compressed") +
+  annotate("text", x = 0.72, y = -1.02, size = 2.6, colour = "#1B7837",
+           label = "deletion allele (0 bp): pipe breaks") +
   scale_colour_manual(values = tube_cols, name = "Haplotype pipe") +
-  scale_x_continuous(breaks = c(0, 1, 2, 3, 4, 5),
-                     labels = c("0", "0.6", "1.2", "1.8", "2.4", "3.0")) +
-  coord_cartesian(ylim = c(-1.22, 1.40)) +
-  labs(x = "Position along the locus (kb)", y = NULL) +
+  scale_x_continuous(breaks = c(0, 0.48, 0.96, 1.50),
+                     labels = c("0", "0.48", "0.96", "1.50")) +
+  coord_cartesian(xlim = c(0, 1.62), ylim = c(-1.18, 1.42)) +
+  labs(x = "reference alignment position (kb)", y = NULL) +
   theme_classic(base_size = 10.5) +
   theme(axis.line.y = element_blank(), axis.text.y = element_blank(),
         axis.ticks.y = element_blank(), legend.position = "right")
@@ -223,9 +235,9 @@ ggplot(tube, aes(x, y, colour = haplotype)) +
 #| fig-height: 3.4
 #| fig-dpi: 300
 
-allele_cols <- c(shared = "#4D4D4D", SNP_A = "#2166AC", SNP_G = "#B2182B",
-                 ins_path = "#B2182B", insertion = "#8C510A",
-                 del_path = "#1B7837", deletion = "#1B7837")
+allele_cols <- c(shared = "#4D4D4D", SNP_ref = "#2166AC",
+                 SNP_alt = "#B2182B", INS_ref = "#4393C3",
+                 INS_alt = "#D6604D", deletion = "#1B7837")
 
 path_df <- paths |>
   left_join(segments, by = "seg") |>
@@ -242,19 +254,29 @@ path_df <- paths |>
   )
 
 ggplot(path_df) +
-  geom_rect(aes(xmin = ref_pos, xmax = ref_pos + pmax(length, 40),
+  geom_rect(data = filter(path_df, length > 0),
+            aes(xmin = ref_pos, xmax = ref_pos + length,
                 ymin = node_y - 0.34, ymax = node_y + 0.34,
                 fill = allele), colour = "white", linewidth = 0.7) +
-  geom_text(aes(ref_pos + pmax(length, 40) / 2, node_y, label = seg),
-            size = 2.4, colour = ifelse(path_df$gc > 0.55, "white", "#1B1B1B")) +
+  geom_text(data = filter(path_df, length > 0),
+            aes(ref_pos + length / 2, node_y, label = seg,
+                colour = ifelse(gc > 0.55, "white", "#1B1B1B")),
+            size = 2.4, show.legend = FALSE) +
+  geom_point(data = filter(path_df, length == 0),
+             aes(ref_pos, node_y), shape = 4, size = 2.8, stroke = 0.9,
+             colour = "#1B7837") +
+  geom_text(data = filter(path_df, length == 0),
+            aes(ref_pos, node_y + 0.23, label = "del 0 bp"),
+            size = 2.2, colour = "#1B7837") +
   scale_fill_manual(values = allele_cols, name = "Allele class") +
+  scale_colour_identity() +
   scale_y_continuous(breaks = c(-1, -2, -3),
                      labels = c("H1 (reference)", "H2 (SNP + ins)",
                                 "H3 (deletion)")) +
   scale_x_continuous(expand = c(0.01, 0)) +
   labs(x = "Reference-ordered position (bp)", y = NULL,
        title = "Path-guided 1D layout",
-       subtitle = "节点按 H1 路径排序；分支等位保留各自长度") +
+       subtitle = "Nodes ordered by the H1 path; branch alleles keep their own length") +
   theme_classic(base_size = 10.5) +
   theme(plot.title = element_text(face = "bold", size = 10.5),
         plot.subtitle = element_text(colour = "#4D4D4D", size = 8.8),

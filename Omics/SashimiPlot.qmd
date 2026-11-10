@@ -197,11 +197,11 @@ ggplot() +
 
 ### 2. PSI Panel: A Ratio, Not a Count
 
-The same junctions expressed as percent-spliced-in make the switch quantitative: PSI is the inclusion junction over inclusion plus skipping, bounded between 0 and 100% and therefore independent of sequencing depth. That bound is why the axis must say PSI — plotting raw junction counts on a percentage axis is a common and misleading substitution.
+The same junctions expressed as percent-spliced-in make the switch quantitative: PSI is the inclusion junction over inclusion plus skipping, bounded between 0 and 100% and therefore independent of sequencing depth. Here E2-E3 is the inclusion junction and E2-E4 is the skipping junction; a definition that also counts E3-E4 would sum both inclusion junctions. That bound is why the axis must say PSI — plotting raw junction counts on a percentage axis is a common and misleading substitution.
 
 ```{r}
 #| label: fig-1.2PSI
-#| fig-cap: "Percent-spliced-in of exon E3 per replicate (bars) with the group mean (diamond): PSI is a bounded ratio, unlike the read counts in the Sashimi panel."
+#| fig-cap: "Percent-spliced-in of exon E3 per replicate (points) with the group mean (bars and diamonds): PSI is a bounded ratio, unlike the read counts in the Sashimi panel."
 #| out.width: "60%"
 #| warning: false
 #| message: false
@@ -209,6 +209,9 @@ The same junctions expressed as percent-spliced-in make the switch quantitative:
 #| fig-height: 4.2
 #| fig-dpi: 300
 
+## PSI is defined here with E2-E3 as the inclusion junction and E2-E4 as the
+## skipping junction. An alternative definition that also counts E3-E4 would
+## sum the two inclusion junctions; the caption states the definition used.
 psi <- junctions |>
   filter(strand == "+", donor == 1980) |>
   mutate(event = ifelse(acceptor == 2400, "inclusion", "skipping")) |>
@@ -222,11 +225,19 @@ psi <- junctions |>
     .groups = "drop"
   )
 
-ggplot(psi, aes(group, psi * 100, fill = group)) +
-  geom_col(width = 0.5, colour = "white", linewidth = 0.5) +
-  geom_point(aes(group, psi * 100), position = position_jitter(width = 0.06,
-                                                              height = 0, seed = 1),
+psi_summary <- psi |>
+  group_by(group) |>
+  summarise(mean_psi = mean(psi), .groups = "drop")
+
+ggplot() +
+  geom_col(data = psi_summary,
+           aes(group, mean_psi * 100, fill = group),
+           width = 0.5, colour = "white", linewidth = 0.5) +
+  geom_point(data = psi, aes(group, psi * 100),
+             position = position_jitter(width = 0.06, height = 0, seed = 1),
              size = 2, colour = "#1B1B1B", inherit.aes = FALSE) +
+  geom_point(data = psi_summary, aes(group, mean_psi * 100), shape = 18,
+             size = 3.2, colour = "#1B1B1B", inherit.aes = FALSE) +
   geom_hline(yintercept = 50, linetype = "22", linewidth = 0.35, colour = "#7F7F7F") +
   scale_fill_manual(values = c(Brain = "#2166AC", Liver = "#B2182B"), guide = "none") +
   scale_y_continuous(limits = c(0, 100), expand = c(0, 0),
@@ -235,7 +246,7 @@ ggplot(psi, aes(group, psi * 100, fill = group)) +
     x = NULL,
     y = "PSI (%, exon E3 inclusion)",
     title = "PSI of exon E3",
-    subtitle = "Bars = group mean; points = replicates; dashed line = 50%"
+    subtitle = "Bars/diamonds = group mean; points = replicates; dashed line = 50%"
   ) +
   theme_classic(base_size = 11) +
   theme(plot.title = element_text(face = "bold", size = 11),

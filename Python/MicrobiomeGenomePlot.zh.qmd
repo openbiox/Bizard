@@ -6,7 +6,7 @@ author:
 
 微生物泛基因组有两个正交的结构，论文通常两者都需要：**哪些基因是核心、附属或独有**，以及**哪些菌株携带哪些附属块**。前者是频率曲线，后者是按系统发育排序的存在/缺失矩阵。二者合起来，是 Anvi'o \[1\] 泛基因组会话或 Chromatiblock \[2\] 比较结果中可发表的静态残留——交互式浏览器关闭后仍然成立的那部分。
 
-本页仅用 `matplotlib` 与 `numpy` 重建这两者。Anvi'o 本身在此**标记跳过**（见下文说明）：它是交互式套件，conda 依赖闭包达数 GB，本页不安装它来出图。
+本页仅用 `matplotlib`、`numpy` 与 `scipy` 重建这两者。Anvi'o 本身在此**标记跳过**（见下文说明）：它是交互式套件，conda 依赖闭包达数 GB，本页不安装它来出图。
 
 ## 示例
 
@@ -20,7 +20,7 @@ author:
 
 -   编程语言：Python
 
--   依赖包：`matplotlib`；`numpy`
+-   依赖包：`matplotlib`；`numpy`；`scipy`
 
 ```{python}
 #| label: packages-setup
@@ -33,7 +33,7 @@ from matplotlib.patches import Rectangle
 
 ## 数据准备
 
-二十个*肺炎链球菌*基因组聚为 900 个直系同源基因簇。各簇按出现频率标注为核心（>95% 基因组）、附属（5–95%）或独有（仅一个基因组），每个基因组带有血清型与序列型。这些正是 `anvi-pan-genome` / `anvi-summarize` 导出的列。
+二十个*肺炎链球菌*基因组聚为 900 个直系同源基因簇。各簇按出现频率标注为核心（20 个基因组均携带）、附属（2–19 个）或独有（恰好一个基因组）。驱动下文全部面板的出现/缺失矩阵，就是 `anvi-pan-genome` / `anvi-summarize` 导出的每个基因簇的基因组成员表。
 
 ```{python}
 #| label: data-prep
@@ -74,9 +74,6 @@ for j in range(n_clusters):
         carriers.add(int(np.random.choice(foreign)))
     present[sorted(carriers), j] = True
 
-## Block structure is only visible if the genomes are ordered by clade, so
-## store that order for the matrix figure below.
-phylogenetic_order = clade_order
 present.sum(axis=0)[:12]
 ```
 
@@ -97,7 +94,7 @@ summary.groupby("class")["prevalence"].agg(["count", "median"])
 
 ### 1. 泛基因组频率曲线
 
-频率曲线说明泛基因组如何划分：左侧尖峰是菌株特有的独有部分，中段是附属基因组，右侧平台是核心基因组。这三个区段是每篇泛基因组论文的标准词汇，因此必须不读坐标轴也能一眼看出。
+频率曲线说明泛基因组如何划分：左侧尖峰是菌株特有的独有部分，中段是附属基因组，第 20 位那根孤立的高柱就是核心基因组。在 20 个基因组、900 个簇的规模下，教科书 U 形的右侧那段墙并不会真正长出来，这里只剩一根柱，所以核心要从这根柱读，而不是从一个"平台"读。这三个区段仍是每篇泛基因组论文的标准词汇，必须不读坐标轴也能一眼看出。
 
 ```{python}
 #| label: fig-1.1PangenomeCurve
@@ -145,18 +142,18 @@ plt.show()
 ::: callout-tip
 **Practice tips**
 
--   核心阈值是决策而非事实：`>= 95%` 与 `== 100%` 会得到差异很大的核心大小，必须把阈值写进图注。
+-   核心阈值是决策而非事实：`>= 95%` 与 `== 100%` 会得到差异很大的核心大小。本图把核心定义为 20 个基因组均携带，并把这个定义写进图注。
 -   若独有尖峰远高于其余部分，可改用对数或平方根 y 轴——但必须声明，因为它改变了三类的视觉权重。
 -   x 轴按出现频率排序，绝不按簇 ID 字母序；曲线的形状本身就是信息。
 :::
 
 ### 2. 按系统发育排序的附属基因组存在矩阵
 
-矩阵显示*哪些*附属簇共同出现。按系统发育排序基因组（此处用存在/缺失的层次聚类）可把椒盐状热图变成块状结构，而这些块正好对应进化分支与可移动元件。
+矩阵显示*哪些*附属簇共同出现。依据存在/缺失的 Jaccard 距离做层次聚类来排序基因组，可把椒盐状热图变成块状结构，而这些块正好对应进化分支与可移动元件。
 
 ```{python}
 #| label: fig-1.2PresenceMatrix
-#| fig-cap: "20 个基因组 × 900 个直系同源簇的存在矩阵；行仅依据存在/缺失做层次聚类排序，列按出现频率排序。蓝色 = 该簇存在；分支特异的附属块表现为水平条纹，180 个核心簇构成右侧实心块。"
+#| fig-cap: "20 个基因组 × 900 个直系同源簇的存在矩阵；行仅依据存在/缺失做层次聚类排序，列按出现频率排序。蓝色 = 该簇存在；由于附属簇锚定在各个分支上，矩阵在两个方向上都成块，180 个核心簇构成右侧的实心块。"
 #| fig-width: 8.6
 #| fig-height: 5.4
 #| fig-dpi: 300
@@ -164,8 +161,8 @@ plt.show()
 from scipy.cluster.hierarchy import linkage, leaves_list
 from scipy.spatial.distance import pdist
 
-## Two orderings are shown side by side: the simulation's clade order and
-## the order recovered from presence/absence alone by Jaccard clustering.
+## Row order is recovered from presence/absence alone by Jaccard clustering;
+## columns are sorted by prevalence.
 order_rows = leaves_list(linkage(pdist(present.astype(float), metric="jaccard"),
                                  method="average"))
 order_cols = np.argsort(prevalence, kind="stable")
@@ -179,8 +176,8 @@ ax.imshow(mat, aspect="auto", cmap=LinearSegmentedColormap.from_list(
 ## Core block boundary: the last `core_count` columns are 100% prevalent.
 core_count = int((prevalence == n_genomes).sum())
 ax.axvline(n_clusters - core_count - 0.5, color="#b2182b", lw=1.2, ls="--")
-ax.text(n_clusters - core_count - 8, 0.9, f"core ({core_count})",
-        ha="right", va="top", fontsize=8.6, color="#b2182b", fontweight="bold")
+ax.text(n_clusters - core_count + 6, 0.9, f"core ({core_count})",
+        ha="left", va="top", fontsize=8.6, color="#b2182b", fontweight="bold")
 ax.text(8, 0.9, f"accessory + unique ({n_clusters - core_count})",
         ha="left", va="top", fontsize=8.6, color="#2166ac", fontweight="bold")
 

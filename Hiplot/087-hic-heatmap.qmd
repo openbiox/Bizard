@@ -19,7 +19,7 @@ The HiC heatmap is used to display the genome-wide chromatin interaction with he
 
 ![](../images/Hiplot/087-hic-heatmap.png){fig-alt="Hi-C Heatmap" fig-align="center" width="70%"}
 
-A Hi-C contact map of a 250 Mb genome at 500 kb resolution (500 x 500 bins): each cell is the contact frequency between two bins and the colour gives the intensity, so the diagonal is the strongest signal and the decay away from it is how contact probability falls with genomic distance. The 50 Mb grid lines make the scale readable, and the denser blocks away from the diagonal are the domains that the advanced section below annotates.
+A Hi-C contact map stored as a sparse list of bin pairs at 500 kb resolution: each cell is the contact count between two bins and the colour gives the intensity, so where a matrix is complete the diagonal is the strongest signal and the decay away from it is how contact probability falls with genomic distance. This particular example matrix is **not** a complete 250 Mb map — it is two independent 122 Mb contact blocks whose bins 0 and 244-285 are absent — so the correct reading is two diagonals inside two blocks, not one genome-wide diagonal. The observed gaps are why the advanced section below works from a complete simulated matrix.
 
 ## Setup
 
@@ -72,7 +72,7 @@ head(data)
 
 ```{r}
 #| label: fig-1hic-heatmap
-#| fig-cap: "Hi-C Heatmap"
+#| fig-cap: "Hi-C contact map of the shipped example matrix at 500 kb bins, log-spaced colour scale: two independent 122 Mb contact blocks, each showing the expected strong diagonal and the s^-1 decay away from it."
 #| out.width: "95%"
 #| fig-height: 5
 #| fig-width: 6.5
@@ -103,9 +103,15 @@ p <- ggplot(data = data, aes(x = index_bin1 * res, y = index_bin2 * res)) +
     colours = colorRampPalette(rev(brewer.pal(11,"RdYlBu")))(500),
     limits = c(0, max(data$freq) * 1.2)
   ) +
-  scale_y_reverse() +
   scale_x_continuous(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
+  ## One scale call per aesthetic only: a second scale_*() for the same
+  ## aesthetic silently replaces the first.
   scale_y_continuous(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
+  ## Reverse the y axis inside coord_cartesian(): a trans = "reverse" scale
+  ## silently drops limits, and the panel then lands in negative space with no
+  ## data in it. coord_cartesian() keeps the limits and only flips the panel.
+  coord_cartesian(xlim = c(0, bins_num * res), ylim = c(bins_num * res, 0),
+                  expand = FALSE) +
   theme(panel.grid = element_blank(), axis.title = element_blank()) +
   labs(title = paste0("(resolution: ", res / 1000, "Kb)"), x="", y="") +
   theme_bw() +
@@ -116,15 +122,15 @@ p <- ggplot(data = data, aes(x = index_bin1 * res, y = index_bin2 * res)) +
 p
 ```
 
-As shown in the example figure, a heat map represent the interaction frequency between any two locus. The color displays their intensity of interaction.
+As shown above, a heat map represents the interaction frequency between any two loci: the fill colour encodes contact intensity, and reversing the y axis puts bin 0 at the bottom-left so that the main diagonal runs from bottom-left to top-right, the convention every Hi-C viewer uses. The white cross in the middle of the rendered panel is the missing-bin band described in the Example section, not a feature of the data.
 
 ### Advanced: normalisation, TAD boundaries and the rotated view
 
-The raw frequency matrix above is enough to see that contacts exist, but not enough to see **structure**: contact probability falls roughly as s^-1 with distance, so the diagonal dominates every panel and the domain blocks are buried in the gradient. The two corrections that make a Hi-C figure informative are (i) **observed/expected normalisation**, dividing each bin by the mean count at its contact distance, and (ii) **TAD boundary annotation** \[3,4\]. The third panel adds the **rotated (45°) presentation** that Juicebox uses, in which a TAD becomes a triangle of constant genomic midpoint and the boundary appears as a vertical edge.
+The raw frequency matrix above is enough to see that contacts exist, but not enough to see **structure**: contact probability falls roughly as s^-1 with distance, so the diagonal dominates every panel and the domain blocks are buried in the gradient. The two corrections that make a Hi-C figure informative are (i) **observed/expected normalisation**, dividing each bin by the mean count at its contact distance, and (ii) **TAD boundary annotation** \[3,4\]. The right-hand panel adds the **rotated (45°) presentation** that Juicebox uses, in which a TAD becomes a triangle whose apex is its genomic midpoint and the boundaries fall on the two diagonals that meet at that apex.
 
 ```{r}
 #| label: fig-adv-1NormalizedHic
-#| fig-cap: "Observed/expected Hi-C contact map (100 Mb at 500 kb resolution, simulated with five TADs and s^-1 distance decay): left, the lower triangle of the log2 obs/exp matrix with the four TAD boundaries drawn as white dashed rules; right, the same matrix rotated 45 degrees so genomic midpoint runs along x and separation along y, which makes each TAD a symmetric triangle and each boundary a vertical edge."
+#| fig-cap: "Observed/expected Hi-C contact map (100 Mb at 500 kb resolution, simulated with five TADs and s^-1 distance decay): left, the upper half of the log2 obs/exp matrix with the four TAD boundaries drawn as dark dashed segments; right, the same matrix rotated 45 degrees so genomic midpoint runs along x and separation along y, which makes each TAD a symmetric triangle whose apex is its midpoint and puts each boundary on the two diagonals meeting at that apex."
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -149,7 +155,7 @@ tad_id <- cut(seq_len(n_bin) * res - res / 2, breaks = tad_edges,
 
 contacts <- expand.grid(i = seq_len(n_bin), j = seq_len(n_bin)) |>
   as_tibble() |>
-  filter(i >= j) |>                       # Hi-C files store the upper triangle
+  filter(i >= j) |>                       # x = i, y = j -> keep x >= y
   mutate(
     d = (i - j) * res,
     decay = 1 / (1 + d),                  # P(s) ~ s^-1
@@ -158,18 +164,14 @@ contacts <- expand.grid(i = seq_len(n_bin), j = seq_len(n_bin)) |>
   )
 
 ## Observed/expected: divide by the mean count at each contact distance.
-## The ratio is averaged over 2.5 Mb blocks (5 x 500 kb bins), because single
-## bins are pure counting noise (Poisson CV ~ 100%) and would speckle the panel;
-## 2.5 Mb is still finer than the smallest TAD, so the TAD edges stay sharp.
 oe <- contacts |>
   mutate(d_bin = round(d / res)) |>
   group_by(d_bin) |>
   mutate(mean_d = mean(freq)) |>
   ungroup() |>
-  ## The observed/expected ratio is kept at bin resolution: a 500 kb bin holds
-  ## enough counts that the panel is read as a smooth gradient, and the
-  ## per-distance expectation removes the s^-1 decay without touching the
-  ## TAD-to-TAD contrast.
+  ## The observed/expected ratio is kept at bin resolution (no distance-band
+  ## smoothing); the per-distance expectation removes the s^-1 decay without
+  ## touching the TAD-to-TAD contrast.
   mutate(oe = log2((freq + 0.05) / (mean_d + 0.05)),
          x = i * res, y = j * res)
 
@@ -180,15 +182,23 @@ pal <- c("#313695", "#4575b4", "#abd9e9", "#ffffbf", "#fdae61", "#d73027",
 p_tri <- ggplot() +
   geom_raster(data = oe, aes(x, y, fill = oe),
               interpolate = FALSE) +
-  geom_vline(data = bounds, aes(xintercept = x), colour = "white",
-             linewidth = 0.35, linetype = "22") +
-  geom_hline(data = bounds, aes(yintercept = x), colour = "white",
-             linewidth = 0.35, linetype = "22") +
+  ## A boundary b is a single point (b, b) on the diagonal, so inside the data
+  ## region x >= y it can only be drawn as two segments from that point:
+  ## x = b with 0 <= y <= b, and y = b with b <= x <= 100. Full rules would
+  ## advertise contacts the matrix does not contain.
+  geom_segment(data = bounds,
+               aes(x = x, xend = x, y = 0, yend = x),
+               colour = "grey10", linewidth = 0.4, linetype = "22") +
+  geom_segment(data = bounds,
+               aes(x = x, xend = 100, y = x, yend = x),
+               colour = "grey10", linewidth = 0.4, linetype = "22") +
   scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
                        oob = scales::squish) +
-  coord_fixed() +
-  scale_x_continuous(expand = c(0, 0), breaks = seq(0, 100, 25)) +
-  scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, 25)) +
+  scale_x_continuous(breaks = seq(0, 100, 25)) +
+  ## Reversed y so the diagonal (x = y) runs from bottom-left to top-right and
+  ## the triangle fills the lower-right half, the layout used by Hi-C browsers.
+  scale_y_continuous(breaks = seq(0, 100, 25)) +
+  coord_cartesian(xlim = c(0, 100), ylim = c(100, 0), expand = FALSE) +
   labs(x = "position (Mb)", y = "position (Mb)") +
   theme_minimal(base_size = 9) +
   theme(panel.grid = element_blank(),
@@ -197,18 +207,24 @@ p_tri <- ggplot() +
         legend.title = element_text(size = 7.2))
 
 ## Rotation: u = genomic midpoint, v = contact separation.
-## rotation: u = genomic midpoint, v = contact separation
-rot <- oe |> mutate(u = (i + j) * res / 2, v = (i - j) * res / 2)
+rot <- oe |> mutate(u = (i + j) * res / 2, v = (i - j) * res)
 
 p_rot <- ggplot() +
   geom_raster(data = rot, aes(u, v, fill = oe), interpolate = FALSE) +
-  geom_vline(data = data.frame(u = bounds$x), aes(xintercept = u),
-             colour = "white", linewidth = 0.3, linetype = "22") +
+  ## A boundary b is a point at the tip v = 0, so in the rotated plane it is
+  ## the two diagonals u = b +/- v (not the vertical u = b): the vertical rule
+  ## would only touch the boundary where v = 0.
+  geom_abline(data = transform(bounds, s = +1),
+              aes(slope = s, intercept = x), colour = "grey10",
+              linewidth = 0.3, linetype = "22") +
+  geom_abline(data = transform(bounds, s = -1),
+              aes(slope = s, intercept = x), colour = "grey10",
+              linewidth = 0.3, linetype = "22") +
   scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
                        oob = scales::squish, guide = "none") +
   coord_fixed(ratio = 1) +
   scale_x_continuous(expand = c(0, 0)) +
-  scale_y_continuous(expand = c(0, 0), breaks = seq(0, 45, 15)) +
+  scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, 20)) +
   labs(x = "genomic midpoint (Mb)", y = "separation (Mb)") +
   theme_minimal(base_size = 9) +
   theme(panel.grid = element_blank(),
