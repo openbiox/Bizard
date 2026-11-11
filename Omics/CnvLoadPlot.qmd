@@ -8,7 +8,7 @@ Copy-number **burden** — how many focal and arm-level alterations a tumour car
 
 ## Example
 
-![](../images/CnvLoadPlot_demo.png){fig-alt="Focal and Arm-Level CNV Burden DEMO" fig-align="center" width="60%"}
+![](../images/Omics/CnvLoadPlot_demo.png){fig-alt="Focal and Arm-Level CNV Burden DEMO" fig-align="center" width="60%"}
 
 ## Setup
 
@@ -40,12 +40,11 @@ n <- 150
 subtypes <- c("A.I.", "A.S.", "M.T.")
 pdat <- data.frame(sample = sprintf("S%03d", 1:n),
                    Subtype = factor(rep(subtypes, each = n / 3), levels = subtypes))
-## simulate GISTIC value matrices: features x samples, values -2/0/1/2
+## per-sample altered-feature count from a GISTIC-style value vector
 burden_of <- function(n_feat, amp_p, del_p) {
-  m <- matrix(sample(c(-2, -1, 0, 1, 2), n_feat * n,
-                     TRUE, prob = c(del_p, del_p * 2, 1 - 4 * del_p, amp_p * 2, amp_p)),
-              n_feat, n, dimnames = list(paste0("F", 1:n_feat), pdat$sample))
-  colSums(m != 0)   # per-sample altered-feature count = the burden
+  v <- sample(c(-2, -1, 0, 1, 2), n_feat,
+              TRUE, prob = c(del_p, del_p * 2, 1 - 4 * del_p, amp_p * 2, amp_p))
+  sum(v != 0)
 }
 ## planted subtype effects: A.I. high focal amp, M.T. high focal/broad del
 focal <- sapply(seq_len(n), function(i) {
@@ -79,14 +78,16 @@ Focal and arm-level burden side by side, with BH-adjusted pairwise Wilcoxon symb
 #| fig-height: 4.5
 
 pairs <- combn(subtypes, 2, simplify = FALSE)
-sym <- function(p) if (p > 0.05) "ns" else if (p <= 0.001) "***" else if (p <= 0.01) "**" else if (p <= 0.05) "*" else "ns"
+sym <- function(p) ifelse(p > 0.05, "ns", ifelse(p <= 0.001, "***", ifelse(p <= 0.01, "**", ifelse(p <= 0.05, "*", "ns"))))
 ann <- do.call(rbind, lapply(c("Focal", "Broad (arm)"), function(lv) {
   d <- load_df[load_df$level == lv, ]
-  do.call(rbind, lapply(pairs, function(pr) {
+  raw <- do.call(rbind, lapply(pairs, function(pr) {
     p <- wilcox.test(burden ~ Subtype, data = d[d$Subtype %in% pr, ])$p.value
-    p <- p.adjust(p, method = "BH") * length(pairs)
-    data.frame(level = lv, g1 = pr[1], g2 = pr[2], p = p, sym = sym(min(p, 1)))
+    data.frame(level = lv, g1 = pr[1], g2 = pr[2], p = p)
   }))
+  raw$p <- p.adjust(raw$p, method = "BH")   # BH across the 3 pairwise tests
+  raw$sym <- sym(raw$p)
+  raw
 }))
 ymax <- tapply(load_df$burden, load_df$level, max)
 pos_map <- setNames(c(1, 2, 3), c("A.I.", "A.S.", "M.T."))
@@ -113,7 +114,7 @@ ggplot(load_df, aes(Subtype, burden, fill = Subtype)) +
 ## Applications
 
 ::: {#fig-CnvLoadApplications1}
-![](../images/CnvLoadPlot_demo.png){fig-alt="CNV burden by subtype" fig-align="center" width="60%"}
+![](../images/Omics/CnvLoadPlot_demo.png){fig-alt="CNV burden by subtype" fig-align="center" width="60%"}
 
 CNV burden by subtype
 :::
@@ -124,4 +125,4 @@ Burden-by-subgroup boxplots generalise to any alteration class: TMB by stage, HR
 
 \[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
-\[2\} Thorsson V, Gibbs DL, Brown SD, et al. The immune landscape of cancer (source of the immune-subtype burden comparison). Immunity. 2018;48(4):812-830. doi:10.1016/j.immuni.2018.03.023
+\[2\] Thorsson V, Gibbs DL, Brown SD, et al. The immune landscape of cancer (source of the immune-subtype burden comparison). Immunity. 2018;48(4):812-830. doi:10.1016/j.immuni.2018.03.023

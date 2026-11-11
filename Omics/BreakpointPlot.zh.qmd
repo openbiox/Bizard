@@ -8,7 +8,7 @@ author:
 
 ## Example
 
-![](../images/BreakpointPlot_demo.png){fig-alt="效应量变点扫描 DEMO" fig-align="center" width="60%"}
+![](../images/Omics/BreakpointPlot_demo.png){fig-alt="效应量变点扫描 DEMO" fig-align="center" width="60%"}
 
 ## Setup
 
@@ -36,14 +36,14 @@ ELN 计数 1-20 的模拟 HR 估计（每值 80 名患者、植入效应在 ELN 
 ```{r load data}
 suppressPackageStartupMessages({library(survival); library(strucchange)})
 set.seed(19201)
-## ELN (extranodal lymph node) count vs HR of an exposure, planted break at ELN=10
+## ELN (examined lymph node) count vs HR of an exposure, planted break at ELN=10
 eln_count <- 1:20
 true_hr <- c(seq(2.6, 1.0, length.out = 10), seq(1.0, 0.55, length.out = 10))
 Coxoutput <- do.call(rbind, lapply(seq_along(eln_count), function(i) {
   k <- eln_count[i]
-  sub <- data.frame(x = rbinom(80, 1, 0.4),
-                    t = pmin(90, pmax(2, qweibull(runif(80), 1, 50 / exp(log(true_hr[i]) * rbinom(80, 1, 0.4))))),
-                    e = rbinom(80, 1, 0.7))
+  x <- rbinom(80, 1, 0.4)
+  t <- pmin(90, pmax(2, qweibull(runif(80), 1, 50 / exp(log(true_hr[i]) * x))))
+  sub <- data.frame(x = x, t = t, e = rbinom(80, 1, 0.7))
   m <- coxph(Surv(t, e) ~ x, data = sub)
   ci <- summary(m)$conf.int
   data.frame(ELN = k, HR = ci[1, "exp(coef)"], lower = ci[1, "lower .95"], upper = ci[1, "upper .95"])
@@ -93,13 +93,22 @@ cli <- seq(min(Coxoutput$ELN), Coxoutput$ELN[bk], length.out = 40)
 cli2 <- seq(Coxoutput$ELN[bk], max(Coxoutput$ELN), length.out = 40)
 lines(cli, predict(seg_lm, newdata = data.frame(ELN = cli)), col = jco[1], lwd = 2)
 lines(cli2, predict(seg_lm2, newdata = data.frame(ELN = cli2)), col = jco[2], lwd = 2)
-abline(v = Coxoutput$ELN[bk], lty = 2, col = jco[3])```
+abline(v = Coxoutput$ELN[bk], lty = 2, col = jco[3])
+```
 
+
+::: callout-tip
+**实践提示**
+
+-   分段回归从**干净数据框**拟合（`lm(y ~ ELN, data = sm, subset = ...)`），不要用 `$` 拼接的公式——否则 `predict()` 会因 terms 里带着 `df$col` 名而忽略 `newdata`。
+-   `breakpoints()` 返回的是观测**索引**而非协变量值——标注图形前先映射回排序后的协变量。
+-   lowess 带宽（此处 f = 2/3）决定变点检验看到多少结构：收紧则噪声变成变点，放松则真弯折被抹平。报告 f 值。
+:::
 
 ## 应用场景
 
 ::: {#fig-BreakpointApplications1}
-![](../images/BreakpointPlot_demo.png){fig-alt="效应量变点扫描" fig-align="center" width="60%"}
+![](../images/Omics/BreakpointPlot_demo.png){fig-alt="效应量变点扫描" fig-align="center" width="60%"}
 
 效应量变点扫描
 :::
@@ -110,4 +119,4 @@ HR 扫描 + 变点读数适用于任何剂量/阈值问题：肿瘤手术的淋�
 
 \[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
-\[2\} Zeileis A, Kleiber C, Krämer W, Hornik K. Testing and dating of structural changes in practice. Comput Stat Data Anal. 2003;44(1-2):109-123. doi:10.1016/S0167-9473(03)00030-6
+\[2\] Zeileis A, Kleiber C, Krämer W, Hornik K. Testing and dating of structural changes in practice. Comput Stat Data Anal. 2003;44(1-2):109-123. doi:10.1016/S0167-9473(03)00030-6

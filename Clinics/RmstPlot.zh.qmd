@@ -8,7 +8,7 @@ author:
 
 ## Example
 
-![](../images/RmstPlot_demo.png){fig-alt="限制性平均生存按风险百分位 DEMO" fig-align="center" width="60%"}
+![](../images/Clinics/RmstPlot_demo.png){fig-alt="限制性平均生存按风险百分位 DEMO" fig-align="center" width="60%"}
 
 ## Setup
 
@@ -70,7 +70,7 @@ rms2curve <- function(marker, n.grid = 25) {
     if (nrow(d) < 10) return(NA)
     km <- survfit(Surv(OS.time, OS) ~ 1, data = d)
     s <- summary(km, times = 0:tau, extend = TRUE)$surv
-    sum(s) * (tau / length(s))   # RMST = integral of S(t) dt over [0, tau]
+    sum(head(s, -1) + tail(s, -1)) / 2 * (tau / (length(s) - 1))   # trapezoid RMST
   })
 }
 rms1 <- rms2curve(base.marker)
@@ -85,13 +85,22 @@ ggplot(df, aes(pp, rms, colour = marker)) +
   coord_cartesian(ylim = c(0, tau)) +
   labs(x = "Percentile of risk score", y = "RMS (Months)",
        title = "Restricted mean survival by risk-score percentile (simulated)") +
-  theme_classic(base_size = 10) + theme(legend.position = "top")```
+  theme_classic(base_size = 10) + theme(legend.position = "top")
+```
 
+
+::: callout-tip
+**实践提示**
+
+-   RMST = S(t) 在 [0, tau] 上的积分：用细网格的 KM 生存 × 网格宽（梯形法）。`survRM2::rmst2()` 对两臂比较封装了同一计算并带 log-log CI——每次都注明 `tau`，没有时点的 RMST 无意义。
+-   百分位扫描使尾部亚组变小——保持每组 ≥ 10 人（本页低于该数返回 NA），否则曲线末端全是噪声尖刺。
+-   比较前把生存时间换算成月——`tau` 以月给出时，天数直接比会错一个量级；参考文档为此专门打印提醒。
+:::
 
 ## 应用场景
 
 ::: {#fig-RmsApplications1}
-![](../images/RmstPlot_demo.png){fig-alt="RMS 百分位扫描" fig-align="center" width="60%"}
+![](../images/Clinics/RmstPlot_demo.png){fig-alt="RMS 百分位扫描" fig-align="center" width="60%"}
 
 RMS 百分位扫描
 :::

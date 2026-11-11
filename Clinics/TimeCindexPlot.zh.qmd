@@ -8,7 +8,7 @@ author:
 
 ## Example
 
-![](../images/TimeCindexPlot_demo.png){fig-alt="时间依赖性 C 指数 DEMO" fig-align="center" width="60%"}
+![](../images/Clinics/TimeCindexPlot_demo.png){fig-alt="时间依赖性 C 指数 DEMO" fig-align="center" width="60%"}
 
 ## Setup
 
@@ -57,11 +57,11 @@ models <- list(
 
 ### 每模型一条曲线
 
-12-108 月网格上的 BootCV C 指数曲线：联合模型处处高于其组分，所有模型在长随访时向 0.5 机会线漂移——漂移正是固定时点 C 指数丢掉的信息：
+12-108 月网格上的 BootCV C 指数曲线：联合模型处处高于其组分，所有模型的判别力都随随访增长而下降——漂移正是固定时点 C 指数丢掉的信息：
 
 ```{r}
 #| label: fig-1.1TimeCindex
-#| fig-cap: "220 个模拟患者的三个嵌套 Cox 模型（临床/生物标记/联合）在 12-108 月网格上的 BootCV 时间依赖性 C 指数：联合模型占优，所有曲线随随访向 0.5 漂移。"
+#| fig-cap: "220 个模拟患者的三个嵌套 Cox 模型（临床/生物标记/联合）在 12-108 月网格上的 BootCV 时间依赖性 C 指数：联合模型占优，判别力随随访下降。"
 #| out.width: "85%"
 #| warning: false
 #| message: false
@@ -69,6 +69,7 @@ models <- list(
 #| fig-height: 4.6
 
 eval.times <- seq(12, 108, 12)
+set.seed(18901)   # BootCV resampling must be reproducible
 timeC <- pec::cindex(object = models, formula = Surv(OS.time, OS) ~ ., data = dat,
                      eval.times = eval.times, splitMethod = "BootCv", B = 40)
 cmat <- do.call(cbind, timeC$BootCvCindex)
@@ -81,13 +82,22 @@ ggplot(df, aes(t, cindex, colour = model)) +
   coord_cartesian(ylim = c(0.45, 0.8)) +
   labs(x = "Evaluation time (months)", y = "Time-dependent C-index (BootCV)",
        title = "Time-dependent concordance by model (simulated)", colour = NULL) +
-  theme_classic(base_size = 10) + theme(legend.position = "top")```
+  theme_classic(base_size = 10) + theme(legend.position = "top")
+```
 
+
+::: callout-tip
+**实践提示**
+
+-   `pec::cindex()` 接受**命名的模型列表**并在共同的自助抽样分割上评估——两两比较因此内部一致；设置种子（参考文档同样提醒）否则曲线每次运行都会抖动。
+-   `eval.times` 要落在观测随访范围内：剩余事件少于约 10 个的时点会产生不稳定的 C 指数尖刺。
+-   0.5 是机会线、1 是完美一致——模型只有在曲线持续高于竞争者时才算占优；两线交叉说明排序依赖时点，应如实报告。
+:::
 
 ## 应用场景
 
 ::: {#fig-TimeCindexApplications1}
-![](../images/TimeCindexPlot_demo.png){fig-alt="时间依赖性一致性" fig-align="center" width="60%"}
+![](../images/Clinics/TimeCindexPlot_demo.png){fig-alt="时间依赖性一致性" fig-align="center" width="60%"}
 
 时间依赖性一致性
 :::
@@ -98,4 +108,4 @@ ggplot(df, aes(t, cindex, colour = model)) +
 
 \[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
-\[2\} Gerds TA, Schumacher M. Consistent estimation of the expected tumor discrimination index in survival analysis. Biom J. 2006;48(6):989-1005. doi:10.1002/bimj.200610282 (the time-dependent concordance estimator behind pec::cindex)
+\[2\] Gerds TA, Kattan MW, Schumacher M, Yu C. Estimating a time-dependent concordance index for survival prediction models with covariate dependent censoring. Stat Med. 2013;32(13):2173-2184. doi:10.1002/sim.5681 (the time-dependent concordance estimator behind pec::cindex)
