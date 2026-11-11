@@ -15,7 +15,7 @@ Outputs:
     audit.csv                      - one row per entry with its decision
     README.md                      - human-readable report generated from audit.csv
 """
-import json, re, csv, datetime, sys, os
+import json, re, csv, datetime, sys, os, pathlib
 from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -95,6 +95,34 @@ NONSTATIC = {  # browser / GUI / CLI / ASCII: no deterministic static output
 }
 COMMERCIAL = re.compile(r'^(?:10x genomics|Alamut|ATCC|Benchling|Bionano|Circa|CLC|DNASTAR|ERGO|Geneious|Genestack|Golden Helix|Lucid|MacVector|Persephone|Strand|SnapGene|ApE)')
 
+
+def page_dependencies():
+    """Tools each tutorial actually loads, read from its own code chunks.
+
+    A page that begins with ``library(RIdeogram)`` or
+    ``from pycirclize import Circos`` depends on that tool, so the entry
+    cannot be recorded as skipped.  Scanning the source keeps the audit
+    honest instead of relying on a hand-maintained list.
+    """
+    loaded = {}
+    here = pathlib.Path(__file__).resolve().parent
+    for qmd in here.parent.parent.rglob('*.qmd'):
+        try:
+            text = qmd.read_text(encoding='utf-8')
+        except (OSError, UnicodeDecodeError):
+            continue
+        rel = qmd.relative_to(here.parent.parent).as_posix()
+        names = set()
+        for m in re.finditer(r'^\s*(?:library|require)\(\s*["\']?([A-Za-z][\w.]*)', text, re.M):
+            names.add(m.group(1).lower())
+        for m in re.finditer(r'^\s*(?:from|import)\s+([A-Za-z_][\w.]*)', text, re.M):
+            names.add(m.group(1).split('.')[0].lower())
+        loaded[rel] = names
+    return loaded
+
+
+LOADED = page_dependencies()
+
 def decide(r):
     sec = r['section']
     rp = repo_of(r['url'])
@@ -117,6 +145,8 @@ def decide(r):
     if sec.startswith('四|4.1'):
         return 'nonstatic', '交互式基因组浏览器，属于平台而非可静态重画的图型'
     # sections 二 / 三
+    if r['name'].lower() in LOADED.get(r['target'], ()):
+        return 'package', '本页开头即 `library()`/`import` 该工具并绘制正文图形（现成实现，实际使用）'
     if archived:
         return 'stale-skip', f'仓库已归档（archived，最后 push {pushed or "未知"}），不再接受维护（仅作版式参考，不安装）'
     if stale:

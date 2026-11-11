@@ -11,10 +11,10 @@ Every upstream entry is recorded exactly once. Entries are never dropped silentl
 
 | Decision | Entries | Meaning |
 |---|---:|---|
-| `package` | 68 | `[包]` 现成实现（作为设计参考，不新增依赖） |
+| `package` | 70 | `[包]` 现成实现（作为设计参考，不新增依赖） |
 | `reimplemented` | 220 | 本页用 ggplot2 / matplotlib 重画 |
-| `stale-skip` | 39 | ⏭️ 跳过：>5 年无运维更新 |
-| `heavy-skip` | 27 | ⏭️ 跳过：依赖过重 |
+| `stale-skip` | 38 | ⏭️ 跳过：>5 年无运维更新 |
+| `heavy-skip` | 26 | ⏭️ 跳过：依赖过重 |
 | `nonstatic-skip` | 2 | ⏭️ 跳过：无法静态复现 |
 | `nonstatic` | 158 | 暂缓：交互式浏览器 / GUI / 终端 |
 | `commercial` | 18 | 暂缓：商业软件 |
@@ -23,7 +23,7 @@ Every upstream entry is recorded exactly once. Entries are never dropped silentl
 | `research` | 10 | 待调研：信息不足 |
 | **total** | **574** | |
 
-356 of 574 entries map onto a Bizard page; 68 are explicitly skipped on the two issue criteria plus the static-render criterion, and 218 stay out of the implementation surface as interactive/browser, GUI, terminal, commercial, dead, non-drawing or under-specified.
+356 of 574 entries map onto a Bizard page; 66 are explicitly skipped on the two issue criteria plus the static-render criterion, and 218 stay out of the implementation surface as interactive/browser, GUI, terminal, commercial, dead, non-drawing or under-specified.
 
 ## Per-page coverage
 
@@ -34,7 +34,7 @@ Each row lists how many upstream entries target that page and how they were hand
 | `Hiplot/087-hic-heatmap.qmd` | 2 | 0 | 2 | heavy-skip 1, stale-skip 1 |
 | `Omics/BlastAlignmentPlot.qmd` | 15 | 11 | 4 | stale-skip 4 |
 | `Omics/ChromatogramPlot.qmd` | 2 | 2 | 0 | — |
-| `Omics/ChromosomePlot.qmd` | 14 | 10 | 4 | heavy-skip 1, stale-skip 3 |
+| `Omics/ChromosomePlot.qmd` | 14 | 11 | 3 | heavy-skip 1, stale-skip 2 |
 | `Omics/CollinearityPlot.qmd` | 29 | 20 | 9 | heavy-skip 3, stale-skip 6 |
 | `Omics/GeneFusionPlot.qmd` | 8 | 7 | 1 | heavy-skip 1 |
 | `Omics/GeneStructurePlot.qmd` | 25 | 20 | 5 | heavy-skip 4, stale-skip 1 |
@@ -58,7 +58,7 @@ Each row lists how many upstream entries target that page and how they were hand
 | `Omics/SyntenyBlocksPlot.qmd` | 22 | 21 | 1 | stale-skip 1 |
 | `Omics/VariantAnnotationPlot.qmd` | 7 | 5 | 2 | heavy-skip 2 |
 | `Omics/WholeGenomeAlignmentPlot.qmd` | 8 | 6 | 2 | heavy-skip 1, stale-skip 1 |
-| `Python/CircosPlot.qmd` | 29 | 23 | 6 | heavy-skip 3, stale-skip 3 |
+| `Python/CircosPlot.qmd` | 29 | 24 | 5 | heavy-skip 2, stale-skip 3 |
 | `Python/GenomeComparisonCircos.qmd` | 1 | 0 | 1 | heavy-skip 1 |
 | `Python/GenomeTrackPlot.qmd` | 9 | 6 | 3 | heavy-skip 3 |
 | `Python/MicrobiomeGenomePlot.qmd` | 2 | 1 | 1 | heavy-skip 1 |
@@ -121,7 +121,6 @@ Entries that were *not* implemented on purpose, with the evidence used to decide
 | ggbio | `Omics/ChromosomePlot.qmd` | ⏭️ 跳过：依赖过重 | — | — |
 | Ideoplot | `Omics/ChromosomePlot.qmd` | ⏭️ 跳过：>5 年无运维更新 | 2015-09-21 | no |
 | KaryotypeSVG | `Omics/ChromosomePlot.qmd` | ⏭️ 跳过：>5 年无运维更新 | 2017-07-17 | no |
-| RIdeogram | `Omics/ChromosomePlot.qmd` | ⏭️ 跳过：>5 年无运维更新 | 2020-09-22 | no |
 | GENESPACE | `Omics/CollinearityPlot.qmd` | ⏭️ 跳过：依赖过重 | 2025-01-24 | no |
 | SyMap | `Omics/CollinearityPlot.qmd` | ⏭️ 跳过：依赖过重 | — | — |
 | plotsr | `Omics/CollinearityPlot.qmd` | ⏭️ 跳过：依赖过重 | 2026-07-27 | no |
@@ -171,7 +170,6 @@ Entries that were *not* implemented on purpose, with the evidence used to decide
 | Genome-plots-processing | `Omics/WholeGenomeAlignmentPlot.qmd` | ⏭️ 跳过：>5 年无运维更新 | 2020-02-05 | no |
 | DNAPlotLib | `Python/CircosPlot.qmd` | ⏭️ 跳过：依赖过重 | 2024-03-20 | no |
 | circularMT | `Python/CircosPlot.qmd` | ⏭️ 跳过：依赖过重 | 2026-07-15 | no |
-| pyCirclize | `Python/CircosPlot.qmd` | ⏭️ 跳过：依赖过重 | — | — |
 | Cvit.js | `Python/CircosPlot.qmd` | ⏭️ 跳过：>5 年无运维更新 | 2021-01-15 | no |
 | GenomeProjector | `Python/CircosPlot.qmd` | ⏭️ 跳过：>5 年无运维更新 | 2020-09-28 | no |
 | cgplot | `Python/CircosPlot.qmd` | ⏭️ 跳过：>5 年无运维更新 | 2019-05-19 | no |
