@@ -54,10 +54,10 @@
 - [x] [Ideogram](https://github.com/RCollins13/HumanIdiogramLibrary)（2018；[文献](https://doi.org/10.5281/zenodo.1210135)） `[重实现]`：SVG 输出的纯核型图，适合作为最简基线
 - [x] [Ideogram viewer](https://bioinformatics.mdanderson.org/public-software/ideogramviewer/) `[重实现]`：交互式核型浏览，取其染色体分带配色规范
 - [x] [Ideoplot](https://github.com/mchaisso/Ideoplot) `[重实现]`：纯 base-graphics 的轻依赖核型绘制
-- [x] [IdeoViz](https://www.bioconductor.org/packages/release/bioc/vignettes/IdeoViz/inst/doc/Vignette.pdf) `[包]`：把信号轨道直接锚定到核型条带
+- [x] [IdeoViz](https://bioconductor.org/packages/IdeoViz/) `[包]`：把信号轨道直接锚定到核型条带
 - [x] [karyoploteR](https://github.com/bernatgel/karyoploteR)（2017；[文献](https://doi.org/10.1093/bioinformatics/btx346)） `[包]`：Bioconductor；可在核型上叠加任意自定义 data panel（30+ 高层绘图函数），补足 RIdeogram 轨道固定的短板
 - [x] [KaryotypeSVG](https://github.com/andreasprlic/karyotypeSVG) `[重实现]`：SVG 核型生成，可直接嵌入矢量排版
-- [x] [NCBI Genome Decoration](https://www.ncbi.nlm.nih.gov/genome/tools/gdp/) `[重实现]`：NCBI 官方染色体重排装饰图，用于重排/易位的染色体级标注
+- [x] [NCBI Genome Decoration](https://www.ncbi.nlm.nih.gov/genome/tools/gdp/) `[重实现]`：NCBI 官方染色体重排装饰图，用于重排/易位的染色体级标注 〔原站点已下线，仅存文献〕
 - [x] [pyideogram](https://github.com/Balthasar-eu/pyideogram) `[包]`：Python 侧核型绘制，便于和 pyCirclize 共用数据层
 - [x] [RIdeogram](https://github.com/TickingClock1992/RIdeogram)（2020；[文献](https://doi.org/10.7717/peerj-cs.251)） `[包]`：已用于该教程；补充说明其输出为 SVG 矢量（非栅格），且轨道位置固定
 - [x] [shinyChromosome](http://150.109.59.144:3838/shinyChromosome/)（2019；[文献](https://doi.org/10.1016/j.gpb.2019.07.003)） `[重实现]`：CRAN/Shiny；交互式染色体可视化，可导出静态图
@@ -76,7 +76,7 @@
 - [x] [geneviewer](https://nvelden.github.io/geneviewer/) `[包]`：R；箭头 + 外显子 + 缩放刷选的交互式基因上下文
 - [x] [Geneviz](https://jrderuiter.github.io/geneviz/usage.html) `[重实现]`：Python；基因结构示意图
 - [x] [genomegraphs](http://bioconductor.org/packages/2.5/bioc/vignettes/GenomeGraphs/inst/doc/GenomeGraphs.pdf)（2009；[文献](https://doi.org/10.1186/1471-2105-10-2)） `[重实现]`：Bioconductor 历年归档；早期 GenomeGraphs 的轨道对象模型，作历史方案说明
-- [x] [ggcoverage](https://cran.r-project.org/web/packages/ggcoverage/vignettes/ggcoverage.html)（2022；[文献](https://doi.org/10.1101/2022.09.01.503744)） `[重实现]`：R（CRAN 2023-11-16 归档，需 install_github）；ggplot2 语法糖绘制覆盖度轨道
+- [x] [ggcoverage](https://cran.r-project.org/package=ggcoverage)（2022；[文献](https://doi.org/10.1101/2022.09.01.503744)） `[重实现]`：R（CRAN 2023-11-16 归档，需 install_github）；ggplot2 语法糖绘制覆盖度轨道
 - [x] [GGgenes](https://github.com/wilkox/gggenes) `[包]`：已用于该教程；补充多物种 facet 的 `forward` 方向翻转说明
 - [x] [ggtranscript](https://github.com/dzhang32/ggtranscript)（2022；[文献](https://doi.org/10.1101/2022.03.28.486050)） `[重实现]`：R（GitHub，非 CRAN/Bioconductor）；以转录本为对象的 ggplot2 基因模型语法
 - [x] [gtrellis](http://bioconductor.org/packages/devel/bioc/vignettes/gtrellis/inst/doc/gtrellis.html)（2016；[文献](https://doi.org/10.1186/s12859-016-1051-4)） `[包]`：Bioconductor；多物种/多类别分面平铺的基因组概览网格
@@ -86,7 +86,7 @@
 - [x] [Plotgardener](https://github.com/PhanstielLab/plotgardener/)（2022；[文献](https://doi.org/10.1093/bioinformatics/btac057)） `[包]`：Bioconductor；以"画布 + 英寸坐标"做绝对布局，最贴近期刊多面板排版需求
 - [x] [RepViz](https://bmcresnotes.biomedcentral.com/articles/10.1186/s13104-019-4473-z)（2019；[文献](https://doi.org/10.1186/s13104-019-4473-z)） `[重实现]`：R；重复样本间的一致性信号轨道
 - [x] [signac](https://github.com/timoast/signac/)（2021；[文献](https://doi.org/10.1038/s41592-021-01282-5)） `[包]`：R；scATAC 覆盖度轨道与 `CoveragePlot`
-- [x] [Sushi](https://www.bioconductor.org/packages/release/bioc/vignettes/Sushi/inst/doc/Sushi.pdf)（2014；[文献](https://doi.org/10.1093/bioinformatics/btu379)） `[重实现]`：已于 Bioconductor 3.16 移除（GitHub 最后提交 2021-10-26）；仅作函数语义参考，不列为依赖
+- [x] [Sushi](https://bioconductor.org/packages/Sushi/)（2014；[文献](https://doi.org/10.1093/bioinformatics/btu379)） `[重实现]`：已于 Bioconductor 3.16 移除（GitHub 最后提交 2021-10-26）；仅作函数语义参考，不列为依赖
 - [x] [svist4get](https://link.springer.com/article/10.1186/s12859-019-2706-8)（2019；[文献](https://doi.org/10.1186/s12859-019-2706-8)） `[包]`：Python；信号轨道 + 基因结构的一体化出图（SVG）
 - [x] [TnT](https://tnt.marlin.pub/articles/introduction)（2016；[文献](https://doi.org/10.1093/bioinformatics/btw210)） `[包]`：Web/R；`TNTboard` 的基因结构轨道语法（ggtree 前身之一）
 - [x] [Trackplot (R)](https://github.com/PoisonAlien/trackplot)（2024；[文献](https://doi.org/10.1093/bioadv/vbae031)） `[重实现]`：R；覆盖度 + 基因结构的轻量方案
@@ -97,7 +97,7 @@
 
 现状：`ggmsa` 比对矩阵 / 序列 logo。建议补充二级结构条、守恒分箱着色与"比对 + 树"对齐。
 
-- [x] [alignfigR](https://cran.r-project.org/web/packages/alignfigR/vignettes/my-vignette.html) `[重实现]`：CRAN；把比对结果转成可拼接的 ggplot2 片段
+- [x] [alignfigR](https://cran.r-project.org/package=alignfigR) `[重实现]`：CRAN；把比对结果转成可拼接的 ggplot2 片段
 - [x] [AliTreeViz](https://www.npmjs.com/package/alitreeviz) `[重实现]`：JS；把比对列与树上叶序联动，用于"比对 + 树"对齐
 - [x] [Boxshade](https://embnet.vital-it.ch/software/BOX_form.html)（2000；[文献](https://doi.org/10.1186/gb-2000-1-2-reports2047)） `[重实现]`：经典 `shade` 守恒着色（黑=完全保守、灰=相似），按列频率分箱即可重实现
 - [x] [CIAlign](https://github.com/KatyBrown/CIAlign)（2022；[文献](https://doi.org/10.7717/peerj.12983)） `[包]`：Python；比对清理（去 gap/修剪）后再绘图的实用前置步骤
@@ -161,7 +161,7 @@
 - [x] [CNVPlot](https://github.com/dantaki/CNVplot)（2015；[文献](https://doi.org/10.1101/030270)） `[重实现]`：R；数组 CGH 的 CNV 分段与基因标注
 - [x] [CNVpytor](https://github.com/abyzovlab/CNVpytor)（2021；[文献](https://doi.org/10.1093/gigascience/giab074)） `[包]`：Python；读深度 + BAF 双面板与交互缩放
 - [x] [copykat](https://github.com/navinlabcode/copykat/blob/master/vignettes/copycat-vignettes.pdf)（2021；[文献](https://doi.org/10.1038/s41587-020-00795-2)） `[重实现]`：R；单细胞 CNV 预测的染色体热图（与 ScCnvPlot 同型，可对照）
-- [x] [copynumber](https://www.bioconductor.org/packages/release/bioc/vignettes/copynumber/inst/doc/copynumber.pdf)（2012；[文献](https://doi.org/10.1186/1471-2164-13-591)） `[重实现]`：Bioconductor；多片段多色染色体分段图
+- [x] [copynumber](https://bioconductor.org/packages/copynumber/)（2012；[文献](https://doi.org/10.1186/1471-2164-13-591)） `[重实现]`：Bioconductor；多片段多色染色体分段图
 - [x] [CoveragePlotter](http://lindenb.github.io/jvarkit/CoveragePlotter.html) `[重实现]`：Java；覆盖度与 CNV 的堆叠图，作版式参考
 - [x] [covviz](https://brwnj.github.io/covviz/) `[重实现]`：JS；覆盖度 + 群体频率的叠加图
 - [x] [GCI](https://github.com/yeeus/GCI)（2024；[文献](https://doi.org/10.1093/bioinformatics/btae633)） `[重实现]`：Python；基因组覆盖度概览
@@ -172,14 +172,14 @@
 - [x] [numbat](https://kharchenkolab.github.io/numbat/)（2022；[文献](https://doi.org/10.1101/2022.02.07.479314)） `[包]`：R；单细胞 CNV 的等位基因特异的 HMM 状态条带
 - [x] [scCNV_heatmap](https://github.com/StefanKurtenbach/scCNV_heatmap) `[重实现]`：Python；单细胞 CNV 热图
 - [x] [SeeNV](https://github.com/MSBradshaw/SeeNV)（2024；[文献](https://doi.org/10.1101/2024.05.08.593244)） `[重实现]`：Python；CNV + SV + 覆盖度三联缩略图
-- [x] [sequenza](https://cran.r-project.org/web/packages/sequenza/vignettes/sequenza.html#plots-and-results)（2015；[文献](https://doi.org/10.1093/annonc/mdu479)） `[重实现]`：CRAN；深度比 vs B 等位频率二维散点 + 纯度/倍体轮廓
+- [x] [sequenza](https://cran.r-project.org/package=sequenza)（2015；[文献](https://doi.org/10.1093/annonc/mdu479)） `[重实现]`：CRAN；深度比 vs B 等位频率二维散点 + 纯度/倍体轮廓
 
 #### 8) `Python/CircosPlot.qmd` —— 29 条
 
 现状：Python `pyCirclize` 扇区/弦图。建议补充多基因组环、质粒/细胞器环与比较基因组环的版式。
 
 - [x] [BioCircos.js](http://bioinfo.ibp.ac.cn/biocircos/)（2016；[文献](https://doi.org/10.1093/bioinformatics/btw041)） `[重实现]`：JS；环形轨道 + 弦的轻量实现
-- [x] [BRICK (BRIG-like circular knowledgebase)](https://brick.ink/) `[重实现]`：JS；BRIG 的浏览器版，取同心环与比对弧的层级规则
+- [x] [BRICK (BRIG-like circular knowledgebase)](https://brick.ink/) `[重实现]`：JS；BRIG 的浏览器版，取同心环与比对弧的层级规则 〔原站点已下线，仅存文献〕
 - [x] [BRIG](http://brig.sourceforge.net)（2011；[文献](https://doi.org/10.1186/1471-2164-12-402)） `[重实现]`：桌面 Java；多基因组同心圆环 + 中心两两比对弧（Bizard 无此版式）
 - [x] [cgplot](https://github.com/dfguan/cgplot) `[重实现]`：Python；环形基因组图
 - [x] [CGView](http://cgview.ca/)（2008；[文献](https://doi.org/10.1093/nar/gkn179)） `[重实现]`：Java/JS；环状图轨道定义的事实标准（前身）
@@ -238,7 +238,7 @@
 - [x] [pauvre](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6991124/figure/fig-3/)（2020；[文献](https://doi.org/10.7717/peerj.8356)） `[包]`：Python；基于 pysam 的比对/组装质控点阵
 - [x] [plotsr](https://github.com/schneebergerlab/plotsr)（2022；[文献](https://doi.org/10.1101/2022.01.24.477489)） `[重实现]`：Python；染色体级倒置/易位事件块标注（PyPI 无包，需 conda/GitHub）
 - [x] [StainedGlass](https://github.com/mrvollger/StainedGlass)（2022；[文献](https://doi.org/10.1093/bioinformatics/btac018)） `[包]`：R/Python/JS；滑动窗口 identity 热图 + 序列方向（λ 相位）的重复区自比对
-- [x] [SyMap](http://www.agcol.arizona.edu/software/symap/)（2006；[文献](https://doi.org/10.1101/gr.5396706)） `[重实现]`：桌面；"泡状"（bubble）视图显示多床比对密度
+- [x] [SyMap](http://www.agcol.arizona.edu/software/symap/)（2006；[文献](https://doi.org/10.1101/gr.5396706)） `[重实现]`：桌面；"泡状"（bubble）视图显示多床比对密度 〔原站点已下线，仅存文献〕
 - [x] [TidyLocalSynteny](https://github.com/cxli233/TidyLocalSynteny) `[重实现]`：R；局部（而非全基因组）共线性放大图
 - [x] [WGDI](https://github.com/SunPengChuan/wgdi)（2021；[文献](https://doi.org/10.1101/2021.04.29.441969)） `[包]`：Python；多物种共线性 + Ks 分布联合图
 
@@ -253,8 +253,8 @@
 - [x] [LinearDisplay.pl](https://github.com/JCVenterInstitute/LinearDisplay)（2019；[文献](https://doi.org/10.1038/s41586-019-1742-x)） `[重实现]`：Perl；基因顺序的线性排布脚本
 - [x] [lovis4u](https://github.com/art-egorov/lovis4u)（2024；[文献](https://doi.org/10.1101/2024.09.11.612399)） `[包]`：Python；多向同源块排序可视化
 - [x] [MCScanX](https://github.com/wyp1125/MCScanX)（2012；[文献](https://doi.org/10.1093/nar/gkr1293)） `[重实现]`：Perl；共线性块的经典检测工具，其输出是多数共线性图的输入格式基准
-- [x] [RectChr](https://github.com/BGI-shenzhen/RectChr) `[重实现]`：Perl；矩形染色体 + 共线性带（轻量静态）
-- [x] [SafFire](https://mrvollger.github.io/SafFire/#ref=CHM13_v1.1&query=GRCh38) `[重实现]`：JS；交互式同源块浏览
+- [x] [RectChr](https://github.com/BGI-shenzhen/RectChr) `[重实现]`：Perl；矩形染色体 + 共线性带（轻量静态） 〔原站点已下线，仅存文献〕
+- [x] [SafFire](https://mrvollger.github.io/SafFire/#ref=CHM13_v1.1&query=GRCh38) `[重实现]`：JS；交互式同源块浏览 〔原站点已下线，仅存文献〕
 - [x] [ShinySyn](https://doi.org/10.1093/bioinformatics/btac503)（2022；[文献](https://doi.org/10.1093/bioinformatics/btac503)） `[重实现]`：R/Shiny；交互式共线性查看
 - [x] [SimpleSynteny](https://www.dveltri.com/simplesynteny/about.html)（2016；[文献](https://doi.org/10.1093/nar/gkw330)） `[重实现]`：Web；微共线性的简化版式
 - [x] [Sybil](http://sybil.sourceforge.net/)（2007；[文献](https://doi.org/10.1007/978-1-59745-547-3_6)） `[重实现]`：Web/Perl；比较基因组浏览
@@ -331,7 +331,7 @@
 - [x] [AGB assembly graph browser](https://github.com/almiheenko/AGB)（2019；[文献](https://doi.org/10.1093/bioinformatics/btz072)） `[重实现]`：Web/Python；组装图浏览
 - [x] [Bandage](https://github.com/rrwick/Bandage/)（2015；[文献](https://doi.org/10.1093/bioinformatics/btv383)） `[重实现]`：桌面；GFA 图布局的视觉基准（节点=contig、边=overlap、单例=环形）
 - [x] [BandageJS](https://github.com/GMOD/BandageJS) `[重实现]`：Web/TS；Bandage 的浏览器重写
-- [x] [ctag](https://github.com/AbeelLab/ctag) `[重实现]`：Java/Scala；组装图的层次化布局
+- [x] [ctag](https://github.com/AbeelLab/ctag) `[重实现]`：Java/Scala；组装图的层次化布局 〔原站点已下线，仅存文献〕
 - [x] [gfaestus](https://github.com/chfi/gfaestus) `[重实现]`：Rust；GFA 图的 GPU 渲染
 - [x] [gfalook](https://github.com/pangenome/gfalook) `[重实现]`：Rust；终端 GFA 布局
 - [x] [GfaViz](https://github.com/ggonnella/gfaviz)（2018；[文献](https://doi.org/10.1093/bioinformatics/bty1046)） `[重实现]`：C++；GFA 的静态矢量输出
@@ -372,11 +372,11 @@
 - [x] [NeoLoopFinder](https://github.com/XiaoTaoWang/NeoLoopFinder)（2021；[文献](https://doi.org/10.1038/s41592-021-01164-w)） `[重实现]`：Python；Hi-C 上新形成环（neo-loop）的弧线标注
 - [x] [Pairoscope](http://pairoscope.sourceforge.net/) `[重实现]`：C++；配对读段的"配对"可视化
 - [x] [PopSV](https://github.com/jmonlong/PopSV/blob/master/3-Visualization.md)（2018；[文献](https://doi.org/10.1371/journal.pgen.1007285)） `[重实现]`：Web/R；群体 SV 的曼哈顿式与断点图
-- [x] [PURPLE](https://github.com/hartwigmedical/hmftools/blob/master/purity-ploidy-estimator/README.md)（2019；[文献](https://doi.org/10.1101/781013)） `[重实现]`：SV/CN 的等位基因特异整合图
+- [x] [PURPLE](https://github.com/hartwigmedical/hmftools)（2019；[文献](https://doi.org/10.1101/781013)） `[重实现]`：SV/CN 的等位基因特异整合图
 - [x] [ReConPlot](https://github.com/cortes-ciriano-lab/ReConPlot)（2023；[文献](https://doi.org/10.1101/2023.02.24.529890)） `[重实现]`：R（GitHub）；重构（reconstruction）事件的染色体弧线图
 - [x] [Ribbon](http://genomeribbon.com/)（2020；[文献](https://doi.org/10.1093/bioinformatics/btaa680)） `[重实现]`：Web/JS；单基因组内重排的带状（ribbon）图
 - [x] [Samplot](https://github.com/ryanlayer/samplot)（2021；[文献](https://doi.org/10.1186/s13059-021-02380-5)） `[包]`：Python；按表型分组的样本堆叠覆盖度 + 断点连线
-- [x] [Savant](http://bioinformatics-ca.github.io/savant_genome_browser_lab_2015/)（2012；[文献](https://doi.org/10.1093/nar/gks427)） `[重实现]`：桌面 Java；SV 浏览
+- [x] [Savant](https://github.com/compbio-UofT/savant)（2012；[文献](https://doi.org/10.1093/nar/gks427)） `[重实现]`：桌面 Java；SV 浏览
 - [x] [Smash++](https://github.com/smortezah/smashpp)（2020；[文献](https://doi.org/10.1093/gigascience/giaa048)） `[重实现]`：C++；多基因组比对的压缩索引与点阵
 - [x] [spinteny](https://github.com/skinner/spinteny) `[重实现]`：JS；多重同源（multi-way）的"纺锤"排序视图
 - [x] [SVbyEye](https://htmlpreview.github.io/?https://github.com/daewoooo/SVbyEye/blob/master/man/doc/SVbyEye.html)（2025；[文献](https://doi.org/10.1093/bioinformatics/btaf332)） `[重实现]`：R（GitHub，MIT）；"自比对 + 互比对"双联（plotAVA），颜色编码 identity 与方向
@@ -427,7 +427,7 @@
 缺口：Bizard 无遗传图谱/比较遗传图谱（CMap 式）。
 
 - [x] [chromPlot](https://www.bioconductor.org/packages/release/bioc/vignettes/chromPlot/inst/doc/chromPlot.pdf)（2016；[文献](https://doi.org/10.1093/bioinformatics/btw137)） `[包]`：Bioconductor；以 Genetic map（cM）为坐标轴，RIdeogram/karyoploteR 均不支持遗传距离轴
-- [x] [CMap](http://gmod.org/wiki/CMap)（2009；[文献](https://doi.org/10.1093/bioinformatics/btp458)） `[重实现]`：Web/Perl；遗传图谱（cM）与物理图谱（bp）双轴对齐——Bizard 无此图型
+- [x] [CMap](https://github.com/GMOD/cmap)（2009；[文献](https://doi.org/10.1093/bioinformatics/btp458)） `[重实现]`：Web/Perl；遗传图谱（cM）与物理图谱（bp）双轴对齐——Bizard 无此图型
 - [x] [PhenoGram](https://ritchielab.org/software/phenogram-downloads)（2013；[文献](https://doi.org/10.1186/1756-0381-6-18)） `[重实现]`：Web/CLI/Ruby；以染色体为轴的基因/表型位置图
 - [x] [pretzel](https://github.com/plantinformatics/pretzel)（2019；[文献](https://doi.org/10.1101/517953)） `[重实现]`：JS/D3；环形单倍型 + 基因模型
 - [x] [Tripal MapViewer](https://github.com/statonlab/tripal_map)（2019；[文献](https://doi.org/10.1093/database/baz100)） `[重实现]`：PHP/JS；Tripal 站点的遗传图谱浏览
@@ -498,7 +498,7 @@
 
 - [x] [Gingr](https://harvest.readthedocs.io/en/latest/content/gingr.html)（2014；[文献](https://doi.org/10.1186/s13059-014-0524-x)） `[重实现]`：C++；基于系统发生树的同源块沿树堆叠
 - [x] [Nextclade](https://clades.nextstrain.org/)（2021；[文献](https://doi.org/10.21105/joss.03773)） `[重实现]`：JS/React/D3；树 + 突变矩阵 + 基因注释三轨对齐（病原体基因组监测标准图）
-- [x] [Panoptes](https://www.malariagen.net/apps/ag1000g/phase1-AR3/index.html)（2017；[文献](https://doi.org/10.1093/bioinformatics/btx410)） `[重实现]`：Python/JS；树 + 变异密度热图联合
+- [x] [Panoptes](https://www.malariagen.net/apps/ag1000g/phase1-AR3/index.html)（2017；[文献](https://doi.org/10.1093/bioinformatics/btx410)） `[重实现]`：Python/JS；树 + 变异密度热图联合 〔原站点已下线，仅存文献〕
 - [x] [Taxonium](https://taxonium.org)（2022；[文献](https://doi.org/10.7554/eLife.82392)） `[重实现]`：Web/Python；大规模树 + 元数据色环
 - [x] [TreeBrowser (MicrobesOnline)](http://www.microbesonline.org/cgi-bin/treeBrowse.cgi?locus=17761)（2009；[文献](https://doi.org/10.1093/nar/gkp919)） `[重实现]`：Web/Portal；基因组上下文沿树展开
 
@@ -592,7 +592,7 @@
 - [ ] [Ensembl genome browser](https://useast.ensembl.org/Homo_sapiens/Location/View?r=17:63992802-64038237)（2002；[文献](https://doi.org/10.1093/nar/30.1.38)）
 - [ ] [Ensembl genome browser 2020 edition](http://2020.ensembl.org/)
 - [ ] [Epiviz](https://epiviz.github.io/)（2020；[文献](https://doi.org/10.1093/bioinformatics/btaa591)）
-- [ ] [GBrowse 2](http://gmod.org/wiki/GBrowse)（2013；[文献](https://doi.org/10.1093/bib/bbt001)）
+- [ ] [GBrowse 2](https://github.com/GMOD/GBrowse)（2013；[文献](https://doi.org/10.1093/bib/bbt001)）
 - [ ] [GenomeMaps](http://www.genomemaps.org/)（2013；[文献](https://doi.org/10.1093/nar/gkt530)）
 - [ ] [Genoverse](https://github.com/wtsi-web/Genoverse)
 - [ ] [Gnomad browser](https://github.com/macarthur-lab/gnomadjs)（2020；[文献](https://doi.org/10.1038/s41586-020-2308-7)）
@@ -625,7 +625,7 @@
 
 桌面/Web GUI 应用（Jalview、Artemis、Phandango、CoGe、GIVE、GenomeSpy 等）。输出依赖交互状态，不能确定性复现；其比对查看、点阵图、共线性浏览等图型已分别由第二、三节覆盖。
 
-- [ ] [AA (alignment annotator)](http://www.bioinformatics.org/strap/aa)（2014；[文献](https://doi.org/10.1093/nar/gku400)）
+- [ ] [AA (alignment annotator)](http://www.bioinformatics.org/strap/aa)（2014；[文献](https://doi.org/10.1093/nar/gku400)） 〔原站点已下线，仅存文献〕
 - [ ] [abrowse (MSA viewer)](https://github.com/ihh/abrowse)
 - [ ] [alignment.js](https://github.com/veg/alignment.js)
 - [ ] [AlignmentComparator](http://bioinfweb.info/AlignmentComparator/)
@@ -649,8 +649,8 @@
 - [ ] [Dot](https://dot.sandbox.bio/)
 - [ ] [Dotlet](https://dotlet.vital-it.ch/)（2000；[文献](https://doi.org/10.1093/bioinformatics/16.2.178)）
 - [ ] [Epilogos](https://epilogos.altius.org/)
-- [ ] [Gambit](http://labsergen.langebio.cinvestav.mx/bioinformatics/jacob/?p=473)
-- [ ] [GBrowse_syn](http://gmod.org/wiki/GBrowse_syn)（2010；[文献](https://doi.org/10.1002/0471250953.bi0912s31)）
+- [ ] [Gambit](http://labsergen.langebio.cinvestav.mx/bioinformatics/jacob/?p=473) 〔原站点已下线，仅存文献〕
+- [ ] [GBrowse_syn](https://github.com/GMOD/jbrowse_syn)（2010；[文献](https://doi.org/10.1002/0471250953.bi0912s31)）
 - [ ] [GeCoViz](https://gecoviz.cgmlab.org/)（2022；[文献](https://doi.org/10.1093/nar/gkac367)）
 - [ ] [Genome Context Viewer](https://www.legumefederation.org/gcv/phytozome_10_2/)（2017；[文献](https://doi.org/10.1093/bioinformatics/btx757)）
 - [ ] [GenomeMatcher](http://www.ige.tohoku.ac.jp/joho/gmProject/gmmanual.html)（2008；[文献](https://doi.org/10.1186/1471-2105-9-376)）
@@ -659,7 +659,7 @@
 - [ ] [GenomeView (java app)](https://genomeview.org/content/quick-start-guide)（2011；[文献](https://doi.org/10.1093/nar/gkr995)）
 - [ ] [Genomicus](https://www.genomicus.biologie.ens.fr/genomicus/)（2021；[文献](https://doi.org/10.1093/nar/gkab1091)）
 - [ ] [Genovar](http://genovar.sourceforge.net/)（2012；[文献](https://doi.org/10.1186/1471-2105-13-S7-S12)）
-- [ ] [Gepard](http://cube.univie.ac.at/gepard)（2007；[文献](https://doi.org/10.1093/bioinformatics/btm039)）
+- [ ] [Gepard](http://cube.univie.ac.at/gepard)（2007；[文献](https://doi.org/10.1093/bioinformatics/btm039)） 〔原站点已下线，仅存文献〕
 - [ ] [gingko](https://github.com/robertaboukhalil/ginkgo)（2015；[文献](https://doi.org/10.1038/nmeth.3578)）
 - [ ] [GIVE](https://zhong-lab-ucsd.github.io/GIVE_homepage/)（2018；[文献](https://doi.org/10.1186/s13059-018-1465-6)）
 - [ ] [Gmaj](https://www.bx.psu.edu/miller_lab/dist/CHAP/docs/gmaj_geneconv.html)（2011；[文献](https://doi.org/10.1186/1471-2148-11-226)）
@@ -706,7 +706,7 @@
 - [ ] [SFARI](https://gene.sfari.org/database/human-gene/)（2010；[文献](https://doi.org/10.1242/dmm.005439)）
 - [ ] [SnoopCGH](http://snoopcgh.sourceforge.net/)（2009；[文献](https://doi.org/10.1093/bioinformatics/btp488)）
 - [ ] [SplitThreader](http://splitthreader.com/)（2016；[文献](https://doi.org/10.1101/087981)）
-- [ ] [STRAP](http://www.bioinformatics.org/strap/)（2014；[文献](https://doi.org/10.1093/nar/gku400)）
+- [ ] [STRAP](http://www.bioinformatics.org/strap/)（2014；[文献](https://doi.org/10.1093/nar/gku400)） 〔原站点已下线，仅存文献〕
 - [ ] [TASUKE](https://tasuke-wiki.dna.naro.go.jp/)（2019；[文献](https://doi.org/10.1093/dnares/dsz022)）
 - [ ] [Transposcope](https://github.com/FenyoLab/transposcope)（2020；[文献](https://doi.org/10.1093/bioinformatics/btaa244)）
 - [ ] [UCSC Xena](https://xena.ucsc.edu/)（2020；[文献](https://doi.org/10.1038/s41587-020-0546-8)）
@@ -728,7 +728,7 @@
 - [ ] [ASCIIGenome](https://github.com/dariober/ASCIIGenome)（2017；[文献](https://doi.org/10.1093/bioinformatics/btx007)）
 - [ ] [bacircos](https://github.com/sablokg/bacircos)（2026；[文献](https://doi.org/10.20944/preprints202609.2579.v1)）
 - [ ] [dep](https://github.com/slw287r/dep)
-- [ ] [Dotter](https://sonnhammer.sbc.su.se/Dotter.html)（1995；[文献](https://doi.org/10.1016/0378-1119(95)00714-8)）
+- [ ] [Dotter](https://sonnhammer.sbc.su.se/Dotter.html)（1995；[文献](https://doi.org/10.1016/0378-1119(95)00714-8)） 〔原站点已下线，仅存文献〕
 - [ ] [Dottup](https://www.bioinformatics.nl/cgi-bin/emboss/help/dottup)
 - [ ] [GenomeTools](http://genometools.org/)（2013；[文献](https://doi.org/10.1109/TCBB.2013.68)）
 - [ ] [MashMap](https://github.com/marbl/MashMap/blob/master/scripts/generateDotPlot)（2018；[文献](https://doi.org/10.1093/bioinformatics/bty597)）
@@ -753,7 +753,7 @@
 商业软件（Geneious、Benchling、SnapGene、DNASTAR 等）。无开源实现可复用；对应图型（质粒图、比对图）已在第三节以开源方式给出重实现路径。
 
 - [ ] [10x genomics - Loupe](https://support.10xgenomics.com/genome-exome/software/visualization/latest/structural-variants)
-- [ ] [Alamut](https://www.interactive-biosoftware.com/alamut-visual/)
+- [ ] [Alamut](https://www.interactive-biosoftware.com/alamut-visual/) 〔原站点已下线，仅存文献〕
 - [ ] [ATCC Genome Portal](https://docs.onecodex.com/en/articles/3996697-using-the-genome-browser)
 - [ ] [Benchling](https://www.benchling.com/)
 - [ ] [Bionano](https://bionanogenomics.com/technology/structural-variation/)
@@ -762,7 +762,7 @@
 - [ ] [DNASTAR](https://www.dnastar.com/)
 - [ ] [ERGO](https://www.igenbio.com/ergo)（2003；[文献](https://doi.org/10.1093/nar/gkg148)）
 - [ ] [Geneious](https://www.geneious.com/)
-- [ ] [Genestack](https://genestack.com/blog/2015/05/28/navigation-in-genestack-genome-browser/)
+- [ ] [Genestack](https://genestack.com/blog/2015/05/28/navigation-in-genestack-genome-browser/) 〔原站点已下线，仅存文献〕
 - [ ] [Golden Helix](https://www.goldenhelix.com/products/GenomeBrowse/)
 - [ ] [Lucid viewer](https://lucidalign.com/)
 - [ ] [MacVector](https://macvector.com/)
@@ -777,15 +777,15 @@
 - [ ] [AutoGraph](http://autograph.genouest.org/)（2006；[文献](https://doi.org/10.1093/bioinformatics/btl618)）
 - [ ] [BactoGENIE](https://doi.org/10.1186/1471-2105-16-S11-S6)（2015；[文献](https://doi.org/10.1186/1471-2105-16-S11-S6)）
 - [ ] [CGH-Explorer](https://doi.org/10.1093/bioinformatics/bti113)（2004；[文献](https://doi.org/10.1093/bioinformatics/bti113)）
-- [ ] [cnvCurator](http://www.acsu.buffalo.edu/~lm69/cnvCurator)（2015；[文献](https://doi.org/10.1186/s12859-015-0766-y)）
+- [ ] [cnvCurator](http://www.acsu.buffalo.edu/~lm69/cnvCurator)（2015；[文献](https://doi.org/10.1186/s12859-015-0766-y)） 〔原站点已下线，仅存文献〕
 - [ ] [Combo](https://doi.org/10.1093/bioinformatics/btl193)（2006；[文献](https://doi.org/10.1093/bioinformatics/btl193)）
 - [ ] [DNAVis](https://doi.org/10.1093/bioinformatics/bti807)（2005；[文献](https://doi.org/10.1093/bioinformatics/bti807)）
 - [ ] [Dotplot (chirimoyo)](https://chirimoyo.ac.uma.es/bitlab/portfolio/dotplot/)
 - [ ] [EvolutionHighway](http://eh-demo.ncsa.illinois.edu/)
-- [ ] [Flash Gviewer](http://gmod.org/wiki/Flashgviewer/)
+- [ ] [Flash Gviewer](http://gmod.org/wiki/Flashgviewer/) 〔原站点已下线，仅存文献〕
 - [ ] [GECO](http://bioinfo.mikrobio.med.uni-giessen.de/geco2/GecoMainServlet)（2006；[文献](https://doi.org/10.1093/bioinformatics/btl556)）
 - [ ] [gff2ps](https://genome.crg.es/software/gfftools/GFF2PS.html)（2000；[文献](https://doi.org/10.1093/bioinformatics/16.8.743)）
-- [ ] [Gremlin](http://compbio.cs.brown.edu/projects/gremlin/)（2010；[文献](https://doi.org/10.1109/tvcg.2010.163)）
+- [ ] [Gremlin](http://compbio.cs.brown.edu/projects/gremlin/)（2010；[文献](https://doi.org/10.1109/tvcg.2010.163)） 〔原站点已下线，仅存文献〕
 - [ ] [Internet Contig Explorer](https://www.bcgsc.ca/resources/software/ice)（2003；[文献](https://doi.org/10.1101/gr.819303)）
 - [ ] [mGSV (multiple genome synteny viewer)](https://github.com/kashmatic/mGSV)（2012；[文献](https://doi.org/10.1186/1471-2105-13-190)）
 - [ ] [MIRA](http://mira-assembler.sourceforge.net/docs/DefinitiveGuideToMIRA.html)（2004；[文献](https://doi.org/10.1101/gr.1917404)）
@@ -793,7 +793,7 @@
 - [ ] [Parasight](https://baileylab.brown.edu/parasight/galframe.html)（2005；[文献](https://doi.org/10.1038/ng1562)）
 - [ ] [PSAT](http://www.nwrce.org/psat)（2008；[文献](https://doi.org/10.1186/1471-2105-9-170)）
 - [ ] [r2cat](https://github.com/phuseman/r2cat)（2009；[文献](https://doi.org/10.1093/bioinformatics/btp690)）
-- [ ] [React MSAViewer](https://github.com/plotly/react-msa-viewer)
+- [ ] [React MSAViewer](https://github.com/plotly/react-msa-viewer) 〔原站点已下线，仅存文献〕
 - [ ] [SMRT View](http://files.pacb.com/software/smrtanalysis/2.3.0/doc/smrtview/help/Webhelp/App_View_Epipro.htm)
 - [ ] [SNIPViz](http://www.yeastrc.org/snipviz/4.HTML_Config_retrieve_newick_and_fasta_from_server/snip_viz_HTML_config_with_newick_clustering.html)（2014；[文献](https://doi.org/10.1186/1756-0500-7-468)）
 - [ ] [SNPduo](https://web.archive.org/web/20210518090714/http://pevsnerlab.kennedykrieger.org/SNPduo/)（2009；[文献](https://doi.org/10.1371/journal.pone.0006711)）
@@ -807,9 +807,9 @@
 - [ ] [ChIA-Pipe](https://github.com/TheJacksonLaboratory/ChIA-PIPE)（2020；[文献](https://doi.org/10.1126/sciadv.aay2078)）
 - [ ] [Chopchop](http://chopchop.cbu.uib.no/)（2019；[文献](https://doi.org/10.1093/nar/gkz365)）
 - [ ] [FastANI](https://github.com/ParBLiSS/FastANI)（2018；[文献](https://doi.org/10.1038/s41467-018-07641-9)）
-- [ ] [Genome Puzzle Master (GPM)](https://jianwei-zhang.github.io/LIMS/GPM-Manual.html)（2016；[文献](https://doi.org/10.1093/bioinformatics/btw370)）
+- [ ] [Genome Puzzle Master (GPM)](https://jianwei-zhang.github.io/LIMS/GPM-Manual.html)（2016；[文献](https://doi.org/10.1093/bioinformatics/btw370)） 〔原站点已下线，仅存文献〕
 - [ ] [MosaicCatcher pipeline](https://github.com/friendsofstrandseq/mosaicatcher-pipeline)
-- [ ] [panX](http://pangenome.tuebingen.mpg.de/)（2017；[文献](https://doi.org/10.1093/nar/gkx977)）
+- [ ] [panX](http://pangenome.tuebingen.mpg.de/)（2017；[文献](https://doi.org/10.1093/nar/gkx977)） 〔原站点已下线，仅存文献〕
 
 ### 五、❓ 需调研（10 条）
 
