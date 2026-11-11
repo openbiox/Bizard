@@ -12,7 +12,7 @@ This tutorial builds all three from one simulated admixed cohort of 12 individua
 
 ![](../images/Omics/LocalAncestryPlot_demo.png){fig-alt="Local Ancestry Plot DEMO" fig-align="center" width="85%"}
 
-Ancestry painting for 12 admixed individuals across four chromosomes: each row is one individual and each colour a source population (AFR, EUR, NAT; archaic in red). Tract lengths carry the signal, and the archaic haplotype is the single red block at chr2:60-85 Mb shared by five carriers. Facet widths are proportional to chromosome length, so blocks are comparable within a chromosome and not across them.
+Ancestry painting for 12 admixed individuals across four chromosomes: each row is one individual and each colour a source population (AFR, EUR, NAT; archaic in red). Tract lengths carry the signal, and the archaic haplotype is the single red block at chr2:60-85 Mb shared by five carriers. Each chromosome is its own facet with a free x scale, so blocks are comparable within a chromosome and not across them.
 
 ## Setup
 
@@ -40,14 +40,15 @@ sessioninfo::session_info("attached")
 
 ## Data Preparation
 
-The simulated cohort has 12 admixed individuals, four chromosomes, and one 25 Mb archaic haplotype shared by five individuals. Tracts come from a 1 Mb Markov chain with a 3% switch rate (mean tract about 33 Mb).
+The simulated cohort has 12 admixed individuals, four chromosomes, and one 25 Mb archaic haplotype shared by five individuals. Tracts come from a 1 Mb Markov chain with a 3% switch rate; because a switch often re-draws the same ancestry, realised tracts run to tens of Mb.
 
 ```{r load data, message=FALSE, warning=FALSE}
 set.seed(43520)
 
 ## Four chromosomes, 12 admixed individuals from three source populations, and
 ## one 25 Mb archaic haplotype shared by five of them. Tracts are drawn from a
-## 1 Mb Markov chain with a 3% switch rate (mean tract about 33 Mb).
+## 1 Mb Markov chain with a 3% switch rate (switches often re-draw the same
+## ancestry, so realised tracts run to tens of Mb).
 chroms <- data.frame(chr = paste0("chr", 1:4), len = c(180, 160, 140, 120))
 inds <- sprintf("IND%02d", 1:12)
 groups <- rep(c("AFR", "EUR", "NAT"), each = 4)
@@ -103,7 +104,7 @@ Local-ancestry tools (RFMix, MOSAIC, tagore) output one ancestry label per posit
 
 ```{r}
 #| label: fig-1AncestryPainting
-#| fig-cap: "Ancestry painting for 12 admixed individuals across four chromosomes: each row is one individual, each colour a source population (AFR, EUR, NAT; archaic in red). Tract lengths are the signal — a long block is a segment inherited intact — and the archaic haplotype is the single red block at chr2:60-85 Mb in the five carriers. The facet widths are proportional to chromosome length, so blocks are comparable within a chromosome and not across them."
+#| fig-cap: "Simulated ancestry painting for 12 admixed individuals across four chromosomes: each row is one individual, each colour a source population (AFR, EUR, NAT; archaic in red). Tract lengths are the signal — a long block is a segment inherited intact — and the archaic haplotype is the single red block at chr2:60-85 Mb in the five carriers. Each chromosome has its own facet and free x scale, so blocks are comparable within a chromosome and not across them."
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -117,7 +118,7 @@ ggplot(seg) +
   facet_grid(~ chr, scales = "free_x", space = "free_x") +
   scale_fill_manual(values = pal_anc, name = "ancestry") +
   scale_y_continuous(breaks = seq_along(inds), labels = inds, expand = c(0, 0)) +
-  scale_x_continuous(expand = c(0.01, 0)) +
+  scale_x_continuous(expand = expansion(mult = c(0.01, 0.07))) +
   labs(x = "position within chromosome (Mb)", y = NULL) +
   theme_minimal(base_size = 8) +
   theme(panel.grid = element_blank(),
@@ -146,12 +147,17 @@ The same calls summarised as a stacked area along chr2, averaged over the 12 ind
 ## Population-level ancestry proportion along chr2: the mean over the 12
 ## individuals in each 1 Mb window. The archaic block is the step at 60-85 Mb.
 d2 <- filter(seg, chr == "chr2")
+## Population-level proportion = mean over the 12 individuals, each counted
+## once. Taking the mean over tract rows would silently weight individuals by
+## how many tracts they happen to carry (here 28 rows for 12 people).
+carriers <- function(a, pos) mean(vapply(unique(d2$ind), function(id)
+  any(d2$anc == a & d2$ind == id & d2$start <= pos & d2$end > pos), logical(1)))
 win <- data.frame(pos = 0:159) |>
   rowwise() |>
-  mutate(AFR = mean(as.character(d2$anc) == "AFR" & d2$start <= pos & d2$end > pos),
-         EUR = mean(as.character(d2$anc) == "EUR" & d2$start <= pos & d2$end > pos),
-         NAT = mean(as.character(d2$anc) == "NAT" & d2$start <= pos & d2$end > pos),
-         ARCH = mean(as.character(d2$anc) == "ARCH" & d2$start <= pos & d2$end > pos)) |>
+  mutate(AFR = carriers("AFR", pos),
+         EUR = carriers("EUR", pos),
+         NAT = carriers("NAT", pos),
+         ARCH = carriers("ARCH", pos)) |>
   ungroup() |>
   pivot_longer(c(AFR, EUR, NAT, ARCH), names_to = "anc", values_to = "frac") |>
   mutate(anc = factor(anc, levels = c("AFR", "EUR", "NAT", "ARCH")))
@@ -164,7 +170,7 @@ ggplot(win, aes(pos, frac, fill = anc)) +
            size = 2.4, colour = "#c44e52") +
   scale_fill_manual(values = pal_anc, name = "ancestry") +
   scale_x_continuous(expand = c(0.005, 0.005)) +
-  scale_y_continuous(expand = c(0, 0), breaks = c(0, 0.5, 1)) +
+  scale_y_continuous(expand = c(0, 0), breaks = c(0, 0.5, 1), limits = c(0, 1.12)) +
   labs(x = "chr2 position (Mb)", y = "ancestry proportion") +
   theme_minimal(base_size = 8) +
   theme(panel.grid.minor = element_blank(), legend.position = "bottom",

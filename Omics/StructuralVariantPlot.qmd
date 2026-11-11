@@ -12,7 +12,7 @@ This tutorial rebuilds the arc layout of **asgart**, **Ribbon**, **LINX** and **
 
 ![](../images/Omics/StructuralVariantPlot_demo.png){fig-alt="Structural Variant Plot DEMO" fig-align="center" width="85%"}
 
-A structural variant arc plot on three chromosomes (GRCh38, Mb): six variants drawn as arcs between their breakends, coloured by SV type, with inverted variants dashed and the two inter-chromosomal rearrangements crossing the gap between chromosome tracks. Colour by type is what separates an inversion from a duplication that has the same endpoints.
+A structural variant arc plot on three chromosomes (GRCh38, Mb): six variants drawn as arcs between their breakends, coloured by SV type, with inverted variants dashed, arrowheads on each chromosome bar marking the breakend directions, and the translocation crossing the gap between chromosome tracks. Colour by type is what separates an inversion from a duplication that has the same endpoints.
 
 ## Setup
 
@@ -44,7 +44,7 @@ sessioninfo::session_info("attached")
 
 ## Data Preparation
 
-Six variants on three chromosomes of a tumour genome: a deletion, a tandem duplication, an inversion, an inter-chromosomal translocation, a balanced copy-number-neutral event, and a fold-back inversion. Each is a VCF-style BND/DEL/DUP/INV record with two breakends, an orientation, read support and a carrier list — exactly the columns `Manta`/`Delly`/`GRIDSS` emit.
+Six variants on three chromosomes of a simulated tumour genome: a deletion, a tandem duplication, two inversions (17 and 53 Mb), an inter-chromosomal translocation, and a fold-back inversion. Each is a VCF-style BND/DEL/DUP/INV record with two breakends, an orientation, read support and a carrier list — exactly the columns `Manta`/`Delly`/`GRIDSS` emit.
 
 ```{r load data, message=FALSE, warning=FALSE}
 set.seed(4358)
@@ -62,8 +62,8 @@ sv <- tribble(
   "SV02", "tandem dup",     "chr1", 118.2, "-", "chr1", 119.0, "+", 3,
   "SV03", "inversion",      "chr2", 41.6,  "+", "chr2", 58.9, "+", 2,
   "SV04", "translocation",  "chr2", 170.3, "+", "chr3", 52.7, "-", 2,
-  "SV05", "CNV-neutral",    "chr3", 8.4,   "+", "chr3", 61.2, "-", 2,
-  "SV06", "fold-back inv",  "chr2", 205.6, "-", "chr2", 206.4, "-", 4
+  "SV05", "inversion",      "chr3", 8.4,   "+", "chr3", 61.2, "+", 2,
+  "SV06", "fold-back inv",  "chr2", 205.6, "-", "chr2", 205.68, "-", 4
 )
 
 ## Read evidence: split reads and discordant pairs per variant, sampled with
@@ -92,11 +92,11 @@ evidence |> rowwise() |> mutate(total = split + discordant) |> ungroup()
 
 ### 1. Chromosome Arcs by SV Type
 
-The arc panel is the core: chromosomes on horizontal axes, one arc per breakend pair. Colour is reserved for SV type and the orientation is carried by the arc's shape (crossing arcs only for inversions), so the reader can decode an event without the legend.
+The arc panel is the core: chromosomes on horizontal axes, one arc per breakend pair. Colour and line type are reserved for SV type, and the arrowheads on each chromosome bar show the breakend direction (the dir1/dir2 columns), so orientation is read from the arrows, not implied by arc shape.
 
 ```{r}
 #| label: fig-1.1SvArcs
-#| fig-cap: "Structural variant arc plot on three chromosomes (GRCh38, Mb): six variants drawn as arcs between their breakends. Arcs are coloured by SV type, inverted variants are drawn dashed, and the two inter-chromosomal rearrangements cross the gap between chromosome tracks."
+#| fig-cap: "Structural variant arc plot on three chromosomes (GRCh38, Mb): six variants drawn as arcs between their breakends. Arcs are coloured by SV type, inverted variants are drawn dashed, and the arrowheads on each chromosome bar mark the two breakend directions (dir1/dir2). The translocation is the only arc that crosses the gap between chromosome tracks."
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -106,7 +106,7 @@ The arc panel is the core: chromosomes on horizontal axes, one arc per breakend 
 
 type_cols <- c("deletion" = "#2166ac", "tandem dup" = "#1b7837",
                "inversion" = "#d95f02", "translocation" = "#b2182b",
-               "CNV-neutral" = "#8c6bb1", "fold-back inv" = "#8c510a")
+               "fold-back inv" = "#8c510a")
 
 chr_y <- c(chr1 = 3, chr2 = 2, chr3 = 1)
 
@@ -138,13 +138,26 @@ p_arc <- ggplot() +
   ## Arcs.
   geom_path(data = arcs, aes(x, y, group = id, colour = type,
                              linetype = type), linewidth = 0.55) +
-  ## Copy-number consequence: a short bar under each breakend pair.
+  ## Breakend direction: a 6 Mb arrowhead on the chromosome bar pointing in
+  ## the dir1/dir2 direction, so orientation is drawn, not implied.
+  geom_segment(data = sv |> pivot_longer(c(pos1, pos2), names_to = "endn",
+                                         values_to = "pos") |>
+                 mutate(chr = if_else(endn == "pos1", chr1, chr2),
+                        dir = if_else(endn == "pos1", dir1, dir2)),
+               aes(x = pos, xend = pos + 6 * if_else(dir == "+", 1, -1),
+                   y = chr_y[chr], yend = chr_y[chr]),
+               arrow = arrow(ends = "last", length = unit(1.8, "mm")),
+               linewidth = 0.55, colour = "#333333") +
+  ## Copy-number consequence: a bar under each breakend pair whose thickness
+  ## scales with the predicted copy number.
   geom_segment(data = filter(sv, chr1 == chr2),
                aes(x = pos1, xend = pos2, y = chr_y[chr1] - 0.16,
-                   yend = chr_y[chr1] - 0.16, colour = type), linewidth = 1.1) +
+                   yend = chr_y[chr1] - 0.16, colour = type, linewidth = copies),
+               show.legend = FALSE) +
+  scale_linewidth_continuous(range = c(0.5, 2.4), guide = "none") +
   ## Labels at the arc apex.
   geom_text_repel(data = arcs |> group_by(id, type) |>
-                    slice_max(y, n = 1) |> ungroup(),
+                    slice_max(y, n = 1, with_ties = FALSE) |> ungroup(),
                   aes(x, y, label = id, colour = type), size = 2.4,
                   nudge_y = 0.16, seed = 1, min.segment.length = 0,
                   segment.size = 0.2, show.legend = FALSE) +
@@ -152,7 +165,6 @@ p_arc <- ggplot() +
   scale_linetype_manual(values = c("deletion" = "solid", "tandem dup" = "solid",
                                    "inversion" = "dashed",
                                    "translocation" = "solid",
-                                   "CNV-neutral" = "solid",
                                    "fold-back inv" = "dotted"),
                         name = "SV type") +
   scale_x_continuous(limits = c(-12, 265), breaks = seq(0, 250, 50),
@@ -182,7 +194,7 @@ p_arc
 
 ### 2. Evidence and Carrier Structure
 
-The arc alone does not say whether the event is real. The second panel pairs read support with the carrier matrix: a variant present in most tumours with 40 split reads and one present in two tumours with 6 is a different kind of finding, and the figure should make that comparison immediate.
+The arc alone does not say whether the event is real. The second panel pairs read support with the carrier matrix: SV01 carries 38 split reads yet appears in only 5 of the 12 tumours, while SV06 has 6 split reads in 2 tumours: read support and recurrence are different axes, and the figure should make that comparison immediate.
 
 ```{r}
 #| label: fig-1.2SvEvidence
@@ -250,7 +262,7 @@ p_ev + p_car + plot_layout(widths = c(1, 0.95))
 
 ## Implementations deliberately not used here
 
-This page draws its figures from base graphics on purpose. Of the tools that the issue-435 inventory maps onto Omics/StructuralVariantPlot, 8 were marked **skipped** and are used only as layout references, not as dependencies: 7 that have gone more than five years without an operational commit (cutoff 2021-11-07) and 1 whose dependency closure is too heavy to justify for one static figure. Reproducing whatever still works would mean pinning abandoned code; installing the rest would mean pulling a whole analysis framework into a documentation build. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
+This page draws its figures with ggplot2 rather than installing the skipped tools. Of the tools that the issue-435 inventory maps onto Omics/StructuralVariantPlot.qmd, 8 are marked **skipped** here and used only as layout references, not as dependencies: 7 that have gone more than five years without an operational commit (cutoff 2021-11-07), and 1 whose dependency closure is too heavy for one static figure. Reproducing whatever still works would mean pinning abandoned code; installing the rest would mean pulling a whole analysis framework into a documentation build. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
 
 | Tool | Last commit | Status | Why it is skipped |
 | --- | --- | --- | --- |

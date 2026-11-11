@@ -82,6 +82,10 @@ ribbon <- function(from, to, y0, y1, n = 40) {
                y = c(rep(y0, n), rep(y1, n)))
   }))
 }
+## One polygon per (block, genome pair). Grouping by block alone would stack
+## the G1-G2 and G2-G3 quads of the same block into one self-intersecting
+## polygon whose closing edge cuts back across the plot.
+add_pair <- function(df, pair) { df$pair <- pair; df }
 
 g <- split(orders, orders$genome)
 ```
@@ -94,7 +98,7 @@ g <- split(orders, orders$genome)
 
 ```{r}
 #| label: fig-1.1WgaBackbones
-#| fig-cap: "三个基因组的 Mauve 式全基因组比对：同源块按比例画在各自骨架上，并在相邻基因组（G1-G2、G2-G3）之间用带状连线相连。G2 携带一个转座（E 在 D 之前）、一个倒位（块 G 上的空心三角形）和一个互换（H 在 G 之前）；G3 丢失块 B 与 G，并获得外来块 X。"
+#| fig-cap: "三个模拟基因组的 Mauve 式全基因组比对：同源块按比例画在各自骨架上，并在相邻基因组（G1-G2、G2-G3）之间用带状连线相连。G2 携带一个转座（E 在 D 之前）、一个倒位（块 G 上的空心三角形）和一个互换（H 在 G 之前）；G3 丢失块 B 与 G，并获得外来块 X。"
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -112,13 +116,13 @@ block_cols <- setNames(
 )
 
 ribbons <- rbind(
-  ribbon(g$G1, g$G2, ypos[["G1"]] - 0.07, ypos[["G2"]] + 0.07),
-  ribbon(g$G2, g$G3, ypos[["G2"]] - 0.07, ypos[["G3"]] + 0.07)
+  add_pair(ribbon(g$G1, g$G2, ypos[["G1"]] - 0.07, ypos[["G2"]] + 0.07), "G1-G2"),
+  add_pair(ribbon(g$G2, g$G3, ypos[["G2"]] - 0.07, ypos[["G3"]] + 0.07), "G2-G3")
 )
 
 p1 <- ggplot() +
   ## 先画连线，让骨架压在它们之上
-  geom_polygon(data = ribbons, aes(x, y, group = block, fill = block),
+  geom_polygon(data = ribbons, aes(x, y, group = interaction(block, pair), fill = block),
                alpha = 0.38, colour = NA) +
   ## 骨架
   geom_segment(data = orders |> group_by(genome) |>
@@ -320,7 +324,7 @@ p1 / p4 + plot_layout(heights = c(1, 0.22))
 
 ## 关于本页跳过的实现
 
-本页刻意只用基础图形自行绘制。在 issue-435 清单中归到 Omics/WholeGenomeAlignmentPlot 的工具里，有 2 条被标记为**跳过**，仅作为版式参考、不作为依赖：其中 1 条超过 5 年无运维更新（截止日 2021-11-07），1 条依赖闭包过重，不值得为一张静态图引入。沿用这些工具，等于锁定已废弃的代码；安装另一批，则要把整套分析框架拖进文档构建。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
+本页的图由 ggplot2 直接绘制，而不安装这些被跳过的工具。在 issue-435 清单中归到 Omics/WholeGenomeAlignmentPlot.qmd 的工具里，2 条被标记为**跳过**，仅作为版式参考、不作为依赖：1 条超过 5 年无运维更新（截止日 2021-11-07）、1 条依赖闭包过重，不值得为一张静态图引入。沿用这些工具，等于锁定已废弃的代码；安装另一批，则要把整套分析框架拖进文档构建。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
 
 | 工具 | 最近提交 | 状态 | 跳过原因 |
 | --- | --- | --- | --- |

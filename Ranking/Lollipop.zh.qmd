@@ -22,7 +22,7 @@ author:
 
 -   编程语言：R
 
--   依赖包：`ggplot2`; `tidyr`; `palmerpenguins`; `cowplot`; `hrbrthemes`; `ggalt`; `rstatix`; `ggpubr`
+-   依赖包：`ggplot2`; `dplyr`; `tidyr`; `palmerpenguins`; `cowplot`; `hrbrthemes`; `ggalt`; `rstatix`; `ggpubr`; `ggrepel`; `patchwork`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # 安装包
@@ -496,7 +496,7 @@ mut <- data.frame(
   position = c(175, 175, 175, 220, 220, 245, 248, 248, 273, 273, 273,
                158, 179, 196, 213, 234, 245, 280, 306, 338, 34, 72, 115,
                133, 141))
-# 蛋白结构域（可来自 maftools::read.protein.domains 或 UniProt）
+# 蛋白结构域（可来自 maftools::pfamDomains 或 UniProt）
 dom <- data.frame(
   name = c("Proline-rich", "DNA-binding", "Tetramerization"),
   start = c(60, 100, 320), end = c(80, 290, 360),
@@ -534,12 +534,12 @@ ggplot() +
 
 -   真实数据上，用 `trackViewer::lolliplot()` 配 `GRanges` 对象（点带 `score` 控制高度）是即插即用的路径；上面的 `ggplot2` 版本可完全定制主题并输出矢量 SVG。
 -   支棍分上下两层（`layer = c("top", "bottom")`）是热点拥挤的常用解法；按临床变量而非随机分层即可得到两组对比。
--   结构域坐标可取 `maftools::read.protein.domains()` 按 RefSeq ID 过滤，或来自 UniProt REST API。
+-   结构域坐标可取 `maftools::pfamDomains()` 按 RefSeq ID 过滤，或来自 UniProt REST API。
 :::
 
 ### 7. 蛋白结构域架构、突变密度与结构域感知的棒棒糖图
 
-突变棒棒糖图只有放在它所突变的蛋白之上才可解读。ProteinPaint / nightingale 的规范 \[12,13\] 在一条残基轴上堆叠两层：**结构域架构**（肽链、Pfam 结构域、低复杂度区），以及其上方的**高斯核密度**——它把 18 根独立的杆收束成读者真正需要看到的两个热点簇。下方的棒棒糖轨道画出同一批变异，用类别编码颜色、用患者数编码点大小 \[14,15\]。
+突变棒棒糖图只有放在它所突变的蛋白之上才可解读。ProteinPaint 的规范 \[12\]，R 侧的同型实现是 maftools \[13\] 在一条残基轴上堆叠两层：**结构域架构**（肽链、Pfam 结构域、低复杂度区），以及其上方的**高斯核密度**——它把 18 根独立的杆收束成读者真正需要看到的两个热点簇。下方的棒棒糖轨道画出同一批变异，用类别编码颜色、用患者数编码点大小 \[14,15\]。
 
 ```{r}
 #| label: fig-7-1ProteinDomainLollipop
@@ -608,9 +608,9 @@ p_arch <- ggplot() +
   scale_fill_manual(values = c(signal = "#a6bddb", domain = "#9ebcda",
                                `low complexity` = "#f0f0f0"),
                     guide = "none") +
-  geom_area(data = dens, aes(x = pos, y = d * 650 + 1.2), fill = "#7570b3",
+  geom_area(data = dens, aes(x = pos, y = 1.2 + 1.9 * d / max(d)), fill = "#7570b3",
             alpha = 0.22, colour = NA) +
-  geom_line(data = dens, aes(x = pos, y = d * 650 + 1.2), colour = "#542788",
+  geom_line(data = dens, aes(x = pos, y = 1.2 + 1.9 * d / max(d)), colour = "#542788",
             linewidth = 0.3) +
   annotate("text", x = 20, y = 3.2,
            label = "mutation density (Gaussian kernel, sd = 22 aa)",
@@ -659,7 +659,7 @@ p_arch / p_lol + plot_layout(heights = c(0.6, 1))
 **实践要点**
 
 -   把结构域架构与突变放在**同一条**残基轴上。没有结构域的棒棒糖图会隐藏最关键的发现——热点是否落在功能结构域内。
--   在杆上方加核密度带。18 个互相重叠的标签什么也没传达；两个密度峰加一个声明的带宽（sd = 22 aa）能让热点结构一眼可见。
+-   在杆上方加核密度带。18 个互相重叠的标签什么也没传达；一条密度带加一个声明的带宽（sd = 22 aa）即可一目了然——18 次抽样画出的带是凹凸的而非双峰，不要叙述图里不存在的峰。
 -   类别配色保持小而互斥（missense / nonsense / inframe / splice），并与尺寸通道（患者数）分离。不要用颜色同时编码两件事。
 -   给峰值直接标注计数。否则读者只能拿杆高去对照网格线。
 -   声明蛋白全长与坐标约定（氨基酸，1-based）；未说明参考异构体的结构域图不可复现。
@@ -667,7 +667,7 @@ p_arch / p_lol + plot_layout(heights = c(0.6, 1))
 
 ## 关于本页跳过的实现
 
-本页刻意只用基础图形自行绘制。在 issue-435 清单中归到 Ranking/Lollipop 的工具里，有 2 条被标记为**跳过**，仅作为版式参考、不作为依赖：其中 1 条超过 5 年无运维更新（截止日 2021-11-07），1 条依赖闭包过重，不值得为一张静态图引入。沿用这些工具，等于锁定已废弃的代码；安装另一批，则要把整套分析框架拖进文档构建。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
+本页的图由 ggplot2 直接绘制，而不安装这些被跳过的工具。在 issue-435 清单中归到 Ranking/Lollipop.qmd 的工具里，2 条被标记为**跳过**，仅作为版式参考、不作为依赖：1 条超过 5 年无运维更新（截止日 2021-11-07）、1 条依赖闭包过重，不值得为一张静态图引入。沿用这些工具，等于锁定已废弃的代码；安装另一批，则要把整套分析框架拖进文档构建。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
 
 | 工具 | 最近提交 | 状态 | 跳过原因 |
 | --- | --- | --- | --- |
@@ -724,7 +724,7 @@ D图展示了AAGs（血管生成相关基因）中拷贝数变异缺失、增加
 
 \[12\] Zhou X, Edmonson MN, Wilkinson MR, et al. Exploring genomic alteration in pediatric cancer using ProteinPaint. Nat Genet. 2016;48(1):4-6. doi:10.1038/ng.3466
 
-\[13\] Yates B, Miller D, Bragt KVD, et al. nightingale: an R package for static and interactive visualization of high-dimensional data. (Bioconductor package), https://bioconductor.org/packages/nightingale
+\[13\] Mayakonda A, Lin DC, Assenov Y, Plass C, Koeffler HP. Maftools: efficient and comprehensive analysis of somatic variants in cancer. Genome Res. 2018;28(11):1747-1756. doi:10.1101/gr.239244.118
 
 \[14\] Cancer Genome Atlas Research Network. Comprehensive molecular characterization of gastric adenocarcinoma. Nature. 2014;513(7517):202-209. doi:10.1038/nature13480
 

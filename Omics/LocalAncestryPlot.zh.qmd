@@ -12,7 +12,7 @@ author:
 
 ![](../images/Omics/LocalAncestryPlot_demo.png){fig-alt="局部祖源图 DEMO" fig-align="center" width="85%"}
 
-12 个混合个体、覆盖 4 条染色体的祖源涂色图：每行一个个体，每种颜色代表一个源群体（AFR、EUR、NAT，古人类为红色）。信号体现在片段长度上，古人类单倍型就是 chr2:60-85 Mb 处那块由 5 个携带者共享的红色区段。分面宽度与染色体长度成正比，因此片段可在同一染色体内比较，但不能跨染色体比较。
+12 个混合个体、覆盖 4 条染色体的祖源涂色图：每行一个个体，每种颜色代表一个源群体（AFR、EUR、NAT，古人类为红色）。信号体现在片段长度上，古人类单倍型就是 chr2:60-85 Mb 处那块由 5 个携带者共享的红色区段。每条染色体是独立分面且 x 轴自由缩放，因此片段可在同一染色体内比较，但不能跨染色体比较。
 
 ## 环境配置
 
@@ -40,14 +40,15 @@ sessioninfo::session_info("attached")
 
 ## 数据准备
 
-模拟队列包含 12 个混合个体、4 条染色体与一段由 5 个个体共享的 25 Mb 古老单倍型。片段来自 1 Mb 马尔可夫链，切换率为 3%（平均片段约 33 Mb）。
+模拟队列包含 12 个混合个体、4 条染色体与一段由 5 个个体共享的 25 Mb 古老单倍型。片段来自 1 Mb 马尔可夫链，切换率为 3%；由于切换后常常重新抽到同一祖源，实际片段可达数十 Mb。
 
 ```{r load data, message=FALSE, warning=FALSE}
 set.seed(43520)
 
 ## Four chromosomes, 12 admixed individuals from three source populations, and
 ## one 25 Mb archaic haplotype shared by five of them. Tracts are drawn from a
-## 1 Mb Markov chain with a 3% switch rate (mean tract about 33 Mb).
+## 1 Mb Markov chain with a 3% switch rate (switches often re-draw the same
+## ancestry, so realised tracts run to tens of Mb).
 chroms <- data.frame(chr = paste0("chr", 1:4), len = c(180, 160, 140, 120))
 inds <- sprintf("IND%02d", 1:12)
 groups <- rep(c("AFR", "EUR", "NAT"), each = 4)
@@ -103,7 +104,7 @@ seg$y <- ypos[seg$ind]
 
 ```{r}
 #| label: fig-1AncestryPainting
-#| fig-cap: "12 个混合个体、4 条染色体的祖源 painting：每行一个个体，每种颜色一个来源群体（AFR、EUR、NAT，古老祖源为红色）。片段长度才是信号——长块就是一段完整继承的片段——古老单倍型表现为 5 个携带者 chr2:60-85 Mb 上的单个红色块。分面宽度与染色体长度成比例，因此块在同一染色体内部可比，跨染色体不可比。"
+#| fig-cap: "12 个模拟混合个体、4 条染色体的祖源 painting：每行一个个体，每种颜色一个来源群体（AFR、EUR、NAT，古老祖源为红色）。片段长度才是信号——长块就是一段完整继承的片段——古老单倍型表现为 5 个携带者 chr2:60-85 Mb 上的单个红色块。每条染色体拥有独立分面和自由 x 轴，因此块在同一染色体内部可比，跨染色体不可比。"
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -117,7 +118,7 @@ ggplot(seg) +
   facet_grid(~ chr, scales = "free_x", space = "free_x") +
   scale_fill_manual(values = pal_anc, name = "ancestry") +
   scale_y_continuous(breaks = seq_along(inds), labels = inds, expand = c(0, 0)) +
-  scale_x_continuous(expand = c(0.01, 0)) +
+  scale_x_continuous(expand = expansion(mult = c(0.01, 0.07))) +
   labs(x = "position within chromosome (Mb)", y = NULL) +
   theme_minimal(base_size = 8) +
   theme(panel.grid = element_blank(),
@@ -146,12 +147,17 @@ ggplot(seg) +
 ## Population-level ancestry proportion along chr2: the mean over the 12
 ## individuals in each 1 Mb window. The archaic block is the step at 60-85 Mb.
 d2 <- filter(seg, chr == "chr2")
+## Population-level proportion = mean over the 12 individuals, each counted
+## once. Taking the mean over tract rows would silently weight individuals by
+## how many tracts they happen to carry (here 28 rows for 12 people).
+carriers <- function(a, pos) mean(vapply(unique(d2$ind), function(id)
+  any(d2$anc == a & d2$ind == id & d2$start <= pos & d2$end > pos), logical(1)))
 win <- data.frame(pos = 0:159) |>
   rowwise() |>
-  mutate(AFR = mean(as.character(d2$anc) == "AFR" & d2$start <= pos & d2$end > pos),
-         EUR = mean(as.character(d2$anc) == "EUR" & d2$start <= pos & d2$end > pos),
-         NAT = mean(as.character(d2$anc) == "NAT" & d2$start <= pos & d2$end > pos),
-         ARCH = mean(as.character(d2$anc) == "ARCH" & d2$start <= pos & d2$end > pos)) |>
+  mutate(AFR = carriers("AFR", pos),
+         EUR = carriers("EUR", pos),
+         NAT = carriers("NAT", pos),
+         ARCH = carriers("ARCH", pos)) |>
   ungroup() |>
   pivot_longer(c(AFR, EUR, NAT, ARCH), names_to = "anc", values_to = "frac") |>
   mutate(anc = factor(anc, levels = c("AFR", "EUR", "NAT", "ARCH")))
@@ -164,7 +170,7 @@ ggplot(win, aes(pos, frac, fill = anc)) +
            size = 2.4, colour = "#c44e52") +
   scale_fill_manual(values = pal_anc, name = "ancestry") +
   scale_x_continuous(expand = c(0.005, 0.005)) +
-  scale_y_continuous(expand = c(0, 0), breaks = c(0, 0.5, 1)) +
+  scale_y_continuous(expand = c(0, 0), breaks = c(0, 0.5, 1), limits = c(0, 1.12)) +
   labs(x = "chr2 position (Mb)", y = "ancestry proportion") +
   theme_minimal(base_size = 8) +
   theme(panel.grid.minor = element_blank(), legend.position = "bottom",

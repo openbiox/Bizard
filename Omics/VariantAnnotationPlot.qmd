@@ -67,9 +67,20 @@ freq <- expand.grid(site = sites, sample = factor(samples, levels = samples),
   group_by(site, sample) |>
   mutate(frac = frac / sum(frac)) |>
   ungroup()
-vaf_labels <- freq |>
+## Label y = centre of the ALT segment in the actual stack. position_stack()
+## on the filtered rows alone would centre the label on the bottom frac/2 of
+## the bar, which is the REFERENCE segment whenever the alt allele stacks on
+## top of it.
+stack_order <- freq |>
+  mutate(base = factor(base, levels = bases)) |>
+  arrange(site, sample, base) |>
+  group_by(site, sample) |>
+  mutate(seg_top = cumsum(frac)) |>
+  ungroup()
+vaf_labels <- stack_order |>
   filter(as.character(base) == site_alt[si], frac >= 0.09) |>
-  mutate(label = percent(frac, accuracy = 1))
+  mutate(label = percent(frac, accuracy = 1),
+         seg_y = seg_top - frac / 2)
 exons <- tibble(xmin = c(7670200, 7671200, 7672100, 7673000),
                 xmax = c(7670400, 7671500, 7672400, 7673020))
 ## ---- (2) read-backed phasing over three blocks -------------------------
@@ -123,7 +134,7 @@ This is the compact track popularised by **NucFreq** and **snpit**: one stacked 
 
 ```{r}
 #| label: fig-1.1NucleotideFrequency
-#| fig-cap: "Nucleotide frequency and VAF along GRCh38 chr17 (TP53 locus): stacked base composition per site for three tumours and one normal; labels give the alt allele fraction for every cell at or above 9% (below that threshold only the stack shows the value)."
+#| fig-cap: "Nucleotide frequency and VAF along a simulated TP53-like chr17 locus (synthetic coordinates): stacked base composition per site for three tumours and one normal; labels give the alt allele fraction for every cell at or above 9% (below that threshold only the stack shows the value)."
 #| warning: false
 #| message: false
 #| fig-width: 10
@@ -131,9 +142,8 @@ This is the compact track popularised by **NucFreq** and **snpit**: one stacked 
 #| fig-dpi: 300
 p_freq <- ggplot(freq, aes(site, frac)) +
   geom_col(aes(fill = base), width = 70) +
-  geom_text(data = vaf_labels, aes(label = label),
-            position = position_stack(vjust = 0.5), colour = "white",
-            fontface = "bold", size = 2.6) +
+  geom_text(data = vaf_labels, aes(site, seg_y, label = label),
+            colour = "white", fontface = "bold", size = 2.6) +
   facet_wrap(~sample, ncol = 1, strip.position = "left") +
   scale_fill_manual(values = base_colours, name = "Base", breaks = bases) +
   scale_y_continuous(labels = percent_format(accuracy = 1),
@@ -159,7 +169,7 @@ p_exon <- ggplot() +
                      labels = label_number(scale = 1e-6, suffix = " Mb",
                                            accuracy = 0.001)) +
   scale_y_continuous(limits = c(0, 1)) +
-  labs(x = "GRCh38 chr17 position", y = NULL,
+  labs(x = "Simulated locus position (TP53-like, synthetic)", y = NULL,
        subtitle = "TP53 exons 2-4 (schematic)") +
   theme_classic(base_size = 9) +
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
@@ -175,7 +185,7 @@ p_freq / p_exon + plot_layout(heights = c(4, 0.7))
 
 ```{r}
 #| label: fig-1.2HaplotypePhasing
-#| fig-cap: "Read-backed haplotype phasing across three phase blocks on GRCh38 chr17; one grey read carries a switch and remains unphased."
+#| fig-cap: "Read-backed haplotype phasing across three phase blocks on the simulated chr17 locus; one grey read carries a switch and remains unphased."
 #| warning: false
 #| message: false
 #| fig-width: 10
@@ -211,7 +221,7 @@ ggplot() +
   scale_x_continuous(breaks = c(7670000, 7675000, 7680000, 7684000),
                      labels = label_number(scale = 1e-6, suffix = " Mb",
                                            accuracy = 0.001)) +
-  labs(x = "GRCh38 chr17 position", y = NULL,
+  labs(x = "Simulated locus position (TP53-like, synthetic)", y = NULL,
        subtitle = "Alleles are phased per read; read_11 spans the block 1/2 boundary with contradictory alleles and stays grey (unphased)") +
   theme_classic(base_size = 9.5) +
   theme(axis.text.y = element_text(size = 7.4),
@@ -277,7 +287,7 @@ p_matrix + p_density + plot_layout(widths = c(1.5, 1))
 
 ## Implementations deliberately not used here
 
-This page draws its figures from base graphics on purpose. Of the tools that the issue-435 inventory maps onto Omics/VariantAnnotationPlot, 2 were marked **skipped** and are used only as layout references, not as dependencies: 0 that have gone more than five years without an operational commit (cutoff 2021-11-07) and 2 whose dependency closure is too heavy to justify for one static figure. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
+This page draws its figures with ggplot2 rather than installing the skipped tools. Of the tools that the issue-435 inventory maps onto Omics/VariantAnnotationPlot.qmd, 2 are marked **skipped** here and used only as layout references, not as dependencies: 2 whose dependency closure is too heavy to justify for one static figure. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
 
 | Tool | Last commit | Status | Why it is skipped |
 | --- | --- | --- | --- |

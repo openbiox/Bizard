@@ -19,7 +19,7 @@ Hi-C 热图用于显示不同染色体上的全基因组染色质与热图的相
 
 ![](../images/Hiplot/087-hic-heatmap.png){fig-alt="Hi-C 热图" fig-align="center" width="70%"}
 
-以 500 kb 分辨率稀疏存储的 Hi-C 接触图，每个格子是两个箱之间的接触计数，颜色表示强度：在矩阵完整处，对角线信号最强，离开对角线的衰减就是接触概率随基因组距离下降的表现。但这份示例矩阵**并不是**完整的 250 Mb 接触图——它是两块彼此独立的 122 Mb 接触块，且第 0 号与 244–285 号箱缺失——所以正确的读法是两个块内部的两条对角线，而不是一条全基因组对角线。正因为存在这些空缺，下文进阶部分改用一份完整的模拟矩阵。
+以 500 kb 分辨率稀疏存储的 Hi-C 接触图，每个格子是两个箱之间的接触计数，颜色表示强度：在矩阵完整处，对角线信号最强，离开对角线的衰减就是接触概率随基因组距离下降的表现。但这份示例矩阵**并不是**完整的 250 Mb 接触图——它是两个接触块（bin 1-243 与 286-499，约 121.5 与 107 Mb），第 0 号与 244–285 号箱缺失，块间仍有微弱跨块信号——所以正确的读法是两个块内部的两条对角线，而不是一条全基因组对角线。正因为存在这些空缺，下文进阶部分改用一份完整的模拟矩阵。
 
 ## 环境配置
 
@@ -72,7 +72,7 @@ head(data)
 
 ```{r}
 #| label: fig-1hic-heatmap
-#| fig-cap: "随教程提供的示例矩阵在 500 kb 分箱下的 Hi-C 接触图，颜色为取对数的强度标度：两个彼此独立的 122 Mb 接触块，各块内部呈现预期的强对角线与 s^-1 衰减。"
+#| fig-cap: "随教程提供的示例矩阵在 500 kb 分箱下的 Hi-C 接触图（线性色标）：两个接触块（bin 1-243 与 286-499，即 121.5 与 107 Mb）由缺失 bin 条带隔开，各自呈现强对角线与随距离的 s^-1 衰减；块间仍有微弱的跨块信号。"
 #| out.width: "95%"
 #| fig-height: 5
 #| fig-width: 6.5
@@ -106,11 +106,11 @@ p <- ggplot(data = data, aes(x = index_bin1 * res, y = index_bin2 * res)) +
   scale_x_continuous(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
   ## One scale call per aesthetic only: a second scale_*() for the same
   ## aesthetic silently replaces the first.
-  scale_y_continuous(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
-  ## Reverse the y axis inside coord_cartesian(): a trans = "reverse" scale
-  ## silently drops limits, and the panel then lands in negative space with no
-  ## data in it. coord_cartesian() keeps the limits and only flips the panel.
-  coord_cartesian(xlim = c(0, bins_num * res), ylim = c(bins_num * res, 0),
+  ## scale_y_reverse() is what actually flips the axis so bin 0 sits at the
+  ## top-left. Reversing via coord_cartesian(ylim = c(max, 0)) does NOT work:
+  ## current ggplot2 sorts the range instead of honouring its direction.
+  scale_y_reverse(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
+  coord_cartesian(xlim = c(0, bins_num * res), ylim = c(0, bins_num * res),
                   expand = FALSE) +
   theme(panel.grid = element_blank(), axis.title = element_blank()) +
   labs(title = paste0("(resolution: ", res / 1000, "Kb)"), x="", y="") +
@@ -122,7 +122,7 @@ p <- ggplot(data = data, aes(x = index_bin1 * res, y = index_bin2 * res)) +
 p
 ```
 
-示例图每个小格表示两个基因组区间之间的接触计数，颜色表示强度：在矩阵完整处，对角线信号最强，离开对角线的衰减即接触概率随基因组距离下降的表现。颜色由蓝（低）经白到红（高）。
+示例图每个小格表示两个基因组区间之间的接触计数，颜色表示强度（线性色标，蓝→白→红）：在矩阵完整处，对角线信号最强，离开对角线的衰减即接触概率随基因组距离下降的表现。反转 y 轴后 bin 0 位于左上角，主对角线从左上延伸到右下——与 Juicebox、HiGlass 等 Hi-C 浏览器的方向一致。
 
 ### 进阶：归一化、TAD 边界与旋转视图
 
@@ -130,7 +130,7 @@ p
 
 ```{r}
 #| label: fig-adv-1NormalizedHic
-#| fig-cap: "observed/expected 归一化后的 Hi-C 接触图（100 Mb、500 kb 分辨率，按 5 个 TAD 与 s^-1 距离衰减模拟）：左为 log2 obs/exp 矩阵的上半部分，四条 TAD 边界以深色虚线段画出；右为同一矩阵旋转 45° 后的呈现，基因组中点沿 x 轴、接触间隔沿 y 轴，于是每个 TAD 是一个以中点为顶点的对称三角形，每条边界落在顶点相交的两条对角线上。"
+#| fig-cap: "observed/expected 归一化后的 Hi-C 接触图（100 Mb、500 kb 分辨率，按 5 个 TAD 与 s^-1 距离衰减模拟）：左为 log2 obs/exp 矩阵的上半部分，四条 TAD 边界以深色虚线段画出；右为同一矩阵剪切后的'旋转'呈现（Hi-C 浏览器所用形式），u = (i+j)/2 沿 x 轴、v = i-j 沿 y 轴——这是 2:1 的剪切而非 45° 旋转：每个 TAD 成为以中点为顶点的对称三角形，每条边界以其两翼 v = ±2(u - b) 画出、相交于该顶点。"
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -193,10 +193,10 @@ p_tri <- ggplot() +
   scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
                        oob = scales::squish) +
   scale_x_continuous(breaks = seq(0, 100, 25)) +
-  ## y 轴反转，使对角线 x = y 自左下指向右上、三角形占据右下半个面板，
-  ## 与 Hi-C 浏览器的习惯一致。
-  scale_y_continuous(breaks = seq(0, 100, 25)) +
-  coord_cartesian(xlim = c(0, 100), ylim = c(100, 0), expand = FALSE) +
+  ## scale_y_reverse() 真正翻转 y 轴：bin 0 位于左上，对角线自左上指向右下，
+  ## 数据三角形占据右上半个面板，与 Hi-C 浏览器的习惯一致。
+  scale_y_reverse(breaks = seq(0, 100, 25)) +
+  coord_cartesian(xlim = c(0, 100), ylim = c(0, 100), expand = FALSE) +
   labs(x = "position (Mb)", y = "position (Mb)") +
   theme_minimal(base_size = 9) +
   theme(panel.grid = element_blank(),
@@ -204,19 +204,19 @@ p_tri <- ggplot() +
         legend.text = element_text(size = 6.8),
         legend.title = element_text(size = 7.2))
 
-## 旋转：u = 基因组中点，v = 接触间隔。
+## 剪切（"旋转"视图）：u = 基因组中点，v = 接触间隔。
 rot <- oe |> mutate(u = (i + j) * res / 2, v = (i - j) * res)
 
 p_rot <- ggplot() +
   geom_raster(data = rot, aes(u, v, fill = oe), interpolate = FALSE) +
-  ## A boundary b is a point at the tip v = 0, so in the rotated plane it is
-  ## the two diagonals u = b +/- v (not the vertical u = b): the vertical rule
-  ## would only touch the boundary where v = 0.
-  geom_abline(data = transform(bounds, s = +1),
-              aes(slope = s, intercept = x), colour = "grey10",
+  ## (u, v) 变换是 2:1 的剪切而非 45 度旋转：边界 b 是 (b, 0) 处的顶点，
+  ## 其两翼是 v = +/- 2 (u - b)（斜率 +/- 2、过顶点）。斜率 +/- 1 的直线
+  ## 会横穿 TAD 三角形而不是沿其边缘行进。
+  geom_abline(data = transform(bounds, s = +2, i = -2 * x),
+              aes(slope = s, intercept = i), colour = "grey10",
               linewidth = 0.3, linetype = "22") +
-  geom_abline(data = transform(bounds, s = -1),
-              aes(slope = s, intercept = x), colour = "grey10",
+  geom_abline(data = transform(bounds, s = -2, i = 2 * x),
+              aes(slope = s, intercept = i), colour = "grey10",
               linewidth = 0.3, linetype = "22") +
   scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
                        oob = scales::squish, guide = "none") +
@@ -243,7 +243,7 @@ p_tri + p_rot + plot_layout(widths = c(1, 1))
 
 ## 关于本页跳过的实现
 
-本页刻意只用基础图形自行绘制。在 issue-435 清单中归到 Hiplot/087-hic-heatmap 的工具里，有 2 条被标记为**跳过**，仅作为版式参考、不作为依赖：其中 1 条超过 5 年无运维更新（截止日 2021-11-07），1 条依赖闭包过重，不值得为一张静态图引入。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
+本页的图由 ggplot2 直接绘制，而不安装这些被跳过的工具。在 issue-435 清单中归到 Hiplot/087-hic-heatmap.qmd 的工具里，2 条被标记为**跳过**，仅作为版式参考、不作为依赖：1 条超过 5 年无运维更新（截止日 2021-11-07）、1 条依赖闭包过重，不值得为一张静态图引入。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
 
 | 工具 | 最近提交 | 状态 | 跳过原因 |
 | --- | --- | --- | --- |

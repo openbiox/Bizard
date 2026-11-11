@@ -19,7 +19,7 @@ The HiC heatmap is used to display the genome-wide chromatin interaction with he
 
 ![](../images/Hiplot/087-hic-heatmap.png){fig-alt="Hi-C Heatmap" fig-align="center" width="70%"}
 
-A Hi-C contact map stored as a sparse list of bin pairs at 500 kb resolution: each cell is the contact count between two bins and the colour gives the intensity, so where a matrix is complete the diagonal is the strongest signal and the decay away from it is how contact probability falls with genomic distance. This particular example matrix is **not** a complete 250 Mb map — it is two independent 122 Mb contact blocks whose bins 0 and 244-285 are absent — so the correct reading is two diagonals inside two blocks, not one genome-wide diagonal. The observed gaps are why the advanced section below works from a complete simulated matrix.
+A Hi-C contact map stored as a sparse list of bin pairs at 500 kb resolution: each cell is the contact count between two bins and the colour gives the intensity, so where a matrix is complete the diagonal is the strongest signal and the decay away from it is how contact probability falls with genomic distance. This particular example matrix is **not** a complete 250 Mb map — it is two contact blocks (bins 1-243 and 286-499, about 121.5 and 107 Mb) whose bins 0 and 244-285 are absent, with faint cross-block signal between them — so the correct reading is two diagonals inside two blocks, not one genome-wide diagonal. The observed gaps are why the advanced section below works from a complete simulated matrix.
 
 ## Setup
 
@@ -72,7 +72,7 @@ head(data)
 
 ```{r}
 #| label: fig-1hic-heatmap
-#| fig-cap: "Hi-C contact map of the shipped example matrix at 500 kb bins, log-spaced colour scale: two independent 122 Mb contact blocks, each showing the expected strong diagonal and the s^-1 decay away from it."
+#| fig-cap: "Hi-C contact map of the shipped example matrix at 500 kb bins on a linear colour scale: two contact blocks (bins 1-243 and 286-499, i.e. 121.5 and 107 Mb) separated by the missing-bin band, each showing the strong diagonal and the s^-1 decay away from it; faint cross-block signal remains between the blocks."
 #| out.width: "95%"
 #| fig-height: 5
 #| fig-width: 6.5
@@ -106,11 +106,11 @@ p <- ggplot(data = data, aes(x = index_bin1 * res, y = index_bin2 * res)) +
   scale_x_continuous(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
   ## One scale call per aesthetic only: a second scale_*() for the same
   ## aesthetic silently replaces the first.
-  scale_y_continuous(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
-  ## Reverse the y axis inside coord_cartesian(): a trans = "reverse" scale
-  ## silently drops limits, and the panel then lands in negative space with no
-  ## data in it. coord_cartesian() keeps the limits and only flips the panel.
-  coord_cartesian(xlim = c(0, bins_num * res), ylim = c(bins_num * res, 0),
+  ## scale_y_reverse() is what actually flips the axis so bin 0 sits at the
+  ## top-left. Reversing via coord_cartesian(ylim = c(max, 0)) does NOT work:
+  ## current ggplot2 sorts the range instead of honouring its direction.
+  scale_y_reverse(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
+  coord_cartesian(xlim = c(0, bins_num * res), ylim = c(0, bins_num * res),
                   expand = FALSE) +
   theme(panel.grid = element_blank(), axis.title = element_blank()) +
   labs(title = paste0("(resolution: ", res / 1000, "Kb)"), x="", y="") +
@@ -122,7 +122,7 @@ p <- ggplot(data = data, aes(x = index_bin1 * res, y = index_bin2 * res)) +
 p
 ```
 
-As shown above, a heat map represents the interaction frequency between any two loci: the fill colour encodes contact intensity, and reversing the y axis puts bin 0 at the bottom-left so that the main diagonal runs from bottom-left to top-right, the convention every Hi-C viewer uses. The white cross in the middle of the rendered panel is the missing-bin band described in the Example section, not a feature of the data.
+As shown above, a heat map represents the interaction frequency between any two loci: the fill colour encodes contact intensity, and reversing the y axis puts bin 0 at the top-left so that the main diagonal runs from top-left to bottom-right — the orientation used by Hi-C browsers such as Juicebox and HiGlass. The white cross in the middle of the rendered panel is the missing-bin band described in the Example section, not a feature of the data.
 
 ### Advanced: normalisation, TAD boundaries and the rotated view
 
@@ -130,7 +130,7 @@ The raw frequency matrix above is enough to see that contacts exist, but not eno
 
 ```{r}
 #| label: fig-adv-1NormalizedHic
-#| fig-cap: "Observed/expected Hi-C contact map (100 Mb at 500 kb resolution, simulated with five TADs and s^-1 distance decay): left, the upper half of the log2 obs/exp matrix with the four TAD boundaries drawn as dark dashed segments; right, the same matrix rotated 45 degrees so genomic midpoint runs along x and separation along y, which makes each TAD a symmetric triangle whose apex is its midpoint and puts each boundary on the two diagonals meeting at that apex."
+#| fig-cap: "Observed/expected Hi-C contact map (100 Mb at 500 kb resolution, simulated with five TADs and s^-1 distance decay): left, the upper half of the log2 obs/exp matrix with the four TAD boundaries drawn as dark dashed segments; right, the same matrix sheared into the 'rotated' presentation used by Hi-C browsers, with genomic midpoint u = (i+j)/2 along x and separation v = i-j along y (a 2:1 shear, not a 45-degree rotation): each TAD becomes a symmetric triangle whose apex is its midpoint, and each boundary is drawn as the two flanks v = +/-2(u - b) meeting at that apex."
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -195,10 +195,11 @@ p_tri <- ggplot() +
   scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
                        oob = scales::squish) +
   scale_x_continuous(breaks = seq(0, 100, 25)) +
-  ## Reversed y so the diagonal (x = y) runs from bottom-left to top-right and
-  ## the triangle fills the lower-right half, the layout used by Hi-C browsers.
-  scale_y_continuous(breaks = seq(0, 100, 25)) +
-  coord_cartesian(xlim = c(0, 100), ylim = c(100, 0), expand = FALSE) +
+  ## scale_y_reverse() is what actually flips the axis: bin 0 at the top-left,
+  ## the diagonal from top-left to bottom-right, and the data triangle filling
+  ## the upper-right half -- the layout used by Hi-C browsers.
+  scale_y_reverse(breaks = seq(0, 100, 25)) +
+  coord_cartesian(xlim = c(0, 100), ylim = c(0, 100), expand = FALSE) +
   labs(x = "position (Mb)", y = "position (Mb)") +
   theme_minimal(base_size = 9) +
   theme(panel.grid = element_blank(),
@@ -206,19 +207,20 @@ p_tri <- ggplot() +
         legend.text = element_text(size = 6.8),
         legend.title = element_text(size = 7.2))
 
-## Rotation: u = genomic midpoint, v = contact separation.
+## Shear ("rotation"): u = genomic midpoint, v = contact separation.
 rot <- oe |> mutate(u = (i + j) * res / 2, v = (i - j) * res)
 
 p_rot <- ggplot() +
   geom_raster(data = rot, aes(u, v, fill = oe), interpolate = FALSE) +
-  ## A boundary b is a point at the tip v = 0, so in the rotated plane it is
-  ## the two diagonals u = b +/- v (not the vertical u = b): the vertical rule
-  ## would only touch the boundary where v = 0.
-  geom_abline(data = transform(bounds, s = +1),
-              aes(slope = s, intercept = x), colour = "grey10",
+  ## The (u, v) transform is a 2:1 shear, not a 45-degree rotation: a boundary
+  ## b is an apex at (b, 0) and its flanks are the lines v = +/- 2 (u - b),
+  ## i.e. slope +/- 2 through the apex. Slope +/- 1 guides would cut across
+  ## the TAD triangles instead of tracing their edges.
+  geom_abline(data = transform(bounds, s = +2, i = -2 * x),
+              aes(slope = s, intercept = i), colour = "grey10",
               linewidth = 0.3, linetype = "22") +
-  geom_abline(data = transform(bounds, s = -1),
-              aes(slope = s, intercept = x), colour = "grey10",
+  geom_abline(data = transform(bounds, s = -2, i = 2 * x),
+              aes(slope = s, intercept = i), colour = "grey10",
               linewidth = 0.3, linetype = "22") +
   scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
                        oob = scales::squish, guide = "none") +
@@ -245,7 +247,7 @@ p_tri + p_rot + plot_layout(widths = c(1, 1))
 
 ## Implementations deliberately not used here
 
-This page draws its figures from base graphics on purpose. Of the tools that the issue-435 inventory maps onto Hiplot/087-hic-heatmap, 2 were marked **skipped** and are used only as layout references, not as dependencies: 1 that have gone more than five years without an operational commit (cutoff 2021-11-07) and 1 whose dependency closure is too heavy to justify for one static figure. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
+This page draws its figures with ggplot2 rather than installing the skipped tools. Of the tools that the issue-435 inventory maps onto Hiplot/087-hic-heatmap.qmd, 2 are marked **skipped** here and used only as layout references, not as dependencies: 1 that has gone more than five years without an operational commit (cutoff 2021-11-07), and 1 whose dependency closure is too heavy for one static figure. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
 
 | Tool | Last commit | Status | Why it is skipped |
 | --- | --- | --- | --- |

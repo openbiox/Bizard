@@ -18,20 +18,16 @@ A strand-split Sashimi plot of a four-exon locus: per-sample coverage tracks for
 
 -   Programming language: R
 
--   Dependent packages: `ggplot2`; `dplyr`; `tidyr`; `patchwork`; `scales`
+-   Dependent packages: `ggplot2`; `dplyr`; `tidyr`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
 if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
 if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
-if (!requireNamespace("patchwork", quietly = TRUE)) install.packages("patchwork")
-if (!requireNamespace("scales", quietly = TRUE)) install.packages("scales")
 
 library(ggplot2)
 library(dplyr)
 library(tidyr)
-library(patchwork)
-library(scales)
 ```
 
 ```{r}
@@ -62,7 +58,7 @@ cov <- expand_grid(pos = seq(900, 3700, by = 10), sample = samples) |>
     group = group[match(sample, samples)]
   )
 
-## E3 is four times deeper in brain because the inclusion isoform dominates there
+## E3 is ~6x deeper in brain because the inclusion isoform dominates there
 cov <- cov |>
   mutate(
     depth = ifelse(
@@ -94,8 +90,9 @@ junctions <- tribble(
   1980, 3300, "+", "Brain_2",  17,
   1980, 3300, "+", "Liver_1", 392,
   1980, 3300, "+", "Liver_2", 410,
-  ## antisense junction on the opposite strand, low but real
-  1200, 1980, "-", "Brain_1",  34,
+  ## antisense junction on the opposite strand, low but real; on a minus-strand
+  ## transcript the donor (5' splice site) carries the HIGHER coordinate
+  1980, 1200, "-", "Brain_1",  34,
   1200, 1980, "-", "Brain_2",  28,
   1200, 1980, "-", "Liver_1",  31,
   1200, 1980, "-", "Liver_2",  26
@@ -117,7 +114,7 @@ Each sample gets its own coverage track. Junction arcs rise from the track basel
 
 ```{r}
 #| label: fig-1.1SashimiStrand
-#| fig-cap: "Strand-split Sashimi plot of a four-exon locus: per-sample coverage tracks, junction arcs scaled to supporting reads, up-strand solid and down-strand dashed below the baseline."
+#| fig-cap: "Strand-split Sashimi plot of a simulated four-exon locus: (simulated locus) per-sample coverage tracks (untransformed maxima 279 / 274 reads in brain, 225 / 219 in liver), junction arcs scaled to each sample's own supporting reads, up-strand solid and down-strand dashed below the baseline."
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -145,8 +142,11 @@ cov_scaled <- cov_scaled |>
   left_join(tracks, by = c("sample", "group")) |>
   mutate(y = y_base + depth_rel)
 
-arcs <- junction_means |>
-  left_join(tracks, by = "group") |>
+## One arc per junction per SAMPLE, scaled by that sample's own read count --
+## joining the tissue means on the tissue-level table would duplicate each
+## arc onto both replicates and weld the copies into one long path.
+arcs <- junctions |>
+  inner_join(tracks, by = c("sample", "group")) |>
   mutate(height = (0.15 + 0.55 * reads / max(reads)) * ifelse(strand == "+", 1, -1))
 
 arc_df <- arcs |>
@@ -156,11 +156,13 @@ arc_df <- arcs |>
   ungroup()
 
 ggplot() +
-  geom_ribbon(data = cov_scaled, aes(pos, ymin = y_base, ymax = y, fill = group),
+  geom_ribbon(data = cov_scaled,
+              aes(pos, ymin = y_base, ymax = y, fill = group, group = sample),
               alpha = 0.28, colour = NA) +
-  geom_line(data = cov_scaled, aes(pos, y, colour = group), linewidth = 0.25) +
+  geom_line(data = cov_scaled,
+            aes(pos, y, colour = group, group = sample), linewidth = 0.25) +
   geom_path(data = arc_df,
-            aes(pos, y, group = interaction(donor, acceptor, group, strand),
+            aes(pos, y, group = interaction(donor, acceptor, sample, strand),
                 linetype = strand, linewidth = reads),
             colour = "#2B2B2B", alpha = 0.9, lineend = "round") +
   geom_segment(data = exons, aes(x = start, xend = end, y = 0.35, yend = 0.35),
@@ -313,7 +315,7 @@ ggplot(iso) +
 
 ## Implementations deliberately not used here
 
-This page draws its figures from base graphics on purpose. Of the tools that the issue-435 inventory maps onto Omics/SashimiPlot, 1 were marked **skipped** and are used only as layout references, not as dependencies: 1 that have gone more than five years without an operational commit (cutoff 2021-11-07) and 0 whose dependency closure is too heavy to justify for one static figure. Reproducing whatever still works would mean pinning abandoned code; installing the rest would mean pulling a whole analysis framework into a documentation build. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
+This page draws its figures with ggplot2 rather than installing the skipped tools. Of the tools that the issue-435 inventory maps onto Omics/SashimiPlot.qmd, 1 is marked **skipped** here and used only as layout references, not as dependencies: 1 that has gone more than five years without an operational commit (cutoff 2021-11-07). Reproducing whatever still works would mean pinning abandoned code; installing the rest would mean pulling a whole analysis framework into a documentation build. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
 
 | Tool | Last commit | Status | Why it is skipped |
 | --- | --- | --- | --- |

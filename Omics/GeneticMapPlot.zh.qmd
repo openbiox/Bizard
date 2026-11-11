@@ -45,7 +45,6 @@ sessioninfo::session_info("attached")
 用模拟 F2 作图群体构建两个各含 60 个标记的连锁群。每个标记的遗传位置取自一个非均匀的重组景观（染色体中部的热点簇、着丝粒附近的冷区），物理位置再通过反演重组率得到——因此两个轴确实不一致，与真实基因组一致。标记顺序即遗传顺序，这正是连锁图谱所定义的内容。
 
 ```{r load data, message=FALSE, warning=FALSE}
-set.seed(4354)
 
 build_map <- function(n_chr, n_mar, hotspot_centre, hotspot_width) {
   span_mb <- 120
@@ -76,21 +75,28 @@ maps <- bind_rows(
 ## adjacent markers can be a few kb apart inside a hotspot and 10 Mb apart in a
 ## cold region, so a marker-to-marker ratio would be dominated by noise.
 rate_grid <- function(dx, cum_cm, width = 1.5) {
-  brk <- seq(0, max(dx) + width, by = width)
-  bin <- cut(dx, breaks = brk, include.lowest = TRUE)
+  ## Bin EDGES on the physical grid, so every bin spans exactly `width` Mb and
+  ## rate = dC / width is the true average over that span. A finer grid
+  ## (step < width) would give bins covering less than `width` Mb and bias
+  ## every rate down by the same factor.
+  brk <- seq(0, max(dx), by = width)
+  bin <- cut(dx, breaks = c(brk, max(dx) + width), include.lowest = TRUE,
+             labels = FALSE)
   idx <- split(seq_along(dx), bin)
   keep <- vapply(idx, function(ii) {
-    !is.na(ii[1]) && length(ii) > 1
+    !is.na(ii[1]) && length(ii) > 1 && diff(range(dx[ii])) > 0.5 * width
   }, logical(1))
   data.frame(
-    Mb_mid = vapply(idx[keep], function(ii) mean(dx[ii]), numeric(1)),
-    rate = vapply(idx[keep], function(ii) diff(range(cum_cm[ii])) / width, numeric(1))
+    Mb_mid = vapply(idx[keep], function(ii) mean(range(dx[ii])), numeric(1)),
+    rate = vapply(idx[keep], function(ii) diff(range(cum_cm[ii])) /
+                    diff(range(dx[ii])), numeric(1))
   )
 }
 
 rate <- bind_rows(lapply(c("Species A", "Species B"), function(sp) {
   sub <- filter(maps, species == sp)
-  ## cum_cm as a function of physical position, from the map itself.
+  ## cum_cm as a function of physical position, from the map itself, on a
+  ## 0.5 Mb grid; rate_grid() then averages over exact 1.5 Mb windows.
   grid <- seq(0, max(sub$Mb), by = 0.5)
   cm <- approx(sub$Mb, sub$cM, xout = grid, rule = 2)$y
   rate_grid(grid, cm) |> mutate(species = sp)
@@ -105,11 +111,11 @@ rate |>
 
 ### 1. 遗传图谱与重组率剖面
 
-图谱本身是一条带刻度的竖线——CMap/chromPlot 的传统画法——旁边的重组率剖面把看不见的算术显式化：5 cM 在冷区覆盖超过 20 Mb，在热点区只覆盖约 0.5 Mb。
+图谱本身是一条带刻度的竖线——CMap/chromPlot 的传统画法——旁边的重组率剖面把看不见的算术显式化：5 cM 在最冷的区域覆盖约 15 Mb，在热点区只覆盖约 0.4 Mb。
 
 ```{r}
 #| label: fig-1.1GeneticMapRate
-#| fig-cap: "物种 A 的连锁群图谱：标记置于厘摩轴上（左），旁边是由同一图谱经有限差分得到的局部重组率（右，平方根刻度）。80-90 Mb 的热点簇在 8% 的物理跨度内承载了约 63% 的遗传长度。"
+#| fig-cap: "模拟数据的物种 A 连锁群图谱：标记置于厘摩轴上（左），旁边是由同一图谱经有限差分得到的局部重组率（右，平方根刻度）。80-90 Mb 的热点簇在 8% 的物理跨度内承载了约 63% 的遗传长度。"
 #| out.width: "95%"
 #| warning: false
 #| message: false
@@ -182,7 +188,7 @@ CMap 的贡献在于比较：两个物种的图谱并排绘制，并由直系同
 
 ```{r}
 #| label: fig-1.2ComparativeMaps
-#| fig-cap: "比较遗传图谱：物种 A 与物种 B 的连锁群各用自己的厘摩轴，24 个直系同源标记相连；两套重组景观不同处连线呈扇形展开，说明标记顺序保守并不意味着遗传距离保守。"
+#| fig-cap: "模拟染色体的比较遗传图谱：物种 A 与物种 B 的连锁群共用同一条厘摩轴，24 个位于相同物理位置的直系同源位点相连。两套重组景观不同处（物种 B 的热点在 40 Mb 附近、物种 A 在 85 Mb 附近）连线呈扇形展开，说明标记顺序保守并不意味着遗传距离保守。"
 #| out.width: "90%"
 #| warning: false
 #| message: false
@@ -190,23 +196,24 @@ CMap 的贡献在于比较：两个物种的图谱并排绘制，并由直系同
 #| fig-height: 6.6
 #| fig-dpi: 300
 
-## 24 orthologues, paired by rank; the pair names are shared so the links
-## connect markers, not chromosomes.
-ortho <- tibble(
-  a_marker = seq(3, 58, length.out = 24) |> round(),
-  b_marker = seq(3, 58, length.out = 24) |> round()
-) |>
-  left_join(filter(maps, species == "Species A") |> select(a_marker = marker, cM_a = cM),
-            by = "a_marker") |>
-  left_join(filter(maps, species == "Species B") |> select(b_marker = marker, cM_b = cM),
-            by = "b_marker")
+## 24 orthologous loci at shared PHYSICAL positions; each species' genetic
+## position is read off its own map by interpolation. Pairing by rank would be
+## vacuous here: both maps place their markers at identical cM by construction
+## (equally spaced), so every link would be horizontal and the panel would
+## show no difference between the landscapes.
+ortho <- tibble(Mb = sort(unique(c(seq(6, 114, length.out = 20),
+                                   seq(80, 90, length.out = 9))))) |>
+  mutate(cM_a = approx(filter(maps, species == "Species A")$Mb,
+                       filter(maps, species == "Species A")$cM, Mb, rule = 2)$y,
+         cM_b = approx(filter(maps, species == "Species B")$Mb,
+                       filter(maps, species == "Species B")$cM, Mb, rule = 2)$y)
 
 map_panel <- function(dat, x0, label) {
   list(
     annotate("segment", x = x0, xend = x0, y = 0, yend = max(dat$cM),
              linewidth = 0.7, colour = "#333333"),
     annotate("point", x = x0, y = dat$cM, size = 0.55, colour = "#666666"),
-    annotate("text", x = x0, y = -14, label = label, size = 3.1,
+    annotate("text", x = x0, y = -5.5, label = label, size = 3.1,
              fontface = "bold", colour = "#222222")
   )
 }

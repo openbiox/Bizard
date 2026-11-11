@@ -4,7 +4,7 @@ author:
   - "**[编辑]** ZCode (GLM) — AI 辅助生成，独立 AI 复核"
 ---
 
-序列比对只有被画出来才有说服力。文献中最常见的两种版式互补：**成对比对视图**（query 对 subject，逐碱基展示匹配、错配与空隙字符，即 `BLAST -outfmt 0` 或 `sam2pairwise` 的文本版式）与**读段堆叠视图**（reads 沿参考基因组堆叠并附覆盖度轨，即 BAM snapshot 家族）。本教程用纯 R 从透明输入重建两者，使图中每个字形都能对应真实比对软件会输出的一列。
+序列比对只有被画出来才有说服力。文献中最常见的两种版式互补：**成对比对视图**（query 对 subject，逐碱基展示匹配、错配与空隙字符，即 `BLAST -outfmt 0` 或 `sam2pairwise` 的文本版式；两者对匹配打印 `|`、对错配留空，本页改为用 `X` 标记错配）与**读段堆叠视图**（reads 沿参考基因组堆叠并附覆盖度轨，即 BAM snapshot 家族）。本教程用纯 R 从透明输入重建两者，使图中每个字形都能对应真实比对软件会输出的一列。
 
 ## 示例
 
@@ -57,7 +57,9 @@ s_aln <- paste0(substr(ref_seq, 1, 39), "-", substr(ref_seq, 41, 70),
 q_chars <- strsplit(q_aln, "")[[1]]
 s_chars <- strsplit(s_aln, "")[[1]]
 stopifnot(length(q_chars) == length(s_chars))
-## The middle row is the BLAST identity string: | match, X mismatch, space gap.
+## The middle row is this figure's identity string: | match, X mismatch,
+## space gap (BLAST's own pairwise text output uses | and blank; the X is
+## this page's mnemonic).
 pair <- tibble(col = seq_along(q_chars), q_char = q_chars, s_char = s_chars) |>
   mutate(state = case_when(q_char == "-" | s_char == "-" ~ "gap",
                            q_char == s_char ~ "match", TRUE ~ "mismatch"),
@@ -158,7 +160,10 @@ p_ident <- ggplot(identity, aes(mid, ident)) +
              stroke = 0.5) +
   scale_y_continuous(labels = percent_format(accuracy = 1),
                      limits = c(0.7, 1.05), expand = c(0, 0)) +
-  scale_x_continuous(expand = c(0.004, 0.004), breaks = seq(0, 90, 10)) +
+  ## Same x range and expansion as the pairwise panel, so a column reads to
+  ## the same x in both panels of the patchwork.
+  scale_x_continuous(limits = c(0.5, 93.5), expand = c(0.004, 0.004),
+                     breaks = seq(0, 90, 10)) +
   labs(x = "Alignment column (15 bp windows)", y = "Identity") +
   theme_classic(base_size = 8.5) +
   theme(axis.line = element_line(linewidth = 0.3),
@@ -172,7 +177,7 @@ p_pair / p_ident + plot_layout(heights = c(1, 1.4))
 这是 **BAMSnap**、**Bamsnap-LRS**、**alignoth**、**pyBamView**、**bamscope**、**JVarKit BamToSVG**、**plotReads**、**VizAln** 与 **DrukBam** 采用的 BAM snapshot 版式：行是读段、列是参考位置、颜色是观测碱基，覆盖度轨与之共享 x 轴。淡色竖带标出缺失连接点，无需打开 IGV 即可看到事件。
 ```{r}
 #| label: fig-1.2ReadPileup
-#| fig-cap: "420 bp 区域读段堆叠（GRCh38 chr1:12,000-12,419）：碱基颜色、SNP 标记、5 bp 缺失连接点、3 bp 插入与读段深度覆盖。"
+#| fig-cap: "模拟 420 bp 位点的读段堆叠：碱基颜色、SNP 标记、5 bp 缺失连接点、3 bp 插入与读段深度覆盖。"
 #| warning: false
 #| message: false
 #| fig-width: 11
@@ -279,7 +284,7 @@ ggplot(zoom, aes(ref_pos, read_index)) +
 
 ## 关于本页跳过的实现
 
-本页刻意只用基础图形自行绘制。在 issue-435 清单中归到 Omics/BlastAlignmentPlot 的工具里，有 4 条被标记为**跳过**，仅作为版式参考、不作为依赖：其中 4 条超过 5 年无运维更新（截止日 2021-11-07），0 条依赖闭包过重，不值得为一张静态图引入。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
+本页的图由 ggplot2 直接绘制，而不安装这些被跳过的工具。在 issue-435 清单中归到 Omics/BlastAlignmentPlot.qmd 的工具里，4 条被标记为**跳过**，仅作为版式参考、不作为依赖：4 条超过 5 年无运维更新（截止日 2021-11-07）。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
 
 | 工具 | 最近提交 | 状态 | 跳过原因 |
 | --- | --- | --- | --- |

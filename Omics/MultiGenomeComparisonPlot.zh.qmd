@@ -41,8 +41,6 @@ sessioninfo::session_info("attached")
 五个组装基因组共享 7 个同源块。每个基因组是一串按顺序排列的块，并带每个块的方向；G2 交换 E 与 D，G3 缺失 E，G4 倒位 B 与 C，G4 与 G5 的总长相对 G1 分别 +10% 与 -15%，以便归一化面板有真实差异可展示。
 
 ```{r load data, message=FALSE, warning=FALSE}
-set.seed(43516)
-
 ## Seven homologous blocks with their lengths in Mb, and five genome
 ## assemblies described as ordered block lists. G2 transposes E and D, G3 has
 ## lost E, G4 inverts B and C, and G4/G5 differ from G1 in total length by
@@ -110,8 +108,11 @@ ribbon_pairs <- function(a, b) {
     a0 <- c(m$x0.a[i], m$x1.a[i])
     b0 <- c(m$x0.b[i], m$x1.b[i])
     inv <- m$orientation.a[i] != m$orientation.b[i]
-    if (inv) b0 <- rev(b0)
-    data.frame(grp = paste0(a, "-", i), x = c(a0, b0),
+    ## x order (a-left, a-right, b-right, b-left) gives a simple quadrilateral;
+    ## for an inversion the b edge is NOT reversed, so the ribbon self-crosses
+    ## into a bow-tie -- the crossing IS the orientation signal.
+    x <- if (inv) c(a0, b0) else c(a0, rev(b0))
+    data.frame(grp = paste0(a, "-", i), x = x,
                y = c(m$y1.a[i], m$y1.a[i], m$y0.b[i], m$y0.b[i]), inv = inv)
   }))
 }
@@ -129,7 +130,7 @@ p_linear <- ggplot() +
                fill = "#e08214", alpha = 0.55) +
   geom_rect(data = ord, aes(xmin = x0, xmax = x1, ymin = y0, ymax = y1, fill = block),
             colour = "white", linewidth = 0.35) +
-  geom_text(data = filter(ord, len > 0.55), aes(mid, ymid, label = block),
+  geom_text(data = filter(ord, len >= 0.38), aes(mid, ymid, label = block),
             size = 2.7, colour = "#111111") +
   geom_segment(data = filter(ord, orientation == "-"),
                aes(x = x0 + 0.03, xend = x0 + 0.03, y = y0 + 0.04, yend = y1 - 0.04),
@@ -157,7 +158,7 @@ BRIG 与 CGView 的版式是环形版本：每个基因组是一个环，同源�
 
 ```{r}
 #| label: fig-2MultiGenomeRing
-#| fig-cap: "BRIG 风格同心环：五个基因组共用 12 点起点，顺时针扫过同样的 360 度，因此块边界沿半径对齐，G3 缺失 E 表现为该环上的一个缺口。弦连接外环（G1）与 G4 的同一块；两个倒位块（B、C）用橙色画出并与伙伴交叉，这是环形版式表达方向的唯一手段。"
+#| fig-cap: "BRIG 风格同心环：每个环都从 12 点开始、按各自基因组长度归一化，因此无论基因组长短每个环都铺满 360 度。这种逐基因组归一化的后果是：G3 缺失的 E 表现为缺失的扇区而非缺口，且同源块边界在不同环之间不会沿半径对齐。弦连接外环（G1）与 G4 的同一块；两个倒位块（B、C）用橙色画出并与伙伴交叉。"
 #| out.width: "62%"
 #| warning: false
 #| message: false
@@ -166,8 +167,8 @@ BRIG 与 CGView 的版式是环形版本：每个基因组是一个环，同源�
 #| fig-dpi: 300
 ## Concentric rings (BRIG layout) plus chords between the outermost ring (G1)
 ## and the inverted genome (G4). Each ring starts at 12 o'clock and runs
-## clockwise over the same 360° sweep, so a sector boundary lines up radially
-## and the missing block in G3 shows up as a hole in that ring only.
+## clockwise over the same 360° sweep: ring position is percent-of-genome,
+## so boundaries are NOT radially aligned across rings of unequal genomes.
 ring_r <- c(G1 = 1.00, G2 = 0.92, G3 = 0.84, G4 = 0.76, G5 = 0.68)
 ring_w <- 0.05
 th0 <- 90
@@ -234,7 +235,7 @@ p_circle
 
 ```{r}
 #| label: fig-3MultiGenomeNormalised
-#| fig-cap: "同一组 G1/G4 分别在绝对坐标轴（上）与占基因组百分比坐标轴（下）上比较。G4 长 10%，绝对轨道画到 5.83 Mb，而 G1 只到 5.30 Mb；在归一化轴上两条轨道都终止于 100%，10% 的长度差被抹平。归一化面板适合比较块的顺序，不适合比较块的长度。"
+#| fig-cap: "同一组模拟 G1/G4 分别在绝对坐标轴（上）与占基因组百分比坐标轴（下）上比较。G4 长 10%，绝对轨道画到 5.83 Mb，而 G1 只到 5.30 Mb；在归一化轴上两条轨道都终止于 100%，10% 的长度差被抹平。归一化面板适合比较块的顺序，不适合比较块的长度。"
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -255,16 +256,18 @@ make_panel <- function(meas, x_lim, subtitle) {
   links <- do.call(rbind, lapply(seq_len(nrow(m)), function(i) {
     inv <- m$block[i] %in% c("B", "C")
     b0 <- c(m$lo.y[i], m$hi.y[i])
-    if (inv) b0 <- rev(b0)
+    ## Same vertex rule as figure 1: reverse the far edge only when the block
+    ## is collinear, so inversions render as crossing ribbons.
+    if (!inv) b0 <- rev(b0)
     data.frame(grp = i, inv = inv, x = c(m$lo.x[i], m$hi.x[i], b0),
                y = c(3.6, 3.6, 2.4, 2.4))
   }))
   ggplot() +
     geom_polygon(data = links, aes(x, y, group = grp, fill = inv),
                  alpha = 0.45, colour = NA) +
-    geom_rect(data = d, aes(xmin = lo, xmax = hi, ymin = 3.6, ymax = 4.0, fill = block),
+    geom_rect(data = filter(d, genome == "G1"), aes(xmin = lo, xmax = hi, ymin = 3.6, ymax = 4.0, fill = block),
               colour = "white", linewidth = 0.3, alpha = 0.92) +
-    geom_rect(data = d, aes(xmin = lo, xmax = hi, ymin = 2.0, ymax = 2.4, fill = block),
+    geom_rect(data = filter(d, genome == "G4"), aes(xmin = lo, xmax = hi, ymin = 2.0, ymax = 2.4, fill = block),
               colour = "white", linewidth = 0.3, alpha = 0.92) +
     geom_text(data = filter(d, genome == "G1"), aes(pos, 3.8, label = block),
               size = 2.3, colour = "#111111") +

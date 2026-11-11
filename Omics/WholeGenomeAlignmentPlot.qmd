@@ -84,6 +84,10 @@ ribbon <- function(from, to, y0, y1, n = 40) {
                y = c(rep(y0, n), rep(y1, n)))
   }))
 }
+## One polygon per (block, genome pair). Grouping by block alone would stack
+## the G1-G2 and G2-G3 quads of the same block into one self-intersecting
+## polygon whose closing edge cuts back across the plot.
+add_pair <- function(df, pair) { df$pair <- pair; df }
 
 g <- split(orders, orders$genome)
 ```
@@ -96,7 +100,7 @@ The canonical overview: one backbone per genome, homologous blocks drawn to scal
 
 ```{r}
 #| label: fig-1.1WgaBackbones
-#| fig-cap: "Mauve-style whole-genome alignment of three genomes: homologous blocks drawn to scale on each backbone and connected by ribbons between consecutive genomes (G1-G2, G2-G3). G2 carries a transposition (E before D), an inversion (hollow triangle on block G) and a swap (H before G); G3 has lost blocks B and G and gained the foreign block X."
+#| fig-cap: "Mauve-style whole-genome alignment of three simulated genomes: homologous blocks drawn to scale on each backbone and connected by ribbons between consecutive genomes (G1-G2, G2-G3). G2 carries a transposition (E before D), an inversion (hollow triangle on block G) and a swap (H before G); G3 has lost blocks B and G and gained the foreign block X."
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -114,13 +118,13 @@ block_cols <- setNames(
 )
 
 ribbons <- rbind(
-  ribbon(g$G1, g$G2, ypos[["G1"]] - 0.07, ypos[["G2"]] + 0.07),
-  ribbon(g$G2, g$G3, ypos[["G2"]] - 0.07, ypos[["G3"]] + 0.07)
+  add_pair(ribbon(g$G1, g$G2, ypos[["G1"]] - 0.07, ypos[["G2"]] + 0.07), "G1-G2"),
+  add_pair(ribbon(g$G2, g$G3, ypos[["G2"]] - 0.07, ypos[["G3"]] + 0.07), "G2-G3")
 )
 
 p1 <- ggplot() +
   ## ribbons first, so the backbones sit on top
-  geom_polygon(data = ribbons, aes(x, y, group = block, fill = block),
+  geom_polygon(data = ribbons, aes(x, y, group = interaction(block, pair), fill = block),
                alpha = 0.38, colour = NA) +
   ## backbones
   geom_segment(data = orders |> group_by(genome) |>
@@ -317,7 +321,7 @@ p1 / p4 + plot_layout(heights = c(1, 0.22))
 
 ## Implementations deliberately not used here
 
-This page draws its figures from base graphics on purpose. Of the tools that the issue-435 inventory maps onto Omics/WholeGenomeAlignmentPlot, 2 were marked **skipped** and are used only as layout references, not as dependencies: 1 that have gone more than five years without an operational commit (cutoff 2021-11-07) and 1 whose dependency closure is too heavy to justify for one static figure. Reproducing whatever still works would mean pinning abandoned code; installing the rest would mean pulling a whole analysis framework into a documentation build. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
+This page draws its figures with ggplot2 rather than installing the skipped tools. Of the tools that the issue-435 inventory maps onto Omics/WholeGenomeAlignmentPlot.qmd, 2 are marked **skipped** here and used only as layout references, not as dependencies: 1 that has gone more than five years without an operational commit (cutoff 2021-11-07), and 1 whose dependency closure is too heavy for one static figure. Reproducing whatever still works would mean pinning abandoned code; installing the rest would mean pulling a whole analysis framework into a documentation build. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
 
 | Tool | Last commit | Status | Why it is skipped |
 | --- | --- | --- | --- |

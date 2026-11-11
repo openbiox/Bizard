@@ -6,7 +6,7 @@ author:
 
 A gene fusion is a single figure with three claims that must all be visible at once: **which two genes** are joined, **where** the breakpoint falls in each transcript, and **how much evidence** supports the junction. Tools split along that axis — Chimeraviz draws the transcripts and the junction coverage \[1\], arriba draws the reads and the calls \[2\], MAVIS classifies the evidence types \[3\] — and a figure that shows only the two gene boxes answers none of the three.
 
-This tutorial rebuilds the fusion layout with ggplot2: strand-aware exon models for both partners, an in-frame/out-of-frame boundary marker, a split-read and spanning-read evidence panel, and the domain consequence, which is what makes a fusion reportable.
+This tutorial rebuilds the fusion layout with ggplot2: exon models for both partners drawn 5' to 3' with the strand stated, a junction marker at both the nucleotide and the protein level, a split-read and spanning-read evidence panel, and the domain consequence in true fusion-protein coordinates, which is what makes a fusion reportable.
 
 ## Example
 
@@ -20,22 +20,18 @@ Transcript models for an EML4-ALK fusion on chr2: EML4 exons 1-13 (retained, pro
 
 -   Programming language: R
 
--   Dependent packages: `ggplot2`; `dplyr`; `tidyr`; `patchwork`; `scales`; `ggrepel`
+-   Dependent packages: `ggplot2`; `dplyr`; `patchwork`; `scales`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
 if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
-if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
 if (!requireNamespace("patchwork", quietly = TRUE)) install.packages("patchwork")
 if (!requireNamespace("scales", quietly = TRUE)) install.packages("scales")
-if (!requireNamespace("ggrepel", quietly = TRUE)) install.packages("ggrepel")
 
 library(ggplot2)
 library(dplyr)
-library(tidyr)
 library(patchwork)
 library(scales)
-library(ggrepel)
 ```
 
 ```{r}
@@ -49,7 +45,7 @@ The fusion is an *EML4*-*ALK* analogue on chr2, the classic non-small-cell lung 
 ```{r load data, message=FALSE, warning=FALSE}
 set.seed(4356)
 
-## ---- transcript models (GRCh38, chr2, schematic coordinates) -----------
+## ---- transcript models (chr2, GRCh37-frame schematic coordinates) ------
 eml4_exons <- tibble(
   gene = "EML4", transcript = "NM_019063.5", strand = "+",
   exon = 1:13,
@@ -62,7 +58,11 @@ eml4_exons <- tibble(
 )
 
 alk_exons <- tibble(
-  gene = "ALK", transcript = "NM_004304.5", strand = "+",
+  ## ALK is on the MINUS strand (GRCh38 ENSG00000171094, strand -1):
+  ## exon 20 -> 29 run in descending genomic coordinates. The schematic axis
+  ## below draws each partner 5'->3' (transcript order), which for ALK means
+  ## right-to-left on the genome.
+  gene = "ALK", transcript = "NM_004304.5", strand = "-",
   exon = 20:29,
   start = c(29445000, 29448000, 29451000, 29454500, 29458000, 29461500,
             29465000, 29468500, 29472000, 29475500),
@@ -71,7 +71,7 @@ alk_exons <- tibble(
 )
 
 breakpoint_5p <- 42461200   # last base of EML4 exon 13
-breakpoint_3p <- 29445000   # first base of ALK exon 20
+breakpoint_3p <- 29445000   # 5' end of ALK exon 20 (schematic)
 
 ## ---- fusion junction evidence -----------------------------------------
 ## Split reads cross the junction and have a soft-clipped 5' and 3' half;
@@ -91,16 +91,20 @@ evidence <- tibble(
 )
 
 ## ---- domain model that the fusion preserves or destroys --------------
+## Fusion-protein coordinates (variant-1 EML4(E1-13)-ALK(E20-29), 1059 aa):
+## EML4 contributes aa 1-496 (exon 13 ends at codon 496), ALK contributes its
+## aa 1058-1620 from exon 20 onward. Native ALK domains are shifted by
+## -1058 + 496 = -562: the kinase (1116-1390) lands at 554-828. The MAM
+## (478-636) and TM (1039-1059) domains lie N-terminal to the exon-20 join
+## and are discarded, so they have no position on this axis at all.
 domains <- tribble(
   ~protein, ~domain, ~aa_start, ~aa_end, ~kept,
-  "EML4", "WD40 x1", 12, 45, TRUE,
-  "EML4", "WD40 x2", 80, 130, TRUE,
-  "EML4", "WD40 x3", 160, 210, TRUE,
-  "EML4", "WD40 x4", 240, 290, TRUE,
-  "ALK", "MAM", 480, 630, FALSE,
-  "ALK", "TM", 1030, 1060, FALSE,
-  "ALK", "Kinase", 1116, 1390, TRUE
+  "EML4", "Coiled coil", 14, 63, TRUE,
+  "EML4", "WD repeats (to junction)", 259, 496, TRUE,
+  "ALK", "Kinase", 554, 828, TRUE
 )
+junction_aa <- 496
+fusion_len <- 1059
 
 evidence |> count(class, name = "reads")
 ```
@@ -139,11 +143,13 @@ alk_vis <- alk_vis |> mutate(x0 = x0 + junction_gap, x1 = x1 + junction_gap)
 
 junction_x <- (max(eml4_vis$x1) + min(alk_vis$x0)) / 2
 
+## Introns connect one exon's end to the next exon's start.
+mk_introns <- function(v) tibble(x = v$x1[-nrow(v)], xend = v$x0[-1], y = v$y[-1])
+
 p_tx <- ggplot() +
-  ## Introns.
-  geom_segment(data = eml4_vis, aes(x = x0, xend = x1, y = y, yend = y),
+  geom_segment(data = mk_introns(eml4_vis), aes(x = x, xend = xend, y = y, yend = y),
                linewidth = 0.35, colour = "#7a7a7a") +
-  geom_segment(data = alk_vis, aes(x = x0, xend = x1, y = y, yend = y),
+  geom_segment(data = mk_introns(alk_vis), aes(x = x, xend = xend, y = y, yend = y),
                linewidth = 0.35, colour = "#7a7a7a") +
   ## Exons as boxes.
   geom_rect(data = eml4_vis, aes(xmin = x0, xmax = x1, ymin = y - 0.16,
@@ -160,19 +166,19 @@ p_tx <- ggplot() +
   ## Junction.
   geom_vline(xintercept = junction_x, linetype = "22", colour = "#333333",
              linewidth = 0.45) +
-  annotate("text", x = junction_x, y = 2.62,
+  annotate("text", x = junction_x + 240, y = 2.62, hjust = 0,
            label = "fusion junction\nEML4 ex13 | ALK ex20",
            size = 2.5, colour = "#333333", lineheight = 0.95) +
   ## Gene names and retained/not-retained labels.
   ## The 3' partner label sits above its model, the domain bracket below, so
   ## neither collides with the exon numbers.
   annotate("text", x = max(alk_vis$x1), y = 1.44,
-           label = "ALK (3' partner)", hjust = 1, size = 3, fontface = "bold",
+           label = "ALK (3' partner, minus strand)", hjust = 1, size = 3, fontface = "bold",
            colour = "#b2182b") +
-  annotate("rect", xmin = min(alk_vis$x0[alk_vis$exon %in% 25:29]),
+  annotate("rect", xmin = min(alk_vis$x0[alk_vis$exon %in% 20:29]),
            xmax = max(alk_vis$x1), ymin = 0.52, ymax = 0.58,
            fill = "#b2182b", alpha = 0.20) +
-  annotate("text", x = mean(range(alk_vis$x0[alk_vis$exon %in% 25:29])),
+  annotate("text", x = mean(range(alk_vis$x0[alk_vis$exon %in% 20:29])),
            y = 0.44, label = "kinase domain retained", size = 2.3,
            colour = "#b2182b") +
   annotate("segment", x = junction_x, xend = min(eml4_vis$x0), y = 2.30,
@@ -205,11 +211,11 @@ p_tx
 
 ### 2. Junction Read Evidence
 
-The second panel is the evidence: split reads that cross the junction with a soft-clipped half on each side, and spanning reads that stop at it. This is what separates a real fusion from a mapping artefact in a homologous region, and it is the panel reviewers ask for.
+The second panel is the evidence: split reads that cross the junction with a soft-clipped half on each side, and spanning reads that align on one side of it. This is what separates a real fusion from a mapping artefact in a homologous region, and it is the panel reviewers ask for.
 
 ```{r}
 #| label: fig-1.2FusionEvidence
-#| fig-cap: "Junction evidence in junction-centred coordinates: 4 split reads cross the breakpoint (one half on each partner), 8 spanning reads stop at it; orange dots mark reads with MAPQ <= 42, the pattern a repeat-mediated artefact would also produce."
+#| fig-cap: "Junction evidence in junction-centred coordinates: 4 split reads cross the breakpoint (one half on each partner), 8 spanning reads align on one side of it but do not cross; orange dots mark reads with MAPQ <= 30, the zone where a repeat-mediated artefact also lives (MAPQ 40-60 are confident unique alignments)."
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -219,7 +225,7 @@ The second panel is the evidence: split reads that cross the junction with a sof
 
 ev <- evidence |>
   mutate(y = rev(seq_len(n())) * 0.10,
-         low_mapq = mapq <= 42)
+         low_mapq = mapq <= 30)
 
 p_ev <- ggplot(ev) +
   ## Split reads are drawn twice as thick: they are the primary evidence and
@@ -232,7 +238,7 @@ p_ev <- ggplot(ev) +
              colour = "#d95f02", show.legend = FALSE) +
   geom_vline(xintercept = 0, linetype = "22", colour = "#333333",
              linewidth = 0.45) +
-  annotate("text", x = 0, y = max(ev$y) + 0.11,
+  annotate("text", x = 18, y = max(ev$y) + 0.11, hjust = 0,
            label = "fusion junction (chr2:42,461,200 | chr2:29,445,000)",
            size = 2.4, colour = "#333333") +
   annotate("text", x = -20, y = -0.08, label = "<- EML4 exon 13", hjust = 1,
@@ -277,30 +283,33 @@ A fusion is reportable when the partner domains predict an active product — us
 
 ```{r}
 #| label: fig-1.3FusionDomains
-#| fig-cap: "Protein-level consequence: the fusion protein is divided at the exon-13/20 junction; EML4 WD40 repeats are retained on the N-terminal side, the ALK kinase domain is retained on the C-terminal side, and the ALK MAM and transmembrane domains are lost. Filled = present in the fusion, open = discarded."
+#| fig-cap: "Fusion reconstruction in three panels (schematic chr2 coordinates, EML4/ALK on the plus and minus strand respectively): top, the two transcript models drawn 5' to 3' with the junction marked and the kinase-encoding ALK exons 20-29 bracketed; middle, junction-centred read evidence; bottom, the domain consequence on a true fusion-protein axis (variant 1, 1059 aa): the junction falls at residue 496, EML4 coiled-coil and WD-repeat residues are retained N-terminally, the ALK kinase domain sits at fusion residues 554-828, and the ALK MAM and transmembrane domains lie upstream of the exon-20 join and are discarded."
 #| out.width: "95%"
 #| warning: false
 #| message: false
 #| fig-width: 9.6
-#| fig-height: 3.2
+#| fig-height: 8.6
 #| fig-dpi: 300
 
-fusion_len <- 1390
 p_dom <- ggplot(domains) +
   geom_rect(aes(xmin = aa_start, xmax = aa_end, ymin = 0.82, ymax = 1.18,
-                fill = kept, colour = kept), linewidth = 0.45) +
-  ## Labels sit under the boxes: the narrow WD40 repeats cannot hold text.
+                fill = kept), linewidth = 0.45) +
+  ## The exon-13/20 junction, in protein coordinates.
+  geom_vline(xintercept = junction_aa, linetype = "22", colour = "#333333",
+             linewidth = 0.45) +
+  ## Labels sit under the boxes: the narrow domains cannot hold text.
   geom_text(aes(x = (aa_start + aa_end) / 2, y = 0.74, label = domain),
-            size = 2.35, colour = if_else(domains$kept, "#1b7837", "#b2182b")) +
-  scale_fill_manual(values = c(`TRUE` = "#1b7837", `FALSE` = "#f7f7f7"),
-                    labels = c(`TRUE` = "retained", `FALSE` = "discarded"),
-                    name = NULL) +
-  scale_colour_manual(values = c(`TRUE` = "#1b7837", `FALSE` = "#b2182b"),
-                      guide = "none") +
+            size = 2.35, colour = "#1b7837") +
+  annotate("text", x = junction_aa, y = 1.34, hjust = -0.05, size = 2.5,
+           colour = "#333333",
+           label = "junction (ex13 | ex20) = aa 496") +
+  annotate("text", x = fusion_len / 2, y = 0.60, size = 2.35, colour = "#b2182b",
+           label = "ALK MAM (478-636) and TM (1039-1059) lie upstream of the exon-20 join and are discarded (no position on this axis)") +
+  scale_fill_manual(values = c(`TRUE` = "#1b7837"), guide = "none") +
   scale_x_continuous(limits = c(0, fusion_len + 20),
-                     breaks = seq(0, 1200, 200)) +
-  scale_y_continuous(limits = c(0.55, 1.45)) +
-  labs(x = "Fusion-protein position (aa)", y = NULL,
+                     breaks = seq(0, 1000, 250)) +
+  scale_y_continuous(limits = c(0.52, 1.45)) +
+  labs(x = "Fusion-protein position (aa; variant 1, 1059 aa)", y = NULL,
        title = "EML4(E1-13)-ALK(E20-29) fusion protein") +
   theme_minimal(base_size = 9) +
   theme(panel.grid.major.y = element_blank(),
@@ -310,7 +319,7 @@ p_dom <- ggplot(domains) +
         legend.position = "bottom", legend.text = element_text(size = 7.6),
         legend.key.size = unit(0.3, "cm"))
 
-p_tx / p_ev / p_dom + plot_layout(heights = c(1, 0.92, 0.80))
+p_tx / p_ev / p_dom + plot_layout(heights = c(1.05, 1, 0.9))
 ```
 
 ::: callout-tip
@@ -324,7 +333,7 @@ p_tx / p_ev / p_dom + plot_layout(heights = c(1, 0.92, 0.80))
 
 ## Implementations deliberately not used here
 
-This page draws its figures from base graphics on purpose. Of the tools that the issue-435 inventory maps onto Omics/GeneFusionPlot, 1 were marked **skipped** and are used only as layout references, not as dependencies: 0 that have gone more than five years without an operational commit (cutoff 2021-11-07) and 1 whose dependency closure is too heavy to justify for one static figure. Reproducing whatever still works would mean pinning abandoned code; installing the rest would mean pulling a whole analysis framework into a documentation build. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
+This page draws its figures with ggplot2 rather than installing the skipped tools. Of the tools that the issue-435 inventory maps onto Omics/GeneFusionPlot.qmd, 1 is marked **skipped** here and used only as layout references, not as dependencies: 1 whose dependency closure is too heavy for one static figure. Reproducing whatever still works would mean pinning abandoned code; installing the rest would mean pulling a whole analysis framework into a documentation build. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
 
 | Tool | Last commit | Status | Why it is skipped |
 | --- | --- | --- | --- |
@@ -338,7 +347,7 @@ The same construction applies to any structural rearrangement with a junction �
 
 ## Reference
 
-\[1\] Lågstad S, Fodstad Ø, Tveit KM, et al. chimeraviz: a tool for visualizing chimeric RNA. Bioinformatics. 2017;33(18):2954-2956. doi:10.1093/bioinformatics/btx329
+\[1\] Lågstad S, Zhao S, Hoff AM, et al. chimeraviz: a tool for visualizing chimeric RNA. Bioinformatics. 2017;33(18):2954-2956. doi:10.1093/bioinformatics/btx329
 
 \[2\] Uhrig S, Ellermann J, Walther T, et al. Accurate and efficient detection of gene fusions from RNA sequencing data. Genome Res. 2021;31(3):448-460. doi:10.1101/gr.257246.119
 

@@ -12,7 +12,7 @@ author:
 
 ![](../images/Omics/LinkageDisequilibriumPlot_demo.png){fig-alt="连锁不平衡图 DEMO" fig-align="center" width="85%"}
 
-30 个 HLA II 类区 SNP 的连锁不平衡三角图：左侧为 D'（重组历史），右侧为 r²（统计冗余），两者使用完全相同的 SNP 顺序与颜色范围，因此可以逐格比较。在 D' 中很热、在 r² 中偏冷的区块对应等位频率不对称——只看单一指标就会把它掩盖掉。
+30 个 HLA II 类区 SNP 的连锁不平衡三角图：左侧为 D'（重组历史），右侧为 r²（统计冗余），两者使用完全相同的 SNP 顺序与颜色范围，因此可以逐格比较。本模拟的 SNP 均为常见频率，两种统计量高度一致；等位频率不对称会表现为 D' 热、r² 冷的格子，而刻意全为 MAF 0.5 的本模拟并不包含这种情况。
 
 ## Setup
 
@@ -134,7 +134,7 @@ ld <- bind_rows(lapply(names(pops), function(nm) ld_long(pops[[nm]]$geno, nm))) 
 ## number of strong adjacent pairs; the block figure calls blocks with the same
 ## D' > 0.7 and r^2 > 0.45 rule.
 break_ld <- ld |>
-  filter(j == i + 1, i %in% c(9, 14, 19)) |>
+  filter(j == i + 1, i %in% c(10, 15, 20)) |>
   group_by(pop) |>
   summarise(mean_Dprime = mean(Dprime, na.rm = TRUE),
             mean_r2 = mean(r2, na.rm = TRUE),
@@ -154,11 +154,11 @@ list(break_ld = break_ld, n_blocks = n_blocks)
 
 ### 1. 同序排列的 D′ 与 r² 三角图
 
-两个面板刻意共用 SNP 顺序：读者要在同一 SNP 对上比较两种统计量。D′ 反映历史重组，在长距离上仍保持较高；r² 反映统计冗余，下降更快——正是这一差异决定了关联效力用 r² 而非 D′ 来概括。
+两个面板刻意共用 SNP 顺序：读者要在同一 SNP 对上比较两种统计量。在本页的两段式模拟中，两种统计量在片段内部都饱和于 1、跨边界同时塌落（D′ 约 0.1、r² 约 0.01）；在真实数据上 r² 随距离衰减快于 D′——正是这一差异决定了关联效力用 r² 而非 D′ 来概括。
 
 ```{r}
 #| label: fig-1.1LdTriangles
-#| fig-cap: "30 个 HLA II 类区 SNP 的连锁不平衡三角图：左为 D'（重组历史），右为 r^2（统计冗余）；两者使用完全相同的 SNP 顺序与色标范围，因此可逐格比较两种统计量。"
+#| fig-cap: "为模拟的 HLA 样 II 类区（合成基因图谱）生成的 30 个 SNP 的连锁不平衡三角图：左为 D'（重组历史），右为 r^2（统计冗余）；两者使用完全相同的 SNP 顺序、色标范围与断点，因此可逐格比较两种统计量。"
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -179,8 +179,10 @@ ld_triangle <- function(dat, value, title) {
     scale_fill_gradientn(colours = c("#ffffff", "#fdd49e", "#fc8d59", "#d7301f",
                                      "#7f0000"),
                          limits = c(0, 1),
-                         values = if (value == "Dprime") c(0, .55, .72, .86, 1) else
-                           c(0, .18, .38, .62, 1),
+                         ## Identical breakpoints for D' and r^2: different
+                         ## breakpoints under identical limits would make the
+                         ## same colour mean different values per panel.
+                         values = c(0, .25, .5, .75, 1),
                          na.value = "grey92",
                          name = if (value == "Dprime") "D'" else expression(r^2)) +
     scale_x_continuous(breaks = brk, labels = snp_pos[brk] / 1000,
@@ -218,7 +220,7 @@ p_dp + p_r2 + plot_layout(ncol = 2)
 
 ```{r}
 #| label: fig-1.2LdBlocksGenes
-#| fig-cap: "按群体分面的 LD 矩阵，下方共享同一坐标轴的 HLA II 类区基因结构轨：欧洲面板呈现两个较长的高 LD 块，非洲面板呈现三个更短的块，这正是预期的 LD 衰减——传达信息的是块边界，而不是颜色深浅。"
+#| fig-cap: "按群体分面的 LD 矩阵，下方共享同一 x 轴的模拟 HLA 样基因结构轨：欧洲面板呈现两个较长的高 LD 块，非洲面板呈现三个更短的块，这正是预期的 LD 衰减——传达信息的是块边界，而不是颜色深浅。"
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -227,7 +229,8 @@ p_dp + p_r2 + plot_layout(ncol = 2)
 #| fig-dpi: 300
 
 ## Block calling on the composite LD measure: a boundary is a SNP pair whose
-## linkage falls below the strong-LD threshold (Gabriel et al. convention).
+## linkage falls below the strong-LD threshold (a Gabriel-style composite
+## rule; Gabriel et al. themselves use confidence bounds on D', not r^2).
 blocks_of <- function(dat, thr = 0.7) {
   d <- filter(dat, j == i + 1) |>
     mutate(strong = !is.na(Dprime) & !is.na(r2) & Dprime > thr & r2 > 0.45)
@@ -282,9 +285,12 @@ p_ld <- ggplot(ld, aes(i, j)) +
                                    "#08306b"),
                        limits = c(0, 1), values = c(0, .2, .45, .7, 1),
                        na.value = "grey92", name = expression(r^2)) +
-  scale_x_continuous(breaks = seq(1, n_snp, 5)) +
+  ## No coord_fixed() here: the fixed aspect squeezed the two facets into
+  ## the middle of the panel while p_gene filled the full width, so SNP k in
+  ## the heatmaps sat at a different x than SNP k in the gene track.
+  scale_x_continuous(breaks = seq(1, n_snp, 5), limits = c(0.5, n_snp + 0.5),
+                     expand = c(0, 0)) +
   scale_y_continuous(breaks = seq(1, n_snp, 5)) +
-  coord_fixed() +
   facet_wrap(~pop, ncol = 1) +
   labs(x = "SNP order (5 SNPs per tick)", y = "SNP order") +
   theme_minimal(base_size = 9.5) +
@@ -332,7 +338,7 @@ p_ld / p_gene + plot_layout(heights = c(1, 0.20))
 ::: callout-tip
 **Practice tips**
 
--   用明确规则定义块（此处为相邻 SNP 间 Gabriel 标准的 D′ > 0.7 且 r² > 0.45），并写进图注；没有规则的"块"不可复现。
+-   用明确规则定义块（此处为复合规则：相邻 SNP 满足 D′ > 0.7 且 r² > 0.45 才算强 LD；Gabriel 原规则使用 D′ 的 95% 置信边界）并写进图注；没有规则的"块"不可复现。
 -   按群体分面时保持相同色标范围。一个群体块长、另一个块短是生物学结果，不是渲染差异。
 -   基因模型必须放在*同一*坐标轴下。把基因图放到别处会迫使读者用眼睛换算坐标。
 -   明确标出关键调控基因（此处为 HLA-DRB1）：读者需要知道哪个块压在哪个基因上。

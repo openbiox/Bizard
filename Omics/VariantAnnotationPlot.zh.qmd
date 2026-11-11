@@ -65,9 +65,20 @@ freq <- expand.grid(site = sites, sample = factor(samples, levels = samples),
   group_by(site, sample) |>
   mutate(frac = frac / sum(frac)) |>
   ungroup()
-vaf_labels <- freq |>
+## Label y = centre of the ALT segment in the actual stack. position_stack()
+## on the filtered rows alone would centre the label on the bottom frac/2 of
+## the bar, which is the REFERENCE segment whenever the alt allele stacks on
+## top of it.
+stack_order <- freq |>
+  mutate(base = factor(base, levels = bases)) |>
+  arrange(site, sample, base) |>
+  group_by(site, sample) |>
+  mutate(seg_top = cumsum(frac)) |>
+  ungroup()
+vaf_labels <- stack_order |>
   filter(as.character(base) == site_alt[si], frac >= 0.09) |>
-  mutate(label = percent(frac, accuracy = 1))
+  mutate(label = percent(frac, accuracy = 1),
+         seg_y = seg_top - frac / 2)
 exons <- tibble(xmin = c(7670200, 7671200, 7672100, 7673000),
                 xmax = c(7670400, 7671500, 7672400, 7673020))
 ## ---- (2) read-backed phasing over three blocks -------------------------
@@ -120,7 +131,7 @@ head(freq, 3)
 这是 **NucFreq** 与 **snpit** 推广的紧凑轨道：每个变异位点一根堆叠组成柱、每个样本一个分面、共享基因组横轴。参考碱基保持为高柱段、alt 碱基为低柱段，读者即可一眼估计 VAF（变异等位基因比例，0–100%）；肿瘤/正常对照则把体细胞事件与胚系或假象区分开。
 ```{r}
 #| label: fig-1.1NucleotideFrequency
-#| fig-cap: "沿 GRCh38 chr17（TP53 位点）的核苷酸频率与 VAF：三个肿瘤与一个正常样本的逐位点堆叠碱基组成；对达到或超过 9% 的每个格标注 alt 等位基因比例，低于该阈值的格仅由堆叠高度体现。"
+#| fig-cap: "模拟的 TP53 样 chr17 位点（合成坐标）上的核苷酸频率与 VAF：三个肿瘤与一个正常样本的逐位点堆叠碱基组成；对达到或超过 9% 的每个格标注 alt 等位基因比例，低于该阈值的格仅由堆叠高度体现。"
 #| warning: false
 #| message: false
 #| fig-width: 10
@@ -128,9 +139,8 @@ head(freq, 3)
 #| fig-dpi: 300
 p_freq <- ggplot(freq, aes(site, frac)) +
   geom_col(aes(fill = base), width = 70) +
-  geom_text(data = vaf_labels, aes(label = label),
-            position = position_stack(vjust = 0.5), colour = "white",
-            fontface = "bold", size = 2.6) +
+  geom_text(data = vaf_labels, aes(site, seg_y, label = label),
+            colour = "white", fontface = "bold", size = 2.6) +
   facet_wrap(~sample, ncol = 1, strip.position = "left") +
   scale_fill_manual(values = base_colours, name = "Base", breaks = bases) +
   scale_y_continuous(labels = percent_format(accuracy = 1),
@@ -156,7 +166,7 @@ p_exon <- ggplot() +
                      labels = label_number(scale = 1e-6, suffix = " Mb",
                                            accuracy = 0.001)) +
   scale_y_continuous(limits = c(0, 1)) +
-  labs(x = "GRCh38 chr17 position", y = NULL,
+  labs(x = "Simulated locus position (TP53-like, synthetic)", y = NULL,
        subtitle = "TP53 exons 2-4 (schematic)") +
   theme_classic(base_size = 9) +
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
@@ -171,7 +181,7 @@ p_freq / p_exon + plot_layout(heights = c(4, 0.7))
 **Phasius** 把 phase set 画成一个区块加其下读段；**SNPitty** 与 **snpit** 以交互方式提供同一条「读段—单倍型」链路。顶部两行单倍型定义等位基因；下方每条读段按其所支持的单倍型着色；灰色读段跨越区块边界且等位基因相互矛盾，因而保持未定相。相位区块（而非染色体坐标）才是可信度的单位。
 ```{r}
 #| label: fig-1.2HaplotypePhasing
-#| fig-cap: "GRCh38 chr17 上跨三个 phase block 的 read-backed 单倍型定相；一条灰色读段携带切换，保持未定相。"
+#| fig-cap: "模拟 chr17 位点上跨三个 phase block 的 read-backed 单倍型定相；一条灰色读段携带切换，保持未定相。"
 #| warning: false
 #| message: false
 #| fig-width: 10
@@ -207,7 +217,7 @@ ggplot() +
   scale_x_continuous(breaks = c(7670000, 7675000, 7680000, 7684000),
                      labels = label_number(scale = 1e-6, suffix = " Mb",
                                            accuracy = 0.001)) +
-  labs(x = "GRCh38 chr17 position", y = NULL,
+  labs(x = "Simulated locus position (TP53-like, synthetic)", y = NULL,
        subtitle = "Alleles are phased per read; read_11 spans the block 1/2 boundary with contradictory alleles and stays grey (unphased)") +
   theme_classic(base_size = 9.5) +
   theme(axis.text.y = element_text(size = 7.4),
@@ -275,7 +285,7 @@ p_matrix + p_density + plot_layout(widths = c(1.5, 1))
 
 ## 关于本页跳过的实现
 
-本页刻意只用基础图形自行绘制。在 issue-435 清单中归到 Omics/VariantAnnotationPlot 的工具里，有 2 条被标记为**跳过**，仅作为版式参考、不作为依赖：其中 0 条超过 5 年无运维更新（截止日 2021-11-07），2 条依赖闭包过重，不值得为一张静态图引入。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
+本页的图由 ggplot2 直接绘制，而不安装这些被跳过的工具。在 issue-435 清单中归到 Omics/VariantAnnotationPlot.qmd 的工具里，2 条被标记为**跳过**，仅作为版式参考、不作为依赖：2 条依赖闭包过重，不值得为一张静态图引入。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
 
 | 工具 | 最近提交 | 状态 | 跳过原因 |
 | --- | --- | --- | --- |
