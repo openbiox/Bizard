@@ -1,0 +1,106 @@
+---
+title: "调控子特异性与活性"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+pySCENIC 的 Figure-2 模式是标准调控子读数：(A) 每细胞类型各调控子的**调控子特异性评分（RSS）**、(B) 目标细胞类型在嵌入图上高亮、(C) 顶级调控子在同名地图上的**二值化调控子活性（RAS）** \[1\]。pySCENIC 管线本身（Python：grnboost2 → prune → AUCell）在本仓库 lockfile 之外运行；本教程从模拟 RSS/RAS 值复现三面板读数——真实数据换入你的 `aucell`/`pyscenic` 输出：
+
+## Example
+
+![](../images/ScenicPlot_demo.png){fig-alt="调控子特异性与活性 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`; `dplyr`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+五个造血细胞类型 × 五个调控子、植入特异性（Gata1/Tal1 → Erythroblast、Cebpa → Monocyte、Lmo2 → HSC），外加 300 个带二值化 Lmo2 RAS 的模拟 t-SNE 细胞：
+
+```{r load data}
+suppressPackageStartupMessages({library(ggplot2); library(dplyr); library(patchwork)})
+set.seed(19401)
+celltypes <- c("HSC", "GMP", "Erythroblast", "Monocyte", "T cells")
+regulons <- c("Lmo2", "Gata1", "Spi1", "Cebpa", "Tal1")
+## RSS matrix: cell types x regulons (pySCENIC's regulon specificity scores)
+rss <- matrix(runif(25, 0.02, 0.35), 5, 5, dimnames = list(celltypes, regulons))
+rss["Erythroblast", "Gata1"] <- 0.72; rss["Erythroblast", "Tal1"] <- 0.61
+rss["Monocyte", "Cebpa"] <- 0.58; rss["HSC", "Lmo2"] <- 0.49
+rss_long <- do.call(rbind, lapply(celltypes, function(ct)
+  data.frame(CellType = ct, Regulon = regulons, RSS = rss[ct, ])))
+## t-SNE with per-cell binarized RAS for the Lmo2 regulon
+tsne <- data.frame(t1 = c(rnorm(60, -4), rnorm(60, 3), rnorm(60, 0, 2), rnorm(60, 5, 1.5), rnorm(60, -1, 1.8)),
+                   t2 = c(rnorm(60, 2), rnorm(60, -2), rnorm(60, 3.5, 1.5), rnorm(60, -3), rnorm(60, 0, 1.4)),
+                   ct = rep(celltypes, each = 60))
+tsne$highlight <- tsne$ct == "Erythroblast"
+tsne$RAS <- ifelse(tsne$ct == "Erythroblast", sample(0:1, 60, TRUE, prob = c(0.25, 0.75)),
+                   sample(0:1, 60, TRUE, prob = c(0.85, 0.15)))
+```
+
+## Visualization
+
+### RSS 柱、高亮嵌入、二值化 RAS
+
+三面板读数：RSS 柱显示每个细胞类型拥有哪个调控子（Gata1/Tal1 归 Erythroblast、Cebpa 归 Monocyte），高亮嵌入把该类型定位到空间，二值化 RAS 图显示 Lmo2 调控子在生物学预测处打开——参考文档赖以立论的交叉验证：
+
+```{r}
+#| label: fig-1.1Scenic
+#| fig-cap: "5 个模拟造血细胞类型的 pySCENIC 风格调控子读数：每细胞类型与调控子的 RSS 柱（上）、t-SNE 上高亮的 Erythroblast（左下）与同图上的二值化 Lmo2 调控子活性（右下）。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 7.5
+
+p1 <- ggplot(rss_long, aes(Regulon, RSS, fill = CellType)) +
+  geom_col(position = "dodge", width = 0.75, colour = "grey25", linewidth = 0.2) +
+  scale_fill_brewer(palette = "Set2", name = NULL) +
+  labs(x = NULL, y = "Regulon specificity score (RSS)",
+       title = "Regulon specificity by cell type (simulated)") +
+  theme_classic(base_size = 10) + theme(axis.text.x = element_text(angle = 30, hjust = 1))
+p2 <- ggplot(tsne, aes(t1, t2)) +
+  geom_point(aes(colour = ct), size = 1.1,
+             alpha = ifelse(tsne$highlight, 1, 0.45), show.legend = FALSE) +
+  scale_colour_manual(values = c(HSC = "grey70", GMP = "grey70", Erythroblast = "#E41A1C",
+                                 Monocyte = "grey70", `T cells` = "grey70")) +
+  labs(x = "t-SNE_1", y = "t-SNE_2", title = "Erythroblast cells highlighted") +
+  theme_classic(base_size = 10)
+p3 <- ggplot(tsne, aes(t1, t2, colour = factor(RAS))) +
+  geom_point(size = 1.1, alpha = 0.85) +
+  scale_colour_manual(values = c(`0` = "grey75", `1` = "#1B7837"), guide = "none") +
+  labs(x = "t-SNE_1", y = "t-SNE_2", title = "Binarized regulon activity (RAS) for Lmo2") +
+  theme_classic(base_size = 10)
+p1 / (p2 | p3) + plot_layout(heights = c(1.1, 1))```
+
+
+## 应用场景
+
+::: {#fig-ScenicApplications1}
+![](../images/ScenicPlot_demo.png){fig-alt="调控子特异性与活性" fig-align="center" width="60%"}
+
+调控子特异性与活性
+:::
+
+该读数适用于任何调控子式评分：NMF 因子按簇的特异性、TF 足迹按细胞状态、或每群体的通路活性评分。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Van de Sande B, Flerin C, Davie K, et al. A scalable SCENIC workflow for single-cell gene regulatory network analysis. Nat Protoc. 2020;15(7):2247-2276. doi:10.1038/s41596-020-0336-2

@@ -1,0 +1,105 @@
+---
+title: "限制性平均生存按风险百分位"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+风险比掩盖了幅度；**限制性平均生存时间（RMST）**——生存曲线到时点 `tau` 的下面积——用月数陈述它 \[1\]。参考文档沿风险评分百分位扫描，为基线与改进（modified）标记各计算每个累积亚组的 RMS：两条曲线的垂直差即改进带来的月数收益 \[2\]。本教程用免依赖的 KM 积分复现该扫描（`survRM2::rmst2()` 对两组比较给出同量并带 CI）：
+
+## Example
+
+![](../images/RmstPlot_demo.png){fig-alt="限制性平均生存按风险百分位 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`survival`; `ggplot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(survival)
+  library(ggplot2)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+250 个模拟患者带基线标记与改进标记（基线 + 信息性噪声），生存由改进标记在 120 月时点生成——改进曲线必须在高百分位处低于基线：
+
+```{r load data}
+suppressPackageStartupMessages({library(survival); library(ggplot2)})
+set.seed(18701)
+n <- 250
+base.marker <- rnorm(n)
+modified.marker <- base.marker + rnorm(n, 0, 0.6)   # improved marker
+lam <- exp(0.55 * scale(modified.marker)[, 1])
+survdt <- data.frame(OS.time = pmin(180, pmax(2, qweibull(runif(n), 1, 90 / lam))),
+                     OS = rbinom(n, 1, 0.62))
+tau <- 120  # months
+```
+
+## Visualization
+
+### 每个标记的 RMS 曲线
+
+两个标记的每个累积风险百分位亚组的 RMS：都朝不良预后百分位下降，改进标记的曲线在信息起作用的高百分位处可测地更低：
+
+```{r}
+#| label: fig-1.1RmsCurve
+#| fig-cap: "250 个模拟患者的累积风险百分位亚组的限制性平均生存（月，tau = 120）：改进标记的曲线在高百分位处低于基线。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 4.8
+
+## RMS per marker percentile: integrate the KM curve of the >= percentile
+## subgroup over [0, tau] (equivalent to survRM2::rmst2's RMST for one arm)
+rms2curve <- function(marker, n.grid = 25) {
+  pp <- seq(0, 1, length = n.grid)
+  sapply(pp, function(p) {
+    q <- quantile(marker, p)
+    d <- survdt[marker >= q, ]
+    if (nrow(d) < 10) return(NA)
+    km <- survfit(Surv(OS.time, OS) ~ 1, data = d)
+    s <- summary(km, times = 0:tau, extend = TRUE)$surv
+    sum(s) * (tau / length(s))   # RMST = integral of S(t) dt over [0, tau]
+  })
+}
+rms1 <- rms2curve(base.marker)
+rms2 <- rms2curve(modified.marker)
+pp <- seq(0, 1, length = 25)
+df <- data.frame(pp = rep(pp, 2),
+                 rms = c(rms1, rms2),
+                 marker = rep(c("Base marker", "Modified marker"), each = 25))
+ggplot(df, aes(pp, rms, colour = marker)) +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.4) +
+  scale_colour_manual(values = c("#3C5488", "#E64B35"), name = NULL) +
+  coord_cartesian(ylim = c(0, tau)) +
+  labs(x = "Percentile of risk score", y = "RMS (Months)",
+       title = "Restricted mean survival by risk-score percentile (simulated)") +
+  theme_classic(base_size = 10) + theme(legend.position = "top")```
+
+
+## 应用场景
+
+::: {#fig-RmsApplications1}
+![](../images/RmstPlot_demo.png){fig-alt="RMS 百分位扫描" fig-align="center" width="60%"}
+
+RMS 百分位扫描
+:::
+
+百分位-RMS 扫描适用于任何基线 vs 改进标记问题：临床 vs 临床+基因组评分、模型 v1 vs v2、或加与不加校正因子的标记。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Royston P, Parmar MKB. The use of restricted mean survival time to estimate the treatment effect in randomized clinical trials when the proportional hazards assumption is in doubt. BMC Med Res Methodol. 2013;13:152. doi:10.1186/1471-2288-13-152

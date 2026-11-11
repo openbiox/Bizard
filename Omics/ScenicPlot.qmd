@@ -1,0 +1,114 @@
+---
+title: "Regulon Specificity and Activity"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+pySCENIC's Figure-2 pattern is the standard regulon readout: (A) the **regulon specificity score (RSS)** of each regulon per cell type, (B) the target cell type highlighted on the embedding, and (C) the **binarized regulon activity (RAS)** of a top regulon on the same map \[1\]. The pySCENIC pipeline itself (Python: grnboost2 → prune → AUCell) runs outside this repository's lockfile; this tutorial reproduces the three-panel readout from simulated RSS/RAS values — swap in your `aucell`/`pyscenic` outputs for real data:
+
+## Example
+
+![](../images/ScenicPlot_demo.png){fig-alt="Regulon Specificity and Activity DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `dplyr`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+Five haematopoietic cell types × five regulons with planted specificity (Gata1/Tal1 → Erythroblast, Cebpa → Monocyte, Lmo2 → HSC) plus 300 cells on a simulated t-SNE, each carrying a binarized Lmo2 RAS:
+
+```{r load data}
+suppressPackageStartupMessages({library(ggplot2); library(dplyr); library(patchwork)})
+set.seed(19401)
+celltypes <- c("HSC", "GMP", "Erythroblast", "Monocyte", "T cells")
+regulons <- c("Lmo2", "Gata1", "Spi1", "Cebpa", "Tal1")
+## RSS matrix: cell types x regulons (pySCENIC's regulon specificity scores)
+rss <- matrix(runif(25, 0.02, 0.35), 5, 5, dimnames = list(celltypes, regulons))
+rss["Erythroblast", "Gata1"] <- 0.72; rss["Erythroblast", "Tal1"] <- 0.61
+rss["Monocyte", "Cebpa"] <- 0.58; rss["HSC", "Lmo2"] <- 0.49
+rss_long <- do.call(rbind, lapply(celltypes, function(ct)
+  data.frame(CellType = ct, Regulon = regulons, RSS = rss[ct, ])))
+## t-SNE with per-cell binarized RAS for the Lmo2 regulon
+tsne <- data.frame(t1 = c(rnorm(60, -4), rnorm(60, 3), rnorm(60, 0, 2), rnorm(60, 5, 1.5), rnorm(60, -1, 1.8)),
+                   t2 = c(rnorm(60, 2), rnorm(60, -2), rnorm(60, 3.5, 1.5), rnorm(60, -3), rnorm(60, 0, 1.4)),
+                   ct = rep(celltypes, each = 60))
+tsne$highlight <- tsne$ct == "Erythroblast"
+tsne$RAS <- ifelse(tsne$ct == "Erythroblast", sample(0:1, 60, TRUE, prob = c(0.25, 0.75)),
+                   sample(0:1, 60, TRUE, prob = c(0.85, 0.15)))
+```
+
+## Visualization
+
+### 1. RSS Bars, Highlighted Embedding, Binarized RAS
+
+The three-panel readout: RSS bars show which regulon each cell type owns (Gata1/Tal1 for Erythroblast, Cebpa for Monocyte), the highlighted embedding locates that type in space, and the binarized RAS map shows the Lmo2 regulon switching on where the biology predicts — the cross-validation the reference builds its argument on:
+
+```{r}
+#| label: fig-1.1Scenic
+#| fig-cap: "pySCENIC-style regulon readout of 5 simulated haematopoietic cell types: RSS bars per cell type and regulon (top), Erythroblast highlighted on the t-SNE (bottom left) and the binarized Lmo2 regulon activity on the same map (bottom right)."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 7.5
+
+p1 <- ggplot(rss_long, aes(Regulon, RSS, fill = CellType)) +
+  geom_col(position = "dodge", width = 0.75, colour = "grey25", linewidth = 0.2) +
+  scale_fill_brewer(palette = "Set2", name = NULL) +
+  labs(x = NULL, y = "Regulon specificity score (RSS)",
+       title = "Regulon specificity by cell type (simulated)") +
+  theme_classic(base_size = 10) + theme(axis.text.x = element_text(angle = 30, hjust = 1))
+p2 <- ggplot(tsne, aes(t1, t2)) +
+  geom_point(aes(colour = ct), size = 1.1,
+             alpha = ifelse(tsne$highlight, 1, 0.45), show.legend = FALSE) +
+  scale_colour_manual(values = c(HSC = "grey70", GMP = "grey70", Erythroblast = "#E41A1C",
+                                 Monocyte = "grey70", `T cells` = "grey70")) +
+  labs(x = "t-SNE_1", y = "t-SNE_2", title = "Erythroblast cells highlighted") +
+  theme_classic(base_size = 10)
+p3 <- ggplot(tsne, aes(t1, t2, colour = factor(RAS))) +
+  geom_point(size = 1.1, alpha = 0.85) +
+  scale_colour_manual(values = c(`0` = "grey75", `1` = "#1B7837"), guide = "none") +
+  labs(x = "t-SNE_1", y = "t-SNE_2", title = "Binarized regulon activity (RAS) for Lmo2") +
+  theme_classic(base_size = 10)
+p1 / (p2 | p3) + plot_layout(heights = c(1.1, 1))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   RSS rewards **specificity, not activity**: a regulon highly active everywhere scores low — read the bars column-wise (which cell type owns each regulon) rather than row-wise.
+-   Binarize RAS per regulon at its own distribution's knee (pySCENIC's default is a per-regulon threshold); a global cutoff silences low-RSS cell types into artificial zeros.
+-   Validate the binarization the reference way: the on-map binarized activity must co-locate with the highlighted cell type; a scattered pattern means the regulon is not cell-type-specific and the RSS bar overstates it.
+:::
+
+## Applications
+
+::: {#fig-ScenicApplications1}
+![](../images/ScenicPlot_demo.png){fig-alt="Regulon specificity and activity" fig-align="center" width="60%"}
+
+Regulon specificity and activity
+:::
+
+The readout fits any regulon-style scoring: NMF factor specificity by cluster, TF footprints by cell state, or pathway activity scores per population.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Van de Sande B, Flerin C, Davie K, et al. A scalable SCENIC workflow for single-cell gene regulatory network analysis. Nat Protoc. 2020;15(7):2247-2276. doi:10.1038/s41596-020-0336-2

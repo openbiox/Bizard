@@ -1,0 +1,113 @@
+---
+title: "效应量变点扫描"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+当协变量的效应发生弯折——一旦检查的淋巴结足够多，暴露 HR 就下降——单条回归线会掩盖阈值。参考文档扫描 HR-协变量估计，平滑之（`lowess`，带宽 2/3），再用 **Chow 检验**（`strucchange::Fstats` + `breakpoints()`）定位变点并画出分段拟合 \[1\]。本教程在模拟的逐协变量值 Cox 拟合上复现双面板读数：
+
+## Example
+
+![](../images/BreakpointPlot_demo.png){fig-alt="效应量变点扫描 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`survival`; `strucchange`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(survival)
+  library(strucchange)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+ELN 计数 1-20 的模拟 HR 估计（每值 80 名患者、植入效应在 ELN = 10 处改变）带 Cox 置信区间——平滑曲线必须在模拟弯折处弯折：
+
+```{r load data}
+suppressPackageStartupMessages({library(survival); library(strucchange)})
+set.seed(19201)
+## ELN (extranodal lymph node) count vs HR of an exposure, planted break at ELN=10
+eln_count <- 1:20
+true_hr <- c(seq(2.6, 1.0, length.out = 10), seq(1.0, 0.55, length.out = 10))
+Coxoutput <- do.call(rbind, lapply(seq_along(eln_count), function(i) {
+  k <- eln_count[i]
+  sub <- data.frame(x = rbinom(80, 1, 0.4),
+                    t = pmin(90, pmax(2, qweibull(runif(80), 1, 50 / exp(log(true_hr[i]) * rbinom(80, 1, 0.4))))),
+                    e = rbinom(80, 1, 0.7))
+  m <- coxph(Surv(t, e) ~ x, data = sub)
+  ci <- summary(m)$conf.int
+  data.frame(ELN = k, HR = ci[1, "exp(coef)"], lower = ci[1, "lower .95"], upper = ci[1, "upper .95"])
+}))
+jco <- c("#E64B35", "#4DBBD5", "#00A087", "#F39B7F")
+hr.lowess <- lowess(Coxoutput$HR ~ Coxoutput$ELN, f = 2/3)
+```
+
+## Visualization
+
+### HR 扫描、lowess 与检出的变点
+
+面板 A：逐计数 HR 带 CI 箭头、lowess 主线、ELN = 10 的检出变点虚线。面板 B：平滑曲线的两段线性拟和在断裂处相接——"多即是好，直到不是"一眼读完：
+
+```{r}
+#| label: fig-1.1Breakpoint
+#| fig-cap: "ELN 计数 1-20 的模拟 HR 估计的效应量变点扫描：逐计数 Cox HR 带 CI 箭头、lowess 主线与 ELN = 10 的 Chow 检验变点（上），平滑曲线的两段线性拟合（下）。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 5.5
+#| fig-height: 8
+
+f <- Fstats(hr.lowess$y ~ Coxoutput$ELN)
+bk <- breakpoints(f)$breakpoints
+cat("breakpoint at ELN =", Coxoutput$ELN[bk], "\n")
+
+par(mfrow = c(2, 1))
+par(bty = "o", mgp = c(1.5, .33, 0), mar = c(3, 4, 2, 1), las = 1, tcl = -0.25)
+plot(Coxoutput$ELN, Coxoutput$HR, pch = 19, cex = 0.9, col = jco[1],
+     xlab = "ELN count", ylab = "Hazard Ratio",
+     main = "HR vs ELN with lowess + breakpoint", ylim = c(0, max(Coxoutput$upper)))
+arrows(Coxoutput$ELN, Coxoutput$lower, Coxoutput$ELN, Coxoutput$upper,
+       angle = 90, code = 3, length = 0.04, col = "grey55")
+lines(hr.lowess, col = jco[2], lwd = 2)
+abline(v = Coxoutput$ELN[bk], lty = 2, col = jco[3], lwd = 1.5)
+text(Coxoutput$ELN[bk] + 0.6, max(Coxoutput$upper) * 0.95,
+     sprintf("breakpoint: ELN = %d", Coxoutput$ELN[bk]), adj = 0, cex = 0.85, col = jco[3])
+## piecewise regression of the smoothed curve (clean data frame, not $-formulas)
+sm <- data.frame(ELN = Coxoutput$ELN, y = hr.lowess$y)
+seg_lm <- lm(y ~ ELN, data = sm, subset = seq_along(ELN) <= bk)
+seg_lm2 <- lm(y ~ ELN, data = sm, subset = seq_along(ELN) > bk)
+plot(hr.lowess$x, hr.lowess$y, type = "n", xlab = "ELN count", ylab = "lowess(HR)",
+     main = "Piecewise fit at the detected breakpoint")
+points(hr.lowess$x, hr.lowess$y, pch = 16, cex = 0.8, col = "grey40")
+cli <- seq(min(Coxoutput$ELN), Coxoutput$ELN[bk], length.out = 40)
+cli2 <- seq(Coxoutput$ELN[bk], max(Coxoutput$ELN), length.out = 40)
+lines(cli, predict(seg_lm, newdata = data.frame(ELN = cli)), col = jco[1], lwd = 2)
+lines(cli2, predict(seg_lm2, newdata = data.frame(ELN = cli2)), col = jco[2], lwd = 2)
+abline(v = Coxoutput$ELN[bk], lty = 2, col = jco[3])```
+
+
+## 应用场景
+
+::: {#fig-BreakpointApplications1}
+![](../images/BreakpointPlot_demo.png){fig-alt="效应量变点扫描" fig-align="center" width="60%"}
+
+效应量变点扫描
+:::
+
+HR 扫描 + 变点读数适用于任何剂量/阈值问题：肿瘤手术的淋巴结检出量、标记阳性截断、或药物剂量-反应拐点。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Zeileis A, Kleiber C, Krämer W, Hornik K. Testing and dating of structural changes in practice. Comput Stat Data Anal. 2003;44(1-2):109-123. doi:10.1016/S0167-9473(03)00030-6

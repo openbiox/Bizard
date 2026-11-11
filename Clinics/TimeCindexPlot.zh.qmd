@@ -1,0 +1,101 @@
+---
+title: "时间依赖性 C 指数"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+固定时点的 C 指数掩盖了判别力随随访的漂移：**时间依赖性 C 指数**在水平网格上重新评估每个模型的一致性——12 个月占优的模型到 108 个月可能落败 \[1\]。参考文档拟合竞争 Cox 模型并用 `pec::cindex()` 给每个模型画一条 BootCV C 指数曲线；本教程在模拟数据上以临床/生物标记/联合三模型复现该版式：
+
+## Example
+
+![](../images/TimeCindexPlot_demo.png){fig-alt="时间依赖性 C 指数 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`survival`; `pec`; `ggplot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(survival)
+  library(pec)
+  library(ggplot2)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+220 个模拟患者带年龄协变量与两个生物标记；三个嵌套 Cox 模型（临床/生物标记/联合），植入强度使联合模型在每个时点都占优。`pec::cindex()` 以 `splitMethod = "BootCv"` 给出参考所画的 bootstrap 交叉验证曲线：
+
+```{r load data}
+suppressPackageStartupMessages({library(survival); library(pec); library(ggplot2)})
+set.seed(18901)
+n <- 220
+age <- rnorm(n, 60, 10)
+marker1 <- rnorm(n); marker2 <- rnorm(n)
+lp_clin <- 0.04 * age
+lp_bio <- 0.6 * marker1 - 0.4 * marker2
+lp_both <- lp_clin + lp_bio
+lam <- exp(0.9 * scale(lp_both)[, 1])
+OS.time <- pmin(120, pmax(2, qweibull(runif(n), 1, 60 / lam)))
+OS <- rbinom(n, 1, 0.6)
+dat <- data.frame(OS.time = OS.time, OS = OS, age = age, marker1 = marker1, marker2 = marker2)
+models <- list(
+  Clinical = coxph(Surv(OS.time, OS) ~ age, data = dat, x = TRUE, y = TRUE),
+  Biomarker = coxph(Surv(OS.time, OS) ~ marker1 + marker2, data = dat, x = TRUE, y = TRUE),
+  Combined = coxph(Surv(OS.time, OS) ~ age + marker1 + marker2, data = dat, x = TRUE, y = TRUE))
+```
+
+## Visualization
+
+### 每模型一条曲线
+
+12-108 月网格上的 BootCV C 指数曲线：联合模型处处高于其组分，所有模型在长随访时向 0.5 机会线漂移——漂移正是固定时点 C 指数丢掉的信息：
+
+```{r}
+#| label: fig-1.1TimeCindex
+#| fig-cap: "220 个模拟患者的三个嵌套 Cox 模型（临床/生物标记/联合）在 12-108 月网格上的 BootCV 时间依赖性 C 指数：联合模型占优，所有曲线随随访向 0.5 漂移。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 4.6
+
+eval.times <- seq(12, 108, 12)
+timeC <- pec::cindex(object = models, formula = Surv(OS.time, OS) ~ ., data = dat,
+                     eval.times = eval.times, splitMethod = "BootCv", B = 40)
+cmat <- do.call(cbind, timeC$BootCvCindex)
+df <- do.call(rbind, lapply(seq_along(models), function(i)
+  data.frame(t = eval.times, cindex = cmat[, i], model = names(models)[i])))
+ggplot(df, aes(t, cindex, colour = model)) +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.6) +
+  geom_hline(yintercept = 0.5, linetype = 2, colour = "grey55") +
+  scale_colour_manual(values = c(Clinical = "#7E6148", Biomarker = "#4DBBD5", Combined = "#E64B35")) +
+  coord_cartesian(ylim = c(0.45, 0.8)) +
+  labs(x = "Evaluation time (months)", y = "Time-dependent C-index (BootCV)",
+       title = "Time-dependent concordance by model (simulated)", colour = NULL) +
+  theme_classic(base_size = 10) + theme(legend.position = "top")```
+
+
+## 应用场景
+
+::: {#fig-TimeCindexApplications1}
+![](../images/TimeCindexPlot_demo.png){fig-alt="时间依赖性一致性" fig-align="center" width="60%"}
+
+时间依赖性一致性
+:::
+
+任何嵌套风险模型组都复用这些曲线：临床 vs 分子分期、panel vs WES signature、或治疗前 vs 治疗后模型。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Gerds TA, Schumacher M. Consistent estimation of the expected tumor discrimination index in survival analysis. Biom J. 2006;48(6):989-1005. doi:10.1002/bimj.200610282 (the time-dependent concordance estimator behind pec::cindex)
