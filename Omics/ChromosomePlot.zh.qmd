@@ -25,6 +25,8 @@ author:
 
 -   依赖包: `RIdeogram`
 
+-   维护状态: `RIdeogram` 上游最后一次提交是 2020-09-22，已超过五年没有运维更新。本页使用它，是因为页面图形就建立在它之上，并非它仍在积极维护；在依赖它之前请先确认它仍能在你的 R 版本上安装。
+
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # 安装包
 if (!requireNamespace("RIdeogram", quietly = TRUE)) {
@@ -504,11 +506,23 @@ write.csv(karyotype, "karyotype.csv", row.names = FALSE)
 
 ### 12. 无 Gviz 的基因周边信号轨道（ggplot2 复现）
 
-FigureYa3genomeView 版式 \[4\] 在基因座位上堆叠逐碱基信号（ChIP-seq、ATAC、RNA-seq）并在下方给出基因模型——但 `Gviz` 会拉进 TxDb 注释包与基于 rtracklayer 的 bigWig 读取，两者都不在本仓库 lockfile 中。同一张图用朴素 ggplot2 即可复现：每 kb 覆盖度画 `geom_area()` 分面、基因模型独占一个分面轨道（内含子线上摆外显子矩形）、x 轴以 kb 计。真实数据用 rtracklayer 读 bigWig，或直接读覆盖度 tsv 替换模拟分箱：
+FigureYa3genomeView 版式 \[10\] 在基因座位上堆叠逐碱基信号（ChIP-seq、ATAC、RNA-seq）并在下方给出基因模型——但 `Gviz` 会拉进 TxDb 注释包与基于 rtracklayer 的 bigWig 读取，两者都不在本仓库 lockfile 中。同一张图用朴素 ggplot2 即可复现：每 kb 覆盖度画 `geom_area()` 分面、基因模型独占一个分面轨道（内含子线上摆外显子矩形）、x 轴以 kb 计。真实数据用 rtracklayer 读 bigWig，或直接读覆盖度 tsv 替换模拟分箱：
 
 ```{r}
 #| label: fig-12.1GenomeTracks
 #| fig-cap: "目标基因周边的 IGV 风格信号轨道（模拟 bigWig 分箱）：四个覆盖度分面加一个专属基因模型轨道（内含子线上的外显子矩形）；x 轴以 kb 计。"
+
+### 13. 锚定核型、信号轨道与标记刻度
+
+`RIdeogram` 的轨道布局是固定的：热图在染色体内部，两条标签轨道分列上下。当你需要另一种堆叠——核型、任意数值轨道、标记刻度——可靠的做法是自建布局，并让各面板共享**同一条** x 轴。下面的版本把染色体首尾相接排到累积坐标上（即 "UCSC Genome Graphs" 的约定 \[9\]），再把逐窗口 Fst 轨道与标记集锚定到完全相同的比例 \[6,9\]。
+
+```{r}
+#| label: fig-12-1AnchoredIdeogram
+#| fig-cap: "模拟五染色体基因组在累积坐标下的锚定核型：染色体首尾相接（间隔 4 Mb），上方为带纹着色（每条带描边）与以深色刻度标出的着丝粒，下方为逐窗口 Fst，含两个预先植入的选择清除峰（chr2:62 Mb、chr4:20 Mb）与 0.25 的离群阈值，顶轴为标记刻度（tRNA/rRNA/miRNA/QTL）。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -562,6 +576,119 @@ ggplot(tracks, aes(bin, signal)) +
   coord_cartesian(ylim = c(0, 1))
 ```
 
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 4.6
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(patchwork)
+})
+
+## 与 RIdeogram 输入同形的染色体表：名称、起点、终点、着丝粒。
+## 长度为一个 5 条染色体的玩具基因组（Mb）。
+karyo <- data.frame(
+  chr = c("chr1", "chr2", "chr3", "chr4", "chr5"),
+  len = c(120, 95, 80, 60, 45),
+  cen = c(48, 34, 31, 21, 17)
+)
+set.seed(43501)
+
+## 细胞遗传带：与 G 带表一致，每个条带带一个密度值。
+banding <- do.call(rbind, lapply(seq_len(nrow(karyo)), function(i) {
+  k <- karyo[i, ]
+  starts <- seq(0, k$len, by = 6)
+  data.frame(chr = k$chr, start = starts, end = pmin(starts + 6, k$len),
+             density = round(runif(length(starts), 0, 100)))
+}))
+
+## 逐窗口 Fst，植入两个峰，使阅读顺序可验证。
+win <- do.call(rbind, lapply(seq_len(nrow(karyo)), function(i) {
+  k <- karyo[i, ]
+  mid <- seq(1, k$len - 1, by = 2)
+  fst <- 0.08 + 0.05 * abs(sin(mid / 9))
+  if (k$chr == "chr2") fst <- fst + 0.55 * exp(-((mid - 62)^2) / 40)
+  if (k$chr == "chr4") fst <- fst + 0.42 * exp(-((mid - 20)^2) / 50)
+  data.frame(chr = k$chr, mid = mid,
+             fst = pmin(0.95, fst + rnorm(length(mid), 0, 0.02)))
+}))
+
+markers <- data.frame(
+  chr = c("chr1", "chr1", "chr2", "chr2", "chr3", "chr3", "chr4", "chr5", "chr5"),
+  pos = c(12, 88, 62, 30, 41, 70, 20, 15, 38),
+  type = c("tRNA", "rRNA", "miRNA", "tRNA", "rRNA", "miRNA",
+           "QTL", "QTL", "miRNA")
+)
+
+## 累积坐标：染色体首尾相接、间隔 4 Mb，于是每个面板都能共用一条 x 轴，
+## 而不必依赖分面宽度。
+gap <- 4
+offs <- data.frame(chr = karyo$chr,
+                   offset = c(0, cumsum(karyo$len + gap)[-nrow(karyo)]))
+banding <- left_join(banding, offs, by = "chr") |>
+  mutate(x0 = offset + start, x1 = offset + end)
+win <- left_join(win, offs, by = "chr") |> mutate(x = offset + mid)
+markers <- left_join(markers, offs, by = "chr") |> mutate(x = offset + pos)
+chr_lab <- data.frame(chr = karyo$chr, x = offs$offset + karyo$len / 2)
+xmax <- max(win$x) + 3
+
+p_ideo <- ggplot() +
+  geom_rect(data = banding,
+            aes(xmin = x0, xmax = x1, ymin = 0.84, ymax = 1.16, fill = density),
+            colour = "#3d3d3d", linewidth = 0.12) +
+  ## Centromere: a dark tick, not a white line -- white on a near-white band
+  ## is invisible, which is exactly how the pinch disappears from the figure.
+  geom_segment(data = left_join(karyo, offs, by = "chr"),
+               aes(x = offset + cen, xend = offset + cen, y = 0.80, yend = 1.20),
+               linewidth = 0.9, colour = "#111111", lineend = "butt") +
+  geom_point(data = markers, aes(x, y = 1.34, colour = type, shape = type),
+             size = 2.1) +
+  scale_fill_gradientn("band\ndensity",
+                       colours = c("#ffffff", "#c6c6c6", "#5a5a5a"),
+                       limits = c(0, 100), guide = "none") +
+  scale_colour_manual(values = c(tRNA = "#1b7837", rRNA = "#d95f02",
+                                 miRNA = "#2166ac", QTL = "#b2182b"),
+                      name = NULL) +
+  scale_shape_manual(values = c(tRNA = 17, rRNA = 15, miRNA = 16, QTL = 18),
+                     name = NULL) +
+  scale_x_continuous(limits = c(-2, xmax), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0.78, 1.46), expand = c(0, 0)) +
+  labs(x = NULL, y = NULL) +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid = element_blank(), axis.text = element_blank(),
+        axis.ticks = element_blank(), legend.position = "bottom",
+        legend.key.size = unit(0.32, "cm"),
+        legend.text = element_text(size = 7.2),
+        plot.margin = margin(2, 5, 0, 5))
+
+p_track <- ggplot(win, aes(x, fst, group = chr)) +
+  geom_area(fill = "#4292c6", alpha = 0.5, colour = NA) +
+  geom_line(colour = "#08519c", linewidth = 0.32) +
+  geom_hline(yintercept = 0.25, linetype = "dashed", linewidth = 0.3,
+             colour = "#b2182b") +
+  geom_vline(xintercept = offs$offset[-1] - gap / 2, linewidth = 0.25,
+             colour = "#dedede") +
+  ## chromosome names on the track's own panel, not borrowed from above
+  annotate("text", x = chr_lab$x, y = 0.93, label = chr_lab$chr,
+           size = 2.6, colour = "#333333") +
+  scale_x_continuous(limits = c(-2, xmax), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, 0.96), breaks = c(0, 0.25, 0.5, 0.75),
+                     expand = c(0, 0)) +
+  labs(x = "Cumulative position (Mb; chromosomes laid end to end)",
+       y = "Fst") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(size = 6.5),
+        axis.text.y = element_text(size = 7),
+        plot.margin = margin(0, 5, 2, 5))
+
+p_ideo / p_track + plot_layout(heights = c(0.75, 1))
+```
+
 ::: callout-tip
 **实践要点**
 
@@ -569,6 +696,23 @@ ggplot(tracks, aes(bin, signal)) +
 -   逐碱基 bigWig 数据可能很大：作图前先聚合成固定宽度分箱（此处 1 kb）；座位尺度下肉眼无差别。
 -   `switch = "y"` 配 `strip.text.y.left` 把轨道名放到 IGV 的位置，基因组轴只在底部出现一次。
 :::
+
+
+-   每个面板栈只选一种坐标约定：独立轴（RIdeogram 的固定轨道）或带间隔的累积轴。不要在同一个图里混用——无论你是否愿意，读者都会跨面板比较 x 位置。
+-   在染色体之间插入可见间隔（此处 4 Mb）：否则上一条染色体的末端条带与下一条的起始条带会被读成同一个特征。
+-   染色体偏移表只 `left_join()` 一次，并把 offset 留在数据框里；在 `aes()` 里现算 `offset + start`，一旦某图层需要不同的汇总行就会出错。
+-   把着丝粒画成覆盖在带纹填充上的白色掐腰，而不是单独一条轨道：它是染色体的一部分，而不是沿染色体变化的一个数值。
+-   把离群阈值（此处 0.25）声明为一条显式规则；没有说明统计量的虚线只会让读者自己臆造一个。
+:::
+## 关于本页跳过的实现
+
+本页的图由 RIdeogram and ggplot2 直接绘制，而不安装这些被跳过的工具。在 issue-435 清单中归到 Omics/ChromosomePlot.qmd 的工具里，3 条被标记为**跳过**，仅作为版式参考、不作为依赖：2 条超过 5 年无运维更新（截止日 2021-11-07）、1 条依赖闭包过重，不值得为一张静态图引入。沿用这些工具，等于锁定已废弃的代码；安装另一批，则要把整套分析框架拖进文档构建。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
+
+| 工具 | 最近提交 | 状态 | 跳过原因 |
+| --- | --- | --- | --- |
+| ggbio | — | 依赖过重 | 框架级依赖闭包过重，不值得为一张静态图引入 |
+| Ideoplot | 2015-09-21 | 陈旧 | 超过 5 年无运维更新 |
+| KaryotypeSVG | 2017-07-17 | 陈旧 | 超过 5 年无运维更新 |
 
 ## 应用
 
@@ -588,6 +732,14 @@ iMapper 映射和分析插入位点序列数据
 
 \[1\] RIdeogram: drawing SVG graphics to visualize and map genome-wide data on idiograms https://cran.r-project.org/web/packages/RIdeogram/vignettes/RIdeogram.html
 \[2\] Hao Z, Lv D, Ge Y, Shi J, Weijers D, Yu G, Chen J. 2020. RIdeogram: drawing SVG graphics to visualize and map genome-wide data on the idiograms. PeerJ Comput. Sci. 6:e251 http://doi.org/10.7717/peerj-cs.251
-\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[3\] Lu X, Li K, Li Z, et al. FigureYa: a standardized visualization framework for enhancing biomedical data interpretation and research efficiency. iMetaMed. 2025;1(1). doi:10.1002/imm3.70005
+\[4\] Hao Z, Lv D, Ge Y, et al. RIdeogram: drawing SVG graphics to visualize and map genome-wide data on the idiograms. PeerJ Comput Sci. 2020;6:e251. doi:10.7717/peerj-cs.251
+\[5\] Anand L, Rodriguez Lopez CM. ChromoMap: an R package for interactive visualization of multi-omics data and annotation of chromosomes. BMC Bioinformatics. 2022;23:7. doi:10.1186/s12859-021-04556-z
+\[6\] Gel B, Serra E. karyoploteR: an R/Bioconductor package to plot customizable genomes displaying arbitrary data. Bioinformatics. 2017;33(19):3088-3090. doi:10.1093/bioinformatics/btx346
+\[7\] Yin T, Cook D, Lawrence M. ggbio: an R package for extending the grammar of graphics for genomic data. Genome Biol. 2012;13(8):R77. doi:10.1186/gb-2012-13-8-r77
+\[8\] Yu Y, Yao W, Wang Y, Huang F. shinyChromosome: an R/Shiny application for interactive creation of non-standard plots of whole genomes. Genomics Proteomics Bioinformatics. 2019;17(5):535-539. doi:10.1016/j.gpb.2019.07.003
+\[9\] Karolchik D, Baertsch R, Diekhans M, et al. The UCSC Genome Browser Database. Nucleic Acids Res. 2003;31(1):51-54. doi:10.1093/nar/gkg129
 
 
+
+\[10\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

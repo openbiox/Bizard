@@ -15,6 +15,12 @@ This page is the tutorial for source code version of the Hiplot `Hi-C Heatmap` p
 
 The HiC heatmap is used to display the genome-wide chromatin interaction with heatmap on different chromosomes.
 
+## Example
+
+![](../images/Hiplot/087-hic-heatmap.png){fig-alt="Hi-C Heatmap" fig-align="center" width="70%"}
+
+A Hi-C contact map stored as a sparse list of bin pairs at 500 kb resolution: each cell is the contact count between two bins and the colour gives the intensity, so where a matrix is complete the diagonal is the strongest signal and the decay away from it is how contact probability falls with genomic distance. This particular example matrix is **not** a complete 250 Mb map — it is two contact blocks (bins 1-243 and 286-499, about 121.5 and 107 Mb) whose bins 0 and 244-285 are absent, with faint cross-block signal between them — so the correct reading is two diagonals inside two blocks, not one genome-wide diagonal. The observed gaps are why the advanced section below works from a complete simulated matrix.
+
 ## Setup
 
 -   System Requirements: Cross-platform (Linux/MacOS/Windows)
@@ -66,7 +72,7 @@ head(data)
 
 ```{r}
 #| label: fig-1hic-heatmap
-#| fig-cap: "Hi-C Heatmap"
+#| fig-cap: "Hi-C contact map of the shipped example matrix at 500 kb bins on a linear colour scale: two contact blocks (bins 1-243 and 286-499, i.e. 121.5 and 107 Mb) separated by the missing-bin band, each showing the strong diagonal and the s^-1 decay away from it; faint cross-block signal remains between the blocks."
 #| out.width: "95%"
 #| fig-height: 5
 #| fig-width: 6.5
@@ -97,9 +103,15 @@ p <- ggplot(data = data, aes(x = index_bin1 * res, y = index_bin2 * res)) +
     colours = colorRampPalette(rev(brewer.pal(11,"RdYlBu")))(500),
     limits = c(0, max(data$freq) * 1.2)
   ) +
-  scale_y_reverse() +
   scale_x_continuous(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
-  scale_y_continuous(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
+  ## One scale call per aesthetic only: a second scale_*() for the same
+  ## aesthetic silently replaces the first.
+  ## scale_y_reverse() is what actually flips the axis so bin 0 sits at the
+  ## top-left. Reversing via coord_cartesian(ylim = c(max, 0)) does NOT work:
+  ## current ggplot2 sorts the range instead of honouring its direction.
+  scale_y_reverse(breaks = breaks * 1000000, labels = paste0(breaks, "Mb")) +
+  coord_cartesian(xlim = c(0, bins_num * res), ylim = c(0, bins_num * res),
+                  expand = FALSE) +
   theme(panel.grid = element_blank(), axis.title = element_blank()) +
   labs(title = paste0("(resolution: ", res / 1000, "Kb)"), x="", y="") +
   theme_bw() +
@@ -110,6 +122,144 @@ p <- ggplot(data = data, aes(x = index_bin1 * res, y = index_bin2 * res)) +
 p
 ```
 
-As shown in the example figure, a heat map represent the interaction frequency between any two locus. The color displays their intensity of interaction.
+As shown above, a heat map represents the interaction frequency between any two loci: the fill colour encodes contact intensity, and reversing the y axis puts bin 0 at the top-left so that the main diagonal runs from top-left to bottom-right — the orientation used by Hi-C browsers such as Juicebox and HiGlass. The white cross in the middle of the rendered panel is the missing-bin band described in the Example section, not a feature of the data.
 
+### Advanced: normalisation, TAD boundaries and the rotated view
 
+The raw frequency matrix above is enough to see that contacts exist, but not enough to see **structure**: contact probability falls roughly as s^-1 with distance, so the diagonal dominates every panel and the domain blocks are buried in the gradient. The two corrections that make a Hi-C figure informative are (i) **observed/expected normalisation**, dividing each bin by the mean count at its contact distance, and (ii) **TAD boundary annotation** \[3,4\]. The right-hand panel adds the **rotated (45°) presentation** that Juicebox uses, in which a TAD becomes a triangle whose apex is its genomic midpoint and the boundaries fall on the two diagonals that meet at that apex.
+
+```{r}
+#| label: fig-adv-1NormalizedHic
+#| fig-cap: "Observed/expected Hi-C contact map (100 Mb at 500 kb resolution, simulated with five TADs and s^-1 distance decay): left, the upper half of the log2 obs/exp matrix with the four TAD boundaries drawn as dark dashed segments; right, the same matrix sheared into the 'rotated' presentation used by Hi-C browsers, with genomic midpoint u = (i+j)/2 along x and separation v = i-j along y (a 2:1 shear, not a 45-degree rotation): each TAD becomes a symmetric triangle whose apex is its midpoint, and each boundary is drawn as the two flanks v = +/-2(u - b) meeting at that apex."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10.5
+#| fig-height: 4.6
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(patchwork)
+})
+
+set.seed(43512)
+
+## A 100 Mb chromosome at 500 kb resolution with five TADs. Contacts are drawn
+## as a sparse (i, j, count) table, which is what Hi-C pipelines emit.
+res <- 0.5
+n_bin <- 200
+tad_edges <- c(0, 22, 45, 55, 90, 100)
+tad_id <- cut(seq_len(n_bin) * res - res / 2, breaks = tad_edges,
+              labels = FALSE, include.lowest = TRUE)
+
+contacts <- expand.grid(i = seq_len(n_bin), j = seq_len(n_bin)) |>
+  as_tibble() |>
+  filter(i >= j) |>                       # x = i, y = j -> keep x >= y
+  mutate(
+    d = (i - j) * res,
+    decay = 1 / (1 + d),                  # P(s) ~ s^-1
+    same_tad = tad_id[i] == tad_id[j],
+    freq = decay * ifelse(same_tad, 3.2, 0.9) * rexp(n(), 1)
+  )
+
+## Observed/expected: divide by the mean count at each contact distance.
+oe <- contacts |>
+  mutate(d_bin = round(d / res)) |>
+  group_by(d_bin) |>
+  mutate(mean_d = mean(freq)) |>
+  ungroup() |>
+  ## The observed/expected ratio is kept at bin resolution (no distance-band
+  ## smoothing); the per-distance expectation removes the s^-1 decay without
+  ## touching the TAD-to-TAD contrast.
+  mutate(oe = log2((freq + 0.05) / (mean_d + 0.05)),
+         x = i * res, y = j * res)
+
+bounds <- data.frame(x = tad_edges[-c(1, length(tad_edges))])
+pal <- c("#313695", "#4575b4", "#abd9e9", "#ffffbf", "#fdae61", "#d73027",
+         "#a50026")
+
+p_tri <- ggplot() +
+  geom_raster(data = oe, aes(x, y, fill = oe),
+              interpolate = FALSE) +
+  ## A boundary b is a single point (b, b) on the diagonal, so inside the data
+  ## region x >= y it can only be drawn as two segments from that point:
+  ## x = b with 0 <= y <= b, and y = b with b <= x <= 100. Full rules would
+  ## advertise contacts the matrix does not contain.
+  geom_segment(data = bounds,
+               aes(x = x, xend = x, y = 0, yend = x),
+               colour = "grey10", linewidth = 0.4, linetype = "22") +
+  geom_segment(data = bounds,
+               aes(x = x, xend = 100, y = x, yend = x),
+               colour = "grey10", linewidth = 0.4, linetype = "22") +
+  scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
+                       oob = scales::squish) +
+  scale_x_continuous(breaks = seq(0, 100, 25)) +
+  ## scale_y_reverse() is what actually flips the axis: bin 0 at the top-left,
+  ## the diagonal from top-left to bottom-right, and the data triangle filling
+  ## the upper-right half -- the layout used by Hi-C browsers.
+  scale_y_reverse(breaks = seq(0, 100, 25)) +
+  coord_cartesian(xlim = c(0, 100), ylim = c(0, 100), expand = FALSE) +
+  labs(x = "position (Mb)", y = "position (Mb)") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid = element_blank(),
+        legend.key.height = unit(0.85, "cm"),
+        legend.text = element_text(size = 6.8),
+        legend.title = element_text(size = 7.2))
+
+## Shear ("rotation"): u = genomic midpoint, v = contact separation.
+rot <- oe |> mutate(u = (i + j) * res / 2, v = (i - j) * res)
+
+p_rot <- ggplot() +
+  geom_raster(data = rot, aes(u, v, fill = oe), interpolate = FALSE) +
+  ## The (u, v) transform is a 2:1 shear, not a 45-degree rotation: a boundary
+  ## b is an apex at (b, 0) and its flanks are the lines v = +/- 2 (u - b),
+  ## i.e. slope +/- 2 through the apex. Slope +/- 1 guides would cut across
+  ## the TAD triangles instead of tracing their edges.
+  geom_abline(data = transform(bounds, s = +2, i = -2 * x),
+              aes(slope = s, intercept = i), colour = "grey10",
+              linewidth = 0.3, linetype = "22") +
+  geom_abline(data = transform(bounds, s = -2, i = 2 * x),
+              aes(slope = s, intercept = i), colour = "grey10",
+              linewidth = 0.3, linetype = "22") +
+  scale_fill_gradientn("log2\nobs/exp", colours = pal, limits = c(-2.2, 2.2),
+                       oob = scales::squish, guide = "none") +
+  coord_fixed(ratio = 1) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, 20)) +
+  labs(x = "genomic midpoint (Mb)", y = "separation (Mb)") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid = element_blank(),
+        axis.text = element_text(size = 6.8))
+
+p_tri + p_rot + plot_layout(widths = c(1, 1))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Normalise before you interpret. Raw Hi-C counts always look like a bright diagonal; obs/exp is the correction that makes domain structure (and therefore any claim about TADs) visible.
+-   Declare the normalisation: observed/expected by distance is the simplest; ICE/KR matrix balancing is what most pipelines actually use, and the two produce different-looking panels.
+-   Annotate boundaries as a separate, explicit layer with its stated caller (arrowhead, insulation score, HiCExplorer). A dashed rule that appears without provenance turns a hypothesis into an apparent measurement.
+-   The rotated presentation is not decoration: it puts separation on its own axis, so the reader can see where the domain signal stops. Use it for a single locus, and keep the triangular panel for the genome-wide overview.
+-   State the resolution and the bin size in the caption. A "TAD" at 500 kb bins and a "TAD" at 5 kb bins are different objects with different evidence.
+:::
+
+## Implementations deliberately not used here
+
+This page draws its figures with ggplot2 rather than installing the skipped tools. Of the tools that the issue-435 inventory maps onto Hiplot/087-hic-heatmap.qmd, 2 are marked **skipped** here and used only as layout references, not as dependencies: 1 that has gone more than five years without an operational commit (cutoff 2021-11-07), and 1 whose dependency closure is too heavy for one static figure. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
+
+| Tool | Last commit | Status | Why it is skipped |
+| --- | --- | --- | --- |
+| Juicebox | 2026-10-15 | heavy dependency | framework-scale dependency closure is too heavy for one static figure |
+| HiCPlotter | 2020-07-13 | stale | >5 years without maintenance |
+
+## Reference
+
+\[1\] Akdemir KC, Chin L. HiCPlotter integrates genomic data with interaction matrices. Genome Biol. 2015;16:198. doi:10.1186/s13059-015-0767-1
+
+\[2\] Durand NC, Robinson JT, Shamim MS, et al. Juicebox provides a visualization system for Hi-C contact maps with unlimited zoom. Cell Syst. 2016;3(1):99-101. doi:10.1016/j.cels.2015.07.012
+
+\[3\] Lieberman-Aiden E, van Berkum NL, Williams L, et al. Comprehensive mapping of long-range interactions reveals folding principles of the human genome. Science. 2009;326(5950):289-293. doi:10.1126/science.1181369
+
+\[4\] Dixon JR, Selvaraj S, Yue F, et al. Topological domains in mammalian genomes identified by analysis of chromatin interactions. Nature. 2012;485(7398):376-380. doi:10.1038/nature11082

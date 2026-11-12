@@ -58,6 +58,124 @@ seqs <- readLines(protein_fasta)
 head(seqs)
 ```
 
+### 4. 二级结构标注 + 守恒着色（ESPript 风格）
+
+`ggmsa` 把比对渲染成彩色字母与 logo 条；ESPript/Boxshade 的规范 \[5,6\] 再加两层，回答的是不同的问题。**着色层**按列的守恒程度分箱——完全一致涂黑、物理化学类别相同涂灰——让保守块在印刷分辨率下也能跳出来。比对之上的**二级结构条**把残基映射到螺旋与折叠，读者因此能判断某个保守列是埋在内部的螺旋面，还是表面的 loop。几乎所有蛋白家族的比对插图都用这个版式。
+
+```{r}
+#| label: fig-4-1BoxshadeAlignment
+#| fig-cap: "60 列蛋白比对的 ESPript 风格守恒着色：整列完全一致时涂黑，列内残基属于同一物理化学类别（此处按 100% 一致的列共识规则，属 Boxshade 思路的严格版）时涂蓝灰，其余不着色；比对上方的条带标出 α 螺旋与 β 折叠，使保守列可以对照二级结构阅读。比对为模拟数据。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 5.2
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(tidyr)
+  library(tibble)
+})
+
+set.seed(43513)
+
+## 一段 60 残基片段的 8 条同源序列：第 1-25 与 40-52 列保守（即二级结构条
+## 将要标出的两个元件）。
+aa <- strsplit("ACDEFGHIKLMNPQRSTVWY", "")[[1]]
+classes <- c(A = "h", V = "h", I = "h", L = "h", M = "h", F = "a", W = "a",
+             Y = "a", S = "p", T = "p", N = "p", Q = "p", C = "p", G = "t",
+             P = "t", D = "n", E = "n", K = "b", R = "b", H = "b")
+
+prot <- matrix(sample(aa, 8 * 60, replace = TRUE), nrow = 8)
+conserved <- c(1:25, 40:52)
+for (p in conserved) {
+  keep <- sample(aa, 1)
+  prot[, p] <- keep                            # 完全保守的列
+}
+## 两列只在类别层面保守
+for (p in c(28, 55)) {
+  cls <- sample(c("h", "p", "b"), 1)
+  prot[, p] <- sample(names(classes)[classes == cls], 8, replace = TRUE)
+}
+rownames(prot) <- sprintf("SPECIES_%d", 1:8)
+
+long <- as.data.frame(prot, stringsAsFactors = FALSE) |>
+  rownames_to_column("seq") |>
+  pivot_longer(-seq, names_to = "col", values_to = "residue") |>
+  mutate(col = as.integer(sub("V", "", col)),
+         row = as.integer(sub("SPECIES_", "", seq)))
+
+## 逐列守恒度：完全一致，或类别一致。
+cons <- long |>
+  group_by(col) |>
+  summarise(n_res = n_distinct(residue),
+            n_cls = n_distinct(classes[residue]), .groups = "drop") |>
+  mutate(level = case_when(n_res == 1 ~ "identical",
+                           n_cls == 1 ~ "class",
+                           TRUE ~ "none"))
+
+long <- left_join(long, cons |> select(col, level), by = "col") |>
+  mutate(is_ident = !is.na(level) & level == "identical")
+
+## 二级结构条的赋值。
+ss <- data.frame(col = seq_len(60)) |>
+  mutate(element = case_when(
+    col %in% 4:12 ~ "helix H1",
+    col %in% 18:24 ~ "strand S1",
+    col %in% 41:48 ~ "helix H2",
+    TRUE ~ NA_character_))
+
+p <- ggplot(long, aes(col, row)) +
+  ## Boxshade 风格的着色层，画在字母之下。
+  geom_tile(data = filter(cons, level != "none"),
+            aes(x = col, y = 4.5, fill = level, width = 1, height = 8),
+            inherit.aes = FALSE, colour = NA) +
+  geom_text(aes(colour = is_ident), label = long$residue,
+            size = 1.7, family = "mono") +
+  scale_fill_manual(values = c(identical = "#222222", class = "#9db8d2"),
+                    name = "Conservation") +
+  scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "#252525"),
+                      guide = "none") +
+  ## 比对行上方的二级结构条
+  geom_segment(data = filter(ss, !is.na(element) & grepl("helix", element)),
+               aes(x = col - 0.4, xend = col + 0.4, y = 0.55, yend = 0.55),
+               inherit.aes = FALSE, colour = "#b2182b", linewidth = 0.8) +
+  geom_segment(data = filter(ss, !is.na(element) & grepl("strand", element)),
+               aes(x = col - 0.4, xend = col + 0.4, y = 0.55, yend = 0.55),
+               inherit.aes = FALSE, colour = "#2166ac", linewidth = 0.8,
+               arrow = arrow(length = unit(0.06, "cm"), type = "closed")) +
+  annotate("text", x = c(8, 21, 44), y = 0.28,
+           label = c("H1", "S1", "H2"), size = 2.2,
+           colour = c("#b2182b", "#2166ac", "#b2182b")) +
+  ## row 1 at the top, as alignments are always printed
+  scale_y_continuous(breaks = seq_len(8), labels = rownames(prot),
+                     trans = "reverse", limits = c(0.2, 9.7),
+                     expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(10, 60, 10), expand = c(0.01, 0)) +
+  coord_cartesian(clip = "off") +
+  labs(x = "Alignment column", y = NULL) +
+  theme_minimal(base_size = 8) +
+  theme(panel.grid = element_blank(), panel.background = element_blank(),
+        axis.text.y = element_text(size = 5.8, family = "mono"),
+        axis.text.x = element_text(size = 6.6),
+        legend.position = "bottom",
+        legend.key.size = unit(0.3, "cm"),
+        legend.text = element_text(size = 7))
+
+p
+```
+
+::: callout-tip
+**实践要点**
+
+-   按声明的规则着色，而不是凭眼判断。Boxshade 以列内达到阈值比例的残基为参照逐残基着色；本页采用更严格的规则——整列 100% 一致或 100% 类别一致——并写进图注，可被审计。
+-   当着色填满单元格时，字母颜色必须反转（黑底白字）；否则最重要的残基反而最难读。
+-   把比对列映射到参考二级结构并标在上方：保守的螺旋面与保守的表面 loop 含义完全不同，只有比对本身无法区分。
+-   打印列编号。没有列号，读者无法在正文里引用"第 44 列"，图也就不再是证据。
+-   保持等宽字体与单字母编码；比例字体会破坏列对齐，也破坏整张图的论证。
+:::
+
 ## 可视化
 
 ### 1. 蛋白质多序列比对
@@ -139,7 +257,7 @@ p
 
 ### 4. 从表达聚类到基因家族：热图 + 进化树 + 多序列比对
 
-FigureYa2 工作流回答一个常见的发现型问题 \[1\]：表达热图中一些功能未知的基因与已知基因家族聚在同一簇——它们真的是家族成员吗？验证从序列方向展开：对家族蛋白序列做多序列比对、用比对距离建树，看表达簇与序列进化枝是否一致。下面三张图在一个模拟的 12 成员家族（两个亚家族，由同一祖先仅经替换演化而来，因此"比对"是精确的、无需比对软件）上复现该闭环；真实序列请按参考文档用 `msa::msa()` + `seqinr::dist.alignment()` 或任何标准 MSA 工具。
+FigureYa2 工作流回答一个常见的发现型问题 \[7\]：表达热图中一些功能未知的基因与已知基因家族聚在同一簇——它们真的是家族成员吗？验证从序列方向展开：对家族蛋白序列做多序列比对、用比对距离建树，看表达簇与序列进化枝是否一致。下面三张图在一个模拟的 12 成员家族（两个亚家族，由同一祖先仅经替换演化而来，因此"比对"是精确的、无需比对软件）上复现该闭环；真实序列请按参考文档用 `msa::msa()` + `seqinr::dist.alignment()` 或任何标准 MSA 工具。
 
 先看表达：两个亚家族分别共表达，带分组注释的聚类热图把它们分成两个行块——这正是启动验证的观察。
 
@@ -245,8 +363,26 @@ ggtree(tree, size = 0.8) %<+% data.frame(label = tree$tip.label, sub = sub) +
 -   大家族可换用参考文档的环形布局——`ggtree(tree, layout = "circular") + geom_tiplab2(offset = .1)` 并扩出 `xlim(-.2, 3)`——把长的枝端标签收进页面；`msa::msaPrettyPrint()` 还能把比对结果排成 LaTeX PDF 用于附图。
 :::
 
-## Reference
+## 关于本页跳过的实现
 
-\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+本页的图由 ggplot2 直接绘制，而不安装这些被跳过的工具。在 issue-435 清单中归到 Omics/MultiSeqsAlignment.qmd 的工具里，1 条被标记为**跳过**，仅作为版式参考、不作为依赖：1 条超过 5 年无运维更新（截止日 2021-11-07）。沿用这些工具，等于锁定已废弃的代码；安装另一批，则要把整套分析框架拖进文档构建。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
 
-\[2\] Yu G, Lam TT. ggtree: an R package for visualization and annotation of phylogenetic trees. Methods in Ecology and Evolution. 2018. <https://guangchuangyu.github.io/ggtree/>
+| 工具 | 最近提交 | 状态 | 跳过原因 |
+| --- | --- | --- | --- |
+| msaR | 2021-09-22 | 陈旧 | 超过 5 年无运维更新 |
+
+## 参考文献
+
+\[1\] Zhou L, Feng T, Xu S, et al. ggmsa: a visual exploration tool for multiple sequence alignment and associated data. Brief Bioinform. 2022;23(4):bbac222. doi:10.1093/bib/bbac222
+
+\[2\] Yu G, Smith DK, Zhu H, Guan Y, Lam TT-Y. ggtree: an R package for visualization and annotation of phylogenetic trees with their covariates and other associated data. Methods Ecol Evol. 2017;8(1):28-36. doi:10.1111/2041-210X.12628
+
+\[3\] Gille C, Fähling M, Weyand B, et al. Alignment-Annotator web server: rendering and annotating sequence alignments. Nucleic Acids Res. 2014;42(W1):W3-W6. doi:10.1093/nar/gku400
+
+\[4\] Robert X, Gouet P. Deciphering key features in protein structures with the new ENDscript server. Nucleic Acids Res. 2014;42(W1):W320-W324. doi:10.1093/nar/gku316
+
+\[5\] Gouet P, Courcelle E, Stuart DI, Metoz F. ESPript: analysis of multiple sequence alignments in PostScript. Bioinformatics. 1999;15(4):305-308. doi:10.1093/bioinformatics/15.4.305
+
+\[6\] Hofmann K, Baron MD. Boxshade. EMBnet news. 1996;3(2):5.
+
+\[7\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

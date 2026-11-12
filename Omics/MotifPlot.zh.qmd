@@ -319,6 +319,124 @@ cowplot::plot_grid(p1, p2, p3, ncol=1, align='v')
 
 ggseqlogo 可以与其他生物信息学包配合使用，如 ggmotif 包可以直接从 MEME 结果文件中提取 motif 并使用 ggseqlogo 进行可视化，universalmotif 包也提供了与 ggseqlogo 的集成功能。
 
+### 5. RNA 结构 logo：带碱基配对弧的序列 logo
+
+序列 logo 只说明每一列包含什么；**RNA 结构 logo** 还说明哪些列彼此配对 \[2\]。茎环型 motif（pre-miRNA 发夹、核糖开关、病毒 RNA 元件）正是由这种配对定义的，因此不带弧线的 logo 可能展示一个完全保守、但碱基配对毫不保守的 motif——那是完全不同的生物学主张。本节按协变导出的配对表绘制弧线，做法与 LogoJS 及 R-scape 的汇总图一致。
+
+```{r}
+#| label: fig-5-1RnaStructureLogo
+#| fig-cap: "模拟 24 nt 茎环的 RNA 结构 logo：逐列信息量（bits，灰色柱）叠加序列字母，其上方为连接配对列的碱基配对弧。5 对茎区（第 4-8 列与 17-21 列）用实线，单一候选配对（第 10 与 15 列，仅一条序列支持）用虚线。配对表为手工指定；真实分析中应由共变推导。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 4.6
+#| fig-dpi: 300
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(tidyr)
+  library(tibble)
+})
+
+
+## 24 nt 茎环的位置概率矩阵：一段 GC 富集的茎区
+## （4-8 与 17-21 配对）、8 nt 环区（9-16）以及两端未配对的侧翼。
+pfm <- matrix(0.025, nrow = 4, ncol = 24,
+              dimnames = list(c("A", "C", "G", "U"), NULL))
+pfm[1, 1:3] <- c(0.7, 0.1, 0.1)
+pfm[2, 1:3] <- c(0.1, 0.7, 0.1)
+pfm[3, 1:3] <- c(0.1, 0.1, 0.7)
+pfm[4, 1:3] <- c(0.1, 0.1, 0.1)
+for (k in 1:5) {                       # 茎区：G-C x 3，然后 A-U、G-C
+  b <- list(c("G", "C"), c("G", "C"), c("G", "C"), c("A", "U"),
+            c("G", "C"))[[k]]
+  pfm[, 3 + k] <- 0.025
+  pfm[b[1], 3 + k] <- 0.85
+  pfm[b[2], 16 + k] <- 0.85
+  pfm[b[2], 3 + k] <- 0.05
+  pfm[b[1], 16 + k] <- 0.05
+}
+for (k in 9:13) {                      # 环区
+  pfm[, k] <- c(0.4, 0.2, 0.2, 0.2)
+}
+pfm[, 14:15] <- c(0.25, 0.25, 0.25, 0.25)
+pfm <- sweep(pfm, 2, colSums(pfm), "/")
+
+## 逐列信息量（bits，RNA 上限为 2）。
+ic <- apply(pfm, 2, function(p) 2 + sum(p * log2(p)))
+letters_df <- as.data.frame(pfm) |>
+  rownames_to_column("base") |>
+  pivot_longer(-base, names_to = "col", values_to = "p") |>
+  mutate(col = as.integer(sub("V", "", col)),
+         ic = ic[col],
+         h = p * ic) |>
+  filter(p > 0.02) |>
+  arrange(col, h) |>
+  group_by(col) |>
+  mutate(stack = cumsum(h), mid = stack - h / 2) |>
+  ungroup()
+
+## 配对表：5 对受支持的茎区配对，外加 1 个弱候选。
+pairs <- data.frame(
+  i = c(4, 5, 6, 7, 8, 10),
+  j = c(21, 20, 19, 18, 17, 15),
+  support = c("supported", "supported", "supported", "supported",
+              "supported", "weak")
+)
+
+arc <- do.call(rbind, lapply(seq_len(nrow(pairs)), function(k) {
+  p <- pairs[k, ]
+  t <- seq(0, pi, length.out = 60)
+  span <- p$j - p$i
+  data.frame(x = p$i + span * (1 - cos(t)) / 2,
+             y = 2.9 + span * 0.08 * sin(t) + k * 0.02,
+             support = p$support, id = k)
+}))
+
+base_cols <- c(A = "#1b7837", C = "#2166ac", G = "#d95f02", U = "#7570b3")
+
+p <- ggplot() +
+  ## information content
+  geom_col(data = data.frame(col = 1:24, ic = ic),
+           aes(col, ic), fill = "#cfcfcf", width = 0.72) +
+  ## letters, stacked by information and scaled by frequency
+  geom_text(data = letters_df,
+            aes(col, mid, label = base, size = h * 2.4, colour = base),
+            family = "mono", fontface = "bold", show.legend = FALSE) +
+  ## Absolute size: 2.4 mm per bit, so letter size is read directly on the
+  ## bits scale and is never normalised to the observed maximum.
+  scale_size_identity(guide = "none") +
+  scale_colour_manual(values = base_cols, guide = "none") +
+  ## base-pair arcs
+  geom_path(data = arc, aes(x, y, group = id, linetype = support),
+            colour = "#542788", linewidth = 0.45) +
+  scale_linetype_manual(values = c(supported = "solid", weak = "22"),
+                        name = "pairing") +
+  annotate("text", x = 11, y = 3.6, label = "loop (unpaired)", size = 2.3,
+           colour = "#525252") +
+  scale_y_continuous(limits = c(0, 4.4), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(2, 24, 2), expand = c(0.01, 0)) +
+  labs(x = "alignment column", y = "information (bits)") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank(),
+        legend.position = "bottom",
+        legend.key.size = unit(0.4, "cm"),
+        legend.text = element_text(size = 7))
+
+p
+```
+
+::: callout-tip
+**实践要点**
+
+-   要画弧线，并编码其证据强度：协变支持的对用实线，单序列候选用虚线。碱基配对是一个主张，图应当说明它有多强。
+-   把信息量柱放在字母上方或背后。它是读者用来定位 motif 的列级汇总；没有它，一张大多是 0.25 列的 logo 看起来完全均匀。
+-   按碱基身份用标准配色（A/C/G/U）着色，而不是按位置；用一个颜色表示两种碱基，会让茎区在只有配对保守时看起来也保守。
+-   绝不要把 logo 归一化到观测最大值。bits 轴是绝对的（RNA 为 2，蛋白为 4.33）；重新缩放会掩盖那些信息量低、却常常正是生物学上有意思的列。
+-   说明 motif 来源与其背后的序列数：来自 6 条序列的 logo 与来自 6000 条的看起来一样，但支撑的主张完全不同。
+:::
 
 ## 应用场景
 
@@ -338,3 +456,4 @@ Motif图在基因组学和分子生物学研究中应用广泛：
 
 \[1\] Wagih O. ggseqlogo: a versatile R package for drawing sequence logos. Bioinformatics. 2017;33(22):3645-3647. doi:10.1093/bioinformatics/btx469
 
+\[2\] Rivas E, Clements J, Eddy SR. A statistical test for conserved RNA structure shows lack of evidence for structure in lncRNAs. Nat Methods. 2017;14(1):45-48. doi:10.1038/nmeth.4066

@@ -159,6 +159,145 @@ ggplot(score_df, aes(type, score, fill = type)) +
 -   The CNV score doubles as a malignancy classifier — the reference workflow uses it to flag malignant cells that marker genes miss.
 :::
 
+### 3. Depth Ratio and B-Allele Frequency: The Two-Panel Call
+
+A depth ratio alone cannot tell a 3-copy gain from a 2-copy gain with 50% normal contamination, and it cannot see copy-neutral loss of heterozygosity at all. The standard answer is a **second panel**: B-allele frequency (BAF). At a copy number of 2 heterozygosity gives BAF 0.5; at 3 copies the two allele bands split to 1/3 and 2/3; at 1 copy they collapse to 0 and 1 \[3,4\]. Reading BAF next to depth is what lets a caller separate "amplified" from "amplified + LOH", and it is the fastest visual check on any CNV segment.
+
+Both panels here are **pure-copy** values: the simulation assumes 100% tumour content and an integer ploidy of 2, so no purity/ploidy correction is applied and the segment lines mark the true breakpoints. On real data that assumption fails — at 50% tumour content a 3-copy gain in the tumour reads as a depth ratio of about 1.25 (=(0.5*3+0.5*2)/2) rather than the 1.5 drawn above for a 100% tumour sample — so a caller fits purity and ploidy first (ASCAT, PURPLE, Sequenza) and the plotted ratios are corrected before plotting. Either way the raw bin-level points stay visible next to the segment lines: a segment line on its own hides breakpoint uncertainty, and in single-cell data the per-cell noise is large enough that a clean step function would misrepresent it.
+
+```{r}
+#| label: fig-3-1CnvBafPanel
+#| fig-cap: "Paired depth-ratio and B-allele-frequency panels for three clones of one tumour (chr1, 1 Mb bins): clone A is diploid (log2 depth ratio 0, copy number 2, BAF at 0.5), clone B carries a 3-copy gain from 20-55 Mb (BAF bands at 1/3 and 2/3, dashed expectations), and clone C a single-copy loss from 20-90 Mb (BAF pushed to 0 and 1). Segments are drawn as red lines; the dashed blue lines are the expected BAF values, not a fit."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 6.8
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(tibble)
+  library(patchwork)
+})
+
+set.seed(43507)
+
+## Three clones of one sample with a shared and two clone-specific events.
+blocks <- data.frame(
+  clone = c("clone A", "clone B", "clone C"),
+  start = c(20, 20, 20),
+  end   = c(90, 55, 90),
+  cn    = c(2, 3, 1)
+)
+
+bins <- expand.grid(clone = c("clone A", "clone B", "clone C"),
+                    pos = seq(10, 150, by = 1),
+                    stringsAsFactors = FALSE) |>
+  as_tibble() |>
+  rowwise() |>
+  mutate(cn = {
+    hit <- blocks$cn[blocks$clone == clone & pos >= blocks$start &
+                       pos < blocks$end]
+    if (length(hit) == 0) 2 else hit[1]
+  }) |>
+  ungroup() |>
+  mutate(
+    log2r = log2(cn / 2) + rnorm(n(), 0, 0.07),
+    ## BAF: at 2 copies heterozygotes sit at 0.5; at 3 copies the two allele
+    ## bands split to 1/3 and 2/3; at 1 copy they collapse to 0 and 1.
+    baf = case_when(
+      cn == 2 ~ 0.5,
+      cn == 3 ~ sample(c(1, 2) / 3, n(), replace = TRUE),
+      cn == 1 ~ sample(c(0, 1), n(), replace = TRUE)
+    ) + rnorm(n(), 0, 0.012)
+  )
+
+## Segments: one line per constant-copy-number run.
+seg_lines <- bins |>
+  group_by(clone) |>
+  arrange(pos, .by_group = TRUE) |>
+  mutate(cn_prev = lag(cn)) |>
+  filter(is.na(cn_prev) | cn != cn_prev) |>
+  mutate(xend = lead(pos, default = max(bins$pos) + 1),
+         y = log2(cn / 2)) |>
+  ungroup()
+
+## The expected BAF bands for the two aberrant clones; drawn as expectations,
+## not as a model fit, so the panel states what "should" happen.
+baf_expect <- data.frame(
+  clone = factor(rep(c("clone B", "clone C"), each = 2),
+                 levels = c("clone A", "clone B", "clone C")),
+  y = c(2 / 3, 1 / 3, 1, 0),
+  x = c(20, 20, 20, 20),
+  xend = c(55, 55, 90, 90)
+)
+
+p_depth <- ggplot(bins, aes(pos, log2r)) +
+  geom_point(colour = "#7f7f7f", size = 0.22, alpha = 0.55) +
+  geom_segment(data = seg_lines, aes(x = pos, xend = xend, y = y, yend = y),
+               colour = "#b2182b", linewidth = 0.55) +
+  geom_hline(yintercept = 0, colour = "#525252", linewidth = 0.25) +
+  facet_wrap(~ clone, ncol = 1) +
+  scale_y_continuous(breaks = log2(c(1, 2, 3) / 2), labels = c("1", "2", "3"),
+                     limits = c(-1.3, 0.9),
+                     name = "copy number\n(ticks placed on the log2-ratio scale)") +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(x = NULL) +
+  theme_bw(base_size = 9) +
+  theme(panel.grid.minor = element_blank(),
+        strip.text = element_text(size = 7.6, face = "bold"),
+        axis.text.x = element_blank(),
+        plot.margin = margin(4, 5, 0, 5))
+
+p_baf <- ggplot(bins, aes(pos, baf)) +
+  geom_point(colour = "#7f7f7f", size = 0.22, alpha = 0.5) +
+  geom_hline(yintercept = 0.5, colour = "#525252", linewidth = 0.25,
+             linetype = "dashed") +
+  geom_segment(data = baf_expect, aes(x = x, xend = xend, y = y, yend = y),
+               linetype = "22", colour = "#2166ac", linewidth = 0.4) +
+  facet_wrap(~ clone, ncol = 1) +
+  ## Keep the LOH extremes (BAF exactly 0/1) inside the panel: a hard
+  ## c(0, 1) limit silently censors 37 bin points at or beyond the bounds.
+  scale_y_continuous(limits = c(-0.04, 1.04), breaks = c(0, 0.5, 1)) +
+  scale_x_continuous(expand = c(0, 0), breaks = seq(0, 150, 30)) +
+  labs(x = "chromosome 1 position (Mb)", y = "B-allele frequency") +
+  theme_bw(base_size = 9) +
+  theme(panel.grid.minor = element_blank(),
+        strip.text = element_text(size = 7.6, face = "bold", colour = "black"),
+        plot.margin = margin(0, 5, 4, 5))
+
+p_depth / p_baf + plot_layout(heights = c(1, 0.75))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Always pair depth with BAF when the data allow it. A depth-only CNV figure cannot distinguish whole-genome doubling from a focal high-level amplification, and cannot see copy-neutral LOH at all.
+-   Keep the two panels on the same x axis and the same clone order — the pairing is the message.
+-   Draw expected BAF bands (1/3, 2/3, 0, 1) as a separate visual layer from the observed points, labelled as expectation. Do not draw a fitted line through the BAF cloud; the cloud *is* multimodal and a fit would lie.
+-   Show the segment calls as lines over the raw bins, and print the copy number in the y-axis labels (1/2/3) rather than the log2 value only; no reader should have to invert a logarithm to learn the call.
+-   Declare the bin size: at 10 kb bins, allelic imbalance from a 5 Mb gain is invisible; at 5 Mb bins, a focal amplicon is.
+:::
+
+## Implementations deliberately not used here
+
+This page draws its figures with ggplot2 rather than installing the skipped tools. Of the tools that the issue-435 inventory maps onto Omics/ScCnvPlot.qmd, 11 are marked **skipped** here and used only as layout references, not as dependencies: 7 that have gone more than five years without an operational commit (cutoff 2021-11-07), and 4 whose dependency closure is too heavy to justify for one static figure. Reproducing whatever still works would mean pinning abandoned code; installing the rest would mean pulling a whole analysis framework into a documentation build. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
+
+| Tool | Last commit | Status | Why it is skipped |
+| --- | --- | --- | --- |
+| CNVkit | — | heavy dependency | framework-scale dependency closure is too heavy for one static figure |
+| CNVpytor | 2026-06-23 | heavy dependency | framework-scale dependency closure is too heavy for one static figure |
+| mocha | 2025-08-22 | heavy dependency | framework-scale dependency closure is too heavy for one static figure |
+| numbat | — | heavy dependency | framework-scale dependency closure is too heavy for one static figure |
+| aCNVViewer | 2019-04-10 | stale | >5 years without maintenance |
+| casper | 2021-04-05 | stale | >5 years without maintenance |
+| CNSpector | 2019-06-01 | stale | >5 years without maintenance |
+| CNView | 2018-01-08 | stale | >5 years without maintenance |
+| CNVPlot | 2017-04-05 | stale | >5 years without maintenance |
+| Hagfish | 2012-08-09 | stale | >5 years without maintenance |
+| scCNV_heatmap | 2019-10-08 | stale | >5 years without maintenance |
+
 ## Application
 
 Inferred CNV landscapes are the standard quality control and malignancy call for tumour single-cell RNA-seq (HNSCC, melanoma, glioma). The heatmap is usually the first figure of a scRNA-seq tumour study.
@@ -167,4 +306,8 @@ Inferred CNV landscapes are the standard quality control and malignancy call for
 
 \[1\] Puram SV, Tirosh I, Parikh AS, et al. Single-cell transcriptomic analysis of primary and metastatic tumor ecosystems in head and neck cancer. Cell. 2017;171(7):1611-1624.e24. doi:10.1016/j.cell.2017.10.044
 
-\[2\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[2\] Lu X, Li K, Li Z, et al. FigureYa: a standardized visualization framework for enhancing biomedical data interpretation and research efficiency. iMetaMed. 2025;1(1). doi:10.1002/imm3.70005
+
+\[3\] Van Loo P, Nordgard SH, Lingjærde OC, et al. Allele-specific copy number analysis of tumors. Proc Natl Acad Sci U S A. 2010;107(39):16910-16915. doi:10.1073/pnas.1009843107
+
+\[4\] Gao R, Bai S, Henderson YC, et al. Delineating copy number and clonal substructure in human tumors from single-cell transcriptomes. Nat Biotechnol. 2021;39(5):599-608. doi:10.1038/s41587-020-00795-2

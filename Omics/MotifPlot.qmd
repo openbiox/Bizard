@@ -319,6 +319,124 @@ Integration with other tools:
 
 ggseqlogo can be used with other bioinformatics packages. For example, the ggmotif package can directly extract motifs from MEME result files and visualize them using ggseqlogo. The universalmotif package also provides integration functionality with ggseqlogo.
 
+### 5. RNA Structure Logo: A Logo With Base-Pair Arcs
+
+A sequence logo says what each column contains; an **RNA structure logo** additionally says which columns pair with which \[2\]. Stem-loop motifs (pre-miRNA hairpins, riboswitches, viral RNA elements) are defined by that pairing, so a logo drawn without the arcs can show a perfectly conserved motif whose base-pairing is not conserved at all — and that is a different biological claim. This section draws the arcs from a covariance-derived pairing table, the way LogoJS and the R-scape summary plots do.
+
+```{r}
+#| label: fig-5-1RnaStructureLogo
+#| fig-cap: "RNA structure logo for a simulated 24-nt stem-loop: per-column information content (bits, grey bars) with the sequence letters drawn over them, and base-pair arcs joining the paired columns above. The five stem pairs (columns 4-8 with 17-21) are drawn solid; the single candidate pair (columns 10 and 15), present in only one sequence, is drawn dashed. The pairing table is hand-specified; in a real analysis it is derived from covariation."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 4.6
+#| fig-dpi: 300
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(tidyr)
+  library(tibble)
+})
+
+
+## Position probability matrix for a 24-nt stem-loop: a GC-rich stem
+## (4-8 paired with 17-21), an 8-nt loop (9-16) and two unpaired flanks.
+pfm <- matrix(0.025, nrow = 4, ncol = 24,
+              dimnames = list(c("A", "C", "G", "U"), NULL))
+pfm[1, 1:3] <- c(0.7, 0.1, 0.1)
+pfm[2, 1:3] <- c(0.1, 0.7, 0.1)
+pfm[3, 1:3] <- c(0.1, 0.1, 0.7)
+pfm[4, 1:3] <- c(0.1, 0.1, 0.1)
+for (k in 1:5) {                       # stem: G-C x 3, then A-U, G-C
+  b <- list(c("G", "C"), c("G", "C"), c("G", "C"), c("A", "U"),
+            c("G", "C"))[[k]]
+  pfm[, 3 + k] <- 0.025
+  pfm[b[1], 3 + k] <- 0.85
+  pfm[b[2], 16 + k] <- 0.85
+  pfm[b[2], 3 + k] <- 0.05
+  pfm[b[1], 16 + k] <- 0.05
+}
+for (k in 9:13) {                      # loop
+  pfm[, k] <- c(0.4, 0.2, 0.2, 0.2)
+}
+pfm[, 14:15] <- c(0.25, 0.25, 0.25, 0.25)
+pfm <- sweep(pfm, 2, colSums(pfm), "/")
+
+## Information content per column (bits, max 2 for RNA).
+ic <- apply(pfm, 2, function(p) 2 + sum(p * log2(p)))
+letters_df <- as.data.frame(pfm) |>
+  rownames_to_column("base") |>
+  pivot_longer(-base, names_to = "col", values_to = "p") |>
+  mutate(col = as.integer(sub("V", "", col)),
+         ic = ic[col],
+         h = p * ic) |>
+  filter(p > 0.02) |>
+  arrange(col, h) |>
+  group_by(col) |>
+  mutate(stack = cumsum(h), mid = stack - h / 2) |>
+  ungroup()
+
+## Pairing table: five supported stem pairs plus one weak candidate.
+pairs <- data.frame(
+  i = c(4, 5, 6, 7, 8, 10),
+  j = c(21, 20, 19, 18, 17, 15),
+  support = c("supported", "supported", "supported", "supported",
+              "supported", "weak")
+)
+
+arc <- do.call(rbind, lapply(seq_len(nrow(pairs)), function(k) {
+  p <- pairs[k, ]
+  t <- seq(0, pi, length.out = 60)
+  span <- p$j - p$i
+  data.frame(x = p$i + span * (1 - cos(t)) / 2,
+             y = 2.9 + span * 0.08 * sin(t) + k * 0.02,
+             support = p$support, id = k)
+}))
+
+base_cols <- c(A = "#1b7837", C = "#2166ac", G = "#d95f02", U = "#7570b3")
+
+p <- ggplot() +
+  ## information content
+  geom_col(data = data.frame(col = 1:24, ic = ic),
+           aes(col, ic), fill = "#cfcfcf", width = 0.72) +
+  ## letters, stacked by information and scaled by frequency
+  geom_text(data = letters_df,
+            aes(col, mid, label = base, size = h * 2.4, colour = base),
+            family = "mono", fontface = "bold", show.legend = FALSE) +
+  ## Absolute size: 2.4 mm per bit, so letter size is read directly on the
+  ## bits scale and is never normalised to the observed maximum.
+  scale_size_identity(guide = "none") +
+  scale_colour_manual(values = base_cols, guide = "none") +
+  ## base-pair arcs
+  geom_path(data = arc, aes(x, y, group = id, linetype = support),
+            colour = "#542788", linewidth = 0.45) +
+  scale_linetype_manual(values = c(supported = "solid", weak = "22"),
+                        name = "pairing") +
+  annotate("text", x = 11, y = 3.6, label = "loop (unpaired)", size = 2.3,
+           colour = "#525252") +
+  scale_y_continuous(limits = c(0, 4.4), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(2, 24, 2), expand = c(0.01, 0)) +
+  labs(x = "alignment column", y = "information (bits)") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank(),
+        legend.position = "bottom",
+        legend.key.size = unit(0.4, "cm"),
+        legend.text = element_text(size = 7))
+
+p
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Draw the arcs, and encode their evidence: a solid arc for a covariation-supported pair and a dashed arc for a single-sequence candidate. The base-pairing is a claim, and the figure should say how strong it is.
+-   Keep the information-content bar above or behind the letters. It is the column-level summary the reader uses to find the motif, and without it a logo of mostly-0.25 columns looks uniform.
+-   Colour by base identity with a standard palette (A/C/G/U) rather than by position; reusing one colour for two bases makes the stem look conserved when only its pairing is.
+-   Never normalise a logo to the observed maximum. The bits axis is absolute (2 for RNA, 4.33 for protein); rescaling hides low-information columns that are often the biologically interesting ones.
+-   State the motif source and the number of sequences behind it: a logo from 6 sequences and a logo from 6000 look identical and support very different claims.
+:::
 
 ## Application
 
@@ -338,4 +456,4 @@ Motif maps are widely used in genomics and molecular biology research:
 
 \[1\] Wagih O. ggseqlogo: a versatile R package for drawing sequence logos. Bioinformatics. 2017;33(22):3645-3647. doi:10.1093/bioinformatics/btx469
 
-
+\[2\] Rivas E, Clements J, Eddy SR. A statistical test for conserved RNA structure shows lack of evidence for structure in lncRNAs. Nat Methods. 2017;14(1):45-48. doi:10.1038/nmeth.4066
