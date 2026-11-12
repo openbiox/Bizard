@@ -174,7 +174,7 @@ ggplot()+
           legend.position = 'none')+
     xlab("CHR")+ylab("-log10(P)")+ #横轴纵轴标题
     scale_x_continuous( limits = c(0, max(df$BP)),label = X_axis$CHR, breaks= X_axis$center ) +
-    scale_y_continuous(expand = c(0,0)) 
+    scale_y_continuous(expand = expansion(mult = c(0, 0.04))) 
 ```
 
 使用ggplot2绘制曼哈顿图的好处在于可以高度自定义图像的风格，可以注意到在上面我已经设置好了几个变量，只需要对这些变量进行修改即可自定义颜色以及阈值线样式。
@@ -202,7 +202,7 @@ ggplot()+
           legend.position = 'none')+
     xlab("CHR")+ylab("-log10(P)")+
     scale_x_continuous( limits = c(0, max(df$BP)),label = X_axis$CHR, breaks= X_axis$center ) +
-    scale_y_continuous(expand = c(0,0)) 
+    scale_y_continuous(expand = expansion(mult = c(0, 0.04))) 
 ```
 
 由于ggplot2绘图是将一张张图叠加起来，因此可以将筛选后的SNP用geom_point叠加到原图上：
@@ -265,7 +265,7 @@ p1 <-
           legend.position = 'none')+
     ylab("-log10(P)")+ #横轴纵轴标题
     scale_x_continuous( limits = c(0, max(df$BP)),label = X_axis$CHR, breaks= X_axis$center ) +
-    scale_y_continuous(expand = c(0,0)) 
+    scale_y_continuous(expand = expansion(mult = c(0, 0.04))) 
 p2 <- 
     ggplot()+
     geom_point(df,mapping=aes(x=BP,y=-log10(P),color=CHR),alpha=0.7,size=1,shape=16)+
@@ -282,6 +282,129 @@ p2 <-
 p1/p2
 ```
 
+### 13. 区域关联面板（LocusZoom 风格）
+
+曼哈顿图回答"哪个位点"；**区域关联面板**回答"这个位点里发生了什么"。LocusZoom 的规范 \[13\] 在共享 x 轴上堆叠三层轨道：按与选定 sentinel 变异的 LD（r^2）着色的关联信号、其下的基因模型，以及局部重组率折线。三层要合起来读：与 sentinel 不在同一个 LD 块里的次级信号是独立关联，而在同一块里的则不是。
+
+```{r}
+#| label: fig-13-1LocusZoomPanel
+#| fig-cap: "模拟的 620 Mb 合成染色体上 sentinel 变异（1.2 Mb 窗口）周围的区域关联面板：-log10 P 按与 sentinel（菱形）的 r2 着色，下方为基因模型，底部为局部重组率（cM/Mb）。位于 +0.33 Mb 的第二处较弱信号落在 sentinel 的 LD 块之外，因此是独立信号，而不是先导 SNP 的影子。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 6
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(patchwork)
+})
+
+set.seed(43505)
+chr_len <- 620
+sentinel <- 412.6          # Mb
+
+## sentinel 周围 1.2 Mb 窗口内的变异。r2 随距离衰减（颜色通道）；
+## -log10 P 载有两个信号，其中一个因为物理上靠近，只与 sentinel 存在 LD。
+reg <- data.frame(pos = seq(sentinel - 0.6, sentinel + 0.6, by = 0.004)) |>
+  mutate(
+    r2 = pmax(0, 1 - abs(pos - sentinel) / 0.62)^1.6,
+    lp = -log10(pmax(1e-12, pmin(0.9,
+      10^(-(2.1 + 6.4 * exp(-((pos - sentinel)^2) / (2 * 0.05^2)) +
+              3.4 * exp(-((pos - (sentinel + 0.33))^2) / (2 * 0.035^2)) +
+              runif(n()) * 1.6)))))
+  )
+
+genes <- data.frame(
+  gene = c("GENEA", "GENEB", "GENEC", "GENED"),
+  start = c(sentinel - 0.55, sentinel - 0.12, sentinel + 0.18, sentinel + 0.42),
+  end   = c(sentinel - 0.35, sentinel + 0.06, sentinel + 0.40, sentinel + 0.57)
+)
+genes$mid <- (genes$start + genes$end) / 2
+exons <- do.call(rbind, lapply(seq_len(nrow(genes)), function(i) {
+  g <- genes[i, ]
+  data.frame(gene = g$gene,
+             x0 = seq(g$start, g$end - 0.02, length.out = 3),
+             x1 = seq(g$start, g$end - 0.02, length.out = 3) + 0.025)
+}))
+
+rec <- data.frame(pos = seq(sentinel - 0.6, sentinel + 0.6, by = 0.01)) |>
+  mutate(
+    ## 两个信号之间正好有一个重组热点，这正是它们落在不同 LD 块中的原因
+    cmmb = 0.8 + 1.6 * exp(-((pos - (sentinel + 0.16))^2) / (2 * 0.012^2)) +
+      0.35 * exp(-((pos - (sentinel - 0.3))^2) / (2 * 0.08^2))
+  )
+
+## LD 分箱：LocusZoom 确立的五档配色。
+ld_cols <- c("0-0.2" = "#d9d9d9", "0.2-0.4" = "#fdd49e",
+             "0.4-0.6" = "#fdbb84", "0.6-0.8" = "#e34a33",
+             "0.8-1" = "#b30000")
+reg <- reg |>
+  mutate(ld = cut(r2, breaks = c(-Inf, 0.2, 0.4, 0.6, 0.8, Inf),
+                  labels = names(ld_cols), right = FALSE),
+         is_sentinel = abs(pos - sentinel) < 0.0015)
+
+xlim <- c(sentinel - 0.63, sentinel + 0.63)
+
+p_assoc <- ggplot(reg, aes(pos, lp)) +
+  geom_point(aes(colour = ld), size = 1.4, stroke = 0) +
+  geom_point(data = filter(reg, is_sentinel), shape = 23, size = 3,
+             fill = "#4d004b", colour = "black", stroke = 0.4) +
+  annotate("text", x = sentinel, y = max(reg$lp) + 0.9, label = "sentinel",
+           size = 2.4, colour = "#4d004b") +
+  scale_colour_manual(values = ld_cols, name = expression(r^2), drop = FALSE) +
+  scale_y_continuous(limits = c(0, max(reg$lp) + 1.6), expand = c(0, 0),
+                     breaks = seq(0, 12, 3)) +
+  scale_x_continuous(limits = xlim, expand = c(0, 0)) +
+  labs(x = NULL, y = expression(-log[10]~italic(P))) +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank(),
+        axis.text.x = element_blank(),
+        legend.key.size = unit(0.28, "cm"),
+        legend.title = element_text(size = 7.5),
+        legend.text = element_text(size = 7),
+        plot.margin = margin(5, 5, 1, 5))
+
+p_gene <- ggplot() +
+  geom_segment(data = genes, aes(x = start, xend = end, y = 0, yend = 0),
+               linewidth = 0.5, colour = "#525252") +
+  geom_rect(data = exons, aes(xmin = x0, xmax = x1, ymin = -0.25, ymax = 0.25),
+            fill = "#525252") +
+  geom_text(data = genes, aes(x = mid, y = 0.52, label = gene), size = 2.1,
+            colour = "#252525") +
+  annotate("text", x = sentinel, y = -0.55, label = "sentinel", size = 2,
+           colour = "#4d004b") +
+  scale_x_continuous(limits = xlim, expand = c(0, 0)) +
+  scale_y_continuous(limits = c(-0.75, 0.85), expand = c(0, 0)) +
+  labs(x = NULL, y = NULL) +
+  theme_void(base_size = 9) +
+  theme(plot.margin = margin(0, 5, 0, 5))
+
+p_rec <- ggplot(rec, aes(pos, cmmb)) +
+  geom_line(colour = "#08519c", linewidth = 0.4) +
+  scale_x_continuous(limits = xlim, expand = c(0, 0)) +
+  scale_y_continuous(breaks = c(1, 2), expand = expansion(mult = c(0.05, 0.1))) +
+  labs(x = sprintf("position on chr1 (Mb; chr1 length %s Mb)", chr_len),
+       y = "cM/Mb") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank(),
+        axis.text = element_text(size = 6.5),
+        plot.margin = margin(1, 5, 5, 5))
+
+p_assoc / p_gene / p_rec + plot_layout(heights = c(1, 0.22, 0.3))
+```
+
+::: callout-tip
+**实践要点**
+
+-   按与**具名 sentinel** 的 LD 着色，而不是按"最显著 SNP"：sentinel 是你的假设，必须用独立的形状标出，读者才能看出颜色是相对谁度量的。
+-   r^2 分五档。连续的 LD 色标会掩盖 0.8 这个分界（区分"同一信号"与"可能独立"），而离散分箱在打印后依然可辨。
+-   重组率画在独立轨道、用独立 y 轴。把 cM/Mb 折线叠加到 P 值轴上，等于诱导读者比较两个不可通约的量。
+-   写明窗口范围与基因注释来源；没有声明边界的区域面板无法复现。
+-   y 轴保持 -log10 P，而非原始 P：读者的阈值直觉（5e-8、1e-6）都是在对数尺度上校准的。
+:::
+
 ## 应用场景
 
 ::: {#fig-HistApplications}
@@ -295,3 +418,9 @@ p1/p2
 ## 参考文献
 
 \[1\] Sang Y, Long Z, Dan X, Feng J, Shi T, Jia C, Zhang X, Lai Q, Yang G, Zhang H, Xu X, Liu H, Jiang Y, Ingvarsson PK, Liu J, Mao K, Wang J. Genomic insights into local adaptation and future climate-induced vulnerability of a keystone forest tree in East Asia. Nat Commun. 2022 Nov 1;13(1):6541. doi: 10.1038/s41467-022-34206-8. PMID: 36319648; PMCID: PMC9626627.
+
+\[13\] Pruim RJ, Welch RP, Sanna S, et al. LocusZoom: regional visualization of genome-wide association scan results. Bioinformatics. 2010;26(18):2336-2337. doi:10.1093/bioinformatics/btq419
+
+\[14\] Boughton AP, Welch RP, Flickinger M, et al. LocusZoom.js: interactive and embeddable visualization of genetic association study results. Bioinformatics. 2021;37(18):3017-3018. doi:10.1093/bioinformatics/btab186
+
+\[15\] Lewis MJ, Wang S. locuszoomr: an R package for visualizing publication-ready regional gene locus plots. Bioinform Adv. 2025;5(1):vbaf006. doi:10.1093/bioadv/vbaf006

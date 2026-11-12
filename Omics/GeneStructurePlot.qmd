@@ -418,6 +418,146 @@ cowplot::plot_grid(p_tracks, p_gene, ncol = 2, align = "h", axis = "tb",
 -   The exon `geom_rect()` uses genomic coordinates that match the track x-axis; keep the same `limits` in both layers.
 :::
 
+### 4. Transcript-Centric Coordinates and Multi-Species Gene Context
+
+Two layouts are missing from the genomic-coordinate track above, and both are standard in Gviz, plotgardener, ggtranscript and wiggleplotr \[5,6\]. The first is **transcript-centric coordinates**: every exon is concatenated along the transcript, so coverage from an isoform-specific assay lands on the same axis as the model it supports. In genomic coordinates the same reads are forced onto one axis while the isoforms skip different exons, and an isoform-specific peak is read as a difference in the gene rather than a difference in the transcript. The second is the **gene-neighbourhood view**, where the x axis is gene order rather than base pairs, which is what makes an inversion visible as an arrow direction and an absent gene visible as a gap.
+
+Both panels below reuse the same `gggenes` arrow grammar as the rest of the tutorial, so the encodings stay comparable across sections.
+
+#### 4.1 Coverage in Transcript Coordinates, Not Genomic Coordinates
+
+```{r}
+#| label: fig-4-1TranscriptCentric
+#| fig-cap: "Coverage of one gene in three isoforms, each in its own transcript coordinate (exons concatenated with a 30 bp gap). T1 includes all eight exons, T2 skips exons 3 and 6, and T3 skips exons 2 and 5; the coverage ribbon is scaled within each row. The same exon has a different x coordinate in every row, which is the point: in genomic coordinates the three profiles would be superimposed on exons they do not share."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 3.8
+#| fig-dpi: 300
+
+set.seed(43522)
+
+## One gene with eight exons and three isoforms. Transcript coordinates are the
+## exons concatenated with a fixed 30 bp gap; the same exon therefore has a
+## different coordinate in every isoform.
+exons <- data.frame(
+  exon = 1:8,
+  gstart = c(100, 500, 800, 1100, 1500, 1900, 2300, 2700),
+  gend   = c(300, 620, 900, 1250, 1600, 2000, 2450, 2900)
+)
+tx <- list(T1 = 1:8, T2 = c(1, 2, 4, 5, 7, 8), T3 = c(1, 3, 4, 6, 7, 8))
+gap <- 30
+
+tx_tab <- do.call(rbind, lapply(names(tx), function(t) {
+  ids <- tx[[t]]
+  e <- exons[match(ids, exons$exon), ]
+  e$x0 <- cumsum(c(0, (e$gend - e$gstart + gap)[-nrow(e)]))
+  e$x1 <- e$x0 + (e$gend - e$gstart)
+  e$tx <- t
+  e
+}))
+tx_tab$y <- as.numeric(factor(tx_tab$tx, levels = names(tx)))
+
+## Coverage in each transcript's own coordinates. In genomic coordinates the
+## same reads would be forced onto one axis and the isoform-specific peaks
+## would overlap.
+cov_tab <- do.call(rbind, lapply(names(tx), function(t) {
+  e <- tx_tab |> filter(tx == t)
+  p <- seq(0, max(e$x1), by = 5)
+  inside <- sapply(p, function(x) any(x >= e$x0 & x <= e$x1))
+  peak_at <- mean(e$x0[e$exon %in% c(1, 4)])
+  sig <- ifelse(inside, 0.35, 0.05) +
+    0.9 * exp(-((p - peak_at)^2) / (2 * 180^2)) +
+    rnorm(length(p), 0, 0.03)
+  data.frame(tx = t, pos = p, cov = pmax(sig, 0), y = unique(e$y))
+}))
+cov_tab <- cov_tab |> group_by(tx) |> mutate(cov = cov / max(cov) * 0.62) |> ungroup()
+
+## Gene neighbourhood in five species: g2 is inverted in sp3, g4 in sp4, g5 is
+## absent in sp3 and g6 is absent in sp5.
+sp <- c("sp1", "sp2", "sp3", "sp4", "sp5")
+nb <- data.frame(
+  species = rep(sp, each = 6),
+  order = rep(1:6, 5),
+  gene = c("g1","g2","g3","g4","g5","g6",
+           "g1","g2","g3","g4","g5","g6",
+           "g1","g3","g2","g4","g6","-",
+           "g1","g2","g3","g4","g5","g6",
+           "g1","g2","g3","g4","g5","-"),
+  forward = c(rep(TRUE, 6), rep(TRUE, 6),
+              TRUE, TRUE, FALSE, TRUE, TRUE, TRUE,
+              TRUE, TRUE, TRUE, FALSE, TRUE, TRUE,
+              rep(TRUE, 5), FALSE)
+) |>
+  filter(gene != "-") |>
+  mutate(x0 = (order - 1) * 1000, x1 = x0 + 820)
+
+ggplot() +
+  ## Coverage as a ribbon from the row baseline, so each isoform keeps its own
+  ## y band instead of overlapping the next one.
+  geom_ribbon(data = cov_tab, aes(x = pos, ymin = y, ymax = y + cov, group = tx),
+              fill = "#9ecae1", alpha = 0.75, colour = NA) +
+  geom_rect(data = tx_tab, aes(xmin = x0, xmax = x1, ymin = y - 0.10, ymax = y + 0.10),
+            fill = "#2c7bb6", colour = "white", linewidth = 0.2) +
+  geom_text(data = tx_tab, aes((x0 + x1) / 2, y, label = exon),
+            size = 1.7, colour = "white") +
+  scale_y_continuous(breaks = 1:3, labels = names(tx),
+                     limits = c(0.6, 3.75), expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0.01, 0.01)) +
+  labs(x = "transcript coordinate (bp, exons concatenated)", y = NULL) +
+  theme_minimal(base_size = 8) +
+  theme(panel.grid.minor = element_blank(),
+        axis.text.y = element_text(size = 7))
+```
+
+#### 4.2 Gene Neighbourhood: Order and Orientation as the Axis
+
+```{r}
+#| label: fig-4-2GeneNeighborhood
+#| fig-cap: "Simulated gene neighbourhood of six orthologues across five species: x is gene order (1 kb per slot), arrow direction is strand, and colour is orthologue group. sp3 has lost g5 and carries g2 inverted between g3 and g4; sp4 carries g4 inverted; sp5 has lost g6. On a base-pair axis these three events would require three separate zoomed panels to see."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 2.8
+#| fig-dpi: 300
+
+ggplot(nb, aes(xmin = x0, xmax = x1, y = species, fill = gene, forward = forward)) +
+  gggenes::geom_gene_arrow(arrowhead_height = unit(3, "mm"),
+                           arrowhead_width = unit(1, "mm")) +
+  geom_text(aes((x0 + x1) / 2, species, label = gene), size = 2.1, colour = "#222222") +
+  scale_fill_brewer(palette = "Set2", guide = "none") +
+  scale_y_discrete(limits = rev(sp)) +
+  labs(x = "gene neighbourhood coordinate (bp)", y = NULL) +
+  gggenes::theme_genes() +
+  theme(text = element_text(size = 8))
+```
+
+
+::: callout-tip
+**Practice tips**
+
+-   Use one coordinate system per panel and say which one. A coverage track and a gene model drawn in different coordinates will look aligned and be wrong; that is the most common defect in this figure family.
+-   Concatenate exons with a fixed gap when you draw transcript coordinates. The gap is not biology; it is a visual separator, and it must be stated in the caption.
+-   Keep the exon numbers on the boxes. They are the only thing that lets a reader map a transcript coordinate back to a genomic exon.
+-   Draw gene neighbourhoods with an arrow per gene, not a rectangle. Orientation is half the information, and a rectangle silently discards it.
+-   State the slot width in a neighbourhood plot (here 1 kb per gene order unit). Without it the x axis looks like base pairs and the figure is read as a physical map.
+-   Do not mix a presence/absence claim with a length claim in one panel. A missing gene is a gap in the order axis; a shorter gene is a shorter arrow. They are different observations.
+:::
+
+## Implementations deliberately not used here
+
+This page draws its figures with base graphics rather than installing the skipped tools. Of the tools that the issue-435 inventory maps onto Omics/GeneStructurePlot.qmd, 5 are marked **skipped** here and used only as layout references, not as dependencies: 1 that has gone more than five years without an operational commit (cutoff 2021-11-07), and 4 whose dependency closure is too heavy to justify for one static figure. Reproducing whatever still works would mean pinning abandoned code; installing the rest would mean pulling a whole analysis framework into a documentation build. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
+
+| Tool | Last commit | Status | Why it is skipped |
+| --- | --- | --- | --- |
+| ArchR | — | heavy dependency | framework-scale dependency closure is too heavy for one static figure |
+| Gviz | — | heavy dependency | framework-scale dependency closure is too heavy for one static figure |
+| signac | 2026-09-11 | heavy dependency | framework-scale dependency closure is too heavy for one static figure |
+| trackViewer | — | heavy dependency | framework-scale dependency closure is too heavy for one static figure |
+| Millefy | 2019-12-23 | stale | >5 years without maintenance |
+
 ## Application
 
 ::: {#fig-GeneStructurePlotApplications}
@@ -433,4 +573,10 @@ The figure shows the loss and differentiation model of NLR genes in plants durin
 \[1\] Guo BC, Zhang YR, Liu ZG, Li XC, Yu Z, Ping BY, Sun YQ, van den Burg H, Ma FW, Zhao T. Deciphering Plant NLR Genomic Evolution: Synteny-Informed Classification Unveils Insights into TNL Gene Loss. Mol Biol Evol. 2025 Feb 3;42(2):msaf015. doi: 10.1093/molbev/msaf015. PMID: 39835721; PMCID: PMC11789945.
 
 
-\[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[4\] Lu X, Li K, Li Z, et al. FigureYa: a standardized visualization framework for enhancing biomedical data interpretation and research efficiency. iMetaMed. 2025;1(1). doi:10.1002/imm3.70005
+
+\[5\] Hahne F, Ivanek R. Visualizing Genomic Data Using Gviz and Bioconductor. Methods Mol Biol. 2016;1418:335-351. doi:10.1007/978-1-4939-3578-9_16
+
+\[6\] Gustavsson EK, Zhang D, Reynolds RH, Garcia-Ruiz S, Ryten M. ggtranscript: an R package for the visualization and interpretation of transcript isoforms using ggplot2. Bioinformatics. 2022;38(15):3844-3846. doi:10.1093/bioinformatics/btac409
+
+\[7\] Kramer NE, Davis ES, Wenger CD, et al. Plotgardener: cultivating precise multi-panel figures in R. Bioinformatics. 2022;38(7):2042-2045. doi:10.1093/bioinformatics/btac057

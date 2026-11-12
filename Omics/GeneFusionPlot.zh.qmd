@@ -1,0 +1,354 @@
+---
+title: "基因融合转录本与断点图"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 辅助生成，独立 AI 复核"
+---
+
+一张基因融合图要同时承载三个必须可见的主张：**哪两个基因**相连、断点各自落在转录本的**什么位置**、以及该连接点**有多少证据**支持。现有工具正沿这条轴分工——Chimeraviz 画转录本与连接点覆盖 \[1\]，arriba 画读段与判读 \[2\]，MAVIS 对证据类型分类 \[3\]——而只画两个基因方块的图，三个问题一个也没回答。
+
+本教程用 ggplot2 重建融合版式：为两个伙伴按 5'→3' 绘制外显子模型并标明链方向、在核苷酸与蛋白质两个层级标注连接点、绘制 split-read 与 spanning-read 证据面板，并以真实融合蛋白坐标呈现结构域后果——这正是融合"可报告性"的依据。
+
+## 示例
+
+![](../images/Omics/GeneFusionPlot_demo.png){fig-alt="基因融合图 DEMO" fig-align="center" width="85%"}
+
+chr2 上 EML4-ALK 融合的转录本模型：EML4 第 1-13 外显子（保留、蛋白编码）与 ALK 第 20-29 外显子（保留）相接，断点以虚线竖线画在两个伙伴之间。两边都按 5' 到 3' 绘制，因此保留的外显子在 EML4 侧位于线左、在 ALK 侧位于线右。
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`；`dplyr`；`tidyr`；`patchwork`；`scales`；`ggrepel`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("patchwork", quietly = TRUE)) install.packages("patchwork")
+if (!requireNamespace("scales", quietly = TRUE)) install.packages("scales")
+
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+library(scales)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+这里构造的是 chr2 上的 *EML4*-*ALK* 类融合，即非小细胞肺癌中最经典的倒位：5' 伙伴的外显子 13 与 3' 伙伴的外显子 20 相接，保留 ALK 激酶结构域。外显子模型、断点、读段证据与结构域边界都是普通表格，正是 STAR-Fusion / Arriba 输出叠加 GTF 注释会给出的列。
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(4356)
+
+## ---- transcript models (chr2, GRCh37 框架示意坐标) ------
+eml4_exons <- tibble(
+  gene = "EML4", transcript = "NM_019063.5", strand = "+",
+  exon = 1:13,
+  start = c(42396000, 42401000, 42406000, 42411000, 42416500, 42422000,
+            42427800, 42433500, 42438900, 42444300, 42449700, 42455100,
+            42460500),
+  end = c(42396500, 42401500, 42406400, 42411700, 42417100, 42422800,
+          42428600, 42434200, 42439600, 42445100, 42450600, 42455900,
+          42461200)
+)
+
+alk_exons <- tibble(
+  ## ALK 位于负链（GRCh38 ENSG00000171094，strand -1）：
+  ## 外显子 20 -> 29 沿基因组坐标递减。下方示意图按 5'->3'（转录本顺序）
+  ## 绘制，对 ALK 即基因组上的从右到左。
+  gene = "ALK", transcript = "NM_004304.5", strand = "-",
+  exon = 20:29,
+  start = c(29445000, 29448000, 29451000, 29454500, 29458000, 29461500,
+            29465000, 29468500, 29472000, 29475500),
+  end = c(29445500, 29448600, 29451700, 29455300, 29458800, 29462300,
+          29465800, 29469300, 29472800, 29476400)
+)
+
+breakpoint_5p <- 42461200   # last base of EML4 exon 13
+breakpoint_3p <- 29445000   # ALK 外显子 20 的 5' 端（示意）
+
+## ---- fusion junction evidence -----------------------------------------
+## Split reads cross the junction and have a soft-clipped 5' and 3' half;
+## spanning reads align either side but not across the junction.
+## Junction-centred coordinate: negative bp = left of the breakpoint on the
+## 5' partner, positive bp = right of it on the 3' partner. This is how the
+## evidence is actually presented, because the two loci are 13 Mb apart.
+evidence <- tibble(
+  class = c(rep("split read", 4), rep("spanning read", 8)),
+  read = sprintf("read_%02d", seq_len(12)),
+  side = c(rep("both", 4), rep(c("left", "right"), 4)),
+  from = c(-148, -162, -131, -175,
+           -140, 8, -210, 12, -90, 5, -260, 20),
+  to = c(149, 138, 162, 151,
+         -40, 55, -60, 48, -30, 62, -80, 70),
+  mapq = c(60, 58, 55, 60, 40, 35, 30, 42, 38, 44, 25, 33)
+)
+
+## ---- domain model that the fusion preserves or destroys --------------
+## 融合蛋白坐标（variant-1 EML4(E1-13)-ALK(E20-29)，共 1059 aa）：
+## EML4 贡献 aa 1-496（外显子 13 止于密码子 496），ALK 自外显子 20 起贡献
+## aa 1058-1620。ALK 本体结构域平移 -1058 + 496 = -562：激酶域（1116-1390）
+## 落在 554-828。MAM（478-636）与 TM（1039-1059）位于外显子 20 连接点上游，
+## 被丢弃，因而在本轴上没有位置。
+domains <- tribble(
+  ~protein, ~domain, ~aa_start, ~aa_end, ~kept,
+  "EML4", "Coiled coil", 14, 63, TRUE,
+  "EML4", "WD repeats (to junction)", 259, 496, TRUE,
+  "ALK", "Kinase", 554, 828, TRUE
+)
+junction_aa <- 496
+fusion_len <- 1059
+
+evidence |> count(class, name = "reads")
+```
+
+## 可视化
+
+### 1. 带断点的融合转录本模型
+
+两个伙伴转录本必须在同一视觉位置上呈现断点：读者第一个问题是"每个基因还剩下多少"。把它们首尾相接绘制（5' 伙伴截断于断点、3' 伙伴自断点开始）就能直接回答。
+
+```{r}
+#| label: fig-1.1FusionTranscripts
+#| fig-cap: "chr2 上的融合转录本模型：EML4 外显子 1-13（保留、编码）与 ALK 外显子 20-29（保留）相接，两者之间标出断点。竖向虚线即连接处；两个伙伴均按 5' 到 3' 绘制，因此保留的外显子分别是虚线左侧（EML4）与右侧（ALK）。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10.5
+#| fig-height: 3.8
+#| fig-dpi: 300
+
+## Coordinates are compressed to a schematic axis: each exon keeps its length,
+## the introns are shortticks, and both partners are drawn left-to-right.
+make_model <- function(exons, y, gap_scale = 0.04) {
+  intron_len <- diff(exons$start)
+  ## Schematic bp = exon lengths + a squashed intron of fixed visual width.
+  exon_len <- exons$end - exons$start + 1
+  offset <- c(0, cumsum(exon_len + max(exon_len) * gap_scale))[seq_len(nrow(exons))]
+  tibble(exon = exons$exon, x0 = offset, x1 = offset + exon_len, y = y)
+}
+
+eml4_vis <- make_model(eml4_exons, y = 2)
+alk_vis <- make_model(alk_exons, y = 1)
+## Place ALK after EML4 with a visible junction gap.
+junction_gap <- 1.2 * max(eml4_vis$x1)
+alk_vis <- alk_vis |> mutate(x0 = x0 + junction_gap, x1 = x1 + junction_gap)
+
+junction_x <- (max(eml4_vis$x1) + min(alk_vis$x0)) / 2
+
+## Introns connect one exon's end to the next exon's start.
+mk_introns <- function(v) tibble(x = v$x1[-nrow(v)], xend = v$x0[-1], y = v$y[-1])
+
+p_tx <- ggplot() +
+  geom_segment(data = mk_introns(eml4_vis), aes(x = x, xend = xend, y = y, yend = y),
+               linewidth = 0.35, colour = "#7a7a7a") +
+  geom_segment(data = mk_introns(alk_vis), aes(x = x, xend = xend, y = y, yend = y),
+               linewidth = 0.35, colour = "#7a7a7a") +
+  ## Exons as boxes.
+  geom_rect(data = eml4_vis, aes(xmin = x0, xmax = x1, ymin = y - 0.16,
+                                 ymax = y + 0.16),
+            fill = "#2166ac", colour = "white", linewidth = 0.25) +
+  geom_rect(data = alk_vis, aes(xmin = x0, xmax = x1, ymin = y - 0.16,
+                                ymax = y + 0.16),
+            fill = "#b2182b", colour = "white", linewidth = 0.25) +
+  ## Exon numbers under each model.
+  geom_text(data = eml4_vis, aes(x = (x0 + x1) / 2, y = y - 0.34, label = exon),
+            size = 2.1, colour = "#2166ac") +
+  geom_text(data = alk_vis, aes(x = (x0 + x1) / 2, y = y - 0.34, label = exon),
+            size = 2.1, colour = "#b2182b") +
+  ## Junction.
+  geom_vline(xintercept = junction_x, linetype = "22", colour = "#333333",
+             linewidth = 0.45) +
+  annotate("text", x = junction_x + 240, y = 2.62, hjust = 0,
+           label = "fusion junction\nEML4 ex13 | ALK ex20",
+           size = 2.5, colour = "#333333", lineheight = 0.95) +
+  ## Gene names and retained/not-retained labels.
+  ## The 3' partner label sits above its model, the domain bracket below, so
+  ## neither collides with the exon numbers.
+  annotate("text", x = max(alk_vis$x1), y = 1.44,
+           label = "ALK (3' partner, minus strand)", hjust = 1, size = 3, fontface = "bold",
+           colour = "#b2182b") +
+  annotate("rect", xmin = min(alk_vis$x0[alk_vis$exon %in% 20:29]),
+           xmax = max(alk_vis$x1), ymin = 0.52, ymax = 0.58,
+           fill = "#b2182b", alpha = 0.20) +
+  annotate("text", x = mean(range(alk_vis$x0[alk_vis$exon %in% 20:29])),
+           y = 0.44, label = "kinase domain retained", size = 2.3,
+           colour = "#b2182b") +
+  annotate("segment", x = junction_x, xend = min(eml4_vis$x0), y = 2.30,
+           yend = 2.30, colour = "#2166ac", linewidth = 0.3,
+           arrow = arrow(ends = "first", length = unit(1.3, "mm"))) +
+  annotate("text", x = min(eml4_vis$x0), y = 2.42,
+           label = "EML4 (5' partner)", hjust = 0, size = 3,
+           fontface = "bold", colour = "#2166ac") +
+  scale_x_continuous(expand = c(0.01, 0.01)) +
+  scale_y_continuous(limits = c(0.34, 2.98)) +
+  labs(x = "Schematic transcript position (exon lengths to scale, introns compressed)",
+       y = NULL) +
+  theme_minimal(base_size = 9) +
+  theme(axis.text.y = element_blank(), panel.grid.major.y = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_text(size = 8.2))
+
+p_tx
+```
+
+::: callout-tip
+**Practice tips**
+
+-   必须说明连接点是否保持阅读框。保留了激酶结构域但移码的融合只产生无功能蛋白，而单看外显子编号无法发现这一点。
+-   内含子可视觉压缩，外显子长度必须真实成比例；压缩外显子会让 12 bp 与 200 bp 的外显子看起来一样大，从而改变"外显子跳跃是否重要"的判断。
+-   两个伙伴都按基因组 5'→3' 方向绘制；若某一位于反义链必须标注；两个负链基因之间的融合，两个箭头都应朝左。
+-   把连接点坐标（chr:pos）写进图注而不只是方法学部分；读者会拿它与判读软件的输出核对。
+:::
+
+### 2. 连接点读段证据
+
+第二个面板是证据：跨越连接点的 split read（两侧各有一段软剪切对齐），以及只比对到连接点一侧的 spanning read。这正是把真实融合与同源区域内的比对假象区分开的关键，也是审稿人最常要求补充的面板。
+
+```{r}
+#| label: fig-1.2FusionEvidence
+#| fig-cap: "以连接点为中心的坐标下的证据：4 条 split read 跨越断点（两侧各有一半落在不同伙伴上），8 条 spanning read 只比对到断点一侧、并不跨越；橙点标记 MAPQ <= 30 的读段，这是重复序列介导假象所在的可信度区间（MAPQ 40-60 属可信的唯一比对）。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9.6
+#| fig-height: 3.6
+#| fig-dpi: 300
+
+ev <- evidence |>
+  mutate(y = rev(seq_len(n())) * 0.10,
+         low_mapq = mapq <= 30)
+
+p_ev <- ggplot(ev) +
+  ## Split reads are drawn twice as thick: they are the primary evidence and
+  ## must remain distinguishable from spanning reads in a grey-scale print.
+  geom_segment(aes(x = from, xend = to, y = y, yend = y, colour = class,
+                   linewidth = class), lineend = "round") +
+  scale_linewidth_manual(values = c("split read" = 2.6, "spanning read" = 1.1),
+                         guide = "none") +
+  geom_point(data = filter(ev, low_mapq), aes(x = from, y = y), size = 0.9,
+             colour = "#d95f02", show.legend = FALSE) +
+  geom_vline(xintercept = 0, linetype = "22", colour = "#333333",
+             linewidth = 0.45) +
+  annotate("text", x = 18, y = max(ev$y) + 0.11, hjust = 0,
+           label = "fusion junction (chr2:42,461,200 | chr2:29,445,000)",
+           size = 2.4, colour = "#333333") +
+  annotate("text", x = -20, y = -0.08, label = "<- EML4 exon 13", hjust = 1,
+           size = 2.5, colour = "#2166ac") +
+  annotate("text", x = 20, y = -0.08, label = "ALK exon 20 ->", hjust = 0,
+           size = 2.5, colour = "#b2182b") +
+  annotate("text", x = -330, y = max(ev$y) * 0.62, label = "5' flank",
+           angle = 90, size = 2.3, colour = "#777777") +
+  annotate("text", x = 330, y = max(ev$y) * 0.62, label = "3' flank",
+           angle = 90, size = 2.3, colour = "#777777") +
+  scale_x_continuous(breaks = seq(-300, 300, by = 100),
+                     labels = label_number(prefix = ifelse(seq(-300, 300, by = 100) > 0, "+", "")),
+                     limits = c(-380, 380)) +
+  scale_y_continuous(limits = c(-0.12, max(ev$y) + 0.18)) +
+  scale_colour_manual(values = c("split read" = "#2166ac",
+                                 "spanning read" = "#9e9e9e"),
+                      name = NULL) +
+  labs(x = "Distance from the fusion junction (bp; left = 5' partner)",
+       y = NULL) +
+  theme_minimal(base_size = 9) +
+  theme(axis.text.y = element_blank(), panel.grid.major.y = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "bottom", legend.text = element_text(size = 7.6),
+        plot.title = element_text(size = 9.5, face = "bold"),
+        plot.margin = margin(4, 6, 4, 6))
+
+p_ev
+```
+
+::: callout-tip
+**Practice tips**
+
+-   明确区分读段类别（split 与 spanning）。仅有 spanning read 支持的连接点，证据强度远低于有 split read 支持的；同时要保证色觉缺陷读者也能区分（此处用线宽）。
+-   读段面板必须体现 MAPQ 或等价质量信息；片段重复区的"融合"常由一堆低 MAPQ 读段支撑，在显示质量之前看起来很有说服力。
+-   多面板图中的连接点应固定在同一个 x 位置，避免读者用眼睛重新定位。
+-   在图注中写明最小支持读段数与判读过滤条件；没有阈值的"12 条读段支持"无法跨论文比较。
+:::
+
+### 3. 蛋白结构域后果
+
+只有当伙伴结构域预示存在有活性的产物（通常是保留的激酶结构域）时，融合才值得报告。把蛋白结构域画在同一轴上，能把"激酶被保留"与"激酶被截断"的差别变成视觉事实，而不只是结果段落里的一句话。
+
+```{r}
+#| label: fig-1.3FusionDomains
+#| fig-cap: "三面板融合重构（chr2 示意坐标，EML4/ALK 分别位于正链与负链）：上，两个转录本模型按 5'→3' 绘制并标注连接点，括出编码激酶的 ALK 外显子 20-29；中，以连接点为中心的读段证据；下，真实融合蛋白坐标轴上的结构域后果（variant 1，共 1059 aa）：连接点落在第 496 位残基，EML4 卷曲螺旋与 WD 重复保留在 N 端，ALK 激酶域位于融合残基 554-828，而 ALK 的 MAM 与跨膜结构域位于外显子 20 连接点上游、被丢弃。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9.6
+#| fig-height: 8.6
+#| fig-dpi: 300
+
+p_dom <- ggplot(domains) +
+  geom_rect(aes(xmin = aa_start, xmax = aa_end, ymin = 0.82, ymax = 1.18,
+                fill = kept), linewidth = 0.45) +
+  ## The exon-13/20 junction, in protein coordinates.
+  geom_vline(xintercept = junction_aa, linetype = "22", colour = "#333333",
+             linewidth = 0.45) +
+  ## Labels sit under the boxes: the narrow domains cannot hold text.
+  geom_text(aes(x = (aa_start + aa_end) / 2, y = 0.74, label = domain),
+            size = 2.35, colour = "#1b7837") +
+  annotate("text", x = junction_aa, y = 1.34, hjust = -0.05, size = 2.5,
+           colour = "#333333",
+           label = "junction (ex13 | ex20) = aa 496") +
+  annotate("text", x = fusion_len / 2, y = 0.60, size = 2.35, colour = "#b2182b",
+           label = "ALK MAM (478-636) and TM (1039-1059) lie upstream of the exon-20 join and are discarded (no position on this axis)") +
+  scale_fill_manual(values = c(`TRUE` = "#1b7837"), guide = "none") +
+  scale_x_continuous(limits = c(0, fusion_len + 20),
+                     breaks = seq(0, 1000, 250)) +
+  scale_y_continuous(limits = c(0.52, 1.45)) +
+  labs(x = "Fusion-protein position (aa; variant 1, 1059 aa)", y = NULL,
+       title = "EML4(E1-13)-ALK(E20-29) fusion protein") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.y = element_blank(),
+        plot.title = element_text(size = 9.5, face = "bold"),
+        legend.position = "bottom", legend.text = element_text(size = 7.6),
+        legend.key.size = unit(0.3, "cm"))
+
+p_tx / p_ev / p_dom + plot_layout(heights = c(1.05, 1, 0.9))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   把核苷酸断点换算到蛋白位置，并说明阅读框是否保持；exon13/exon20 的连接点可能既保持阅读框、又删掉了调控结构域。
+-   丢失的结构域要显式画出（空心轮廓），而不是省略；它们的缺失才是临床相关的事实。
+-   两个伙伴共用一条蛋白长度轴，并写明连接点落在第几个氨基酸。
+-   存在多个异构体时，画判读软件所报的那一个并给出登录号；只写基因名的融合会丢掉使其可解释的外显子信息。
+:::
+
+## 关于本页跳过的实现
+
+本页的图由 ggplot2 直接绘制，而不安装这些被跳过的工具。在 issue-435 清单中归到 Omics/GeneFusionPlot.qmd 的工具里，1 条被标记为**跳过**，仅作为版式参考、不作为依赖：1 条依赖闭包过重，不值得为一张静态图引入。沿用这些工具，等于锁定已废弃的代码；安装另一批，则要把整套分析框架拖进文档构建。本页先把这些工具的图形约定读懂，再自行重画，以便逐行核验每个面板。
+
+| 工具 | 最近提交 | 状态 | 跳过原因 |
+| --- | --- | --- | --- |
+| FusionInspector | 2026-10-12 | 依赖过重 | 框架级依赖闭包过重，不值得为一张静态图引入 |
+
+## 应用
+
+融合图出现在肿瘤基因组报告、RNA-seq 验证与结构变异综述中。三个面板依次回答读者的三个问题：哪两个基因相连（转录本模型）、连接点是否真实（读段证据）、产物是否有意义（蛋白后果）。把三者放在一张图里，审稿人无需打开 BAM 即可审计一次判读。
+
+同一构造适用于任何带连接点的结构重排——增强子劫持、串联重复、免疫球蛋白/TCR 重排——只需把结构域面板换成被拉到一起的调控元件。
+
+## 参考文献
+
+\[1\] Lågstad S, Zhao S, Hoff AM, et al. chimeraviz: a tool for visualizing chimeric RNA. Bioinformatics. 2017;33(18):2954-2956. doi:10.1093/bioinformatics/btx329
+
+\[2\] Uhrig S, Ellermann J, Walther T, et al. Accurate and efficient detection of gene fusions from RNA sequencing data. Genome Res. 2021;31(3):448-460. doi:10.1101/gr.257246.119
+
+\[3\] Reisle C, Mungall KL, Choo C, Paulino D, Bleile DW, Muhammadzadeh A, et al. MAVIS: merging, annotation, validation, and illustration of structural variants. Bioinformatics. 2019;35(3):515-517. doi:10.1093/bioinformatics/bty621
+
+\[4\] Soda M, Choi YL, Enomoto M, et al. Identification of the transforming EML4-ALK fusion gene in non-small-cell lung cancer. Nature. 2007;448(7153):561-566. doi:10.1038/nature05945

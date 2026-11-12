@@ -23,6 +23,8 @@ The image shows a chromosome ideogram with dual-line labels, plotted using the b
 
 -   Dependent packages: `RIdeogram`
 
+-   Maintenance status: `RIdeogram` had its last upstream commit on 2020-09-22, so it is more than five years without an operational update. It is used here because this page's figures are built on it, not because it is actively maintained; check that it still installs against your R version before relying on it.
+
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Install packages
 if (!requireNamespace("RIdeogram", quietly = TRUE)) {
@@ -499,6 +501,145 @@ write.csv(karyotype, "karyotype.csv", row.names = FALSE)
 **Coordinate systems:** GTF/GFF files are 1-based; BED files are 0-based (half-open). `RIdeogram` input should be kept internally consistent — if your feature tables (heatmap, marker tracks) come from BED-derived data, convert them to the same convention as the karyotype before plotting.
 :::
 
+### 12. Anchored Ideogram, Signal Track and Marker Rug
+
+`RIdeogram` fixes the track layout: the heatmap sits inside the chromosome and the two label tracks sit above and below it. When you need a different stack — an ideogram, an arbitrary value track, and a marker rug — the reliable approach is to build the layout yourself and to share **one** x axis between the panels. The version below lays the chromosomes end to end on a cumulative coordinate (the "UCSC Genome Graphs" convention \[9\]) and anchors a per-window Fst track and a marker set to exactly the same scale \[6,9\].
+
+```{r}
+#| label: fig-12-1AnchoredIdeogram
+#| fig-cap: "Anchored ideogram with cumulative coordinates for a simulated five-chromosome genome laid end to end (4 Mb gaps): band shading with chromosome outlines and the centromere drawn as a dark tick on top, per-window Fst below with two planted selective-sweep peaks (chr2:62 Mb, chr4:20 Mb) and the 0.25 outlier threshold, and a marker rug (tRNA/rRNA/miRNA/QTL) on the top axis."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 4.6
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(patchwork)
+})
+
+## A chromosome table in the shape RIdeogram expects: name, start, end,
+## centromere. Lengths are a five-chromosome toy genome in Mb.
+karyo <- data.frame(
+  chr = c("chr1", "chr2", "chr3", "chr4", "chr5"),
+  len = c(120, 95, 80, 60, 45),
+  cen = c(48, 34, 31, 21, 17)
+)
+set.seed(43501)
+
+## Cytobands: alternating stain with a density value, as G-band tables carry.
+banding <- do.call(rbind, lapply(seq_len(nrow(karyo)), function(i) {
+  k <- karyo[i, ]
+  starts <- seq(0, k$len, by = 6)
+  data.frame(chr = k$chr, start = starts, end = pmin(starts + 6, k$len),
+             density = round(runif(length(starts), 0, 100)))
+}))
+
+## Per-window Fst with two planted peaks, so the reading order is verifiable.
+win <- do.call(rbind, lapply(seq_len(nrow(karyo)), function(i) {
+  k <- karyo[i, ]
+  mid <- seq(1, k$len - 1, by = 2)
+  fst <- 0.08 + 0.05 * abs(sin(mid / 9))
+  if (k$chr == "chr2") fst <- fst + 0.55 * exp(-((mid - 62)^2) / 40)
+  if (k$chr == "chr4") fst <- fst + 0.42 * exp(-((mid - 20)^2) / 50)
+  data.frame(chr = k$chr, mid = mid,
+             fst = pmin(0.95, fst + rnorm(length(mid), 0, 0.02)))
+}))
+
+markers <- data.frame(
+  chr = c("chr1", "chr1", "chr2", "chr2", "chr3", "chr3", "chr4", "chr5", "chr5"),
+  pos = c(12, 88, 62, 30, 41, 70, 20, 15, 38),
+  type = c("tRNA", "rRNA", "miRNA", "tRNA", "rRNA", "miRNA",
+           "QTL", "QTL", "miRNA")
+)
+
+## Cumulative coordinates: chromosomes end to end with a 4 Mb gap, so every
+## panel can share a single x axis instead of relying on facet widths.
+gap <- 4
+offs <- data.frame(chr = karyo$chr,
+                   offset = c(0, cumsum(karyo$len + gap)[-nrow(karyo)]))
+banding <- left_join(banding, offs, by = "chr") |>
+  mutate(x0 = offset + start, x1 = offset + end)
+win <- left_join(win, offs, by = "chr") |> mutate(x = offset + mid)
+markers <- left_join(markers, offs, by = "chr") |> mutate(x = offset + pos)
+chr_lab <- data.frame(chr = karyo$chr, x = offs$offset + karyo$len / 2)
+xmax <- max(win$x) + 3
+
+p_ideo <- ggplot() +
+  geom_rect(data = banding,
+            aes(xmin = x0, xmax = x1, ymin = 0.84, ymax = 1.16, fill = density),
+            colour = "#3d3d3d", linewidth = 0.12) +
+  ## Centromere: a dark tick, not a white line -- white on a near-white band
+  ## is invisible, which is exactly how the pinch disappears from the figure.
+  geom_segment(data = left_join(karyo, offs, by = "chr"),
+               aes(x = offset + cen, xend = offset + cen, y = 0.80, yend = 1.20),
+               linewidth = 0.9, colour = "#111111", lineend = "butt") +
+  geom_point(data = markers, aes(x, y = 1.34, colour = type, shape = type),
+             size = 2.1) +
+  scale_fill_gradientn("band\ndensity",
+                       colours = c("#ffffff", "#c6c6c6", "#5a5a5a"),
+                       limits = c(0, 100), guide = "none") +
+  scale_colour_manual(values = c(tRNA = "#1b7837", rRNA = "#d95f02",
+                                 miRNA = "#2166ac", QTL = "#b2182b"),
+                      name = NULL) +
+  scale_shape_manual(values = c(tRNA = 17, rRNA = 15, miRNA = 16, QTL = 18),
+                     name = NULL) +
+  scale_x_continuous(limits = c(-2, xmax), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0.78, 1.46), expand = c(0, 0)) +
+  labs(x = NULL, y = NULL) +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid = element_blank(), axis.text = element_blank(),
+        axis.ticks = element_blank(), legend.position = "bottom",
+        legend.key.size = unit(0.32, "cm"),
+        legend.text = element_text(size = 7.2),
+        plot.margin = margin(2, 5, 0, 5))
+
+p_track <- ggplot(win, aes(x, fst, group = chr)) +
+  geom_area(fill = "#4292c6", alpha = 0.5, colour = NA) +
+  geom_line(colour = "#08519c", linewidth = 0.32) +
+  geom_hline(yintercept = 0.25, linetype = "dashed", linewidth = 0.3,
+             colour = "#b2182b") +
+  geom_vline(xintercept = offs$offset[-1] - gap / 2, linewidth = 0.25,
+             colour = "#dedede") +
+  ## chromosome names on the track's own panel, not borrowed from above
+  annotate("text", x = chr_lab$x, y = 0.93, label = chr_lab$chr,
+           size = 2.6, colour = "#333333") +
+  scale_x_continuous(limits = c(-2, xmax), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, 0.96), breaks = c(0, 0.25, 0.5, 0.75),
+                     expand = c(0, 0)) +
+  labs(x = "cumulative position (Mb; chromosomes laid end to end)",
+       y = "Fst") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(size = 6.5),
+        axis.text.y = element_text(size = 7),
+        plot.margin = margin(0, 5, 2, 5))
+
+p_ideo / p_track + plot_layout(heights = c(0.75, 1))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Choose one coordinate convention per panel stack: independent axes (RIdeogram's fixed tracks) or a cumulative axis with gaps. Do not mix them inside one figure — the reader will compare x positions across panels whether you intend it or not.
+-   Insert a visible gap (here 4 Mb) between chromosomes: without it the last band of one chromosome and the first band of the next read as a single feature.
+-   `left_join()` the chromosome offset table once and keep the offset in the data frame; recomputing `offset + start` inside `aes()` breaks as soon as a layer needs a different summary row.
+-   Draw the centromere as a white pinch over the band fill rather than as a separate track: it is part of the chromosome, not a value along it.
+-   Declare the outlier threshold (0.25 here) as an explicit rule; a dashed line with no stated statistic invites the reader to invent one.
+:::
+## Implementations deliberately not used here
+
+This page draws its figures with RIdeogram and ggplot2 rather than installing the skipped tools. Of the tools that the issue-435 inventory maps onto Omics/ChromosomePlot.qmd, 3 are marked **skipped** here and used only as layout references, not as dependencies: 2 that have gone more than five years without an operational commit (cutoff 2021-11-07), and 1 whose dependency closure is too heavy for one static figure. Reproducing whatever still works would mean pinning abandoned code; installing the rest would mean pulling a whole analysis framework into a documentation build. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
+
+| Tool | Last commit | Status | Why it is skipped |
+| --- | --- | --- | --- |
+| ggbio | — | heavy dependency | framework-scale dependency closure is too heavy for one static figure |
+| Ideoplot | 2015-09-21 | stale | >5 years without maintenance |
+| KaryotypeSVG | 2017-07-17 | stale | >5 years without maintenance |
+
 ## Application
 
 ::: {#fig-ChromosomePlotApplications1}
@@ -517,6 +658,12 @@ Schematic diagram of the combined domains inferred by IsoPlotter and mapped onto
 
 \[1\] RIdeogram: drawing SVG graphics to visualize and map genome-wide data on idiograms https://cran.r-project.org/web/packages/RIdeogram/vignettes/RIdeogram.html
 \[2\] Hao Z, Lv D, Ge Y, Shi J, Weijers D, Yu G, Chen J. 2020. RIdeogram: drawing SVG graphics to visualize and map genome-wide data on the idiograms. PeerJ Comput. Sci. 6:e251 http://doi.org/10.7717/peerj-cs.251
-\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[3\] Lu X, Li K, Li Z, et al. FigureYa: a standardized visualization framework for enhancing biomedical data interpretation and research efficiency. iMetaMed. 2025;1(1). doi:10.1002/imm3.70005
+\[4\] Hao Z, Lv D, Ge Y, et al. RIdeogram: drawing SVG graphics to visualize and map genome-wide data on the idiograms. PeerJ Comput Sci. 2020;6:e251. doi:10.7717/peerj-cs.251
+\[5\] Anand L, Rodriguez Lopez CM. ChromoMap: an R package for interactive visualization of multi-omics data and annotation of chromosomes. BMC Bioinformatics. 2022;23:7. doi:10.1186/s12859-021-04556-z
+\[6\] Gel B, Serra E. karyoploteR: an R/Bioconductor package to plot customizable genomes displaying arbitrary data. Bioinformatics. 2017;33(19):3088-3090. doi:10.1093/bioinformatics/btx346
+\[7\] Yin T, Cook D, Lawrence M. ggbio: an R package for extending the grammar of graphics for genomic data. Genome Biol. 2012;13(8):R77. doi:10.1186/gb-2012-13-8-r77
+\[8\] Yu Y, Yao W, Wang Y, Huang F. shinyChromosome: an R/Shiny application for interactive creation of non-circular plots of whole genomes. Genomics Proteomics Bioinformatics. 2019;17(5):535-539. doi:10.1016/j.gpb.2019.07.003
+\[9\] Karolchik D, Baertsch R, Diekhans M, et al. The UCSC Genome Browser Database. Nucleic Acids Res. 2003;31(1):51-54. doi:10.1093/nar/gkg129
 
 
