@@ -199,7 +199,6 @@ jobs:
       group: pr-review-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     env:
-      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       QMD_FILES: ${{ needs.format-check.outputs.qmd_files }}
     permissions:
       contents: read
@@ -210,27 +209,43 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up Quarto
-        uses: quarto-dev/quarto-actions/setup@v2
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # The composite action below is referenced from the merge ref, not
+      # from the PR head: a PR branch that predates the action (added in
+      # #336, 2026-10-13) would otherwise fail with "Can't find action.yml"
+      # even though this check has nothing to do with the action itself.
+      # PRs that deliberately modify the action are exercised after merge,
+      # on main. The sparse checkout downloads only the action directory.
+      - name: Checkout shared CI actions (from the merge ref)
+        uses: actions/checkout@v7
         with:
-          tinytex: true
+          path: .ci-actions
+          sparse-checkout: |
+            .github/actions
+          persist-credentials: false
 
-      - uses: r-lib/actions/setup-r@v2
+      # ── Render environment (shared composite action, issue #306 B1) ──
+      # Replaces the previous setup-r-dependencies run (measured 28.0 min:
+      # full 703-package DESCRIPTION resolution with ~90 Bioconductor
+      # source builds, cache deliberately off here - see the history of
+      # this block - because PR-scope library caches would blow the
+      # repo-wide 10 GB cache pool). setup-render-env uses the renv.lock
+      # cache that main-branch builds maintain, keyed on the lockfile
+      # hash: restore-only on PRs (never saved), so the pool keeps only
+      # main-branch entries. Measured on the same commit: renv::restore()
+      # "Successfully installed 693 packages in 1.9 seconds"; whole env
+      # setup ~6 min instead of ~29.
+      - name: Set up render environment
+        id: setup-env
+        uses: ./.ci-actions/.github/actions/setup-render-env
         with:
-          use-public-rspm: true
-
-      - uses: r-lib/actions/setup-r-dependencies@v2
-        env:
-          PKG_SYSREQS: "true"
-        with:
-          # The library closure is ~2.3 GB and cache entries saved on a PR
-          # merge ref are only visible to that same PR. Saving one per run
-          # blows the repo-wide 10 GB cache pool and evicts the _freeze
-          # cache that quarto-publish depends on (turning warm ~1 h builds
-          # into ~3 h full rebuilds, e.g. run 41446738921).
-          cache: false
+          gh_token: ${{ secrets.GITHUB_TOKEN }}
+          # Julia is handled by this workflow's own conditional steps
+          # further down (same behavior as before this change); the
+          # action's Julia setup stays off. julia_frozen: 1 is what turns
+          # the "force Julia" branch of the action off.
+          need_julia: 'false'
+          julia_frozen: '1'
+          julia_missing: 'false'
 
       - uses: julia-actions/setup-julia@v3
         if: contains(needs.format-check.outputs.qmd_files, 'Julia/')
@@ -245,22 +260,55 @@ jobs:
           cp Julia/Project.toml _QMD_RENDER_WORKING_DIR/Julia/
           julia --project="$PWD/_QMD_RENDER_WORKING_DIR/Julia" -e 'using Pkg; Pkg.instantiate()'
 
-      - uses: actions/setup-python@v7
-        if: contains(needs.format-check.outputs.qmd_files, 'Python/')
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install Python dependencies
-        if: contains(needs.format-check.outputs.qmd_files, 'Python/')
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+      # Python (3.11 + pip-cached requirements.txt) is installed by
+      # setup-render-env for every PR, so the conditional setup-python
+      # block this workflow used to carry is gone.
 
       - name: Scan .qmd for dependencies and update
         run: Rscript update-dependencies.R
 
+      # Mirrors quarto-publish.yml: the scan above may append QMD-discovered
+      # packages to DESCRIPTION that are newer than renv.lock, so renv did
+      # not install them. Delta-install just the difference against the
+      # lockfile before anything renders. No-op on a typical run.
+      - name: Install scan-added dependencies (delta)
+        run: |
+          Rscript - <<'RS'
+          dcf <- read.dcf("DESCRIPTION")
+          imports <- if ("Imports" %in% colnames(dcf)) {
+            x <- trimws(strsplit(dcf[1, "Imports"], ",")[[1]])
+            gsub("\\(.*$", "", x)
+          } else character(0)
+          remotes_field <- if ("Remotes" %in% colnames(dcf)) {
+            trimws(strsplit(dcf[1, "Remotes"], ",")[[1]])
+          } else character(0)
+          # Remote refs (user/repo) are handled by renv from the Remotes
+          # field of the packages renv restores, not installed directly.
+          imports <- setdiff(imports[imports != "" & imports != "R"], "R")
+          missing <- imports[!vapply(imports, function(p)
+            requireNamespace(p, quietly = TRUE), logical(1))]
+          if (length(missing) == 0) {
+            message("All Imports loadable - no delta install needed.")
+          } else {
+            message("Delta-installing: ", paste(missing, collapse = ", "))
+            # renv's autoloader (renv::load()) replaced .libPaths() with the
+            # project library only, hiding pak from R_LIBS_USER - bootstrap
+            # it into the (writable) project library if missing, same
+            # pattern as quarto-publish.yml and ci-benchmark.yml (PPM
+            # binary, ~seconds).
+            if (!requireNamespace("pak", quietly = TRUE))
+              install.packages("pak")
+            pak::pak(missing)
+          }
+          RS
+
       - name: Render the new quarto files
+        # The render runs from _QMD_RENDER_WORKING_DIR (no renv autoloader
+        # there), so R_LIBS must point at the restored project library -
+        # same wiring as .github/actions/render-site (incident
+        # 38093942045: LibPaths = [R_LIBS_USER, /opt/R/...], "knitr: (None)").
+        env:
+          R_LIBS: ${{ steps.setup-env.outputs.lib-path }}
         run: |
           # every qmd file should be self-contained
           mkdir -p _QMD_RENDER_REVIEW
