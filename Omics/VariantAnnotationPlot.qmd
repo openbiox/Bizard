@@ -1,0 +1,307 @@
+---
+title: "Variant Annotation and Allele-Frequency Plot"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-assisted, independently reviewed;"
+---
+
+A variant call is a coordinate plus an allele plus an opinion about what that allele does. Neither half survives review as a bare table: nucleotide-frequency tracks show whether the allele is really there, phasing shows which homolog carries it, and a consequence matrix shows what it would break. This tutorial rebuilds all three annotation views along genomic coordinates, on GRCh38, from transparent simulated data.
+
+## Example
+
+![](../images/Omics/VariantAnnotationPlot_demo.png){fig-alt="Variant Annotation Plot DEMO" fig-align="center" width="85%"}
+
+Nucleotide frequency and variant allele fraction along GRCh38 chr17 (TP53 locus): stacked base composition per site for three tumours and one normal, with variant labels giving the alt allele fraction. The normal sample carrying almost no non-reference bases is the control that says the tumour substitutions are somatic rather than germline.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `dplyr`; `tidyr`; `patchwork`; `scales`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
+if (!requireNamespace("patchwork", quietly = TRUE)) install.packages("patchwork")
+if (!requireNamespace("scales", quietly = TRUE)) install.packages("scales")
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(patchwork)
+library(scales)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+The frequency panel simulates four samples (three tumours, one normal) over a 3 kb window of `TP53` on GRCh38 chr17, with five sites whose tumour variant allele fractions (VAF) span 1% to 51%; the labels show every alt fraction at or above 9%. The phasing panel simulates read-backed haplotypes across three phase blocks, including one read whose alleles switch haplotype and therefore stays unphased. The consequence panel is a gene-by-sample matrix of simulated variant effects plus a cohort-wide density profile.
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(4353)
+bases <- c("A", "C", "G", "T")
+base_colours <- c(A = "#1B9E77", C = "#377EB8", G = "#E6AB02", T = "#D95F02")
+cons_colours <- c(missense = "#2166AC", synonymous = "#7F7F7F",
+                  nonsense = "#B2182B", splice = "#E08214", inframe = "#5AAE61")
+## ---- (1) nucleotide frequency at five sites over 3 kb ------------------
+locus_start <- 7670000; locus_end <- 7673000
+samples <- c("Tumour A", "Tumour B", "Tumour C", "Normal")
+sites <- c(7670500, 7671150, 7671800, 7672350, 7672900)
+site_ref <- c("G", "C", "T", "G", "T")
+site_alt <- c("A", "T", "C", "A", "C")
+vaf <- matrix(c(.46, .41, .06, 0,  .33, .29, .04, 0,  .51, .47, .09, 0,
+                .18, .14, .02, 0,  .09, .07, .01, 0), ncol = 4, byrow = TRUE)
+freq <- expand.grid(site = sites, sample = factor(samples, levels = samples),
+                    base = bases, stringsAsFactors = FALSE) |>
+  as_tibble() |>
+  mutate(si = match(site, sites), k = match(sample, samples),
+         ref = site_ref[si], alt = site_alt[si],
+         alt_frac = vaf[cbind(si, k)],
+         frac = if_else(as.character(base) == ref, 1 - alt_frac - 3 * 0.0025,
+                        if_else(as.character(base) == alt, alt_frac, 0.0025)),
+         base = factor(base, levels = rev(bases))) |>
+  group_by(site, sample) |>
+  mutate(frac = frac / sum(frac)) |>
+  ungroup()
+## Label y = centre of the ALT segment in the actual stack. position_stack()
+## on the filtered rows alone would centre the label on the bottom frac/2 of
+## the bar, which is the REFERENCE segment whenever the alt allele stacks on
+## top of it.
+stack_order <- freq |>
+  mutate(base = factor(base, levels = bases)) |>
+  arrange(site, sample, base) |>
+  group_by(site, sample) |>
+  mutate(seg_top = cumsum(frac)) |>
+  ungroup()
+vaf_labels <- stack_order |>
+  filter(as.character(base) == site_alt[si], frac >= 0.09) |>
+  mutate(label = percent(frac, accuracy = 1),
+         seg_y = seg_top - frac / 2)
+exons <- tibble(xmin = c(7670200, 7671200, 7672100, 7673000),
+                xmax = c(7670400, 7671500, 7672400, 7673020))
+## ---- (2) read-backed phasing over three blocks -------------------------
+n_sites <- 14
+site_pos <- sort(sample(seq(7670000, 7684000, by = 50), n_sites))
+blocks <- c(rep(1, 5), rep(2, 5), rep(3, 4))
+h1 <- sample(bases, n_sites, replace = TRUE)
+h2 <- ifelse(h1 == "A", "G", ifelse(h1 == "C", "T",
+              ifelse(h1 == "G", "A", "C")))
+reads <- tibble(read = 1:11,
+                hap = c(1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 0),
+                start = c(1, 2, 1, 3, 2, 5, 7, 9, 10, 11, 4),
+                end = c(6, 7, 5, 8, 6, 10, 12, 13, 14, 13, 9))
+read_sites <- bind_rows(lapply(seq_len(nrow(reads)), function(i) {
+  tibble(read = reads$read[i], hap = as.character(reads$hap[i]),
+         site = reads$start[i]:reads$end[i])
+})) |>
+  mutate(pos = site_pos[site], y = 12 - read, block = blocks[site],
+         allele = if_else(hap == "1", h1[site],
+                          if_else(hap == "2", h2[site],
+                                  if_else(runif(n()) < 0.5, h1[site], h2[site]))))
+hap_rows <- tibble(site = rep(seq_len(n_sites), 2),
+                   hap = rep(c("1", "2"), each = n_sites),
+                   pos = rep(site_pos, 2),
+                   y = rep(c(13.6, 12.6), each = n_sites),
+                   allele = c(h1, h2))
+## ---- (3) consequence matrix and cohort density -------------------------
+genes <- c("TP53", "EGFR", "KRAS", "BRAF", "PIK3CA", "PTEN",
+           "APC", "RB1", "NF1", "SMAD4", "ARID1A", "ATM")
+patients <- c("P01", "P02", "P03", "P04", "P05")
+consequences <- c("missense", "synonymous", "nonsense", "splice", "inframe")
+variants <- expand.grid(gene = genes, patient = patients) |>
+  as_tibble() |>
+  filter(runif(n()) < 0.45) |>
+  mutate(consequence = sample(consequences, n(), replace = TRUE,
+                              prob = c(.5, .25, .1, .08, .07)),
+         vaf = round(runif(n(), .03, .55), 2))
+chroms <- c(paste0("chr", 1:22), "chrX")
+chrom_len <- c(249, 243, 199, 191, 181, 171, 159, 146, 138, 134, 135, 133,
+               114, 107, 102, 90, 83, 80, 59, 64, 47, 51, 156)
+density <- tibble(chrom = chroms, len_mb = chrom_len,
+                  per_mb = round(len_mb * runif(23, 4, 18) / len_mb, 1))
+head(freq, 3)
+```
+
+## Visualization
+
+### 1. Nucleotide Frequency and VAF Along the Locus
+
+This is the compact track popularised by **NucFreq** and **snpit**: one stacked composition bar per variant site, one facet per sample, and a shared genomic axis. Keeping the reference base as the tall stack segment and the alt base as the shorter one lets the reader estimate the VAF (variant allele fraction, 0-100%) at a glance, while the tumour/normal contrast separates a somatic event from a germline or artefactual one.
+
+```{r}
+#| label: fig-1.1NucleotideFrequency
+#| fig-cap: "Nucleotide frequency and VAF along a simulated TP53-like chr17 locus (synthetic coordinates): stacked base composition per site for three tumours and one normal; labels give the alt allele fraction for every cell at or above 9% (below that threshold only the stack shows the value)."
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 6.2
+#| fig-dpi: 300
+p_freq <- ggplot(freq, aes(site, frac)) +
+  geom_col(aes(fill = base), width = 70) +
+  geom_text(data = vaf_labels, aes(site, seg_y, label = label),
+            colour = "white", fontface = "bold", size = 2.6) +
+  facet_wrap(~sample, ncol = 1, strip.position = "left") +
+  scale_fill_manual(values = base_colours, name = "Base", breaks = bases) +
+  scale_y_continuous(labels = percent_format(accuracy = 1),
+                     breaks = seq(0, 1, 0.25), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(locus_start, locus_end), expand = c(0, 0),
+                     labels = label_number(scale = 1e-6, suffix = " Mb",
+                                           accuracy = 0.001)) +
+  labs(x = NULL, y = "Nucleotide frequency / VAF") +
+  theme_classic(base_size = 9) +
+  theme(strip.background = element_blank(),
+        strip.text.y.left = element_text(angle = 0, hjust = 1, face = "bold",
+                                         size = 8.5),
+        axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        axis.line = element_line(linewidth = 0.3),
+        legend.position = "right", legend.key.size = unit(3.4, "mm"),
+        plot.margin = margin(3, 6, 0, 6))
+p_exon <- ggplot() +
+  geom_segment(aes(x = locus_start, xend = locus_end, y = 0.5, yend = 0.5),
+               colour = "#4D4D4D", linewidth = 0.4) +
+  geom_rect(data = exons, aes(xmin = xmin, xmax = xmax, ymin = 0.2, ymax = 0.8),
+            fill = "#4D4D4D") +
+  scale_x_continuous(limits = c(locus_start, locus_end), expand = c(0, 0),
+                     labels = label_number(scale = 1e-6, suffix = " Mb",
+                                           accuracy = 0.001)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "Simulated locus position (TP53-like, synthetic)", y = NULL,
+       subtitle = "TP53 exons 2-4 (schematic)") +
+  theme_classic(base_size = 9) +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.line.y = element_blank(),
+        plot.subtitle = element_text(size = 8, colour = "#555555"),
+        plot.margin = margin(2, 6, 4, 6))
+p_freq / p_exon + plot_layout(heights = c(4, 0.7))
+```
+
+### 2. Read-Backed Haplotype Phasing
+
+**Phasius** renders phase sets as blocks with the underlying reads; **SNPitty** and **snpit** provide the same read-to-haplotype link interactively. Two haplotype rows at the top define the alleles; each read below is coloured by the haplotype it supports, and grey reads cross a block boundary with contradictory alleles and therefore stay unphased. Phase-block boundaries, not chromosome coordinates, are the unit of confidence.
+
+```{r}
+#| label: fig-1.2HaplotypePhasing
+#| fig-cap: "Read-backed haplotype phasing across three phase blocks on the simulated chr17 locus; one grey read carries a switch and remains unphased."
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 5.4
+#| fig-dpi: 300
+hap_colours <- c(`1` = "#2166AC", `2` = "#D6604D", `0` = "#7F7F7F")
+block_bounds <- c(site_pos[6] - 300, site_pos[11] - 300)
+ggplot() +
+  geom_vline(xintercept = block_bounds, linetype = "22", colour = "#999999",
+             linewidth = 0.3) +
+  geom_line(data = read_sites, aes(pos, y, group = read), colour = "#BBBBBB",
+            linewidth = 0.3) +
+  geom_point(data = read_sites, aes(pos, y, colour = hap), size = 2.6) +
+  geom_text(data = read_sites, aes(pos, y, label = allele), colour = "white",
+            size = 1.9, fontface = "bold") +
+  geom_tile(data = hap_rows, aes(pos, y, fill = hap), width = 350, height = 0.7,
+            colour = "white", linewidth = 0.2) +
+  geom_text(data = hap_rows, aes(pos, y, label = allele), colour = "white",
+            size = 2.2, fontface = "bold") +
+  annotate("text", x = site_pos[3], y = 14.6, label = "phase block 1",
+           size = 2.8, colour = "#555555") +
+  annotate("text", x = site_pos[8], y = 14.6, label = "phase block 2",
+           size = 2.8, colour = "#555555") +
+  annotate("text", x = site_pos[12], y = 14.6, label = "phase block 3",
+           size = 2.8, colour = "#555555") +
+  scale_colour_manual(values = hap_colours, name = "Haplotype",
+                      breaks = c("1", "2", "0"),
+                      labels = c("H1", "H2", "unphased")) +
+  scale_fill_manual(values = hap_colours, guide = "none") +
+  scale_y_continuous(breaks = c(13.6, 12.6, 11:1),
+                     labels = c("H1", "H2", paste0("read_", sprintf("%02d", 1:11))),
+                     limits = c(0.4, 15), expand = c(0, 0)) +
+  scale_x_continuous(breaks = c(7670000, 7675000, 7680000, 7684000),
+                     labels = label_number(scale = 1e-6, suffix = " Mb",
+                                           accuracy = 0.001)) +
+  labs(x = "Simulated locus position (TP53-like, synthetic)", y = NULL,
+       subtitle = "Alleles are phased per read; read_11 spans the block 1/2 boundary with contradictory alleles and stays grey (unphased)") +
+  theme_classic(base_size = 9.5) +
+  theme(axis.text.y = element_text(size = 7.4),
+        axis.line = element_line(linewidth = 0.3),
+        legend.position = "right", legend.key.size = unit(3.4, "mm"),
+        plot.subtitle = element_text(size = 8.2, colour = "#555555"),
+        plot.margin = margin(4, 6, 4, 6))
+```
+
+### 3. Consequence Matrix and Cohort Density
+
+**vcfPlotein**, **VIVA** and **XVCF** answer the same question for coding effects: which gene, in which sample, through which mechanism. The left panel encodes consequence by colour and VAF by dot size; the right panel places the cohort on the chromosome map. Together they are the annotation summary that `bcftools annotate`/`vcfR` produce as text but cannot rank visually.
+
+```{r}
+#| label: fig-1.3ConsequenceMatrix
+#| fig-cap: "Variant consequence per gene and sample (colour = effect, size = VAF) with cohort variant density along GRCh38 chromosomes."
+#| warning: false
+#| message: false
+#| fig-width: 10.5
+#| fig-height: 4.6
+#| fig-dpi: 300
+variants$gene <- factor(variants$gene, levels = rev(genes))
+variants$patient <- factor(variants$patient, levels = patients)
+density$chrom <- factor(density$chrom, levels = rev(chroms))
+p_matrix <- ggplot(variants, aes(patient, gene)) +
+  geom_point(aes(size = vaf, colour = consequence), alpha = 0.9) +
+  scale_size_continuous(range = c(1.2, 4.2), name = "VAF",
+                        breaks = c(0.1, 0.3, 0.5), limits = c(0, 0.6)) +
+  scale_colour_manual(values = cons_colours, name = "Consequence") +
+  labs(x = NULL, y = NULL, subtitle = "Variant consequence per gene and sample") +
+  theme_classic(base_size = 9) +
+  theme(axis.line = element_line(linewidth = 0.3),
+        panel.grid.major = element_line(colour = "#EEEEEE", linewidth = 0.2),
+        plot.subtitle = element_text(size = 8.4, colour = "#555555"),
+        legend.key.size = unit(3.4, "mm"),
+        plot.margin = margin(4, 4, 4, 4))
+p_density <- ggplot(density, aes(per_mb, chrom)) +
+  geom_segment(aes(x = 0, xend = per_mb, y = chrom, yend = chrom),
+               colour = "#BBBBBB", linewidth = 0.4) +
+  geom_point(size = 1.9, colour = "#B2182B") +
+  scale_x_continuous(expand = c(0, 0.2)) +
+  labs(x = "Variants per Mb", y = NULL,
+       subtitle = "Cohort variant density along GRCh38 chromosomes") +
+  theme_classic(base_size = 8.5) +
+  theme(axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.y = element_text(size = 7),
+        axis.line.x = element_line(linewidth = 0.3),
+        plot.subtitle = element_text(size = 8.4, colour = "#555555"),
+        plot.margin = margin(4, 6, 4, 6))
+p_matrix + p_density + plot_layout(widths = c(1.5, 1))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Always print the reference genome build in the axis label or subtitle. A coordinate without `GRCh38`/`GRCh37` is not reproducible, and transcript-level annotation differs between releases.
+-   Keep the VAF axis on a fixed 0-100% scale across samples; auto-scaling makes a 5% artefact look like a clonal event.
+-   In `NucFreq`/`snpit` style tracks, the reference base should remain visible as the dominant stack segment, so the reader can separate a true substitution from a mapping artefact.
+-   Phase blocks are the confidence unit, not single variants: report block length and the number of reads linking each pair of sites before claiming a haplotype.
+-   Use `bcftools norm`/`bcftools annotate` and `vcfR` to validate coordinates and consequences before plotting; the figure cannot repair a shifted indel.
+-   Dot size for VAF needs an explicit legend with numeric breaks, otherwise the same panel reads differently on screen and in print.
+:::
+
+## Implementations deliberately not used here
+
+This page draws its figures with ggplot2 rather than installing the skipped tools. Of the tools that the issue-435 inventory maps onto Omics/VariantAnnotationPlot.qmd, 2 are marked **skipped** here and used only as layout references, not as dependencies: 2 whose dependency closure is too heavy to justify for one static figure. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
+
+| Tool | Last commit | Status | Why it is skipped |
+| --- | --- | --- | --- |
+| VIVA | — | heavy dependency | framework-scale dependency closure is too heavy for one static figure |
+| XVCF | 2026-04-21 | heavy dependency | framework-scale dependency closure is too heavy for one static figure |
+
+## Application
+
+Annotation figures are the bridge between a call set and a decision. Frequency tracks separate clonal from subclonal events across samples, phasing shows whether two variants are in cis or trans — which decides whether a gene carries one knockout allele or two hits — and the consequence matrix answers which pathways are hit across the cohort. Tooling follows the same split: **NucFreq** and **snpit** for nucleotide-level review, **phasius** and **SNPitty** for phasing, **vcfPlotein**, **VIVA** and **XVCF** for interactive annotation review, and **vcfR** with **bcftools** for the parsing, normalisation and filtering that must happen before any plot.
+
+## Reference
+
+\[1\] Danecek P, Auton A, Abecasis G, et al. The variant call format and VCFtools. Bioinformatics. 2011;27(15):2156-2158. doi:10.1093/bioinformatics/btr330
+
+\[2\] McLaren W, Gil L, Hunt SE, et al. The Ensembl Variant Effect Predictor. Genome Biol. 2016;17:122. doi:10.1186/s13059-016-0974-4
+
+\[3\] Danecek P, Bonfield JK, Liddle J, et al. Twelve years of SAMtools and BCFtools. GigaScience. 2021;10(2):giab008. doi:10.1093/gigascience/giab008

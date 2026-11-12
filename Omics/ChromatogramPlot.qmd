@@ -1,0 +1,221 @@
+---
+title: "Sanger Chromatogram Plot"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-assisted, independently reviewed;"
+---
+
+A Sanger chromatogram is the primary evidence trace of capillary sequencing: four fluorescent channels are recorded as a function of elution time, and the base caller assigns one nucleotide per peak. The figure is still the standard way to inspect heterozygous sites, indel boundaries, and low-quality tails before a variant is accepted. This tutorial rebuilds the publication layout from raw trace-like data: four colour-coded channels, called bases, and a quality track aligned on the same x axis.
+
+## Example
+
+![](../images/Omics/ChromatogramPlot_demo.png){fig-alt="Chromatogram Plot DEMO" fig-align="center" width="85%"}
+
+A Sanger sequencing trace: the four fluorescent channels are overlaid as coloured peaks, the called bases are written across the top, and the shaded column marks the C/T heterozygote at position 61, where two half-height peaks overlap. The quality panel below drops below the Phred 20 line over the last few bases, which is where the calls stop being trustworthy.
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `dplyr`; `tidyr`; `patchwork`; `scales`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
+if (!requireNamespace("patchwork", quietly = TRUE)) install.packages("patchwork")
+if (!requireNamespace("scales", quietly = TRUE)) install.packages("scales")
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(patchwork)
+library(scales)
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+The input produced by an `.ab1` reader is a matrix of fluorescence intensities (`scan` rows by four dye columns) plus a called sequence and per-base quality scores. We simulate 96 bases with Gaussian peaks, local baseline noise, one heterozygous C/T position, and a low-quality tail. The simulation is intentionally transparent: every visual feature in the figure maps to a column that a real trace reader would provide.
+
+```{r load data, message=FALSE, warning=FALSE}
+set.seed(4351)
+
+bases <- c("A", "C", "G", "T")
+dye_colours <- c(A = "#2E8B57", C = "#2166AC", G = "#222222", T = "#C51B1F")
+n_base <- 96
+
+called <- sample(bases, n_base, replace = TRUE, prob = c(.3, .2, .22, .28))
+called[61] <- "Y"                       # C/T heterozygote
+called[88:96] <- sample(bases, 9, replace = TRUE)
+
+position <- seq_len(n_base)
+base_amp <- rnorm(n_base, 860, 55)
+base_amp[61] <- 900
+scan <- seq(1, n_base, length.out = n_base * 24)
+peak <- function(centre, sigma = 0.30) {
+  dnorm(scan, centre, sigma) / dnorm(centre, centre, sigma)
+}
+
+## Each channel carries a peak only where that base was called. The C/T site
+## receives two half-height peaks, which is the evidence a heterozygote call needs.
+make_channel <- function(ch) {
+  y <- numeric(length(scan))
+  for (i in seq_along(called)) {
+    if (called[i] == ch) y <- y + base_amp[i] * peak(i)
+    if (called[i] == "Y" && ch %in% c("C", "T")) {
+      y <- y + 0.58 * base_amp[i] * peak(i)
+    }
+  }
+  y
+}
+
+trace <- tibble(scan = scan) |>
+  mutate(A = make_channel("A"), C = make_channel("C"),
+         G = make_channel("G"), T = make_channel("T")) |>
+  pivot_longer(-scan, names_to = "channel", values_to = "signal") |>
+  mutate(
+    base_index = scan,
+    taper = ifelse(base_index >= 84, pmax(0.38, 1 - (base_index - 83) / 22), 1),
+    signal = pmax(0, signal * taper + 24 + rnorm(n(), 0, 12))
+  )
+
+quality <- tibble(
+  base_index = position,
+  quality = pmin(60, pmax(9, round(rnorm(n_base, 37, 8)))),
+  called = called
+) |>
+  mutate(quality = ifelse(base_index >= 84, quality - 18, quality),
+         quality = pmax(5, quality))
+
+head(trace)
+```
+
+## Visualization
+
+### 1. Four-Channel Trace with Called Bases
+
+The classic view overlays the four dye channels on a common time axis and prints the called base above the trace. Colour is reserved for the channel; the called sequence stays black so it remains readable in print.
+
+```{r}
+#| label: fig-1.1FourChannelTrace
+#| fig-cap: "Sanger trace: four fluorescent channels, called bases, and the C/T heterozygote at position 61."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 11
+#| fig-height: 4.6
+#| fig-dpi: 300
+
+base_labels <- quality |>
+  mutate(y = 1120, label = called)
+
+p_trace <- ggplot(trace, aes(scan, signal, colour = channel)) +
+  geom_line(linewidth = 0.55, alpha = 0.95) +
+  geom_text(data = base_labels, aes(base_index, y, label = label),
+            inherit.aes = FALSE, size = 3.1, family = "mono") +
+  annotate("rect", xmin = 60.35, xmax = 61.65, ymin = -130, ymax = 1180,
+           fill = "#F4A582", alpha = 0.12, colour = NA) +
+  annotate("text", x = 61, y = 1240, label = "C/T heterozygote",
+           size = 3.1, colour = "#8C2D04") +
+  scale_colour_manual(values = dye_colours, name = "Dye channel") +
+  scale_x_continuous(breaks = c(1, 25, 50, 75, 96),
+                     expand = c(0.005, 0)) +
+  scale_y_continuous(expand = expansion(mult = c(0.02, 0.06))) +
+  labs(x = "Base position", y = "Fluorescence intensity (RFU)") +
+  theme_classic(base_size = 11) +
+  theme(
+    legend.position = "top",
+    legend.key.width = unit(8, "mm"),
+    axis.line = element_line(linewidth = 0.35),
+    panel.grid.major.y = element_line(colour = "#EBEBEB", linewidth = 0.25)
+  )
+
+p_quality <- ggplot(quality, aes(base_index, quality, fill = quality < 20)) +
+  geom_col(width = 0.78) +
+  geom_hline(yintercept = 20, linetype = "dashed", linewidth = 0.35,
+             colour = "#7F7F7F") +
+  scale_fill_manual(values = c(`FALSE` = "#4D4D4D", `TRUE` = "#D6604D"),
+                    guide = "none") +
+  scale_x_continuous(expand = c(0.005, 0)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.08))) +
+  labs(x = NULL, y = "Phred Q") +
+  theme_classic(base_size = 10) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.line = element_line(linewidth = 0.35)
+  )
+
+p_trace / p_quality + plot_layout(heights = c(4.4, 1.2))
+```
+
+### 2. Heterozygous Peak Decomposition
+
+A heterozygous call is not a cosmetic annotation: two channels must rise at the same position with roughly half the amplitude of a homozygous peak. Plotting the local window makes the evidence auditable and separates a true variant from a dye blob or a neighbouring-base shoulder.
+
+```{r}
+#| label: fig-1.2Heterozygote
+#| fig-cap: "Local decomposition of the C/T site: overlapping C and T peaks at half height, with the surrounding homozygous peaks for scale."
+#| out.width: "78%"
+#| warning: false
+#| message: false
+#| fig-width: 7.2
+#| fig-height: 4.2
+#| fig-dpi: 300
+
+local <- trace |>
+  filter(scan > 56.4, scan < 65.6) |>
+  mutate(channel = factor(channel, levels = bases))
+
+local_labels <- quality |>
+  filter(base_index %in% 57:65) |>
+  mutate(y = 1080)
+
+ggplot(local, aes(base_index, signal, colour = channel)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(data = local |> filter(base_index == 61,
+                                    channel %in% c("C", "T")),
+             size = 2.1, show.legend = FALSE) +
+  geom_text(data = local_labels, aes(base_index, y, label = called),
+            inherit.aes = FALSE, size = 3.4, family = "mono") +
+  scale_colour_manual(values = dye_colours, name = "Dye channel") +
+  scale_x_continuous(breaks = 57:65, expand = c(0.03, 0.03)) +
+  labs(
+    x = "Base position",
+    y = "Fluorescence intensity (RFU)",
+    title = "C/T heterozygote at position 61",
+    subtitle = "Both channels peak together at about 58% of a homozygous signal"
+  ) +
+  theme_classic(base_size = 11) +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold", size = 11),
+    plot.subtitle = element_text(colour = "#555555", size = 9.5)
+  )
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Read the trace in the **called-base frame**, not the raw scan index: mobility shifts differ between dyes, so `.ab1` readers align channels before plotting.
+-   A heterozygous site needs two channels at the same position with comparable height. A shoulder from the neighbouring base is usually asymmetric and narrower.
+-   Keep the quality track directly below the trace with a shared x scale. A low-quality tail is then visible as a visual break rather than an unexplained gap in the sequence.
+-   For publication, export vector traces when the source tool allows it; 300 dpi PNG is the minimum for raster panels.
+:::
+
+## Application
+
+Sanger traces remain the confirmation layer for CRISPR edits, plasmid constructs, and clinical variants. The same four-channel layout generalises to any capillary electrophoresis signal (SSR genotyping, methylation-sensitive Sanger, and bisulfite sequencing). In a multi-read assembly view, the per-base quality track becomes the consensus model that decides which discrepant positions are real.
+
+## Reference
+
+\[1\] Staden R, Beal KF, Bonfield JK. The Staden package, 1998. Methods Mol Biol. 2000;132:115-130. doi:10.1385/1-59259-192-2:115
+
+\[2\] Gordon D, Abajian C, Green P. Consed: a graphical tool for sequence finishing. Genome Res. 1998;8(3):195-202. doi:10.1101/gr.8.3.195
+
+\[3\] Cock PJA, Fields CJ, Goto N, Heuer ML, Rice PM. The Sanger FASTQ file format for sequences with quality scores, and the Solexa/Illumina FASTQ variants. Nucleic Acids Res. 2010;38(6):1767-1771. doi:10.1093/nar/gkp1137
