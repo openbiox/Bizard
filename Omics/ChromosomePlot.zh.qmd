@@ -506,23 +506,11 @@ write.csv(karyotype, "karyotype.csv", row.names = FALSE)
 
 ### 12. 无 Gviz 的基因周边信号轨道（ggplot2 复现）
 
-FigureYa3genomeView 版式 \[10\] 在基因座位上堆叠逐碱基信号（ChIP-seq、ATAC、RNA-seq）并在下方给出基因模型——但 `Gviz` 会拉进 TxDb 注释包与基于 rtracklayer 的 bigWig 读取，两者都不在本仓库 lockfile 中。同一张图用朴素 ggplot2 即可复现：每 kb 覆盖度画 `geom_area()` 分面、基因模型独占一个分面轨道（内含子线上摆外显子矩形）、x 轴以 kb 计。真实数据用 rtracklayer 读 bigWig，或直接读覆盖度 tsv 替换模拟分箱：
+FigureYa3genomeView 版式 \[3\] 在基因座位上堆叠逐碱基信号（ChIP-seq、ATAC、RNA-seq）并在下方给出基因模型——但 `Gviz` 会拉进 TxDb 注释包与基于 rtracklayer 的 bigWig 读取，两者都不在本仓库 lockfile 中。同一张图用朴素 ggplot2 即可复现：每 kb 覆盖度画 `geom_area()` 分面、基因模型独占一个分面轨道（内含子线上摆外显子矩形）、x 轴以 kb 计。真实数据用 rtracklayer 读 bigWig，或直接读覆盖度 tsv 替换模拟分箱：
 
 ```{r}
 #| label: fig-12.1GenomeTracks
 #| fig-cap: "目标基因周边的 IGV 风格信号轨道（模拟 bigWig 分箱）：四个覆盖度分面加一个专属基因模型轨道（内含子线上的外显子矩形）；x 轴以 kb 计。"
-
-### 13. 锚定核型、信号轨道与标记刻度
-
-`RIdeogram` 的轨道布局是固定的：热图在染色体内部，两条标签轨道分列上下。当你需要另一种堆叠——核型、任意数值轨道、标记刻度——可靠的做法是自建布局，并让各面板共享**同一条** x 轴。下面的版本把染色体首尾相接排到累积坐标上（即 "UCSC Genome Graphs" 的约定 \[9\]），再把逐窗口 Fst 轨道与标记集锚定到完全相同的比例 \[6,9\]。
-
-```{r}
-#| label: fig-12-1AnchoredIdeogram
-#| fig-cap: "模拟五染色体基因组在累积坐标下的锚定核型：染色体首尾相接（间隔 4 Mb），上方为带纹着色（每条带描边）与以深色刻度标出的着丝粒，下方为逐窗口 Fst，含两个预先植入的选择清除峰（chr2:62 Mb、chr4:20 Mb）与 0.25 的离群阈值，顶轴为标记刻度（tRNA/rRNA/miRNA/QTL）。"
-#| out.width: "100%"
-#| warning: false
-#| message: false
-#| fig-width: 10
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -576,6 +564,21 @@ ggplot(tracks, aes(bin, signal)) +
   coord_cartesian(ylim = c(0, 1))
 ```
 
+::: callout-tip
+**实践要点**
+
+-   基因模型必须放在**专属分面轨道**——把它叠到每个信号面板上是经典错误（没有分面列的图层会在所有面板重复出现）。
+-   逐碱基 bigWig 数据可能很大：作图前先聚合成固定宽度分箱（此处 1 kb）；座位尺度下肉眼无差别。
+-   `switch = "y"` 配 `strip.text.y.left` 把轨道名放到 IGV 的位置，基因组轴只在底部出现一次。
+:::
+
+### 13. 锚定核型、信号轨道与标记刻度
+
+`RIdeogram` 的轨道布局是固定的：热图在染色体内部，两条标签轨道分列上下。当你需要另一种堆叠——核型、任意数值轨道、标记刻度——可靠的做法是自建布局，并让各面板共享**同一条** x 轴。下面的版本把染色体首尾相接排到累积坐标上（即 "UCSC Genome Graphs" 的约定 \[9\]），再把逐窗口 Fst 轨道与标记集锚定到完全相同的比例 \[6,9\]。
+
+```{r}
+#| label: fig-13-1AnchoredIdeogram
+#| fig-cap: "模拟五染色体基因组在累积坐标下的锚定核型：染色体首尾相接（间隔 4 Mb），上方为带纹着色（每条带描边）与以深色刻度标出的着丝粒，下方为逐窗口 Fst，含两个预先植入的选择清除峰（chr2:62 Mb、chr4:20 Mb）与 0.25 的离群阈值，顶轴为标记刻度（tRNA/rRNA/miRNA/QTL）。"
 #| out.width: "100%"
 #| warning: false
 #| message: false
@@ -692,12 +695,6 @@ p_ideo / p_track + plot_layout(heights = c(0.75, 1))
 ::: callout-tip
 **实践要点**
 
--   基因模型必须放在**专属分面轨道**——把它叠到每个信号面板上是经典错误（没有分面列的图层会在所有面板重复出现）。
--   逐碱基 bigWig 数据可能很大：作图前先聚合成固定宽度分箱（此处 1 kb）；座位尺度下肉眼无差别。
--   `switch = "y"` 配 `strip.text.y.left` 把轨道名放到 IGV 的位置，基因组轴只在底部出现一次。
-:::
-
-
 -   每个面板栈只选一种坐标约定：独立轴（RIdeogram 的固定轨道）或带间隔的累积轴。不要在同一个图里混用——无论你是否愿意，读者都会跨面板比较 x 位置。
 -   在染色体之间插入可见间隔（此处 4 Mb）：否则上一条染色体的末端条带与下一条的起始条带会被读成同一个特征。
 -   染色体偏移表只 `left_join()` 一次，并把 offset 留在数据框里；在 `aes()` 里现算 `offset + start`，一旦某图层需要不同的汇总行就会出错。
@@ -741,5 +738,3 @@ iMapper 映射和分析插入位点序列数据
 \[9\] Karolchik D, Baertsch R, Diekhans M, et al. The UCSC Genome Browser Database. Nucleic Acids Res. 2003;31(1):51-54. doi:10.1093/nar/gkg129
 
 
-
-\[10\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
