@@ -1,0 +1,116 @@
+---
+title: "Single-Cell Marker Composite"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+The reference three-layer composite puts **cluster identity, tissue preference, and marker expression** in one figure: (B1) a faceted lollipop of marker expression per cluster, (B2) a 100% stacked bar of tissue preference per cluster, and (B3) a pheatmap of marker genes x clusters \[1\]. The reference uses Seurat; this tutorial **simulates the per-cluster matrices** directly (bypassing Seurat):
+
+## Example
+
+![](../images/Omics/ScMarkerPlot_demo.png){fig-alt="Single-Cell Marker Composite DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `pheatmap`; `patchwork`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(pheatmap)
+  library(dplyr)
+  library(patchwork)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+9 simulated clusters x 4 lineage markers x 5 tissue sites - the matrices `AveExpr` and `TissueCount` are what Seurat produces upstream:
+
+```{r load data}
+set.seed(22401)
+n_clus <- 9
+markers <- c("CD3E", "MS4A1", "GNLY", "CD14")
+tissues <- c("nLung", "tLung", "tB", "mLN", "mBrain")
+AveExpr <- matrix(rnorm(n_clus * 4, 3, 0.5), n_clus, 4,
+                  dimnames = list(paste0("C", 0:(n_clus - 1)), markers))
+dominant <- c(1, 2, 3, 4, 1, 2, 3, 4, 1)
+for (i in seq_len(n_clus)) AveExpr[i, dominant[i]] <- AveExpr[i, dominant[i]] + 2.5
+TissueCount <- matrix(rmultinom(n_clus, 50, rep(0.2, 5)), n_clus, 5, byrow = TRUE,
+                      dimnames = list(paste0("C", 0:(n_clus - 1)), tissues))
+```
+
+## Visualization
+
+### 1. Faceted Lollipop + Stacked Bar + pheatmap
+
+The composite: faceted lollipop of marker expression per cluster, 100% stacked bar of tissue preference, and the pheatmap of markers x clusters:
+
+```{r}
+#| label: fig-1.1ScMarker
+#| fig-cap: "Single-cell marker composite of 9 simulated clusters: faceted lollipop of marker expression per cluster (top), 100% stacked bar of tissue preference (middle), and pheatmap of marker genes x clusters (bottom)."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 14
+#| fig-height: 9
+
+ave_long <- do.call(rbind, lapply(1:4, function(j)
+  data.frame(cluster = rownames(AveExpr), marker = markers[j],
+             expr = AveExpr[, j], facet = paste0("Cluster ", 0:(n_clus - 1)))))
+ave_long$facet <- factor(ave_long$facet, levels = paste0("Cluster ", 0:(n_clus - 1)))
+ave_long$cluster_f <- factor(ave_long$cluster, levels = rownames(AveExpr))
+p1 <- ggplot(ave_long, aes(marker, expr)) +
+  geom_segment(aes(x = marker, xend = marker, y = 0, yend = expr), linewidth = 0.6) +
+  geom_point(size = 2.5, colour = "#E64B35") +
+  facet_wrap(~facet, ncol = 5) +
+  coord_flip() + scale_y_continuous(position = "right") +
+  labs(x = NULL, y = "Mean expression", title = "Marker expression per cluster") +
+  theme_classic(base_size = 9)
+tc_df <- as.data.frame(TissueCount)
+tc_df$cluster <- rownames(TissueCount)
+tc_long <- reshape(tc_df, direction = "long", varying = 1:5, idvar = "cluster",
+                   timevar = "tissue", times = tissues, v.names = "count")
+tc_long$cluster_f <- factor(tc_long$cluster, levels = rownames(TissueCount))
+p2 <- ggplot(tc_long, aes(cluster_f, count, fill = tissue)) +
+  geom_bar(stat = "identity", position = "fill", width = 0.7) +
+  scale_y_continuous(position = "right", labels = scales::percent) +
+  scale_fill_brewer(palette = "Set3") +
+  labs(x = NULL, y = "Tissue proportion", title = "Tissue preference per cluster") +
+  theme_classic(base_size = 9) + theme(axis.text.x = element_blank())
+pheatmap(AveExpr, scale = "none", color = colorRampPalette(c("#2166AC", "white", "#B2182B"))(64),
+         cluster_rows = FALSE, cluster_cols = FALSE,
+         main = "Marker genes x clusters", border_color = "grey80")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Bypass Seurat: `AverageExpression()` and `table()` are just mean-expression and count matrices.
+-   Sort clusters by dominant-marker identity so same-type clusters sit together.
+-   `ggplotify::as.ggplot()` converts pheatmap to a ggplot grob for patchwork.
+:::
+
+## Applications
+
+::: {#fig-ScMarkerApplications1}
+![](../images/Omics/ScMarkerPlot_demo.png){fig-alt="Single-cell marker composite" fig-align="center" width="60%"}
+
+Single-cell marker composite
+:::
+
+The three-layer composite fits any single-cell annotation: cluster identity + tissue origin + marker expression.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Zhang L, et al. single-cell roadmap of colorectal liver metastasis. Nat Commun. <https://www.nature.com/articles/s41467-020-18760-x>
