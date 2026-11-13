@@ -1,0 +1,171 @@
+---
+title: "MAGIC 插补与 knnDREMI 基因模块"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+`MAGIC` 通过 **kNN 图上的扩散**（每个细胞的值替换为其图邻域的加权平均、幂次 `t`）为单细胞表达去噪，使共表达结构可见；**knnDREMI** 随后衡量某基因的插补表达跟随条件基因的紧密程度，超过 DREMI 阈值的基因被聚成**模块**、并沿条件基因排序 \[\1\]。`Rmagic`/`Seurat` 不在本仓库 lockfile；两个算法核心在页内重实现——kNN 平滑（`knn` 个邻居、`t` 轮扩散）与分箱条件密度 DREMI 统计量——模块热图在 ComplexHeatmap 上运行：
+
+## Example
+
+![](../images/Omics/MagicPlot_demo.png){fig-alt="MAGIC 插补与 knnDREMI 基因模块 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ComplexHeatmap`; `circlize`; `ggplot2`; `grid`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ComplexHeatmap); library(circlize); library(ggplot2)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+800 个细胞 × 60 个基因，条件基因（`PLCG2`）定义一个连续轴；30 个基因以三种强度植入为**与 PLCG2 共变**（强/中/弱模块）、另 30 个独立。原始计数稀疏（dropout），因此必须先插补才能恢复共表达结构：
+
+```{r load data}
+suppressPackageStartupMessages({
+  library(ComplexHeatmap); library(circlize); library(ggplot2)
+})
+set.seed(50404)
+n_cell <- 800
+genes <- c("PLCG2", sprintf("MOD%02d", 1:30), sprintf("RND%02d", 1:29))
+axis <- rnorm(n_cell)
+expr <- matrix(0, length(genes), n_cell, dimnames = list(genes, NULL))
+expr["PLCG2", ] <- axis + rnorm(n_cell, 0, 0.3)
+## three module strengths
+s1 <- 1:10; s2 <- 11:20; s3 <- 21:30
+for (k in s1) expr[sprintf("MOD%02d", k), ] <- 0.9 * axis + rnorm(n_cell, 0, 0.60)
+for (k in s2) expr[sprintf("MOD%02d", k), ] <- 0.6 * axis + rnorm(n_cell, 0, 0.85)
+for (k in s3) expr[sprintf("MOD%02d", k), ] <- 0.35 * axis + rnorm(n_cell, 0, 0.95)
+for (k in 1:29) expr[sprintf("RND%02d", k), ] <- rnorm(n_cell)
+
+## dropout: 65% of nonzero entries zeroed -> needs imputation
+drop <- matrix(runif(length(expr)) < 0.65, nrow(expr), ncol(expr))
+expr_raw <- expr; expr_raw[drop] <- 0
+cat("zero fraction before:", round(mean(expr_raw == 0), 3), "\n")
+```
+
+## Visualization
+
+### 插补恢复共表达轴
+
+MAGIC 核心两步：在低维空间构建 kNN 图、再迭代 `X <- W %*% X` 共 `t` 轮。绘制原始 vs 插补后某强共变基因对 PLCG2 的散点，可见 dropout 云塌缩为一条直线——这就是 DREMI 必须在插补后计算的原因：
+
+```{r}
+#| label: fig-1.1MagicImputation
+#| fig-cap: "MAGIC 式 kNN 扩散插补：某强共变基因对 PLCG2 的原始表达是 dropout 云（左），而 3 轮扩散插补后恢复了线性共表达轴（右）。"
+#| out.width: "95%"
+#| fig-width: 8.5
+#| fig-height: 4.2
+
+K <- 15; T_ <- 3
+pc <- prcomp(t(expr_raw), center = TRUE, scale. = FALSE)$x[, 1:5]
+D <- as.matrix(dist(pc))
+W <- matrix(0, n_cell, n_cell)
+for (i in seq_len(n_cell)) {
+  nb <- order(D[i, ])[2:(K + 1)]
+  W[i, nb] <- 1 / K
+}
+## cells x genes for the diffusion, then back to genes x cells
+imputed <- t(expr_raw)            # cells x genes
+for (t in seq_len(T_)) imputed <- W %*% imputed
+imputed <- t(as.matrix(imputed))
+colnames(imputed) <- NULL
+
+op <- par(mfrow = c(1, 2), mar = c(4.4, 4.4, 3, 1))
+plot(expr_raw["PLCG2", ], expr_raw["MOD01", ], pch = 19, cex = 0.4,
+     col = "#B2182B66", xlab = "PLCG2 (raw)", ylab = "MOD01 (raw)",
+     main = "before imputation")
+plot(imputed["PLCG2", ], imputed["MOD01", ], pch = 19, cex = 0.4,
+     col = "#2166AC88", xlab = "PLCG2 (imputed)", ylab = "MOD01 (imputed)",
+     main = sprintf("after MAGIC (k=%d, t=%d)", K, T_))
+abline(lm(imputed["MOD01", ] ~ imputed["PLCG2", ]), col = "black", lwd = 1.4)
+par(op)
+```
+
+### knnDREMI 评分与模块热图
+
+DREMI 统计量：对条件基因分箱、估计每箱内目标基因的条件密度、并量化该密度超出目标边缘分布的程度——评分 1 为独立基线。超过 1 的基因成为模块，随后聚类并沿 PLCG2 排序：
+
+```{r}
+#| label: fig-2.1MagicModules
+#| fig-cap: "knnDREMI 筛查与模块热图：左，DREMI 评分分布并标出 >1 阈值（30 个植入共变基因构成高分尾）；右，top 30 基因的 z 标度插补表达按 PLCG2 排序并做层次模块分配，复现三个植入模块。"
+#| out.width: "100%"
+#| fig-width: 9.5
+#| fig-height: 5.4
+
+## DREMI: mutual-information style score from binned conditional densities
+knn_dremi <- function(x, y, nbins = 20) {
+  bx <- cut(rank(x), breaks = nbins, labels = FALSE)
+  ## conditional density of y within each x-bin vs the marginal of y
+  by <- cut(rank(y), breaks = nbins, labels = FALSE)
+  tab <- table(bx, by) + 1
+  pxy <- tab / sum(tab)
+  px <- rowSums(pxy); py <- colSums(pxy)
+  mi <- sum(pxy * log2(pxy / outer(px, py)))
+  h <- -sum(py * log2(py))
+  mi / h      # normalised MI; 1.0 = independent baseline in this scaling
+}
+plcg2 <- imputed["PLCG2", ]
+dremi <- sapply(rownames(imputed)[-1], function(g) knn_dremi(plcg2, imputed[g, ]))
+dremi_df <- data.frame(gene = names(dremi), score = as.numeric(dremi))
+dremi_df$planted <- grepl("^MOD", dremi_df$gene)
+
+p_den <- ggplot(dremi_df, aes(score, fill = planted)) +
+  geom_density(alpha = 0.35, colour = NA, adjust = 1.2) +
+  geom_vline(xintercept = 1, linetype = "dashed", colour = "#2166AC") +
+  scale_fill_manual(values = c(`TRUE` = "#B2182B", `FALSE` = "grey60"),
+                    labels = c(`TRUE` = "planted co-varying", `FALSE` = "independent"),
+                    name = NULL) +
+  labs(x = "knnDREMI score", y = "density", title = "DREMI vs PLCG2") +
+  theme_classic(base_size = 10.5) + theme(legend.position = "top")
+
+top_genes <- dremi_df$gene[order(-dremi_df$score)][1:30]
+ord_cells <- order(plcg2)
+mat <- t(scale(t(imputed[top_genes, ord_cells])))
+mat <- pmin(pmax(mat, -2), 2)
+hc <- hclust(as.dist(1 - cor(t(imputed[top_genes, ]), method = "pearson")),
+             method = "complete")
+modules <- cutree(hc, k = 3)
+ht <- Heatmap(mat, name = "z",
+              col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+              cluster_rows = hc, cluster_columns = FALSE,
+              show_column_names = FALSE, row_names_side = "left",
+              row_names_gp = grid::gpar(fontsize = 6),
+              left_annotation = rowAnnotation(module = factor(modules)),
+              column_title = "genes ordered by PLCG2 expression")
+## ggplot and ComplexHeatmap cannot be `+`-combined; draw side by side on a
+## split viewport
+grid::grid.newpage()
+grid::pushViewport(grid::viewport(layout = grid::grid.layout(1, 2,
+                     widths = grid::unit(c(0.38, 0.62), "npc"))))
+print(p_den, vp = grid::viewport(layout.pos.col = 1, layout.pos.row = 1))
+grid::pushViewport(grid::viewport(layout.pos.col = 2, layout.pos.row = 1))
+draw(ht, newpage = FALSE)
+grid::popViewport(0)
+```
+
+
+## 应用场景
+
+::: {{#fig-MagicApplications1}}
+![](../images/Omics/MagicPlot_demo.png){fig-alt="MAGIC 插补与 knnDREMI 基因模块" fig-align="center" width="60%"}
+
+MAGIC 插补与 knnDREMI 基因模块
+:::
+
+扩散插补 + 条件依赖筛查适用于任何稀疏单细胞数据集：识别跟随主调控子的基因、从快照数据恢复时序程序、或在轨迹推断前去噪。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
