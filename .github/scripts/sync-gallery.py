@@ -59,6 +59,7 @@ CHART_DIRS = [
     "Julia",
     "Clinics",
     "Hiplot",
+    "Skills",
 ]
 
 CSV_BASE = "https://openbiox.github.io/Bizard"
@@ -76,6 +77,7 @@ DIR_LEVEL1 = {
     "Python": "PYTHON",
     "Julia": "JULIA",
     "Clinics": "CLINICS",
+    "Skills": "SKILLS",
 }
 
 # Some CLINICS pages derive their Level2 from a category name, not the
