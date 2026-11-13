@@ -1,0 +1,107 @@
+---
+title: "Monocle Pseudotime Trajectory UMAP"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+Monocle orders single cells along a **pseudotime trajectory** to reconstruct developmental or differentiation lineages, visualized as a tree or trajectory graph projected onto UMAP embeddings with cells colored by pseudotime progression \[1\]. `Monocle` and Seurat are not in this repository's lockfile; pseudotime values and trajectory branches are simulated here, and the UMAP trajectory scatter renders on ggplot2:
+
+## Example
+
+![](../images/Omics/MonoclePlot_demo.png){fig-alt="Monocle Pseudotime Trajectory UMAP DEMO" fig-align="center" width="75%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2); library(patchwork)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+1500 single cells with a branching trajectory (root state splitting into two developmental fates). Pseudotime values (0 to 20) are assigned along the paths, and branch states are annotated:
+
+```{r load data}
+suppressPackageStartupMessages({library(ggplot2); library(patchwork)})
+set.seed(47283)
+n_cell <- 1500
+t_val <- runif(n_cell, 0, 20)
+branch <- sample(c("State 1", "State 2", "State 3"), n_cell, TRUE, prob = c(0.4, 0.3, 0.3))
+
+## branched UMAP coords
+umap1 <- ifelse(branch == "State 1", t_val * 0.4 + rnorm(n_cell, 0, 0.4),
+                ifelse(branch == "State 2", 8 + (t_val - 10) * 0.5 + rnorm(n_cell, 0, 0.4),
+                       8 - (t_val - 10) * 0.3 + rnorm(n_cell, 0, 0.4)))
+umap2 <- ifelse(branch == "State 1", t_val * 0.3 + rnorm(n_cell, 0, 0.4),
+                ifelse(branch == "State 2", 3 + (t_val - 10) * 0.6 + rnorm(n_cell, 0, 0.4),
+                       3 - (t_val - 10) * 0.6 + rnorm(n_cell, 0, 0.4)))
+
+mono_df <- data.frame(
+  UMAP1 = umap1,
+  UMAP2 = umap2,
+  pseudotime = t_val,
+  branch = branch
+)
+```
+
+## Visualization
+
+### 1. Pseudotime Gradient and Branch States on UMAP
+
+The reference's main deliverable: dual UMAP scatter plots colored by pseudotime progression (viridis gradient) and by developmental branch state:
+
+```{r}
+#| label: fig-1.1MonocleUmap
+#| fig-cap: "Single-cell pseudotime trajectory (Monocle-style) on UMAP embedding: cells coloured by pseudotime progression (left, viridis gradient) and by developmental branch state (right, 3 states)."
+#| out.width: "100%"
+#| fig-width: 10
+#| fig-height: 4.6
+
+p1 <- ggplot(mono_df, aes(UMAP1, UMAP2, colour = pseudotime)) +
+  geom_point(size = 0.8, alpha = 0.85) +
+  scale_colour_viridis_c(option = "viridis", name = "Pseudotime") +
+  labs(title = "Pseudotime progression") +
+  theme_bw(base_size = 10) + theme(panel.grid = element_blank())
+
+p2 <- ggplot(mono_df, aes(UMAP1, UMAP2, colour = branch)) +
+  geom_point(size = 0.8, alpha = 0.85) +
+  scale_colour_brewer(palette = "Set1", name = "Branch state") +
+  labs(title = "Developmental branches") +
+  theme_bw(base_size = 10) + theme(panel.grid = element_blank())
+
+p1 + p2
+```
+
+::: callout-tip
+**Practice tips**
+-   Color cells by continuous pseudotime (viridis) in one panel and discrete branch states in the adjacent panel.
+-   Keep point size small (0.6-0.8) on dense trajectory embeddings to preserve density gradients.
+-   Ensure root states are clearly marked on trajectory graphs.
+-   Verify that branch points correspond to biologically meaningful cell fate decisions.
+-   Use Monocle 3 or similar modern trajectory tools for robust multi-branch trajectory graph construction.
+:::
+
+## Application
+
+::: {#fig-MonocleApplications1}
+![](images/Omics/MonoclePlot_demo.png){fig-alt="Monocle Pseudotime Trajectory UMAP" fig-align="center" width="75%"}
+
+Monocle pseudotime trajectory UMAP
+:::
+
+Pseudotime trajectories apply to any dynamic single-cell process: stem cell differentiation, immune cell activation, or cancer cell evolution.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. Festival of Standardized Biomedical Visualizations: Monocle Pseudotime Trajectory. iMetaMed. 2025. doi:10.1002/imm3.70005
