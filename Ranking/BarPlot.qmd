@@ -553,11 +553,11 @@ p
 
 ### 8. Multi-Group Bar Chart with Subgroup Gradient
 
-The reference figure encodes **three levels of grouping**: major groups (colours), subgroups within each group (gradient shades), and error bars (mean ± SE) \[7\]. The gradient effect is achieved by assigning lighter shades to subgroup levels within each major-group colour.
+The reference figure encodes **three levels of grouping**: major groups (colours), subgroups within each group (gradient shades), and error bars (mean ± SE) \[13\]. The gradient effect is achieved by assigning lighter shades to subgroup levels within each major-group colour.
 
 ```{r}
 #| label: fig-8.1SubgroupGradient
-#| fig-cap: "Multi-group bar chart with subgroup gradient fills, error bars (mean ± SE) and intra-group comparison brackets."
+#| fig-cap: "Multi-group bar chart with subgroup gradient fills and error bars (mean ± SE)."
 #| out.width: "85%"
 #| warning: false
 #| message: false
@@ -604,9 +604,299 @@ ggplot(summ_b, aes(subgroup, mean, fill = subgroup)) +
 ::: callout-tip
 **Practice tips**
 
--   The gradient shading uses `col2rgb()` + `rgb()` to lighten the base colour per subgroup index — this ties each subgroup visually to its major-group colour.
+-   The gradient shades are derived per subgroup index from the major-group base colour (here hardcoded as explicit hex values; derive your own with `colorRampPalette(c(light, base))(n)` when subgroups are many) — this ties each subgroup visually to its major-group colour.
 -   The `se = sd / sqrt(n)` error bar is the standard for mean comparison; some journals require `sd` instead — check the author guidelines.
 -   For intra-group comparison brackets, add `ggsignif::geom_signif(comparisons = list(c("A1", "A2")))` on top of the bars.
+:::
+
+### 9. Cell-Type Proportion Bars with a Cluster-wise Fisher Post-hoc Test
+
+Single-cell studies routinely summarize composition as the fraction of cells per cluster in each condition. The reference workflow \[13\] draws the stacked proportion bars, tests the whole cluster × condition table with Fisher's exact test, and then asks *which* cluster drives the difference with a one-vs-rest post-hoc: `rstatix::row_wise_fisher_test()` runs one Fisher test per cluster (that cluster vs all others) and BH-adjusts the family of eight p-values.
+
+```{r}
+#| label: fig-9.1CellPropSig
+#| fig-cap: "Cell-type composition per cluster (WT vs KO, simulated). Stars are BH-adjusted one-vs-rest Fisher tests per cluster; the overall Fisher exact test on the full table gives p < 0.0001 (Monte-Carlo, B = 10^5)."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 5.5
+
+set.seed(2900)
+clusters <- paste0("C", 1:8)
+p0 <- c(0.18, 0.16, 0.14, 0.12, 0.11, 0.10, 0.10, 0.09)
+# KO proportions: unaffected clusters keep p0 exactly; only C2/C6/C8 are reallocated
+p_ko <- p0
+p_ko[2] <- 0.05; p_ko[6] <- 0.22; p_ko[8] <- 0.08
+stopifnot(abs(sum(p_ko) - 1) < 1e-12)
+n_wt <- 900; n_ko <- 900
+mk_cells <- function(n, p, grp) {
+  data.frame(cluster = sample(clusters, n, replace = TRUE, prob = p),
+             group = grp,
+             run = sample(c("R1", "R2"), n, replace = TRUE))
+}
+cellinfo <- rbind(mk_cells(n_wt, p0, "WT"), mk_cells(n_ko, p_ko, "KO"))
+cellinfo$cluster <- factor(cellinfo$cluster, levels = clusters)
+
+tbl <- table(cellinfo$cluster, cellinfo$group)
+ft <- fisher.test(tbl, simulate.p.value = TRUE, B = 1e5)
+post <- rstatix::row_wise_fisher_test(tbl)
+
+cell.col <- c(WT = "#1A63A8", KO = "#FC6910")
+prop_df <- as.data.frame(tbl, stringsAsFactors = FALSE)
+colnames(prop_df) <- c("cluster", "group", "n")
+prop_df$cluster <- factor(prop_df$cluster, levels = clusters)
+prop_df$group <- factor(prop_df$group, levels = c("WT", "KO"))
+sig_df <- as.data.frame(post)
+sig_df$cluster <- factor(sig_df$group, levels = clusters)
+sig_df$lab <- ifelse(sig_df$p.adj.signif == "ns", "", sig_df$p.adj.signif)
+
+ggplot(prop_df, aes(cluster, n, fill = group)) +
+  geom_col(stat = "identity", position = "fill", width = 0.72,
+           colour = "grey25", linewidth = 0.2) +
+  geom_text(data = sig_df, aes(x = cluster, y = 1.05, label = lab),
+            inherit.aes = FALSE, size = 4.4, colour = "grey10") +
+  scale_fill_manual(values = cell.col, name = NULL) +
+  scale_y_continuous(breaks = seq(0, 1, 0.25), labels = scales::percent,
+                     expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Cluster", y = "Fraction of cells",
+       title = "Cell-type composition per cluster (KO vs WT)") +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top", plot.title = element_text(size = 11))
+```
+
+Faceting by sequencing run (replicate) shows whether the compositional shift is reproducible or an artifact of one library — the layout of the reference figure's first panel \[13\]:
+
+```{r}
+#| label: fig-9.2CellPropRep
+#| fig-cap: "The same composition faceted by sequencing replicate: the depletion (C2) and enrichment (C6) are consistent across runs."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 12
+#| fig-height: 3.8
+
+# same cells as the chunk above, now split by sequencing run
+ggplot(cellinfo, aes(run, fill = group)) +
+  geom_bar(position = "fill", width = 0.85, colour = "grey25", linewidth = 0.2) +
+  facet_wrap(~cluster, nrow = 1) +
+  scale_fill_manual(values = cell.col, name = NULL) +
+  scale_y_continuous(breaks = seq(0, 1, 0.5), labels = scales::percent) +
+  labs(x = "Replicate", y = "Fraction of cells") +
+  theme_classic(base_size = 11) +
+  theme(strip.background = element_rect(fill = "grey88", colour = NA),
+        strip.text = element_text(face = "bold"),
+        legend.position = "top",
+        axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `row_wise_fisher_test()` expects the contingency table with categories as rows and groups as columns; its `group` column holds the row names, and `p.adj`/`p.adj.signif` carry the BH-adjusted result — plot the stars from `p.adj.signif`, not raw p-values.
+-   With large N, `fisher.test(..., simulate.p.value = TRUE)` cannot return a p-value smaller than its Monte-Carlo floor `1/(B + 1)`; report such results as `p < 1/(B+1)` (here `p < 0.0001` for B = 10^5) instead of quoting the floor itself.
+-   Keep the two condition sizes balanced: with unequal group totals, every unaffected cluster picks up a small systematic shift that the per-cluster tests can flag as significant.
+:::
+
+### 10. Gradient-Filled Bars (ggpattern)
+
+Presentation-grade bars sometimes carry an "office" gradient fill instead of a flat colour — the reference figure \[13\] uses a two-tone gradient per segment. `ggpattern::geom_col_pattern()` draws it with `pattern = "gradient"` and the two endpoint colours `pattern_fill` / `pattern_fill2`; `pattern_orientation = "radial"` radiates from the segment centre:
+
+```{r}
+#| label: fig-10.1RadialGradient
+#| fig-cap: "Radial-gradient bars: the dark metastatic fraction carries white percentage labels; values are simulated prevalence data."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5.2
+
+set.seed(2970)
+df_d <- data.frame(
+  Country = c("Japan", "USA", "England", "S. Korea", "China", "France", "Germany", "Australia"),
+  Metastatic = c(19, 24, 28, 33, 36, 31, 22, 27),
+  Localized = c(81, 76, 72, 67, 64, 69, 78, 73))
+df_d$ID <- seq_len(nrow(df_d))
+maxID <- nrow(df_d)
+
+plot.df.all <- reshape2::melt(df_d, id.var = c("Country", "ID"),
+                              value.name = "Percentage", variable.name = "Type")
+plot.df <- subset(plot.df.all, Type %in% c("Metastatic", "Localized"))
+plot.df1 <- subset(plot.df, Type == "Metastatic")
+type.color.1 <- c('#dbeffc', '#7bb8e5')   # light segment (Localized)
+type.color.2 <- c('#a7d7f3', '#0079bb')   # dark segment (Metastatic)
+barwidth <- 0.44
+
+ggplot() +
+  geom_col_pattern(data = plot.df, mapping = aes(ID, Percentage),
+                   width = barwidth, position = "stack",
+                   pattern = 'gradient', pattern_orientation = "radial",
+                   pattern_fill = type.color.1[1], pattern_fill2 = type.color.1[2],
+                   fill = NA) +
+  geom_col_pattern(data = plot.df1, mapping = aes(ID, Percentage),
+                   width = barwidth,
+                   pattern = 'gradient', pattern_orientation = "radial",
+                   pattern_fill = type.color.2[1], pattern_fill2 = type.color.2[2],
+                   fill = NA) +
+  geom_text(data = plot.df1, mapping = aes(x = ID, y = Percentage * 0.22,
+                                           label = paste0(Percentage, " %")),
+            size = 2.6, color = "white") +
+  scale_x_continuous(breaks = seq(1, maxID, 1),
+                     labels = stringr::str_wrap(plot.df1$Country, 9)) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 10), expand = c(0, 0)) +
+  labs(x = NULL, y = "Prevalence (%)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
+        panel.border = element_blank(), axis.line = element_line(colour = 'black'),
+        axis.text = element_text(colour = 'black', size = 9))
+```
+
+A horizontal gradient needs a trick: ggpattern can only interpolate between two colours along one direction, so the reference draws each bar as left and right halves with mirrored gradients, producing a symmetric light-centre stripe, and adds black borders with `geom_rect()`:
+
+```{r}
+#| label: fig-10.2HorizontalGradient
+#| fig-cap: "Horizontal-gradient bars assembled from mirrored left/right halves with black segment borders (ggpattern)."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5.2
+
+barwidth2 <- 0.22
+ggplot() +
+  geom_col_pattern(data = plot.df, mapping = aes(ID - barwidth2 / 2 + 0.002, Percentage),
+                   width = barwidth2, position = "stack",
+                   pattern = 'gradient', pattern_orientation = "horizontal",
+                   pattern_fill = type.color.1[2], pattern_fill2 = type.color.1[1], fill = NA) +
+  geom_col_pattern(data = plot.df, mapping = aes(ID + barwidth2 / 2 - 0.002, Percentage),
+                   width = barwidth2, position = "stack",
+                   pattern = 'gradient', pattern_orientation = "horizontal",
+                   pattern_fill = type.color.1[1], pattern_fill2 = type.color.1[2], fill = NA) +
+  geom_col_pattern(data = plot.df1, mapping = aes(ID - barwidth2 / 2 + 0.002, Percentage),
+                   width = barwidth2,
+                   pattern = 'gradient', pattern_orientation = "horizontal",
+                   pattern_fill = type.color.2[2], pattern_fill2 = type.color.2[1], fill = NA) +
+  geom_col_pattern(data = plot.df1, mapping = aes(ID + barwidth2 / 2 - 0.002, Percentage),
+                   width = barwidth2,
+                   pattern = 'gradient', pattern_orientation = "horizontal",
+                   pattern_fill = type.color.2[1], pattern_fill2 = type.color.2[2], fill = NA) +
+  geom_rect(data = plot.df1,
+            mapping = aes(xmin = ID - barwidth2, xmax = ID + barwidth2,
+                          ymin = 0, ymax = Percentage),
+            linewidth = 0.3, fill = NA, color = "black") +
+  geom_rect(data = df_d,
+            mapping = aes(xmin = ID - barwidth2, xmax = ID + barwidth2,
+                          ymin = Metastatic, ymax = 100),
+            linewidth = 0.3, fill = NA, color = "black") +
+  geom_text(data = plot.df1, mapping = aes(x = ID, y = Percentage * 0.22,
+                                           label = paste0(Percentage, " %")),
+            size = 2.6, color = "white") +
+  scale_x_continuous(breaks = seq(1, maxID, 1),
+                     labels = stringr::str_wrap(plot.df1$Country, 9)) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 10), expand = c(0, 0)) +
+  labs(x = NULL, y = "Prevalence (%)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
+        panel.border = element_blank(), axis.line = element_line(colour = 'black'),
+        axis.text = element_text(colour = 'black', size = 9))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `pattern_fill`/`pattern_fill2` are the two gradient endpoints only — a three-colour ramp is out of scope; chain `colorRampPalette()` manually for more stops.
+-   The gradient is pure decoration: it encodes nothing the bar height does not. Prefer flat fills for reviewer-facing figures and keep gradients for slides and covers.
+-   White labels stay legible on the dark endpoint, not on `pattern_fill2`'s light centre — anchor labels to the darker part or outline the text.
+:::
+
+### 11. Reference-Line Bars and Diverging Gray/Colored Bars
+
+Two publication layouts from FigureYa39bar \[13\]. The first (NEJM waterfall style) gives **every tumour type its own colour**, draws dashed reference lines at the clinically meaningful values (RECIST boundaries at −30 and +20, plus zero), and — when one bar towers over the rest — clips the y axis with `coord_cartesian()` and prints the true value on the bar:
+
+```{r}
+#| label: fig-11.1ResponseBars
+#| fig-cap: "Waterfall of simulated best tumour-response by type: one colour per type, dashed RECIST reference lines at -30/0/+20; the y axis is clipped at 50 and the towering bar carries its true value."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 5.5
+
+set.seed(3901)
+df1 <- data.frame(ID = c("NSCLC", "CRC", "Melanoma", "RCC", "HNSCC", "Breast",
+                         "Ovarian", "Prostate", "Pancreas", "HCC", "Cervix", "Sarcoma"),
+                  score = c(-58, -46, -39, -33, -28, -22, -18, -12, 8, 14, 19, 62))
+df1 <- df1[order(df1$score, decreasing = TRUE), ]
+df1$index <- seq_len(nrow(df1))
+
+ggplot(df1, aes(index, score, fill = ID)) +
+  geom_col(width = 0.8) +
+  scale_fill_brewer(type = "Qualitative", palette = "Paired") +
+  scale_y_continuous(breaks = seq(-100, 100, 10), expand = c(0, 0)) +
+  scale_x_continuous(expand = expansion(mult = c(0.01, 0))) +
+  geom_hline(yintercept = c(-30, 0, 20), linetype = 5, linewidth = 0.3) +
+  coord_cartesian(ylim = c(-90, 50)) +
+  geom_text(data = subset(df1, score > 50),
+            aes(index, 48, label = round(score)), size = 3.2) +
+  labs(x = NULL, y = "Maximum change in tumour size (%)",
+       title = "Response by tumour type (one colour per type)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), panel.border = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.line.x = element_blank(), axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "bottom") +
+  guides(fill = guide_legend(ncol = 4, title = NULL, override.aes = list(size = 3)))
+```
+
+The second (Nature Medicine enrichment style) shows signed GSVA-style t-values as a **horizontal diverging bar** with names beside each bar, gray for |t| below the significance threshold and colour only for the significant ones:
+
+```{r}
+#| label: fig-11.2DivergingBars
+#| fig-cap: "Diverging GSVA-style t-value bars (endothelial cells, tumour vs non-malignant, simulated): bars beyond |t| = 4 are coloured by direction, the rest gray; names sit beside each bar."
+#| out.width: "65%"
+#| warning: false
+#| message: false
+#| fig-width: 5.5
+#| fig-height: 7.5
+
+df2 <- data.frame(ID = c("VEGFA", "ANGPT2", "CXCL8", "PDGFB", "MMP9", "TNFSF15",
+                         "ANGPT1", "TEK", "NID2", "COL4A1", "LAMA4", "SPARCL1",
+                         "KDR", "PECAM1", "VWF", "CDH5"),
+                  score = c(7.2, 5.8, 4.9, 4.1, 3.4, -2.6, -3.3, -4.2, -5.1,
+                            -6.3, 2.4, 1.8, 3.1, 2.8, -1.6, 1.2))
+df2$group <- cut(df2$score, breaks = c(-Inf, -4, 4, Inf), labels = c(1, 2, 3))
+df2 <- df2[order(df2$score, decreasing = FALSE), ]
+df2$index <- seq_len(nrow(df2))
+
+ggplot(df2, aes(index, score, fill = group)) +
+  geom_col(width = 0.8) +
+  scale_fill_manual(values = c("palegreen3", "snow3", "dodgerblue4")) +
+  scale_x_continuous(expand = expansion(add = 0.6)) +
+  scale_y_continuous(breaks = seq(-30, 20, 5)) +
+  coord_flip() +
+  geom_hline(yintercept = c(-4, 4), colour = "white", linetype = 2, linewidth = 0.3) +
+  geom_text(data = subset(df2, score > 0),
+            aes(index, -0.3, label = ID, colour = group), size = 3, hjust = "inward") +
+  geom_text(data = subset(df2, score < 0),
+            aes(index, 0.3, label = ID, colour = group), size = 3, hjust = "outward") +
+  scale_colour_manual(values = c("snow3", "black", "black")) +
+  labs(x = NULL, y = "t value of GSVA score, tumour vs non-malignant",
+       title = "Endothelial cells, tumour vs non-malignant") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(linewidth = 0.6, fill = NA),
+        axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  guides(fill = "none", colour = "none")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `coord_cartesian(ylim = ...)` clips the *drawing*, not the data — the towering bar keeps its full `geom_col` height and only the label reveals its value; `scale_y_continuous(limits = ...)` would instead drop the bar entirely.
+-   In the diverging layout the names live **inside** the bars' empty half (hjust "inward"/"outward" by sign), so no separate axis labelling is needed; gray for non-significant keeps the colour budget for the findings.
+-   Reference lines at community-accepted boundaries (RECIST ±30/+20) carry meaning a gridline cannot — quote them in the caption.
 :::
 
 ## Applications
@@ -667,5 +957,4 @@ Figure B shows the average LV myocardial signal-to-noise ratio (SNR) of all mice
 
 \[12\] Kassambara A (2023). rstatix: Pipe-Friendly Framework for Basic Statistical Tests. R package version 0.7.2, https://CRAN.R-project.org/package=rstatix.
 
-
-\[9\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[13\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

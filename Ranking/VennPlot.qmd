@@ -220,7 +220,7 @@ The core function of the VennDiagram package is `venn.diagram`. This function ca
 #| warning: false
 #| message: false
 
-p <- venn.diagram(x,filename = NULL, disable.logging = TRUE);grid::grid.draw(p)
+p <- venn.diagram(x, filename = NULL, disable.logging = TRUE);grid::grid.draw(p)
 ```
 
 The biggest difference between VennDiagram set color settings and ggVennDiagram is that the colors are set as discrete colors according to different sets. The setting method is as follows:
@@ -264,7 +264,7 @@ Font settings. If you need to adjust the position, please use the `cat.dist`, `c
 #| message: false
 
 p <- venn.diagram(
-  x, filename = NULL, disable.logging = TRUE,
+  x, filename = NULL, disable.logging = TRUE, 
   cat.col =c("A"="#2E75A2","B"="#FBD75F","C"="#379337","D"="#C13A3C"),
   label.col = "red");grid::grid.draw(p)
 ```
@@ -279,8 +279,8 @@ Display the size of the collection in proportion. This mode is only applicable t
 #| message: false
 
 p <- venn.diagram(
-  x[c("A","B")], filename = NULL, disable.logging = TRUE, fill= c("A"="#2E75A2","B"="#FBD75F"),
-  scaled = T
+  x[c("A","B")], filename = NULL, fill= c("A"="#2E75A2","B"="#FBD75F"),
+  scaled = T, disable.logging = TRUE
 );grid::grid.draw(p)
 ```
 
@@ -372,14 +372,14 @@ ggVennDiagram(sets4, label = "percent", label_alpha = 0,
 :::
 
 
-### 6. Venn Diagram With an Exact Multiset-Intersection p Value
+### 6. Venn Diagram With a Multiset-Intersection p Value
 
-When a Venn diagram carries an argument (which pathways are *shared* across three PDX models?), the triple overlap needs a statistic: a P value under the null of independent sets, printed under the diagram \[4\]. The MSET test of Wang et al. generalises it to many sets; for the common three-set case the exact upper-tail binomial test below is self-contained and dependency-free.
+When a Venn diagram carries an argument (which pathways are *shared* across three PDX models?), the triple overlap needs a statistic: a P value under the null of independent sets, printed under the diagram \[4\]. The exact MSET test of Wang et al. (SuperExactTest) handles arbitrary numbers of sets with fixed set sizes; SuperExactTest is not in this repository's lockfile, so the section ships a self-contained **binomial approximation**: treat each background member as independently included in set i with probability |S_i|/N, and upper-tail-test the triple-overlap count against Binomial(N, p1·p2·p3). Fixed set sizes make triple-inclusion events mildly negatively correlated, so the binomial tail is slightly **conservative** — it will not exaggerate significance.
 
 
 ```{r}
 #| label: fig-6.1MultisetP
-#| fig-cap: "Three PDX-model pathway sets with the exact multiset-intersection test below: the 52-member planted core makes the triple overlap astronomically richer than independent sampling allows (P < 1e-30)."
+#| fig-cap: "Three PDX-model pathway sets with a binomial-approximation test of the triple intersection below: the 52-member planted core makes the overlap far richer than independent sampling allows (P < 1e-30)."
 #| out.width: "85%"
 #| warning: false
 #| message: false
@@ -396,18 +396,20 @@ S2 <- unique(c(core, sample(setdiff(bg, core), sz[2] - length(core))))
 S3 <- unique(c(core, sample(setdiff(bg, core), sz[3] - length(core))))
 dat <- list(PDX_95 = S1, PDX_112 = S2, PDX_207 = S3)
 
-## exact upper-tail test of the triple intersection under independent sets:
-## the observed triple-overlap count vs Binomial(n, p1*p2*p3)
+## binomial approximation of the triple-intersection test (independent-inclusion
+## null): observed triple-overlap count vs Binomial(n, p1*p2*p3); slightly
+## conservative under the true fixed-size null
 t3 <- length(intersect(intersect(S1, S2), S3))
 pval <- binom.test(t3, n = n_bg, p = prod(sz / n_bg),
                    alternative = "greater")$p.value
 
-venn <- venn.diagram(x = dat, filename = NULL, disable.logging = TRUE,
-                     fill = c("red", "steelblue", "yellow"))
+venn <- venn.diagram(x = dat, filename = NULL,
+                     fill = c("red", "steelblue", "yellow"),
+                     disable.logging = TRUE)  # keep VennDiagram from dropping .log files in the working dir
 grid::grid.newpage()
 grid::grid.draw(venn)
-grid::grid.text(sprintf("Exact test of multiset intersections:  P = %.2e", pval),
-                x = unit(0.5, "npc"), y = unit(0.05, "npc"),
+grid::grid.text(sprintf("Binomial tail test of the triple intersection:  P = %.2e", pval),
+                x = unit(0.5, "npc"), y = unit(0.105, "npc"),
                 gp = gpar(fontsize = 11, col = "#B2182B"))
 cat(sprintf("Triple overlap: %d pathways (sizes %s), P = %.2e\n",
             t3, paste(sz, collapse = "/"), pval))
@@ -418,7 +420,7 @@ cat(sprintf("Triple overlap: %d pathways (sizes %s), P = %.2e\n",
 
 -   The p-value must come from the **same null** the reader assumes: background size = the pathway/gene universe you sampled *from*, not the union of the drawn sets; a wrong n inflates significance silently.
 -   Check the test against a Monte-Carlo null once per new design: draw independent sets with the same sizes and confirm the observed overlap never occurs by chance - if it does, your p-value is lying.
--   Packages such as SuperExactTest implement the full multiset exact test (Wang et al. 2015); the binomial tail here is its independent-sets special case - sufficient for the usual "is this overlap more than expected?" question.
+-   The binomial tail assumes independent set membership; with fixed set sizes the exact null is the multiset hypergeometric cascade implemented by SuperExactTest's `MSET()` (Wang et al. 2015) — use it for publication-grade claims (install separately; it is not in this repository's lockfile).
 :::
 
 ## Application

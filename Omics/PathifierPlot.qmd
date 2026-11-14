@@ -1,0 +1,126 @@
+---
+title: "Pathway Deregulation Scores (Pathifier)"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+**Pathifier** condenses a pathway's genes into one **pathway deregulation score (PDS)** per sample: the distance each tumour sample travels away from the normal-sample trajectory along the pathway's principal curve in gene-expression space \[2\]. Scores per sample × pathway render as an unclustered heatmap with subtype annotation \[1\]. This tutorial runs the Bioconductor `pathifier` package on a simulated tumour/normal matrix with planted pathway shifts:
+
+## Example
+
+![](../images/PathifierPlot_demo.png){fig-alt="Pathway Deregulation Scores (Pathifier) DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `pathifier`; `pheatmap`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+if (!requireNamespace("pathifier", quietly = TRUE)) {
+  if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager", repos = "https://cloud.r-project.org")
+  }
+  BiocManager::install("pathifier", ask = FALSE, update = FALSE)
+}
+if (!requireNamespace("pheatmap", quietly = TRUE)) {
+  install.packages("pheatmap", repos = "https://cloud.r-project.org")
+}
+suppressPackageStartupMessages({
+  library(pheatmap)
+  library(pathifier)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+40 simulated tumours (20 luminal-like, 20 non-luminal-like) + 10 adjacent normals over 400 genes in 6 pathways: proliferation and hypoxia are up in luminal tumours, EMT in non-luminal — the pattern the PDS heatmap must recover. `pathifier` needs **positive-scale expression** (log2 TPM): its `min_exp`/`min_std` filters and the normal-sample ordering are meaningless on z-scores:
+
+```{r load data}
+suppressPackageStartupMessages({library(pheatmap); library(pathifier)})
+set.seed(15101)
+## 400 genes, 6 pathways, 40 tumors (20 Lum / 20 NonLum) + 10 normals
+genes <- sprintf("G%03d", 1:400)
+pathways <- list(
+  Prolif = genes[1:60], EMT = genes[61:120], Immune = genes[121:180],
+  Metabolism = genes[181:240], Hypoxia = genes[241:290], ECM = genes[291:340])
+n_tum_l <- 20; n_tum_n <- 20; n_nor <- 10
+base <- matrix(rnorm(400 * (n_tum_l + n_tum_n + n_nor), 5, 1.2), 400,
+               n_tum_l + n_tum_n + n_nor, dimnames = list(genes, NULL))
+base[base < 0.1] <- 0.1        # pmax would drop matrix dims
+## planted pathway deregulation in luminal tumors (up) and non-luminal (EMT)
+base[pathways$Prolif, 1:n_tum_l] <- base[pathways$Prolif, 1:n_tum_l] + 1.1
+base[pathways$EMT, (n_tum_l + 1):(n_tum_l + n_tum_n)] <- base[pathways$EMT, (n_tum_l + 1):(n_tum_l + n_tum_n)] + 1.2
+base[pathways$Hypoxia, 1:n_tum_l] <- base[pathways$Hypoxia, 1:n_tum_l] + 0.8
+colnames(base) <- c(sprintf("T%02d_L", 1:n_tum_l), sprintf("T%02d_N", 1:n_tum_n),
+                    sprintf("N%02d", 1:n_nor))
+expr <- base; tissue.logic <- rep(c(FALSE, TRUE), c(n_tum_l + n_tum_n, n_nor))
+sinfo <- data.frame(PAM50 = c(rep("Luminal-like", n_tum_l), rep("Non-luminal-like", n_tum_n),
+                              rep(NA, n_nor)), row.names = colnames(expr))
+```
+
+## Visualization
+
+### 1. PDS Heatmap with Subtype Annotation
+
+`quantify_pathways_deregulation()` returns one score per pathway × sample; the heatmap plots tumours only, row-scaled and winsorized to [-1, 1] with **no clustering** (the paper's presentation), annotation strip splitting non-luminal from luminal — the planted Prolif/Hypoxia (luminal) and EMT (non-luminal) shifts separate cleanly:
+
+```{r}
+#| label: fig-1.1Pathifier
+#| fig-cap: "Pathifier pathway deregulation scores (simulated): 40 tumours (annotation: non-luminal vs luminal-like) x 6 pathways, row-scaled and winsorized, unclustered — proliferation and hypoxia shift up in luminal tumours, EMT in non-luminal."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 3.6
+
+indata <- as.matrix(log2(expr + 1))   # source form: log2(TPM + 1)
+gname <- rownames(indata)
+path.res <- quantify_pathways_deregulation(
+  data = indata, allgenes = gname, syms = pathways, pathwaynames = names(pathways),
+  normals = tissue.logic, attempts = 100, min_exp = 0, min_std = 0)
+path.score <- do.call(rbind, lapply(path.res$scores, as.data.frame))
+dimnames(path.score) <- list(names(pathways), colnames(indata))
+
+tum.sam <- colnames(path.score)[1:(n_tum_l + n_tum_n)]
+ord <- c(grep("_N", tum.sam, value = TRUE), grep("_L", tum.sam, value = TRUE))
+annCol <- data.frame(PAM50 = sinfo[ord, "PAM50"], row.names = ord)
+annColors <- list(PAM50 = c("Luminal-like" = "red", "Non-luminal-like" = "blue"))
+plotdata <- t(scale(t(path.score[, ord])))
+plotdata[plotdata > 1] <- 1; plotdata[plotdata < -1] <- -1
+pheatmap(plotdata, border_color = NA, cluster_cols = FALSE, cluster_rows = FALSE,
+         annotation_col = annCol, annotation_colors = annColors,
+         show_rownames = TRUE, show_colnames = FALSE,
+         color = colorRampPalette(c("#2166AC", "white", "#B2182B"))(64),
+         main = "Pathifier pathway deregulation scores (simulated)")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `syms` must be a **named list of gene-name character vectors** present in `allgenes` — numeric indices silently match nothing and every pathway is skipped (`k1 = 0`).
+-   Keep the pathway list short (the tutorial's 6 vs GSEA's >1000): runtime scales with pathways × samples × attempts, and the reference author reports days-long runs for the full c5 set.
+-   `normals` defines the reference trajectory; tumours-only heatmaps (this page) compare tumours **to** that normal baseline — never include the normals as columns, or their near-zero scores flatten the colour scale.
+:::
+
+## Applications
+
+::: {#fig-PathifierApplications1}
+![](../images/PathifierPlot_demo.png){fig-alt="Pathway deregulation heatmap" fig-align="center" width="60%"}
+
+Pathway deregulation heatmap
+:::
+
+PDS matrices feed the same downstream uses as GSVA scores: subtype separation, survival association, or differential deregulation between conditions — with the advantage of a normal-tissue baseline built into the score.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Drier Y, Sheffer M, Domany E. Pathway-based personalized analysis of cancer. Proc Natl Acad Sci USA. 2013;110(16):6388-6393. doi:10.1073/pnas.1219651110

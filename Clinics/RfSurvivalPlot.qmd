@@ -1,0 +1,127 @@
+---
+title: "Random Survival Forest Variable Screening"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+A random survival forest (**RSF**) ranks variables by how much out-of-bag (OOB) permutation degrades prediction, giving a screening path for survival omics: univariate-Cox pre-filter → RSF → relative importance → signature cutoff \[1\]. The two reference panels answer different questions — (A) the OOB error rate vs number of trees (has the forest converged?) and (B) relative importance (which variables carry predictive weight?) — and the reference's original engine `randomSurvivalForest::rsf()` is CRAN-archived, so this tutorial uses its maintained successor `randomForestSRC::rfsrc()`, whose objects carry the same `$err.rate` and `$importance` slots:
+
+## Example
+
+![](../images/Clinics/RfSurvivalPlot_demo.png){fig-alt="Random Survival Forest Variable Screening DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `survival`; `randomForestSRC`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(survival)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+200 simulated patients × 40 genes with six planted prognostic genes (coefficients aligned to the planted positions, weak enough that the OOB error declines visibly over hundreds of trees). The reference pipeline pre-filters by univariate Cox p < 0.05 before the forest — the same step here, so the RSF sees only pre-screened variables:
+
+```{r load data}
+suppressPackageStartupMessages({library(survival)})
+if (!requireNamespace("randomForestSRC", quietly = TRUE)) {
+  install.packages("randomForestSRC", repos = "https://cloud.r-project.org")
+}
+set.seed(18201)
+## 200 patients x 40 genes; 6 genes planted as prognostic
+n <- 200; n_gene <- 40
+genes <- sprintf("GENE%02d", 1:n_gene)
+expr <- matrix(rnorm(n * n_gene, 4, 1.2), n, n_gene, dimnames = list(NULL, genes))
+prognostic <- c("GENE03", "GENE11", "GENE19", "GENE24", "GENE31", "GENE38")
+coef <- c(0.32, -0.28, 0.34, 0.28, -0.32, 0.38)
+## align coefficients with the PLANTED positions (a positional c(coef, 0, 0, ...)
+## here silently makes columns 1-6 the prognostic genes instead)
+full_coef <- rep(0, n_gene); full_coef[match(prognostic, genes)] <- coef
+lp <- as.vector(scale(as.vector(expr %*% full_coef)))
+lam <- exp(lp)
+OS.time <- pmin(3000, pmax(30, qweibull(runif(n), 1, 1200 / lam)))
+OS <- rbinom(n, 1, pmin(0.9, pmax(0.05, 0.5 + 0.25 * lp)))
+dt.rf <- data.frame(OS.time = OS.time, OS = OS, expr)
+## univariate Cox pre-filter (p < 0.05), as in the reference pipeline
+cox_p <- vapply(genes, function(g)
+  summary(coxph(Surv(OS.time, OS) ~ get(g), data = dt.rf))$coefficients[, "Pr(>|z|)"], numeric(1))
+gene.sel <- names(cox_p)[cox_p < 0.05]
+```
+
+## Visualization
+
+### 1. Error-Rate Curve and Importance Lollipop
+
+The two reference panels: the OOB error rate falls sharply then stabilises after ~100 trees (Panel A — this is how `ntree` is chosen), and the rescaled importance lollipop ranks genes relative to the top one with the 0.2 cutoff dashed (Panel B — the six planted genes top the ranking, with two weak noise genes just over the line, which is exactly what a real screen looks like):
+
+```{r}
+#| label: fig-1.1RfSurv
+#| fig-cap: "Random survival forest screening of 200 simulated patients: OOB error rate vs number of trees (left) and relative importance of Cox-prefiltered genes rescaled to the top gene with a 0.2 cutoff (right); the six planted prognostic genes top the ranking."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 4.5
+
+suppressPackageStartupMessages(library(randomForestSRC))
+## randomForestSRC::rfsrc() replaces the archived randomSurvivalForest::rsf()
+surv.rf <- rfsrc(Surv(OS.time, OS) ~ ., data = dt.rf[, c("OS.time", "OS", gene.sel)],
+                 ntree = 500, importance = TRUE, seed = 12345678)
+## Panel A: OOB error rate vs number of trees (rfsrc records the trace
+## only every 10th tree — plot the recorded positions)
+err.rate <- as.vector(surv.rf$err.rate)
+err.idx <- which(!is.na(err.rate))
+## Panel B: relative importance (rescaled to the top gene) lollipop
+raw.imp <- surv.rf$importance
+rel.imp <- raw.imp / max(abs(raw.imp))
+imp.cutoff <- 0.2
+sel <- sort(rel.imp[rel.imp > imp.cutoff])
+
+par(mfrow = c(1, 2))
+par(bty = "o", mgp = c(1.5, .33, 0), mar = c(3.5, 4, 2.5, 1), las = 1, tcl = -0.25)
+plot(err.idx, err.rate[err.idx], type = "l", lwd = 1.5,
+     xlab = "Number of Trees", ylab = "", main = "OOB error rate")
+mtext("Error Rate", side = 2, line = 2.2, las = 3)
+par(bty = "o", mgp = c(1.5, .33, 0), mar = c(3.5, 6, 2.5, 1), las = 1, tcl = -0.25)
+xrange <- range(pretty(range(sel)))
+plot(NA, NA, xlim = xrange, ylim = c(0.5, length(sel) + 0.5),
+     xlab = "Variable Relative Importance", ylab = "", yaxt = "n",
+     main = "OOB relative importance")
+abline(v = imp.cutoff, lty = 2, col = "grey55")
+for (i in seq_along(sel)) lines(c(xrange[1], sel[i]), c(i, i), col = "steelblue", lwd = 2.5)
+axis(2, at = seq_along(sel), labels = gsub("_", "-", names(sel)), las = 1, cex.axis = 0.8)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `rfsrc()` records the per-tree error trace **only every 10th tree** (`err.rate` has `NA` between) — plot the non-`NA` positions or the line silently disappears.
+-   Align simulation (or real) coefficients with the right variable **positions**: a positional `c(coef, 0, 0, ...)` aligned to columns 1-6 while the intended genes sit elsewhere produces a figure that is internally consistent but biologically wrong.
+-   The relative importance is rescaled to `max(abs(importance))`, so the cutoff (0.2 here; the reference's paper used 0.65) is a **relative** threshold — report it together with the raw importances and treat it as a ranking device, not evidence.
+:::
+
+## Applications
+
+::: {#fig-RfSurvApplications1}
+![](../images/Clinics/RfSurvivalPlot_demo.png){fig-alt="RSF variable screening" fig-align="center" width="60%"}
+
+RSF variable screening
+:::
+
+The same two-panel readout serves any censored-outcome forest: clinical-only risk models, radiomics feature screening, or CNV-gene signature selection before multivariate modelling.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Ishwaran H, Kogalur UB, Blackstone EH, Lauer MS. Random survival forests. Ann Appl Stat. 2008;2(3):841-860. doi:10.1214/08-AOAS169

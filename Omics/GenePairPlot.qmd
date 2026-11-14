@@ -1,0 +1,178 @@
+---
+title: "LncRIndiv Gene-Pair Dysregulation"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+`LncRIndiv` calls differentially expressed lncRNAs **in individual patients** — not per group — by exploiting the fact that gene-pair *rank orderings* are stable within a normal tissue but disturbed in cancer \[1\]. The pipeline: (1) keep lncRNA pairs whose rank order is consistent in ≥95% of normal samples, (2) test each pair's reversal in tumours with a 2×2 Fisher test, (3) keep the top-3 partners with the most stable expression (lowest CV) for each query lncRNA, (4) call a lncRNA dysregulated in a patient when it outranks **more than half** of its stable partners. The output is a binary patient × lncRNA heatmap \[1\]. The reference leans on `matlab::ones()` and `EnvStats::cv()`; both are one-liners in base R, so the whole pipeline runs dependency-free plus pheatmap:
+
+## Example
+
+![](../images/Omics/GenePairPlot_demo.png){fig-alt="LncRIndiv Gene-Pair Dysregulation DEMO" fig-align="center" width="70%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `pheatmap`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(pheatmap)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+80 simulated lncRNAs × 50 samples (25 tumour `T`, 25 normal `N`) with planted structure: most pairs keep a fixed rank order in normals, and a handful of "driver" lncRNAs are up-shifted in tumours so their stable pairs reverse. The GSE27262-style input of the reference is replaced by this simulation:
+
+```{r load data}
+suppressPackageStartupMessages({library(pheatmap)})
+set.seed(39233)
+n_lnc <- 80; n_tum <- 25; n_nor <- 25
+lncs <- sprintf("LNC%02d", 1:n_lnc)
+sams <- c(paste0("T", 1:n_tum), paste0("N", 1:n_nor))
+Sinfo <- data.frame(sample = sams,
+                    Title = paste0(".../", sams, ifelse(grepl("^T", sams), "T", "N")))
+Expr <- matrix(rnorm(n_lnc * (n_tum + n_nor), 5, 1), n_lnc, n_tum + n_nor,
+               dimnames = list(lncs, sams))
+## planted stable pairs: LNC01 < LNC02 < ... < LNC40 in normals
+rank_shift <- matrix(0, n_lnc, n_tum + n_nor, dimnames = list(lncs, sams))
+for (j in seq_len(40)) rank_shift[j, ] <- j * 0.08
+Expr <- Expr + rank_shift
+## tumour-only up-shift of drivers 1-6 -> their stable pairs reverse in tumours
+drivers <- lncs[1:6]
+Expr[1:6, 1:n_tum] <- Expr[1:6, 1:n_tum] + 3.2
+## rank profile per sample
+expr.rank <- apply(Expr, 2, rank)
+tumsam <- Sinfo$sample[grepl("T$", Sinfo$Title)]
+norsam <- Sinfo$sample[grepl("N$", Sinfo$Title)]
+```
+
+## Visualization
+
+### 1. Stable Pairs in Normals and Their Tumour Reversal
+
+Step 1-2 in one figure: pair consistency in normals (fraction of normal samples with lncRNA1 < lncRNA2) for the pairs kept at the 0.95 cutoff, then the 2×2 Fisher test of the direction table (normal vs tumour × a<b vs a>b) — significant reversals with the *same* dysregulation direction for both partners survive, as in the reference:
+
+```{r}
+#| label: fig-1.1GenePairReversal
+#| fig-cap: "LncRIndiv screening: kept pairs show ≥95% rank consistency in normals; the reversal plot marks tumour-reversed pairs by their Fisher FDR — driver lncRNAs (planted up-shift) dominate the significant end."
+#| out.width: "100%"
+#| fig-width: 10.5
+#| fig-height: 4.4
+
+## step 1: pairs with >=95% consistent rank direction in normals
+pairs <- NULL
+for (i in 1:(n_lnc - 1)) {
+  for (j in (i + 1):n_lnc) {
+    ratio <- mean(expr.rank[i, norsam] < expr.rank[j, norsam])
+    if (ratio >= 0.95) pairs <- rbind(pairs, data.frame(V1 = lncs[i], V2 = lncs[j], cons = ratio))
+    if (ratio <= 0.05) pairs <- rbind(pairs, data.frame(V1 = lncs[j], V2 = lncs[i], cons = 1 - ratio))
+  }
+}
+## step 2: Fisher test of the direction table per pair
+pairs$FDR <- NA; pairs$dirct <- NA
+for (i in seq_len(nrow(pairs))) {
+  a <- pairs$V1[i]; b <- pairs$V2[i]
+  tum.d <- expr.rank[a, tumsam] - expr.rank[b, tumsam]
+  nor.d <- expr.rank[a, norsam] - expr.rank[b, norsam]
+  avg1 <- mean(expr.rank[a, tumsam]) - mean(expr.rank[a, norsam])
+  avg2 <- mean(expr.rank[b, tumsam]) - mean(expr.rank[b, norsam])
+  tmp <- matrix(c(sum(nor.d < 0), sum(nor.d > 0), sum(tum.d < 0), sum(tum.d > 0)),
+                2, 2, byrow = TRUE,
+                dimnames = list(c("Normal", "Tumour"), c("a<b", "a>b")))
+  pairs$FDR[i] <- p.adjust(fisher.test(tmp)$p.value, method = "BH")
+  pairs$dirct[i] <- ifelse(avg1 * avg2 > 0, "same", "different")
+}
+outSel <- pairs[pairs$FDR < 0.1 & pairs$dirct == "same", ]
+
+par(mfrow = c(1, 2), mar = c(4, 4, 2.5, 1), las = 1)
+hist(pairs$cons, breaks = seq(0.8, 1, 0.02), col = "#9DC3E6",
+     xlab = "rank consistency in normals", main = "Step 1: stable pairs")
+abline(v = 0.95, lwd = 2, lty = 2)
+hts <- hist(pairs$cons, plot = FALSE)$counts
+text(0.945, max(hts) * 0.9, "0.95 cutoff", adj = 1, cex = 0.8)
+isdrv <- (outSel$V1 %in% drivers)
+xr <- max(-log10(outSel$FDR))
+plot(-log10(outSel$FDR), seq_len(nrow(outSel)), type = "n",
+     xlab = "-log10(FDR) of reversal Fisher test", ylab = "",
+     yaxt = "n", xlim = c(0, xr * 1.15), ylim = c(0, nrow(outSel) * 1.12),
+     main = "Step 2: tumour-reversed pairs")
+points(-log10(outSel$FDR)[isdrv], seq_len(sum(isdrv)), pch = 19, col = "#B2182B")
+points(-log10(outSel$FDR)[!isdrv], seq_len(nrow(outSel))[!isdrv], pch = 17, col = "#4472C4")
+legend("topright", inset = c(0.01, 0.01), c("planted driver", "background"),
+       pch = c(19, 17), col = c("#B2182B", "#4472C4"), bty = "n", cex = 0.85)
+```
+
+### 2. Per-Patient Dysregulation Calls
+
+Steps 3-4: for each query lncRNA keep the top-3 partners by CV of rank across all samples, then call the lncRNA dysregulated (1) in a patient when it outranks ≥ half of its kept partners — the binary heatmap is the reference's deliverable:
+
+```{r}
+#| label: fig-2.1GenePairDysTab
+#| fig-cap: "LncRIndiv dysregulation matrix: rows = query lncRNAs, columns = tumour samples; yellow = called up (outranks ≥ half of its stable partners), black = not called. The six planted drivers are called in nearly all tumour samples."
+#| out.width: "95%"
+#| fig-width: 9
+#| fig-height: 5.4
+
+## step 3: top-3 lowest-CV partners per query lncRNA
+n.top <- 3
+queries <- unique(outSel$V1)
+keep <- do.call(rbind, lapply(queries, function(a) {
+  ps <- outSel[outSel$V1 == a, ]
+  cv <- sapply(ps$V2, function(b) sd(expr.rank[b, ]) / mean(expr.rank[b, ]))
+  ps <- ps[order(cv), , drop = FALSE]
+  ps[seq_len(min(n.top, nrow(ps))), c("V1", "V2")]
+}))
+colnames(keep) <- c("lncRNA.A", "partner")
+
+## step 4: majority-vote call per patient
+dysTab <- matrix(0, length(queries), length(tumsam),
+                 dimnames = list(queries, tumsam))
+for (s in tumsam) {
+  for (a in queries) {
+    ps <- keep$partner[keep$lncRNA.A == a]
+    pos <- sum(expr.rank[a, s] > expr.rank[ps, s])
+    dysTab[a, s] <- as.integer(pos >= ceiling(0.5 * length(ps)))
+  }
+}
+pheatmap(dysTab, border_color = NA,
+         cluster_rows = TRUE, cluster_cols = TRUE,
+         color = c("black", "yellow"),
+         show_rownames = TRUE, show_colnames = TRUE,
+         fontsize_row = 7, fontsize_col = 6,
+         legend_breaks = c(0, 0.5, 1),
+         legend_labels = c("DN.Reg.", "", "UP.Reg."),
+         main = "LncRIndiv dysregulation calls in tumour samples")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Build stable pairs **from normals only** — tumour rank disturbance is the signal, so training the pair list on tumours destroys it.
+-   The `same`-direction filter (both partners shift the same way tumour vs normal) is what makes a reversal attributable to the *query* lncRNA; a partner moving the opposite way would confound the call.
+-   Top-3 partners by lowest CV is the noise control: a stable partner makes "query outranks it" meaningful, while a volatile partner flips randomly across samples.
+-   With an odd number of kept partners, `ceiling(0.5 * n)` makes the majority vote strict — 2 of 3 partners outranked is required, not 1.5.
+-   Rank-based calls are platform-independent by construction, so validate on an independent cohort with a *different* platform before trusting absolute-expression signatures.
+:::
+
+## Application
+
+::: {#fig-GenePairApplications1}
+![](../images/Omics/GenePairPlot_demo.png){fig-alt="LncRIndiv Gene-Pair Dysregulation" fig-align="center" width="70%"}
+
+LncRIndiv gene-pair dysregulation
+:::
+
+The rank-pair trick applies to any within-sample-comparable quantities: miRNA and mRNA isoform switching, individual-patient pathway activation, or tumour purity-adjusted markers — anywhere single-sample differential calls are wanted without group-level modelling.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

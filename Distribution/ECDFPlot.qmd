@@ -7,12 +7,13 @@ author:
 
 The empirical cumulative distribution function (ECDF), $F_n(x) = \frac{1}{n}\sum_i \mathbf{1}(x_i \le x)$, plots every observation as a step that climbs from 0 to 1 — a complete, assumption-free portrait of a distribution. Compared with histograms it needs no bin-width tuning, shows *every* data point's position, and makes quantiles directly readable: the group median is simply where its curve crosses 0.5 \[1\]. Two ECDF curves on one axes are also the geometric basis of the two-sample Kolmogorov–Smirnov test — the vertical gap between them is the KS statistic \[2\].
 
-This tutorial covers four workflows:
+This tutorial covers five workflows:
 
 1. Two-group ECDFs with `stat_ecdf()`;
 2. Multi-group ECDFs with annotated medians;
 3. The two-sample ECDF *difference* plot — visualizing the KS statistic;
-4. The p-value ECDF, a standard omics quality-control view.
+4. The p-value ECDF, a standard omics quality-control view;
+5. Multi-group ECDFs annotated with Wilcoxon rank-sum p-values.
 
 ## Example
 
@@ -24,12 +25,13 @@ This tutorial covers four workflows:
 
 -   Programming language: R
 
--   Dependent packages: `ggplot2`; `dplyr`
+-   Dependent packages: `ggplot2`; `dplyr`; `rstatix`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Load packages
 library(ggplot2)
 library(dplyr)
+library(rstatix)
 ```
 
 ```{r}
@@ -166,6 +168,54 @@ ggplot(pvdf, aes(p, colour = what)) +
   theme(legend.position = "top")
 ```
 
+### 5. ECDF with Wilcoxon Rank-Sum P-Values
+
+The publication layout behind FigureYa298ecdfPvalue \[3\] — cumulative log2 fold-change distributions of non-target genes, CLIP targets and CLIP + RIP targets — overlays three ECDFs and states each group's shift against the non-target reference with a two-sided Wilcoxon rank-sum test (the Mann–Whitney U test; both names describe the same procedure). The annotations use each curve's color, so the reader maps p-value to distribution without hunting through the legend:
+
+```{r}
+#| label: fig-5.1EcdfWilcox
+#| fig-cap: "Three simulated log2 fold-change distributions (n = 100 each): ECDFs annotated with two-sided Wilcoxon rank-sum p-values against the Non-targets reference (P = 0.027 for CLIP targets, P < 0.001 for CLIP + RIP targets)."
+#| out.width: "65%"
+#| fig-width: 6
+#| fig-height: 5.4
+#| warning: false
+#| message: false
+
+set.seed(2981)
+n_ec <- 100
+df_e <- data.frame(
+  x = c(rnorm(n_ec, 0, 1), rnorm(n_ec, 0.35, 1), rnorm(n_ec, 0.75, 1)),
+  g = rep(c("Non-targets", "CLIP targets", "CLIP + RIP targets"), each = n_ec))
+df_e$g <- factor(df_e$g, levels = c("Non-targets", "CLIP targets", "CLIP + RIP targets"))
+
+wt <- df_e |> rstatix::wilcox_test(x ~ g)   # all pairwise; keep the vs-reference rows
+p_clip <- wt$p[wt$group1 == "Non-targets" & wt$group2 == "CLIP targets"]
+p_crip <- wt$p[wt$group1 == "Non-targets" & wt$group2 == "CLIP + RIP targets"]
+fmt_p <- function(p) ifelse(p < 0.001, "P < 0.001", sprintf("P = %.3f", p))
+
+cols_e <- c("Non-targets" = "red", "CLIP targets" = "forestgreen",
+            "CLIP + RIP targets" = "darkblue")
+labs_e <- c("Non-targets (n = 100)", "CLIP targets (n = 100)",
+            "CLIP + RIP targets (n = 100)")
+
+ggplot(df_e, aes(x, colour = g)) +
+  stat_ecdf(geom = "step", linewidth = 1) +
+  annotate("text", x = -2.9, y = 0.72, hjust = 0, size = 4.2,
+           colour = cols_e["CLIP targets"], label = paste0(fmt_p(p_clip), " (vs Non-targets)")) +
+  annotate("text", x = -2.9, y = 0.62, hjust = 0, size = 4.2,
+           colour = cols_e["CLIP + RIP targets"], label = paste0(fmt_p(p_crip), " (vs Non-targets)")) +
+  scale_color_manual(values = cols_e, labels = labs_e, name = NULL) +
+  labs(x = "log2 fold change (simulated)", y = "Cumulative fraction",
+       title = "ECDF with two-sided Wilcoxon rank-sum P values") +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "top",
+        panel.grid = element_blank(),
+        legend.text = element_text(size = 9.5),
+        plot.title = element_text(size = 12))
+```
+
+Two remarks on the statistics. First, the p-value annotations must be formatted defensively: `sprintf("%.3f", 7.8e-5)` renders `0.000`, so values below the resolution switch to the explicit `P < 0.001` form. Second, for exactly two groups the Wilcoxon rank-sum test and the Kruskal–Wallis test are the same procedure — `rstatix::kruskal_test()` on the two-group subset returns an identical p-value — which is a handy cross-check when porting code between the two idioms.
+
 ::: callout-tip
 ## Practice tips
 
@@ -186,3 +236,5 @@ ECDF plots serve distribution comparison wherever medians and tails matter more 
 \[1\] Chambers JM, Cleveland WS, Kleiner B, Tukey PA. Graphical Methods for Data Analysis. Belmont: Wadsworth; 1983.
 
 \[2\] Hodges JL. The significance probability of the Smirnov two-sample test. Ark Mat. 1957;3(5):469-486. doi:10.1007/BF02589501
+
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

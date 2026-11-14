@@ -31,6 +31,9 @@ if (!requireNamespace("BiocManager", quietly = TRUE)) {
 if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
 if (!requireNamespace("circlize", quietly = TRUE)) install.packages("circlize")
 if (!requireNamespace("igraph", quietly = TRUE)) install.packages("igraph")
+if (!requireNamespace("ggraph", quietly = TRUE)) install.packages("ggraph")
+if (!requireNamespace("tidygraph", quietly = TRUE)) install.packages("tidygraph")
+if (!requireNamespace("ggrepel", quietly = TRUE)) install.packages("ggrepel")
 
 # 从 GitHub 安装 CellChat（jinworks/CellChat 为当前维护版本）
 if (!requireNamespace("CellChat", quietly = TRUE)) {
@@ -42,6 +45,9 @@ if (!requireNamespace("CellChat", quietly = TRUE)) {
 library(CellChat)
 library(ggplot2)
 library(circlize)
+library(ggraph)
+library(tidygraph)
+library(ggrepel)
 ```
 
 ```{r session info}
@@ -292,8 +298,6 @@ ggplot(lr_df, aes(cell_pair, pair, size = pval, colour = mean)) +
 -   `expand.grid()` 创建所有配对组合；绘图前筛除不显著互作（如 P ≥ 0.05）以获得更干净的图。
 :::
 
-## References
-
 
 ### 6. 两条件间差异通讯
 
@@ -390,7 +394,7 @@ for (s in cts) for (r in cts) if (s != r) {
           col = col, lwd = 0.6 + abs(d) / 12)
   }
 }
-text(rep(0, length(cts)), pos[, 2] * 1.22, cts, cex = 0.8, col = "#24364A")
+text(pos[, 1] * 1.22, pos[, 2] * 1.22, cts, cex = 0.8, col = "#24364A")
 title("STIM vs CTRL differential circle", line = 0.2, cex.main = 1, font.main = 2)
 legend("bottomleft", legend = c("up in STIM", "up in CTRL"),
        col = c("#C0272D", "#1F5FA6"), lwd = 3, bty = "n", cex = 0.75)
@@ -405,6 +409,91 @@ legend("bottomleft", legend = c("up in STIM", "up in CTRL"),
 :::
 
 
+### 7. 两组差异通讯的边捆弦图
+
+FigureYa310 版式 \[6\] 看起来像弦图，本质却是**层级边捆图**：径向树根 → 细胞类型 → 基因，配体-受体互作以"源细胞配体叶节点 — 靶细胞受体叶节点"的捆束连线呈现。颜色编码配体在两条件间的 log2 倍数变化（红 = STIM 中上调），节点大小为表达该基因的细胞比例，空心/实心区分配体与受体。输入与 §5 点图相同（CellPhoneDB `means`/`pvalues` 文件加各细胞类型差异分析，或下面的模拟替身）；捆束视图额外提供了*层级*——每个基因属于哪对细胞类型一目了然。
+
+```{r}
+#| label: fig-7.1CPDBBundle
+#| fig-cap: "差异配体-受体通讯的边捆弦图（ggraph）：每细胞类型一条径向树臂，捆束按配体 log2 倍数变化着色（红 = STIM 上调），叶节点大小 = 表达比例，空心 = 配体，实心 = 受体。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 9
+
+set.seed(3101)
+cells <- c("Cancer", "T CD4", "T CD8", "Macro", "Fibro")
+lrs <- expand.grid(ligand = c("EGFR", "ERBB2", "MET", "TGFB1", "CXCL12", "CCL5",
+                              "VEGFA", "FGF2", "WNT5A", "DLL4"),
+                   receptor = c("EGFR", "ERBB3", "MET", "TGFBR1", "CXCR4", "CCR5",
+                                "KDR", "FGFR1", "FZD4", "NOTCH1"), stringsAsFactors = FALSE)
+lrs <- lrs[sample(nrow(lrs), 22), ]
+lrs$source <- sample(cells, 22, replace = TRUE, prob = c(0.4, 0.15, 0.15, 0.15, 0.15))
+lrs$target <- sample(cells, 22, replace = TRUE, prob = c(0.1, 0.2, 0.2, 0.3, 0.2))
+lrs$logFC <- rnorm(22, 0, 1)
+lrs$logFC[lrs$source == "Cancer"] <- lrs$logFC[lrs$source == "Cancer"] + 0.8
+lrs$logFC <- pmin(pmax(lrs$logFC, -2), 2)
+lrs$frac <- runif(22, 0.1, 0.9)
+lrs$from <- paste0(lrs$ligand, "_", lrs$source, "_ligand")
+lrs$to <- paste0(lrs$receptor, "_", lrs$target, "_receptor")
+celltypes <- unique(c(lrs$source, lrs$target))
+
+vert <- rbind(
+  data.frame(name = unique(lrs$from), celltype = gsub(".*_(.+)_ligand", "\\1", unique(lrs$from)),
+             type = "ligand", frac = lrs$frac[match(unique(lrs$from), lrs$from)],
+             label = gsub("_.*", "", unique(lrs$from))),
+  data.frame(name = unique(lrs$to), celltype = gsub(".*_(.+)_receptor", "\\1", unique(lrs$to)),
+             type = "receptor", frac = NA,
+             label = gsub("_.*", "", unique(lrs$to))))
+vert <- vert[!duplicated(vert$name), ]
+vert$frac[is.na(vert$frac)] <- runif(sum(is.na(vert$frac)), 0.1, 0.9)
+head_df <- data.frame(
+  name = c("root", paste0(celltypes, "_ligand"), paste0(celltypes, "_receptor")),
+  celltype = c("root", celltypes, celltypes),
+  type = c("root", rep("ligand", length(celltypes)), rep("receptor", length(celltypes))),
+  frac = 0.5, label = c("root", celltypes, celltypes))
+vert_all <- rbind(head_df, vert)
+
+## 图中只放树边（根 -> 细胞类型臂 -> 基因节点）并去重：配体-受体互作不是树的边，
+## 而是以节点索引对进入 get_con()（平行边会让树状布局坍塌成一条线）
+edges <- unique(rbind(
+  data.frame(from = "root", to = paste0(celltypes, "_ligand")),
+  data.frame(from = "root", to = paste0(celltypes, "_receptor")),
+  data.frame(from = paste0(lrs$source, "_ligand"), to = lrs$from),
+  data.frame(from = paste0(lrs$target, "_receptor"), to = lrs$to)))
+g <- graph_from_data_frame(edges, directed = TRUE, vertices = vert_all)
+from_m <- match(lrs$from, vert_all$name)
+to_m <- match(lrs$to, vert_all$name)
+
+## 在"环形" layout 上预计算捆束数据（与 ggraph 调用一致），并经 con.id 回连
+## 每条连线的 logFC——ggraph 不会把边属性传播进 geom_conn_bundle
+bundle <- get_con(from = from_m, to = to_m)(
+  create_layout(g, layout = "dendrogram", circular = TRUE))
+bundle$logFC <- lrs$logFC[bundle$con.id]
+
+cell.col <- setNames(c("#8DD3C7", "#BEBADA", "#FB8072", "#80B1D3", "#FDB462")[1:length(celltypes)], celltypes)
+ggraph(g, layout = "dendrogram", circular = TRUE) +
+  geom_conn_bundle(data = bundle, aes(colour = logFC),
+                   width = 1.1, tension = 0.6, alpha = 0.85) +
+  geom_node_point(aes(size = frac, filter = leaf, colour = celltype, shape = type)) +
+  geom_node_text(aes(x = x * 1.08, y = y * 1.08, label = label, filter = leaf),
+                 size = 2.6, repel = TRUE, segment.size = 0.2, max.overlaps = 20) +
+  scale_edge_colour_gradientn(colours = c("#3E52C5", "#FFFFFF", "#B91129"),
+                              limits = c(-2, 2), name = "ligand log2FC") +
+  scale_shape_manual(values = c("ligand" = 1, "receptor" = 19), name = NULL) +
+  scale_colour_manual(values = cell.col, name = NULL) +
+  theme_void()
+```
+
+::: callout-tip
+**实践要点**
+
+-   图必须保持为**树**：只有 根 → 细胞类型臂 → 基因 的边属于它，且要 `unique()`——一个基因出现在多条互作中时，每臂只有一个父节点；平行边会让树状布局坍塌成一条线。
+-   用 `get_con(from, to)(create_layout(g, layout = "dendrogram", circular = TRUE))` 计算捆束——layout 的 `circular` 标志必须与 `ggraph()` 调用一致，否则两层会静默落在不同坐标系里。
+-   捆束按配体侧（发送方生物学）的条件效应着色；按受体侧着色会把两个故事混在一张图里。
+:::
+
 ## 参考文献
 
 \[1\] Jin S, Guerrero-Juarez CF, Zhang L 等. 使用 CellChat 推断和分析细胞-细胞通讯. *Nature Communications*. 2021;12(1):1088. <https://doi.org/10.1038/s41467-021-21246-9>
@@ -416,3 +505,5 @@ legend("bottomleft", legend = c("up in STIM", "up in CTRL"),
 \[4\] Efremova M, Gong C. CellPhoneDB: inferring intercellular communication network from single-cell transcriptomics data. *Nat Methods*. 2018;15(6):431-432.
 
 \[5\] Xiaofan Lu, et al. FigureYa267scCellChat 参考图：两条件间差异互作比较。FigureYa 文档。<https://ying-ge.github.io/FigureYa/>
+
+\[6\] Xiaofan Lu, et al. FigureYa310CPDBChordGramV2 参考图：CellPhoneDB 差异通讯的环形边捆弦图。FigureYa 文档。<https://ying-ge.github.io/FigureYa/>

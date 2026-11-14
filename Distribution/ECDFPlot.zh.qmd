@@ -7,12 +7,13 @@ author:
 
 经验累积分布函数（ECDF），$F_n(x) = \frac{1}{n}\sum_i \mathbf{1}(x_i \le x)$，把每个观测画成一段从 0 爬升到 1 的阶梯——一个完整、无假设的分布画像。与直方图相比，它不需要调分箱宽度、显示*每个*数据点的位置，且分位数可直接读图：组中位数就是曲线穿过 0.5 的位置 \[1\]。把两条 ECDF 画在同一坐标系里，也是两样本 Kolmogorov–Smirnov 检验的几何基础——两条曲线间的垂直间距就是 KS 统计量 \[2\]。
 
-本教程涵盖四种工作流：
+本教程涵盖五种工作流：
 
 1. `stat_ecdf()` 的两组 ECDF；
 2. 多组 ECDF 与中位数标注；
 3. 两样本 ECDF*差值*图——KS 统计量的可视化；
-4. p 值 ECDF——组学质控的标准视图。
+4. p 值 ECDF——组学质控的标准视图；
+5. 带 Wilcoxon 秩和检验 p 值标注的多组 ECDF。
 
 ## Example
 
@@ -24,12 +25,13 @@ author:
 
 -   编程语言：R
 
--   依赖包：`ggplot2`；`dplyr`
+-   依赖包：`ggplot2`；`dplyr`；`rstatix`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # 加载包
 library(ggplot2)
 library(dplyr)
+library(rstatix)
 ```
 
 ```{r}
@@ -166,6 +168,54 @@ ggplot(pvdf, aes(p, colour = what)) +
   theme(legend.position = "top")
 ```
 
+### 5. 带 Wilcoxon 秩和检验 p 值的 ECDF
+
+FigureYa298ecdfPvalue 对应的论文版式 \[3\]——非靶基因、CLIP 靶基因与 CLIP+RIP 靶基因的 log2 倍数变化累积分布——把三条 ECDF 叠在同一坐标系，并用双侧 Wilcoxon 秩和检验（即 Mann–Whitney U 检验，两个名字是同一方法）给出各组相对非靶参照的偏移。p 值标注使用对应曲线的颜色，读者无需在图例中来回查找即可把 p 值对应到分布：
+
+```{r}
+#| label: fig-5.1EcdfWilcox
+#| fig-cap: "三组模拟 log2 倍数变化分布（各 n = 100）：ECDF 标注相对 Non-targets 参照的双侧 Wilcoxon 秩和检验 p 值（CLIP targets P = 0.027，CLIP + RIP targets P < 0.001）。"
+#| out.width: "65%"
+#| fig-width: 6
+#| fig-height: 5.4
+#| warning: false
+#| message: false
+
+set.seed(2981)
+n_ec <- 100
+df_e <- data.frame(
+  x = c(rnorm(n_ec, 0, 1), rnorm(n_ec, 0.35, 1), rnorm(n_ec, 0.75, 1)),
+  g = rep(c("Non-targets", "CLIP targets", "CLIP + RIP targets"), each = n_ec))
+df_e$g <- factor(df_e$g, levels = c("Non-targets", "CLIP targets", "CLIP + RIP targets"))
+
+wt <- df_e |> rstatix::wilcox_test(x ~ g)   # 全部两两比较；保留 vs 参照的行
+p_clip <- wt$p[wt$group1 == "Non-targets" & wt$group2 == "CLIP targets"]
+p_crip <- wt$p[wt$group1 == "Non-targets" & wt$group2 == "CLIP + RIP targets"]
+fmt_p <- function(p) ifelse(p < 0.001, "P < 0.001", sprintf("P = %.3f", p))
+
+cols_e <- c("Non-targets" = "red", "CLIP targets" = "forestgreen",
+            "CLIP + RIP targets" = "darkblue")
+labs_e <- c("Non-targets (n = 100)", "CLIP targets (n = 100)",
+            "CLIP + RIP targets (n = 100)")
+
+ggplot(df_e, aes(x, colour = g)) +
+  stat_ecdf(geom = "step", linewidth = 1) +
+  annotate("text", x = -2.9, y = 0.72, hjust = 0, size = 4.2,
+           colour = cols_e["CLIP targets"], label = paste0(fmt_p(p_clip), " (vs Non-targets)")) +
+  annotate("text", x = -2.9, y = 0.62, hjust = 0, size = 4.2,
+           colour = cols_e["CLIP + RIP targets"], label = paste0(fmt_p(p_crip), " (vs Non-targets)")) +
+  scale_color_manual(values = cols_e, labels = labs_e, name = NULL) +
+  labs(x = "log2 fold change (simulated)", y = "Cumulative fraction",
+       title = "ECDF with two-sided Wilcoxon rank-sum P values") +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "top",
+        panel.grid = element_blank(),
+        legend.text = element_text(size = 9.5),
+        plot.title = element_text(size = 12))
+```
+
+两点统计说明。其一，p 值标注必须做防御性格式化：`sprintf("%.3f", 7.8e-5)` 会渲染成 `0.000`，低于分辨率的值应切换为显式的 `P < 0.001` 形式。其二，对恰好两组的数据，Wilcoxon 秩和检验与 Kruskal–Wallis 检验是同一方法——对两组子集调用 `rstatix::kruskal_test()` 会返回完全相同的 p 值，在两种写法之间移植代码时可以此交叉验证。
+
 ::: callout-tip
 ## 实践要点
 
@@ -186,3 +236,5 @@ ECDF 图适用于中位数与尾部比均数更重要的分布比较场景：药
 \[1\] Chambers JM, Cleveland WS, Kleiner B, Tukey PA. Graphical Methods for Data Analysis. Belmont: Wadsworth; 1983.
 
 \[2\] Hodges JL. The significance probability of the Smirnov two-sample test. Ark Mat. 1957;3(5):469-486. doi:10.1007/BF02589501
+
+\[3\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

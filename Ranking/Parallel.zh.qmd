@@ -420,7 +420,130 @@ p
 
 这个图展示了不同“Composite”（cg236、cg292、cg658）在不同“sample”中的甲基化值变化。线条表示每个“Composite”在不同样本中的数值趋势，点表示具体数值，标签标出“Composite”的名字。颜色区分不同的“Composite”，通过样本间的线条起伏可以看出它们的数值变化。
 
-## 应用场景
+### 3. 元基因剖面：有序窗口上每样本一条线
+
+FigureYa44 版式 \[12\] 是本页线条语言里的剖面图，只是轴换成了**有序基因组窗口**：每个基因压缩到固定窗口数（3 kb 上游 | 基因体 | 3 kb 下游），逐窗口 tag 计数在数千基因上取均值，每个 ChIP-seq 样本一条线。IP 与 input 的对照是经典读法。rtracklayer/bigWig 提取不在本仓库 lockfile 内，下块模拟均值窗口矩阵——换成你真实的逐窗口均值，下游一切不变：
+
+```{r}
+#| label: fig-3.1Metagene
+#| fig-cap: "3,000 个模拟基因的元基因剖面：100-bp 上游窗口、压缩基因体与 3-kb 下游窗口的平均 tag 密度，每样本一条线（IP vs Input）；虚线标记 TSS 与 TTS。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+set.seed(4401)
+n_gene <- 3000
+resol <- 100
+span <- 3000
+gb_win <- 20
+up_win <- span / resol
+w_up <- seq_len(up_win)
+w_gb <- seq_len(gb_win)
+w_dn <- seq_len(up_win)
+pos_lab <- c(paste0("-", seq(span, resol, -resol)),
+             rep("gene body", gb_win),
+             paste0("+", seq(resol, span, resol)))
+axis_at <- c(1, up_win, up_win + gb_win, length(pos_lab))
+axis_lab <- c("-3 kb", "TSS", "TTS", "+3 kb")
+mk_profile <- function(amp_tss, amp_gb, noise) {
+  up <- exp(-(w_up - max(w_up))^2 / (2 * (up_win / 2.2)^2)) * amp_tss
+  gb <- (0.25 + 0.5 * seq(0, 1, length.out = gb_win)) * amp_gb
+  dn <- exp(-(w_dn - 1)^2 / (2 * (up_win / 2.5)^2)) * (amp_tss * 0.35)
+  pmax(0, c(up, gb, dn) + rnorm(length(up) + length(gb) + length(dn), 0, noise))
+}
+prof <- data.frame(
+  window = seq_along(pos_lab),
+  Cxxc1 = mk_profile(1.0, 0.55, 0.012),
+  Input = mk_profile(0.30, 0.18, 0.010))
+prof_long <- tidyr::pivot_longer(prof, cols = c(Cxxc1, Input),
+                                 names_to = "sample", values_to = "signal")
+ggplot(prof_long, aes(window, signal, colour = sample)) +
+  geom_line(linewidth = 1) +
+  geom_vline(xintercept = c(up_win + 0.5, up_win + gb_win + 0.5),
+             linetype = 2, colour = "grey55") +
+  annotate("rect", xmin = up_win + 0.5, xmax = up_win + gb_win + 0.5,
+           ymin = -Inf, ymax = Inf, alpha = 0.06, fill = "#2166AC") +
+  annotate("text", x = up_win / 2, y = max(prof_long$signal) * 1.02,
+           label = "3 kb upstream", size = 2.8, colour = "grey30") +
+  annotate("text", x = up_win + gb_win / 2, y = max(prof_long$signal) * 1.02,
+           label = "gene body (compressed)", size = 2.8, colour = "grey30") +
+  annotate("text", x = up_win + gb_win + up_win / 2, y = max(prof_long$signal) * 1.02,
+           label = "3 kb downstream", size = 2.8, colour = "grey30") +
+  scale_x_continuous(breaks = axis_at, labels = axis_lab,
+                     expand = expansion(mult = c(0.01, 0.01))) +
+  labs(x = NULL, y = "Mean tag density (simulated, 3,000 genes)",
+       title = "Metagene profile: IP vs Input over extended gene bodies",
+       colour = NULL) +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), legend.position = "top")
+```
+
+::: callout-tip
+**实践要点**
+
+-   画的是基因间均值，绝不是逐基因线——元基因的信息就是*平均形状*；逐基因"意大利面"会毁掉它。
+-   基因体压缩要保持诚实：等长 body 重采样到同一窗口数（此处 20）是标准做法，图注里写明。
+-   给基因体区域上底色并用虚线标 TSS/TTS——不读图注时读者唯一能解读的两个位置就是它们。
+:::
+
+### 4. 单样本、多区域类别：单 bigWig 剖面图
+
+§3 的姊妹版式（FigureYa57profile_1bw \[13\]）：**一份 bigWig 样本**、若干*区域类别*——例如按 CpG 含量分组的启动子（HCP / ICP / LCP）——每类用自己的 BED 平均，每类一条彩色线。对比的是基因组背景之间而非样本之间；高 CpG 启动子与低 CpG 启动子的 H3K4me3 差异是参考文档的经典示例。与 §3 一样，均值窗口矩阵在此模拟，替代 bigWig 提取：
+
+```{r}
+#| label: fig-4.1RegionProfile
+#| fig-cap: "按启动子类别的单样本元基因剖面（模拟）：高（HCP）、中（ICP）、低 CpG（LCP）启动子在 TSS ±2 kb 的平均 H3K4me3 密度；虚线标记 TSS 与基因体末端。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+set.seed(5701)
+resol <- 10
+span <- 2000
+up_win <- span / resol
+body_win <- 40
+amp <- c(HCP = 1.0, ICP = 0.45, LCP = 0.15)
+prof108 <- do.call(rbind, lapply(names(amp), function(cl) {
+  a <- amp[[cl]]
+  up <- exp(-(seq_len(up_win) - max(seq_len(up_win)))^2 / (2 * (up_win / 2.0)^2)) * a
+  body <- rep(0.15 * a + 0.1, body_win)
+  dn <- rep(0.08 * a, up_win)
+  data.frame(window = seq_len(up_win + body_win + up_win),
+             signal = pmax(0, c(up, body, dn) +
+                             rnorm(length(up) + body_win + up_win, 0, 0.015)),
+             region = cl)
+}))
+prof108$region <- factor(prof108$region, levels = c("HCP", "ICP", "LCP"))
+ggplot(prof108, aes(window, signal, colour = region)) +
+  geom_line(linewidth = 1.1) +
+  geom_vline(xintercept = c(up_win + 0.5, up_win + body_win + 0.5),
+             linetype = 2, colour = "grey55") +
+  annotate("text", x = up_win / 2, y = 1.05, label = "-2 kb", size = 2.9, colour = "grey30") +
+  annotate("text", x = up_win + body_win / 2, y = 1.05, label = "TSS + gene body", size = 2.9, colour = "grey30") +
+  annotate("text", x = up_win + body_win + up_win / 2, y = 1.05, label = "+2 kb", size = 2.9, colour = "grey30") +
+  scale_x_continuous(breaks = c(1, up_win, up_win + body_win, length(unique(prof108$window))),
+                     labels = c("-2 kb", "TSS", "TTS", "+2 kb"),
+                     expand = expansion(mult = c(0.01, 0.01))) +
+  scale_colour_manual(values = c(HCP = "darkorange", ICP = "navy", LCP = "darkgreen"), name = NULL) +
+  labs(x = NULL, y = "H3K4me3 tag density (simulated)",
+       title = "One sample, three CpG classes: promoter signal by region type") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), legend.position = "top")
+```
+
+::: callout-tip
+**实践要点**
+
+-   先按类别划分区域再提取信号，每类一个 BED（参考文档的 `mm9_HCP_tss.bed` / ICP / LCP 命名）；跨类平均会抹掉这张图要展示的对比本身。
+-   多类别时线条更细、靠顶部图例承载身份——三条曲线互不相交，颜色即身份；打印前检查灰度可分性。
+-   `span` 与基因体窗口数必须是 `resolution` 的整数倍，否则压缩 body 重采样会错位 TSS/TTS。
+:::
+
+## 应用场景## 应用场景
 
 ### 1. 基础平行图
 
@@ -474,4 +597,6 @@ p
 
 \[11\] Neuwirth, E. (2023). RColorBrewer: ColorBrewer Palettes. https://cran.r-project.org/package=RColorBrewer
 
+\[12\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
+\[13\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

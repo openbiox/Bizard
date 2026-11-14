@@ -1,0 +1,151 @@
+---
+title: "circos 条形与连线"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+"哪些特征属于哪些功能类，且其丰度在样本组间如何分裂？"——这类成员关系问题天然落在 **circos 版式**上：特征扇区配逐样本丰度热图环、类别扇区配计数条、弧线把每个特征连到所属类 \[1\]。参考图用 Perl Circos 加十几个配置文件搭建；本教程用 **circlize** 在 R 内自包含地复现同一组合图（模拟的差异 KO，马铃薯疮痂病土壤 \[2\]）：
+
+## Example
+
+![](../images/CircosBarPlot_demo.png){fig-alt="circos 条形与连线 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`circlize`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+98 个模拟差异 KO × 6 个土壤宏基因组（3 个重疮痂 GSH、3 个轻疮痂 GSL）。每个 KO 映射到 24 个 KEGG B 级类别之一；组富集方向（组均值 log2FC）为连线着色，逐类计数进入内层条形环。丰度色阶为分带式，模仿参考图的非线性"荧光"图例：
+
+```{r load data}
+suppressPackageStartupMessages(library(dplyr))
+set.seed(14201)
+n_ko <- 98; n_cls <- 24
+ko <- sprintf("K%05d", sample(10000:99999, n_ko))
+cls_lab <- c("Carbo","Energy","Lipid","Nucleo","AA","Glycan","MetaOth","MetaOth",
+             "Repli","Repair","Transl","Fold","Signal","Membr","Motil",
+             "EnvInfo","EnvInfo","EnvInfo","Xenobio","Stress","Immune",
+             "Biofilm","Quorum","Chemo")
+## KO -> B-class mapping
+ko_cls <- sample(n_cls, n_ko, replace = TRUE, prob = c(rep(1.6, 6), rep(0.8, n_cls - 6)))
+sm <- c("GSH1","GSH2","GSH3","GSL4","GSL5","GSL6")   # severe vs mild common-scab soils
+## relative abundances: planted group effects (GSH-up for 35 KOs, GSL-up for 25)
+grp_eff <- sample(n_ko, 35)
+ab <- matrix(exp(rnorm(n_ko * 6, log(8e-4), 0.9)), n_ko, 6, dimnames = list(ko, sm))
+ab[grp_eff, 1:3] <- ab[grp_eff, 1:3] * 3.2
+ab[setdiff(1:n_ko, grp_eff)[1:25], 4:6] <- ab[setdiff(1:n_ko, grp_eff)[1:25], 4:6] * 2.4
+log2fc <- log2(rowMeans(ab[, 1:3]) / rowMeans(ab[, 4:6]))
+dir_col <- ifelse(log2fc > 0, "#D7301F", "#1A9641")   # GSH-enriched red, GSL green
+## per-class KO counts for the inner bar ring (zero-filled: some classes get none)
+cnt <- data.frame(cls_id = ko_cls, gsh = log2fc > 0) %>%
+  group_by(cls_id) %>% summarise(gsh = sum(gsh), gsl = sum(!gsh), .groups = "drop")
+cnt <- merge(data.frame(cls_id = seq_len(n_cls)), cnt, by = "cls_id", all.x = TRUE)
+cnt[is.na(cnt)] <- 0
+## coordinates: KO i spans [2i-2, 2i]; class j spans [5j-5, 5j]
+ko_cx  <- 2 * seq_len(n_ko) - 1
+cls_cx <- 5 * seq_len(n_cls) - 2.5
+```
+
+## Visualization
+
+### 热图环、连线与类别条
+
+组合图：hs1 上 98 个 KO 配六条逐样本丰度环（外 → 内 = GSH1 → GSL6），每个 KO 以红（GSH 富集）或绿（GSL 富集）弧连到 hs2 的类别，内层堆叠条统计每类持有多少差异 KO——碳水化合物/能量类承载重疮痂信号：
+
+```{r}
+#| label: fig-1.1CircosBar
+#| fig-cap: "模拟差异 KO 与 KEGG B 类的 circos 组合图：KO 扇区配六条逐样本丰度热图环（GSH1-3 重疮痍、GSL4-6 轻疮痍，由外向内），连线按富集方向着色（红 GSH、绿 GSL），内层堆叠条为每类 KO 计数。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 8
+
+suppressPackageStartupMessages(library(circlize))
+brk <- colorRamp2(c(0, 5e-4, 1e-3, 2e-3, 4e-3),
+                  c("#FFFFFF", "#FEE8C8", "#FDBB84", "#E34A33", "#7F0000"))
+link_rou <- 0.60   # radius band the links run at (inside the heatmap rings)
+
+circos.par(start.degree = 90, gap.degree = c(6, 12), track.margin = c(0.004, 0.004),
+           cell.padding = c(0, 0, 0, 0))
+circos.initialize(factors = factor(c(rep("hs1", n_ko), rep("hs2", n_cls)), levels = c("hs1", "hs2")),
+                  xlim = cbind(c(0, 0), c(n_ko * 2, n_cls * 5)))
+## track 1: labels — KO ids every 10th on hs1, class names radially on hs2
+circos.track(ylim = c(0, 1), track.height = 0.09, bg.border = "black", bg.col = "grey97",
+             panel.fun = function(x, y) {
+               if (get.cell.meta.data("sector.index") == "hs1") {
+                 idx <- seq(5, n_ko, 10)
+                 circos.text(ko_cx[idx], 0.5, ko[idx], facing = "bending.inside",
+                             niceFacing = TRUE, cex = 0.32)
+               } else {
+                 circos.text(cls_cx, 0.5, cls_lab, facing = "inside",
+                             cex = 0.42, adj = c(0, 0.5))
+               }
+             })
+## tracks 2-7: one abundance heatmap ring per sample (drawn on hs1 only)
+for (s in seq_along(sm)) {
+  circos.track(ylim = c(0, 1), track.height = 0.055, bg.border = NA,
+               panel.fun = function(x, y) {
+                 if (get.cell.meta.data("sector.index") == "hs1") {
+                   for (i in seq_len(n_ko)) {
+                     x1 <- (i - 1) * 2
+                     circos.rect(x1, 0, x1 + 2, 1, col = brk(ab[i, s]), border = NA)
+                   }
+                 }
+               })
+}
+## links: each KO to its B-class, coloured by enrichment direction
+invisible(lapply(seq_len(n_ko), function(i) {
+  circos.link("hs1", ko_cx[i], "hs2", cls_cx[ko_cls[i]], rou1 = link_rou, rou2 = link_rou,
+              h = 0.30, col = adjustcolor(dir_col[i], alpha.f = 0.30),
+              border = NA, lwd = 0.4)
+}))
+## track 8: stacked per-class KO counts (GSH red / GSL green) on hs2
+circos.track(ylim = c(0, max(cnt$gsh + cnt$gsl)), track.height = 0.22, bg.border = "grey55",
+             panel.fun = function(x, y) {
+               if (get.cell.meta.data("sector.index") == "hs2") {
+                 circos.barplot(cbind(cnt$gsh, cnt$gsl), pos = cls_cx, bar_width = 3.2,
+                                col = c("#D7301F", "#1A9641"), border = NA)
+               }
+             })
+circos.clear()
+par(xpd = NA)
+legend("center", legend = sprintf("%d: %s", seq_along(sm), sm),
+       title = "Abundance ring (outer \u2192 inner)",
+       col = rep("grey55", 6), pch = 15, bty = "n", cex = 0.62, pt.cex = 1.2)
+legend("bottomright", legend = c("GSH-enriched (severe scab)", "GSL-enriched (mild)"),
+       fill = c("#D7301F", "#1A9641"), bty = "n", cex = 0.8,
+       title = "Links / inner bars")
+```
+
+
+## 应用场景
+
+::: {#fig-CircosBarApplications1}
+![](../images/CircosBarPlot_demo.png){fig-alt="特征-类别 circos 与丰度环" fig-align="center" width="60%"}
+
+特征-类别 circos 与丰度环
+:::
+
+特征环 + 连线 + 类别条版式适用于任何成员关系图：物种到通路、细胞类型到 marker 模块、代谢物到反应类——只要丰度与类别成员需要同图呈现。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Shi W, Li M, Wei G, et al. The occurrence of potato common scab correlates with the community composition and function of the geocaulosphere soil microbiome. Microbiome. 2019;7(1). doi:10.1186/s40168-019-0629-2

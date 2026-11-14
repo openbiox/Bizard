@@ -1,0 +1,133 @@
+---
+title: "风险评分生存总览"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+多基因预后 signature 的价值在一张组合图内呈现：患者按**风险评分**排序，生存结局并列其旁，底层表达模式垫底——三个面板共享同一从左到右的患者顺序，读者一眼看到评分、死亡与 signature 同步移动 \[1\]。参考图用 cowplot 从 LASSO-Cox 输出表构建 \[2\]；本教程以 patchwork 在模拟 signature 上复现该版式：
+
+## Example
+
+![](../images/RiskScorePlot_demo.png){fig-alt="风险评分生存总览 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+150 个模拟患者：8 基因表达矩阵（四个风险基因、四个保护基因）、植入系数算出的风险评分、风险越高 hazard 越大的 Weibull 生存时间。下游所有面板都按 `order(riskscore)` 排序且不再重排：
+
+```{r load data}
+set.seed(14101)
+n <- 150; n_gene <- 8
+genes <- sprintf("SIG%d", 1:n_gene)
+## signature: half protective, half risk — planted so high score = worse outcome
+coef <- c(0.9, 0.7, -0.8, -0.6, 0.5, 0.4, -0.5, -0.3)
+expr <- matrix(rnorm(n * n_gene, 0, 1), n, n_gene, dimnames = list(NULL, genes))
+riskscore <- as.vector(expr %*% coef) + rnorm(n, 0, 0.4)
+rk <- order(riskscore)
+riskscore <- riskscore[rk]; expr <- expr[rk, ]
+risk <- ifelse(riskscore >= median(riskscore), "High-risk", "Low-risk")
+## survival: higher risk -> shorter time, more events
+u <- runif(n)
+lam <- exp(1.1 * scale(riskscore)[, 1])
+times <- pmin(120, qweibull(u, shape = 1, scale = 120 / lam))
+status <- rbinom(n, 1, pmin(0.9, pmax(0.02, 0.35 + 0.35 * scale(riskscore)[, 1])))
+
+rs_data <- data.frame(x = 1:n, rs = riskscore, Risk = risk)
+sv_data <- data.frame(x = 1:n, t = times,
+                      Status = factor(ifelse(status == 0, "Alive", "Dead"),
+                                      levels = c("Alive", "Dead")))
+```
+
+## Visualization
+
+### 评分 / 结局 / 表达，同一排序
+
+组合图：虚线为中位风险分割；高危患者（红，右侧）死亡更早、聚集在短生存时间；热图饱和的条带行编码分组，使表达模式贴着分组读出：
+
+```{r}
+#| label: fig-1.1RiskTriple
+#| fig-cap: "模拟 8 基因预后 signature 的风险评分总览：患者按风险评分升序排列并按中位数分割（虚线）；旁列为生存状态；下垫行标准化、winsorize 后的 signature 表达及分组条带——三个面板共享同一患者排序。"
+#| out.width: "75%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 9
+
+suppressPackageStartupMessages(library(patchwork))
+nlow <- sum(rs_data$Risk == "Low-risk")
+red <- "#DC0000FF"; teal <- "#00A087FF"
+
+plot.A <- ggplot(rs_data, aes(x, rs)) +
+  geom_point(aes(col = Risk), size = 0.9) +
+  geom_vline(xintercept = nlow, linetype = "dashed", linewidth = 0.5) +
+  scale_color_manual(values = c(`High-risk` = red, `Low-risk` = teal), name = "Risk score") +
+  scale_x_continuous(limits = c(0, NA), expand = c(0, 0)) +
+  labs(y = "Risk score", x = NULL, title = "Risk-score stratification (simulated signature)") +
+  theme_classic(base_size = 10) +
+  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank(),
+        axis.line.x = element_blank(), legend.position = "top")
+
+plot.B <- ggplot(sv_data, aes(x, t)) +
+  geom_point(aes(col = Status), size = 0.9) +
+  geom_vline(xintercept = nlow, linetype = "dashed", linewidth = 0.5) +
+  scale_color_manual(values = c(Alive = teal, Dead = red), name = NULL) +
+  scale_x_continuous(limits = c(0, NA), expand = c(0, 0)) +
+  labs(y = "Survival time (months)", x = "Patients (ranked by risk score)") +
+  theme_classic(base_size = 10) +
+  theme(axis.ticks.x = element_blank(), legend.position = "top")
+
+## heatmap: row-scaled expression winsorized to [-1,1], rows clustered;
+## the appended +/-1.5 group row reads the saturated strip colours
+tmp <- t(scale(expr)); tmp[tmp > 1] <- 1; tmp[tmp < -1] <- -1
+hc <- hclust(dist(tmp), method = "average"); tmp <- tmp[hc$order, ]
+tmp <- rbind(tmp, Group = ifelse(rs_data$Risk == "Low-risk", -1.5, 1.5))
+hm <- data.frame(gene = rep(rownames(tmp), n), patient = rep(seq_len(n), each = nrow(tmp)),
+                 value = as.vector(tmp))
+hm$gene <- factor(hm$gene, levels = rownames(tmp))
+plot.C <- ggplot(hm, aes(patient, gene, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = teal, mid = "white", high = red, midpoint = 0,
+                       name = "Expression\n(Z)") +
+  scale_x_continuous(limits = c(0, NA), expand = c(0, 0)) +
+  labs(y = NULL) +
+  theme_classic(base_size = 10) +
+  theme(axis.text.y = element_text(size = 6), axis.ticks.y = element_blank(),
+        axis.line = element_blank(), axis.title.x = element_blank(),
+        axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+plot.A / plot.B / plot.C + plot_layout(ncol = 1, heights = c(1, 1, 1.5))
+```
+
+
+## 应用场景
+
+::: {#fig-RiskScoreApplications1}
+![](../images/RiskScorePlot_demo.png){fig-alt="风险评分/生存/表达总览" fig-align="center" width="60%"}
+
+风险评分/生存/表达总览
+:::
+
+任何"排序患者总览"都可复用此堆叠：免疫治疗响应评分 + PFS 状态、CNV 负荷评分 + 亚型、或病理风险 + 复发——只要一个患者排序串起所有面板。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Bai F, Zhou H, Ma M, et al. A novel RNA sequencing-based miRNA signature predicts with recurrence and outcome of hepatocellular carcinoma. Mol Oncol. 2018;12(7):1125-1137. doi:10.1002/1878-0261.12315

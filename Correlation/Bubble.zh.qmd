@@ -238,6 +238,56 @@ plot_grid(p_down, p_up, labels = c("Down-regulated", "Up-regulated"),
 
 这个气泡图展示了根据系泊观测和历史温度剖面测量估计的极端温度异常之间的一致性。a、 根据系泊点估算的第95百分位EHTA气泡图和以系泊点为中心的5×5°网格框内的相应历史温度分布测量值。颜色表示来自不同地点的观测结果，点的大小表示10至1000米的观测深度。b与a相同，但适用于第5百分位ELTA。请注意，未绘制低于-3°C的ELTA（在KEO现场）。c、 d，与a（c）和b（d）相同，但AE（c）内观察到的EHTA测量值和CE（d）内观察的ELTA测量值的百分比（p）不同。带有灰色阴影的实心黑线表示具有95%置信水平的相应线性回归。\[2\]
 
+### 3. 气泡网格：motif P 值作大小 × TF 表达作填充（FigureYa5bubbles）
+
+FigureYa5bubbles 网格 \[7\] 在一张图中回答"哪个 TF 在哪里既富集又高表达"：行 = motif/TF，列 = 分期，**点大小 = motif 富集的 -log10(P)**，**点填充 = 该 TF 的表达量（FPKM）**。下块用模拟的 Homer 风格 motif 表复现该几何结构：
+
+```{r}
+#| label: fig-3.1MotifBubbles
+#| fig-cap: "14 个模拟 motif 在 5 个分化阶段的气泡网格：点大小 = motif 富集 -log10(P)，填充 = TF 的模拟 FPKM；两者均按参考做法截断到作图范围。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 8
+
+set.seed(5011)
+motifs <- paste0("TF", sprintf("%02d", 1:14))
+types <- c("2cell", "4cell", "8cell", "ICM", "mESC")
+enrich <- expand.grid(motif = motifs, type = types, stringsAsFactors = FALSE)
+enrich$logP <- runif(nrow(enrich), 5, 50)   # 该列本身已是 -log10(P)
+tf_expr <- data.frame(
+  motif = rep(motifs, each = length(types)),
+  type = rep(types, length(motifs)),
+  FPKM = c(t(sapply(motifs, function(m) {
+    base <- runif(1, 2, 14)
+    rnorm(length(types), base, 2.5)
+  }))))
+enrich <- merge(enrich, tf_expr, by = c("motif", "type"))
+## 与参考一致：截断到作图范围（P 与 FPKM 分位数）
+enrich$logP <- pmin(pmax(enrich$logP, 10), 500)
+enrich$FPKM <- pmin(enrich$FPKM, 20)
+enrich$motif <- factor(enrich$motif, levels = rev(motifs))
+
+ggplot(enrich, aes(type, motif, size = logP)) +
+  geom_point(shape = 21, aes(fill = FPKM)) +
+  scale_size_continuous(range = c(1, 8), name = "-log10(P)") +
+  scale_fill_gradientn(colours = c("#2381B3", "#F0E366"), name = "TF FPKM") +
+  labs(x = NULL, y = NULL,
+       title = "Motif enrichment (-log10(P), size) vs TF expression (fill)") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom", legend.box = "vertical",
+        panel.grid.major = element_blank())
+```
+
+::: callout-tip
+**实践要点**
+
+-   截断与映射同样重要：少数极端 -log10(P) 会把其他点全部压扁——截断到 90-95% 分位（参考截断为 10-500、FPKM ≤ 20）并在图注中说明。
+-   `shape = 21` 把填充放进带描边的圆内——深描边让填充落在浅端的气泡依然可见。
+-   真实 Homer 输出中各 `knownResults.txt` 行序不同——按 motif 名（motif + p 值列拼接）对齐到固定索引，与参考做法一致。
+:::
+
 ## 参考文献
 
 \[1\] Oh KK, Adnan M, Cho DH. Network pharmacology approach to decipher signaling pathways associated with target proteins of NSAIDs against COVID-19. Sci Rep. 2021 May 5;11(1):9606. doi: 10.1038/s41598-021-88313-5. PMID: 33953223; PMCID: PMC8100301.
@@ -256,3 +306,4 @@ plot_grid(p_down, p_up, labels = c("Down-regulated", "Up-regulated"),
 
 \[8\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
+\[7\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

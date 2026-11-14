@@ -45,7 +45,7 @@ sessioninfo::session_info("attached")
 
 ## Data Preparation
 
-参考工作流在对照 vs 肿瘤的 RNA-seq 上训练随机森林/弹性网络模型，并对外部队列打分。我们模拟该版式：训练集（正常 vs HCC）的 200 基因谱，以及病理逐渐进展的四个外部验证组。
+参考工作流在对照 vs 肿瘤的 RNA-seq 上训练随机森林/弹性网络模型，并对外部队列打分。我们模拟该版式：训练集（正常 vs HCC）的 50 基因谱，以及病理逐渐进展的四个外部验证组。
 
 ```{r load data, message=FALSE, warning=FALSE}
 set.seed(1501)
@@ -69,7 +69,7 @@ val_lab  <- factor(rep(stages, each = 30), levels = stages)
 colnames(val_expr) <- paste0("VA_", sprintf("%04d", 1:n_gene))
 ```
 
-## 训练模型并为验证队列打分
+## 用 signature 型肿瘤指数为验证队列打分
 
 ```{r model, message=FALSE, warning=FALSE}
 ## 在训练集上拟合弹性网络 logistic（参考文献用随机森林；
@@ -107,7 +107,7 @@ ggplot(val_df, aes(stage, TI, fill = stage)) +
   stat_compare_means(method = "kruskal.test", label.y = max(val_df$TI) + 0.06) +
   scale_fill_manual(values = c(Normal = "#4D4D4D", Fibrosis = "#445EAD",
                                Dysplasia = "#EABF00", HCC = "#B2182B")) +
-  labs(x = "Pathological stage", y = "Tumor index (0 = normal, 1 = cancer)",
+  labs(x = "Pathological stage", y = "Tumor index (mean of up genes − mean of down genes)",
        fill = "Stage") +
   theme_classic(base_size = 11) +
   theme(legend.position = "top", legend.key.size = unit(3, "mm"))
@@ -125,12 +125,15 @@ ggplot(val_df, aes(stage, TI, fill = stage)) +
 #| fig-height: 4
 
 ## two simulated external cohorts to mirror the multi-panel layout
-val_df$cohort <- ifelse(seq_len(nrow(val_df)) <= 60, "GSE36376-like", "GSE6764-like")
+## alternate samples into two cohorts so each spans all four stages
+## (a block split would confound cohort with stage)
+val_df$cohort <- ifelse(seq_len(nrow(val_df)) %% 2 == 1,
+                        "GSE36376-like", "GSE6764-like")
 
 ggplot(val_df, aes(stage, TI, fill = stage)) +
   geom_boxplot(outlier.shape = NA, width = 0.6) +
   facet_wrap(~cohort, nrow = 1) +
-  stat_compare_means(method = "kruskal.test", label.x = 0.6, size = 3.2) +
+  stat_compare_means(method = "kruskal.test", label.x = 2, size = 3.2) +
   scale_fill_manual(values = c(Normal = "#4D4D4D", Fibrosis = "#445EAD",
                                Dysplasia = "#EABF00", HCC = "#B2182B")) +
   labs(x = NULL, y = "Tumor index", fill = "Stage") +

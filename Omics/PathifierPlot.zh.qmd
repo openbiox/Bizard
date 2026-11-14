@@ -1,0 +1,119 @@
+---
+title: "通路失调控评分（Pathifier）"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+**Pathifier** 把通路的基因浓缩为每样本一个**通路失调控评分（PDS）**：在通路的基因表达空间里，度量每个肿瘤样本沿通路主曲线偏离正常样本轨迹的距离 \[2\]。评分矩阵以无聚类热图 + 亚型注释呈现 \[1\]。本教程在植入通路位移的模拟肿瘤/正常矩阵上运行 Bioconductor `pathifier` 包：
+
+## Example
+
+![](../images/PathifierPlot_demo.png){fig-alt="通路失调控评分（Pathifier） DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`pathifier`; `pheatmap`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+if (!requireNamespace("pathifier", quietly = TRUE)) {
+  if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager", repos = "https://cloud.r-project.org")
+  }
+  BiocManager::install("pathifier", ask = FALSE, update = FALSE)
+}
+if (!requireNamespace("pheatmap", quietly = TRUE)) {
+  install.packages("pheatmap", repos = "https://cloud.r-project.org")
+}
+suppressPackageStartupMessages({
+  library(pheatmap)
+  library(pathifier)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+40 个模拟肿瘤（20 luminal-like、20 non-luminal-like）+ 10 个癌旁，400 基因分属 6 条通路：增殖与缺氧在 luminal 肿瘤上调、EMT 在 non-luminal 上调——PDS 热图须还原该模式。`pathifier` 需要**正值尺度表达**（log2 TPM）：其 `min_exp`/`min_std` 过滤与正常样本排序在 z 分数上无意义：
+
+```{r load data}
+suppressPackageStartupMessages({library(pheatmap); library(pathifier)})
+set.seed(15101)
+## 400 genes, 6 pathways, 40 tumors (20 Lum / 20 NonLum) + 10 normals
+genes <- sprintf("G%03d", 1:400)
+pathways <- list(
+  Prolif = genes[1:60], EMT = genes[61:120], Immune = genes[121:180],
+  Metabolism = genes[181:240], Hypoxia = genes[241:290], ECM = genes[291:340])
+n_tum_l <- 20; n_tum_n <- 20; n_nor <- 10
+base <- matrix(rnorm(400 * (n_tum_l + n_tum_n + n_nor), 5, 1.2), 400,
+               n_tum_l + n_tum_n + n_nor, dimnames = list(genes, NULL))
+base[base < 0.1] <- 0.1        # pmax would drop matrix dims
+## planted pathway deregulation in luminal tumors (up) and non-luminal (EMT)
+base[pathways$Prolif, 1:n_tum_l] <- base[pathways$Prolif, 1:n_tum_l] + 1.1
+base[pathways$EMT, (n_tum_l + 1):(n_tum_l + n_tum_n)] <- base[pathways$EMT, (n_tum_l + 1):(n_tum_l + n_tum_n)] + 1.2
+base[pathways$Hypoxia, 1:n_tum_l] <- base[pathways$Hypoxia, 1:n_tum_l] + 0.8
+colnames(base) <- c(sprintf("T%02d_L", 1:n_tum_l), sprintf("T%02d_N", 1:n_tum_n),
+                    sprintf("N%02d", 1:n_nor))
+expr <- base; tissue.logic <- rep(c(FALSE, TRUE), c(n_tum_l + n_tum_n, n_nor))
+sinfo <- data.frame(PAM50 = c(rep("Luminal-like", n_tum_l), rep("Non-luminal-like", n_tum_n),
+                              rep(NA, n_nor)), row.names = colnames(expr))
+```
+
+## Visualization
+
+### PDS 热图与亚型注释
+
+`quantify_pathways_deregulation()` 返回通路 × 样本的评分矩阵；热图仅画肿瘤，行标准化并 winsorize 到 [-1, 1]，**不聚类**（论文呈现方式），注释条分割 non-luminal 与 luminal——植入的 Prolif/Hypoxia（luminal）与 EMT（non-luminal）位移清晰分离：
+
+```{r}
+#| label: fig-1.1Pathifier
+#| fig-cap: "Pathifier 通路失调控评分（模拟）：40 个肿瘤（注释：non-luminal vs luminal-like）× 6 条通路，行标准化、winsorize、不聚类——增殖与缺氧在 luminal 肿瘤上调，EMT 在 non-luminal 上调。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 3.6
+
+indata <- as.matrix(log2(expr + 1))   # source form: log2(TPM + 1)
+gname <- rownames(indata)
+path.res <- quantify_pathways_deregulation(
+  data = indata, allgenes = gname, syms = pathways, pathwaynames = names(pathways),
+  normals = tissue.logic, attempts = 100, min_exp = 0, min_std = 0)
+path.score <- do.call(rbind, lapply(path.res$scores, as.data.frame))
+dimnames(path.score) <- list(names(pathways), colnames(indata))
+
+tum.sam <- colnames(path.score)[1:(n_tum_l + n_tum_n)]
+ord <- c(grep("_N", tum.sam, value = TRUE), grep("_L", tum.sam, value = TRUE))
+annCol <- data.frame(PAM50 = sinfo[ord, "PAM50"], row.names = ord)
+annColors <- list(PAM50 = c("Luminal-like" = "red", "Non-luminal-like" = "blue"))
+plotdata <- t(scale(t(path.score[, ord])))
+plotdata[plotdata > 1] <- 1; plotdata[plotdata < -1] <- -1
+pheatmap(plotdata, border_color = NA, cluster_cols = FALSE, cluster_rows = FALSE,
+         annotation_col = annCol, annotation_colors = annColors,
+         show_rownames = TRUE, show_colnames = FALSE,
+         color = colorRampPalette(c("#2166AC", "white", "#B2182B"))(64),
+         main = "Pathifier pathway deregulation scores (simulated)")
+```
+
+
+## 应用场景
+
+::: {#fig-PathifierApplications1}
+![](../images/PathifierPlot_demo.png){fig-alt="通路失调控热图" fig-align="center" width="60%"}
+
+通路失调控热图
+:::
+
+PDS 矩阵的下游用法与 GSVA 评分相同：亚型分离、生存关联、或条件间差异失调控——优势是评分内置了正常组织基线。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Drier Y, Sheffer M, Domany E. Pathway-based personalized analysis of cancer. Proc Natl Acad Sci USA. 2013;110(16):6388-6393. doi:10.1073/pnas.1219651110

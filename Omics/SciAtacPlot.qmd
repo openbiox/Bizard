@@ -1,0 +1,141 @@
+---
+title: "Single-Cell ATAC Co-accessibility Arcs"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+Cicero links a gene's promoter to distal open chromatin peaks that move together across single cells (**co-accessibility**), and draws them as arcs over a genomic locus with a gene-model track beneath \[1\]. The original pipeline (monocle3 + cicero, Python umap-learn) does not install inside this repository's lockfile, so this tutorial reproduces the **figure** — the arc map and the Washu-browser export — from a simulated `conns` table; with real data, swap in `run_cicero()` output (columns `Peak1, Peak2, coaccess`, peaks as `chr_start_end`):
+
+## Example
+
+![](../images/Omics/SciAtacPlot_demo.png){fig-alt="Single-Cell ATAC Co-accessibility Arcs DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `dplyr`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+A 1 Mb simulated locus with 26 peaks, one promoter peak linked to nine distal peaks (one negative co-accessibility, the mutually-exclusive pattern Cicero also reports), and a six-exon gene model. The Washu conversion filters |coaccess| ≥ 0.5 (here ≥ 0.25 keeps the small demo readable) and writes the BED-like six-column interact file:
+
+```{r load data}
+suppressPackageStartupMessages({library(ggplot2); library(dplyr); library(patchwork)})
+set.seed(18501)
+locus_start <- 9773451; locus_end <- 10773451; locus_chr <- "chr2"
+## peaks along the locus
+n_peak <- 26
+peaks <- data.frame(id = sprintf("peaks%03d", 1:n_peak)) %>%
+  mutate(s = round(seq(locus_start + 5e4, locus_end - 5e4, length.out = n_peak)),
+         e = s + sample(300:900, n_peak, TRUE),
+         mid = (s + e) / 2)
+## promoter peak + planted co-accessibility to distal peaks
+promoter <- peaks$id[13]
+conns <- do.call(rbind, lapply(sample(peaks$id[-13], 9), function(p2) {
+  data.frame(Peak1 = promoter, Peak2 = p2,
+             coaccess = runif(1, 0.3, 0.95) * sample(c(1, 1, -0.4), 1, prob = c(4, 4, 1)))
+}))
+conns <- conns[abs(conns$coaccess) >= 0.25, ]
+## gene model: 6 exons (Cicero's plot_connections collapses transcripts to longest)
+gene_model <- data.frame(exon_start = c(10050000, 10120000, 10240000, 10360000, 10490000, 10610000),
+                         exon_end   = c(10054000, 10128000, 10247000, 10366000, 10496000, 10615000),
+                         gene = "MYH3-like", transcript = "tx1")
+## arc geometry: semicircle between linked peaks, height = |coaccess|
+arcs <- conns %>%
+  left_join(peaks, by = c("Peak1" = "id")) %>% rename(x1 = mid) %>%
+  left_join(peaks, by = c("Peak2" = "id")) %>% rename(x2 = mid) %>%
+  rowwise() %>%
+  do(data.frame(peak = . $Peak1, x = seq(.$x1, .$x2, length.out = 80),
+                y = sin(seq(0, pi, length.out = 80)) * abs(.$coaccess) * (.$x2 - .$x1) / 2,
+                coaccess = .$coaccess)) %>% ungroup()
+## the reference also exports a Washu "interact" track — fully reproducible here
+conns_washu <- conns %>%
+  left_join(peaks, by = c("Peak1" = "id")) %>% left_join(peaks, by = c("Peak2" = "id")) %>%
+  transmute(V1 = locus_chr, V2 = pmin(s.x, s.y), V3 = max(e.x, e.y),
+            V4 = paste0(locus_chr, ":", pmin(s.x, s.y), "-", max(e.x, e.y), ",",
+                        coaccess * 10),
+            V5 = row_number() * 2, V6 = ".") %>%
+  arrange(V1, V2, V3, V4)
+## written to a tempdir BED file for the Washu interact track
+write.table(conns_washu, file.path(tempdir(), "conns_washu.bed"),
+            sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+## Visualization
+
+### 1. Cells and Co-accessibility Arcs
+
+Top: the two cell clusters on the LSI-UMAP that Cicero would aggregate. Bottom: arcs between the promoter and its distal peaks — arc height scales with |co-accessibility| x genomic distance, colour by signed score, gene model beneath — plus, invisibly on screen, the Washu `interact` file written beside it for the browser view:
+
+```{r}
+#| label: fig-1.1SciAtacArcs
+#| fig-cap: "Cicero-style co-accessibility view of a simulated 1 Mb locus: two simulated cell clusters on LSI-UMAP (top) and arcs between a promoter peak and nine distal peaks coloured by signed co-accessibility with a collapsed gene model beneath (bottom)."
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6.4
+
+p_umap <- ggplot(data.frame(dim1 = c(rnorm(120, -3), rnorm(120, 3)),
+                            dim2 = c(rnorm(120), rnorm(120, 1)),
+                            cluster = rep(c("HL60", "GM12878"), each = 120)),
+                 aes(dim1, dim2, colour = cluster)) +
+  geom_point(size = 1.1, alpha = 0.8) +
+  scale_colour_manual(values = c(HL60 = "#E41A1C", GM12878 = "#377EB8"), name = NULL) +
+  labs(x = "LSI_1", y = "LSI_2", title = "Cells (simulated LSI-UMAP)") +
+  theme_classic(base_size = 10) + theme(legend.position = "top")
+
+p_arcs <- ggplot() +
+  geom_path(data = arcs, aes(x, y, group = paste(peak, coaccess), colour = coaccess), linewidth = 0.7) +
+  geom_point(data = peaks, aes(mid, 0), shape = 21, fill = "#377EB8", colour = "black", size = 2.4) +
+  geom_rect(data = gene_model, aes(xmin = exon_start, xmax = exon_end, ymin = -0.32e6, ymax = -0.22e6),
+            fill = "#4DAF4A", colour = "black", linewidth = 0.25) +
+  geom_text(data = data.frame(x = mean(gene_model$exon_start), y = -0.42e6, lab = gene_model$gene[1]),
+            aes(x, y, label = lab), size = 3.4, fontface = "italic") +
+  scale_colour_gradient2(low = "#2166AC", mid = "grey80", high = "#B2182B", midpoint = 0,
+                         name = "Co-accessibility") +
+  scale_x_continuous(limits = c(locus_start, locus_end),
+                     labels = function(v) sprintf("%.1fMb", v / 1e6)) +
+  labs(x = NULL, y = NULL, title = "Cicero-style co-accessibility arcs at a simulated locus (chr2)") +
+  theme_classic(base_size = 10) +
+  theme(axis.line.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+p_umap / p_arcs + plot_layout(ncol = 1, heights = c(1, 1.4))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The Washu export is the reproducible core of the reference's browser route: six columns — `chr, min(start), max(end), "chr:start-end,score*10", row_index*2, "."` — loaded as an interact/long-range track; the ×10 scaling makes sub-1 scores visible in the browser.
+-   Compute co-accessibility **per cell cluster** when populations are mixed (the reference notes this on its own demo): pooling HL60-like and immune cells creates spurious links between cluster-specific peaks.
+-   Filter `|coaccess| ≥ 0.25` before drawing — a raw Cicero table contains thousands of near-zero links that turn the arc plot into a hairball.
+:::
+
+## Applications
+
+::: {#fig-SciAtacApplications1}
+![](../images/Omics/SciAtacPlot_demo.png){fig-alt="Co-accessibility arc map" fig-align="center" width="60%"}
+
+Co-accessibility arc map
+:::
+
+The same arc-plus-gene-model layout serves any genomic linkage view: Hi-C loops, promoter-capture Hi-C, eQLD linkage disequilibrium, or ChIA-PET interactions.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Schep AN, Wu B, Buenrostro JD, Greenleaf WJ. chromVAR: inferring transcription-factor-associated accessibility from single-cell epigenomic data. Nat Methods. 2017;14(10):975-978. doi:10.1038/nmeth.4401 (Cicero's companion TF-variability analysis)

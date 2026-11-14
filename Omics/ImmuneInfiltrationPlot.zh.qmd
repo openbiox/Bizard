@@ -1,0 +1,185 @@
+---
+title: "免疫细胞浸润热图（MCP-Counter 风格）"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+MCP-counter \[2\] 从 bulk 转录组估计**十个免疫与基质群体的绝对丰度**：每个群体有一组转录水平的标志基因签名，估计值即该签名在样本中的平均（标准化）表达 \[1\]。随后把样本画成热图、按目的基因（此处 CD274/PD-L1）表达排序并叠加临床与突变注释，沿目标基因梯度读取群体构成 \[1\]。MCP-counter 不在本仓库 lockfile；其均值签名估计器在页内以精简内嵌签名表重实现，热图在 pheatmap 上运行：
+
+## Example
+
+![](../images/Omics/ImmuneInfiltrationPlot_demo.png){fig-alt="免疫细胞浸润热图 DEMO" fig-align="center" width="70%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`pheatmap`; `ggplot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(pheatmap); library(ggplot2)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+120 个模拟低级别胶质瘤（LGG）样本：十个 MCP-counter 群体签名基因与 CD274 的 log2-TPM 表达。植入生物学——CD274（PD-L1）与 CD8 T 细胞及细胞毒性签名共变（适应性免疫抵抗）；IDH 野生型样本的单核/巨噬细胞浸润更高；其余基因为持家样表达：
+
+```{r load data}
+suppressPackageStartupMessages({library(pheatmap); library(ggplot2)})
+set.seed(52326)
+n_sam <- 120
+samples <- sprintf("LGG_%03d", seq_len(n_sam))
+
+## compact MCP-counter style populations (abbreviated transcribed signatures)
+pops <- c("B cells", "CD8 T cells", "Cytotoxic lymphocytes", "Dendritic cells",
+          "NK cells", "Monocytes", "Macrophages", "Neutrophils",
+          "CD4 T cells", "Endothelial cells")
+sig <- list(
+  `B cells` = sprintf("MS4A1,CD79A,CD79B,HLA-DRA,TCL1A,BANK1,BLK,CD19,CR2,FCRL2"),
+  `CD8 T cells` = sprintf("CD8A,CD8B,LEF1,TCF7,CXCR6,GZMK,CCL5,CD3D,CD3E,ITGAE"),
+  `Cytotoxic lymphocytes` = sprintf("GZMA,GZMB,GZMH,GNLY,PRF1,NKG7,KLRD1,FGFBP2,KLRB1,KLRC1"),
+  `Dendritic cells` = sprintf("FCER1A,CLEC10A,CD1C,HLA-DQA1,HLA-DPB1,CD1E,FCRLA,CST3,CLEC4C,IRF8"),
+  `NK cells` = sprintf("NCAM1,KIR2DL4,KIR3DL1,SH2D1B,CD7,XCL1,XCL2,IL2RB,NCR1,KLRC2"),
+  Monocytes = sprintf("CD14,S100A8,S100A9,LYZ,VCAN,FCN1,FCGR3A,MS4A7,CST3,S100A12"),
+  Macrophages = sprintf("CD163,MRC1,MSR1,CD68,APOE,APOC1,FOLR2,MERTK,TREM2,C1QA"),
+  Neutrophils = sprintf("CSF3R,FUT4,CEACAM8,CSTA,CAMP,LTF,MMP9,DEFA4,ELANE,ARG1"),
+  `CD4 T cells` = sprintf("CD4,IL7R,CCR7,SELL,LTB,CD27,CD28,ICOS,FOXP3,IL2RA"),
+  `Endothelial cells` = sprintf("PECAM1,VWF,CLDN5,CDH5,EGFL7,RAMP3,KDR,TEK,SELE,ROBO4")
+)
+sig <- lapply(sig, function(s) unlist(strsplit(s, ",")))
+all_genes <- unique(c(unlist(sig), "CD274"))
+
+## per-population baseline activity per sample
+act <- sapply(pops, function(p) rnorm(n_sam, 0, 1))
+## CD274 co-varies with cytotoxic + CD8 (adaptive immune resistance)
+cyt_axis <- 0.6 * act[, "Cytotoxic lymphocytes"] + 0.6 * act[, "CD8 T cells"] + rnorm(n_sam, 0, 0.4)
+cd274 <- 0.55 * cyt_axis + rnorm(n_sam, 0, 0.5)
+
+## IDH status: wildtype carries higher monocyte/macrophage infiltration
+idh <- sample(c("IDH mutant", "IDH wildtype"), n_sam, TRUE, prob = c(0.72, 0.28))
+act[idh == "IDH wildtype", c("Monocytes", "Macrophages")] <-
+  act[idh == "IDH wildtype", c("Monocytes", "Macrophages")] + 1.1
+
+## build log2-TPM-like expression matrix: signature genes follow their population
+expr <- matrix(NA, length(all_genes), n_sam,
+               dimnames = list(all_genes, samples))
+base <- setNames(rnorm(length(all_genes), 4.5, 1.4), all_genes)
+for (p in pops) {
+  for (g in sig[[p]]) {
+    expr[g, ] <- base[[g]] + act[, p] + rnorm(n_sam, 0, 0.55)
+  }
+}
+expr["CD274", ] <- base[["CD274"]] + cd274 + rnorm(n_sam, 0, 0.35)
+
+## MCP-counter estimator: mean z-scored signature expression per population
+zexpr <- t(scale(t(expr)))
+mcp <- sapply(pops, function(p) colMeans(zexpr[sig[[p]], , drop = FALSE]))
+mcp <- t(mcp)                                   # populations x samples
+```
+
+## Visualization
+
+### 1. 按 CD274 表达排序的浸润热图
+
+参考图：行 = 群体（spearman 距离聚类），列 = 按 CD274 表达升序排列的样本，附 IDH 状态注释——CD8/细胞毒性模块沿 PD-L1 轴抬升、IDH 野生型样本聚在巨噬/单核高侧：
+
+```{r}
+#| label: fig-1.1ImmuneHm
+#| fig-cap: "120 例 LGG 样本的 MCP-counter 风格浸润热图（行 z 标准化、spearman 相关距离聚类）：列按 CD274（PD-L1）表达升序排列；CD8 T 细胞/细胞毒性模块沿 PD-L1 轴抬升（适应性免疫抵抗），IDH 野生型样本的单核/巨噬细胞评分更高。"
+#| out.width: "100%"
+#| fig-width: 10
+#| fig-height: 4.2
+
+ord <- order(cd274, decreasing = FALSE)
+anno_col <- data.frame(IDH_status = idh, row.names = samples)
+anno_col <- anno_col[ord, , drop = FALSE]
+anno_colors <- list(IDH_status = c(`IDH mutant` = "#8EA325", `IDH wildtype` = "#BD6263"))
+
+## pheatmap has no `method` argument; the reference's spearman clustering is
+## reproduced by precomputing a spearman-correlation distance for the rows
+pheatmap(mcp[, ord],
+         clustering_distance_rows = as.dist(1 - cor(t(mcp), method = "spearman")),
+         clustering_method = "complete",
+         cluster_rows = TRUE, cluster_cols = FALSE,
+         scale = "row",
+         cellwidth = 2.6, cellheight = 19,
+         fontsize = 9,
+         color = colorRampPalette(c("navy", "white", "red"))(100),
+         show_colnames = FALSE,
+         border_color = NA,
+         annotation_col = anno_col,
+         annotation_colors = anno_colors,
+         legend = TRUE)
+```
+
+### 2. 各群体评分沿 PD-L1 轴的变化
+
+把热图模式量化：按 CD274 表达四分位分箱的每群体浸润评分——CD8 与细胞毒性评分单调上升而 B 细胞持平：
+
+```{r}
+#| label: fig-2.1ImmuneTrend
+#| fig-cap: "各群体在 CD274 表达四分位的平均浸润评分：CD8 T 细胞与细胞毒性淋巴细胞随 PD-L1 单调上升（免疫抵抗轴），单核/巨噬细胞由 IDH 驱动，B 细胞无趋势。"
+#| out.width: "85%"
+#| fig-width: 7.5
+#| fig-height: 5
+
+q4 <- cut(cd274, breaks = quantile(cd274, probs = 0:4 / 4), include.lowest = TRUE,
+          labels = c("Q1", "Q2", "Q3", "Q4"))
+trend <- do.call(rbind, lapply(pops, function(p) {
+  data.frame(population = p,
+             quartile = factor(levels(q4), levels = levels(q4)),
+             score = as.numeric(tapply(mcp[p, ], q4, mean)))
+}))
+show_pops <- c("CD8 T cells", "Cytotoxic lymphocytes", "Macrophages",
+               "Monocytes", "B cells", "CD4 T cells")
+ggplot(subset(trend, population %in% show_pops),
+       aes(quartile, score, colour = population, group = population)) +
+  geom_hline(yintercept = 0, linetype = "dotted", colour = "grey60") +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 2.4) +
+  scale_colour_manual(values = c(`CD8 T cells` = "#B2182B",
+                                 `Cytotoxic lymphocytes` = "#E08214",
+                                 Macrophages = "#2166AC",
+                                 Monocytes = "#4393C3",
+                                 `B cells` = "grey55",
+                                 `CD4 T cells` = "#8EA325"),
+                      name = NULL) +
+  labs(x = "CD274 (PD-L1) expression quartile",
+       y = "Mean infiltration score (z)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.minor = element_blank(),
+        legend.position = "top")
+```
+
+::: callout-tip
+**实践要点**
+-   MCP-counter 期望 **log2 变换**后的表达（TPM、FPKM 或标准化 counts 均可）——未变换的 counts 会破坏均值签名估计。
+-   打分前先合并重复基因符号（同 ENSEMBL 多映射取中位数）；重复行会悄悄加重其所属群体的权重。
+-   z 标准化后估计是**相对本队列**的：在同一张热图内比较群体，不要跨研究比较绝对值。
+-   列排序用一个有生物学意义的轴（目的基因表达、处理组）——按字母或随机排序会掩盖图要展示的梯度。
+-   热图搭配突变/临床注释行（此处 IDH 状态）——基因型间的免疫差异正是多数论文要的读数。
+:::
+
+## 应用场景
+
+::: {#fig-ImmuneInfiltrationApplications1}
+![](../images/Omics/ImmuneInfiltrationPlot_demo.png){fig-alt="免疫细胞浸润热图" fig-align="center" width="70%"}
+
+免疫细胞浸润热图（MCP-Counter 风格）
+:::
+
+浸润热图适用于任何 bulk 队列：检查点免疫治疗活检、TCGA 泛癌免疫景观、或自身抗体定义的自身免疫组织转录组。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Becht E, et al. Estimating the population abundance of tissue-infiltrating immune and stromal cell populations using gene expression. Genome Biol. 2016;17:218.

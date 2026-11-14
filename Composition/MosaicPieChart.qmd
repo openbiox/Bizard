@@ -1,0 +1,119 @@
+---
+title: "Pie-Chart Matrix"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+When every gene × condition cell is a **proportion**, a grid of tiny pie charts reads better than a heatmap of percentages: each pie's coloured arc is the altered fraction, and the lattice keeps genes and conditions in rows and columns \[1\]. The reference (Fig. 2A of the pan-cancer lncRNA epigenetic landscape study \[2\]) plots epigenetic activation (EA, hypomethylation) vs epigenetic silencing (ES, hypermethylation) fractions for top-ranked lncRNAs across cancer types. This tutorial reproduces the ggplot recipe — one stacked bar per facet turned into a pie by `coord_polar` — on simulated data:
+
+## Example
+
+![](../images/MosaicPieChart_demo.png){fig-alt="Pie-Chart Matrix DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages(library(ggplot2))
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+An "easy input" of gene × cancer × proportion × type rows (the source document's own simplified layout): 18 simulated lncRNAs × 8 cancer types, with EA and ES proportions drawn from planted gene/cancer propensities. Combos with no alteration are simply absent from the data (the pie shows no wedge):
+
+```{r load data}
+set.seed(14001)
+genes <- sprintf("LNC%02d", 1:18)
+cancers <- c("BLCA", "BRCA", "COAD", "LUAD", "LUSC", "PRAD", "STAD", "THCA")
+gene_eff <- runif(18, 0.05, 0.6)
+cancer_eff <- runif(8, 0.4, 1.3)
+## EA = epigenetic activation (hypomethylation), ES = epigenetic silencing (hypermethylation)
+mk <- function(seed_shift) {
+  set.seed(14001 + seed_shift)
+  m <- pmin(0.98, as.vector(gene_eff) * rep(cancer_eff, each = 18) * runif(18 * 8, 0.1, 1.6))
+  dim(m) <- c(18, 8); dimnames(m) <- list(genes, cancers); m
+}
+ea <- mk(1); es <- mk(2)
+ea[sample(18 * 8, 36)] <- NA; es[sample(18 * 8, 42)] <- NA   # no alteration in some combos
+
+longify <- function(m, type) {
+  d <- expand.grid(gene = genes, cancer = cancers, stringsAsFactors = FALSE)
+  d$value <- as.vector(m)          # matrix fills column-major: gene within cancer
+  d$type <- type
+  d[!is.na(d$value), ]
+}
+gg_data <- rbind(longify(ea, "EA (hypomethylation)"),
+                 longify(es, "ES (hypermethylation)"))
+gg_data$gene <- factor(gg_data$gene, levels = genes)
+gg_data$cancer <- factor(gg_data$cancer, levels = cancers)
+```
+
+## Visualization
+
+### 1. The Pie Matrix
+
+One `geom_col` + `coord_polar(theta = "y")` + `facet_grid(gene ~ cancer)` builds the whole matrix; pink arcs are EA fractions, green ES. Empty rings mark gene-cancer pairs with no alteration — a third state the heatmap's single colour scale would blur:
+
+```{r}
+#| label: fig-1.1PieMatrix
+#| fig-cap: "Pie-chart matrix of simulated lncRNA epigenetic alteration frequencies: rows = lncRNAs, columns = cancer types; each pie's pink arc is the epigenetic-activation (hypomethylation) fraction, green the silencing (hypermethylation) fraction; empty rings mark pairs with no alteration."
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 10
+
+pink <- "#F814A7"; green <- "#177835"
+ggplot(gg_data, aes(x = 1, y = value, fill = type)) +
+  geom_col(width = 1, colour = "white", linewidth = 0.1) +
+  scale_fill_manual(values = c(`EA (hypomethylation)` = pink, `ES (hypermethylation)` = green),
+                    guide = guide_legend(title = NULL)) +
+  scale_y_continuous(breaks = seq(0, 1, length.out = 9), limits = c(0, 1)) +
+  facet_grid(gene ~ cancer) +
+  coord_polar(theta = "y") +
+  labs(x = NULL, y = NULL,
+       title = "lncRNA epigenetic alteration frequency by cancer type (simulated)") +
+  theme(strip.background = element_blank(),
+        strip.text.x = element_text(angle = 90, size = 7, hjust = 0),
+        strip.text.y = element_text(angle = 0, size = 7, hjust = 0.5),
+        panel.background = element_rect(fill = "white", colour = NA),
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_line(linewidth = 0.6),
+        panel.grid.major.y = element_line(linewidth = 0.9),
+        axis.text = element_blank(), axis.ticks = element_blank(),
+        legend.position = "top",
+        plot.title = element_text(size = 11))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The trick is stacking on a constant x: `aes(x = 1, y = value, fill = type)` with `geom_col()` and `coord_polar(theta = "y")` turns each facet's single bar into a pie. Use `geom_col()`, not the deprecated `geom_bar(stat = "identity")`.
+-   The source used the retired `reshape2::melt`; any long-format builder works — just keep `gene` a factor to preserve row order, and `na.omit()` so missing combos leave genuinely empty rings.
+-   Facet grids of polar panels render slowly at 40 × 20 cells (the reference scale); cap the displayed genes by alteration frequency (top-20 in the paper) rather than shrinking text below legibility.
+:::
+
+## Applications
+
+::: {#fig-MosaicPieApplications1}
+![](../images/MosaicPieChart_demo.png){fig-alt="Pie-chart proportion matrix" fig-align="center" width="60%"}
+
+Pie-chart proportion matrix
+:::
+
+The pie matrix works for any gene × condition proportion table: methylation alteration fractions, pathway-activity percentages per subtype, or mutation co-occurrence rates per cluster.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Wang Z, Yang B, Zhang M, et al. lncRNA Epigenetic Landscape Analysis Identifies EPIC1 as an Oncogenic lncRNA that Interacts with MYC and Promotes Cell-Cycle Progression in Cancer. Cancer Cell. 2018;33(4):706-720. doi:10.1016/j.ccell.2018.03.006

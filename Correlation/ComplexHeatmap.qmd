@@ -418,7 +418,7 @@ Add graphics
 
 ### 6. Correlation-Ordered Heatmap with Annotations
 
-In biomarker studies \[4\] the columns are samples **ordered by the expression of one target gene**, the rows are genes significantly positively or negatively correlated with it, and the top annotation carries subtype/mutation information. Turning clustering off makes the target gene's gradient (and the wedges of correlated genes) directly visible — an unclustered correlation heatmap.
+In biomarker studies \[8\] the columns are samples **ordered by the expression of one target gene**, the rows are genes significantly positively or negatively correlated with it, and the top annotation carries subtype/mutation information. Turning clustering off makes the target gene's gradient (and the wedges of correlated genes) directly visible — an unclustered correlation heatmap.
 
 ```{r}
 #| label: fig-6.1CorrOrdered
@@ -487,7 +487,7 @@ Heatmap(mat_sel, name = "Z-score", top_annotation = ha,
 
 ### 7. Single-Cell Cluster-Mean Marker Heatmap
 
-Single-cell marker panels read best as **cluster-mean** heatmaps: average each marker gene within every cluster, z-score the rows and clip extremes so one loud gene cannot saturate the colour scale \[4\]. Rows stay in marker-set order (`cluster_rows = FALSE`) while the columns are complete-linked, and the `annotation_row` bar names the cell type each block belongs to — the diagonal marker-by-cell-type layout standard in scRNA-seq papers.
+Single-cell marker panels read best as **cluster-mean** heatmaps: average each marker gene within every cluster, z-score the rows and clip extremes so one loud gene cannot saturate the colour scale \[8\]. Rows stay in marker-set order (`cluster_rows = FALSE`) while the columns are complete-linked, and the `annotation_row` bar names the cell type each block belongs to — the diagonal marker-by-cell-type layout standard in scRNA-seq papers.
 
 ```{r}
 #| label: fig-7.1ScMarkerHeatmap
@@ -513,13 +513,13 @@ for (k in 1:n_clust) {
 clip_scale <- function(x, lo = -2, hi = 2)
   matrix(pmin(pmax(x, lo), hi), nrow = nrow(x), dimnames = dimnames(x))
 # per-gene z-score, clipped to +-2 so one loud gene cannot saturate the scale
-ph_data <- clip_scale(scale(avg))
+ph_data <- clip_scale(t(scale(t(avg))))
 
 ann <- data.frame(cluster = rep(clusters, each = n_genes_per))
 cl_cols <- setNames(c("#B2182B", "#2166AC", "#EABF00", "#4D9342"), clusters)
 hm <- ComplexHeatmap::pheatmap(ph_data,
   color = colorRampPalette(c("darkblue", "white", "red3"))(99),
-  scale = "row", cluster_rows = FALSE, cluster_cols = TRUE,
+  scale = "none", cluster_rows = FALSE, cluster_cols = TRUE,
   clustering_method = "complete", show_rownames = FALSE,
   annotation_row = ann, annotation_colors = list(cluster = cl_cols),
   border_color = NA)
@@ -537,12 +537,12 @@ stopifnot(sum(diag_hits) == n_clust)
 **Practice tips**
 
 -   `cluster_rows = FALSE` keeps marker sets contiguous; letting the rows cluster breaks the diagonal reading.
--   Clipping at ±2 after per-gene z-scoring is what makes all four blocks equally colourful: each block is scaled by its own contrast.
+-   The per-gene z-score (`t(scale(t(avg)))`) is what makes all four blocks equally colourful — each row is scaled by its own contrast; the ±2 clip is only a guard against residual outliers.
 -   The `darkblue-white-red3` 99-step ramp matches the classic style; build it once with `colorRampPalette()` and reuse it across panels.
 :::
 ### 8. Multi-Block Horizontal Heatmap Composition
 
-An entire publication panel — a binary trait bar, an expression matrix, and a numeric score column with in-cell labels — assembles from one row-aligned horizontal `pheatmap` list \[4\]. The `display_numbers` + `number_color` mechanism turns any block into a table-style column with per-cell control; missing values draw as `NA`.
+An entire publication panel — a binary trait bar, an expression matrix, and a numeric score column with in-cell labels — assembles from one row-aligned horizontal `pheatmap` list \[8\]. The `display_numbers` + `number_color` mechanism turns any block into a table-style column with per-cell control; missing values draw as `NA`.
 
 ```{r}
 #| label: fig-8.1MultiBlockHeatmap
@@ -602,6 +602,7 @@ stopifnot(sum(is.na(score)) == 2 &&
 ![](../images/Correlation/ComplexHeatmap_app.jpg){fig-alt="ComplexHeatmapApp1" fig-align="center" width="60%"}
 
 Applications of ComplexHeatmap
+-   **Cluster first, then annotate (FigureYa91)**: pre-compute the sample tree — `hclust(distanceMatrix(as.matrix(mat), "pearson"), "ward.D")` — cut it with `cutree(hcs, k = 2)`, and write the cluster back as an annotation column (`annCol$Clust2 <- paste0("C", group[rownames(annCol)])`) so the top dendrogram reads as colour instead of lines; exporting `mat[, hcs$order]` hands the sorted sample list to downstream survival-by-cluster analysis.
 :::
 
 The figure above is an unsupervised hierarchical clustering heatmap of 59 differentially methylated ATG sites in the AVR data \[1\]. Red indicates high DNA methylation, and green indicates low DNA methylation.
@@ -614,8 +615,6 @@ The figure above is an unsupervised hierarchical clustering heatmap of 59 differ
 
 \[3\] Tal Galili (2015). dendextend: an R package for visualizing, adjusting, and comparing trees of hierarchical clustering. Bioinformatics. DOI:10.1093/bioinformatics/btv428
 
-\[4\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
-
 \[4\] Wickham H, Vaughan D, Girlich M (2024). tidyr: Tidy Messy Data. R package version 1.3.1, CRAN: Package tidyr.
 
 \[5\] Gu, Z. (2014) circlize implements and enhances circular visualization in R. Bioinformatics.
@@ -623,4 +622,6 @@ The figure above is an unsupervised hierarchical clustering heatmap of 59 differ
 \[6\] Auguie B (2017). gridExtra: Miscellaneous Functions for "Grid" Graphics. R package version 2.3, CRAN: Package gridExtra.
 
 \[7\] Kolde R (2019). pheatmap: Pretty Heatmaps. R package version 1.0.12, CRAN: Package pheatmap.
+
+\[8\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 

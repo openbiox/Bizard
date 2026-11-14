@@ -1,0 +1,131 @@
+---
+title: "条件生存"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+条件生存把预后重述为 **P(已存活 s 年后再活 X 年)**：s 增大，曲线爬向 1，量化"存活时间本身即预后" \[1\]。参考（胰腺队列研究 Fig. 1）给出三个对齐视图——条件曲线、完整概率矩阵、风险数。`condsurv` 包已安装但从未被调用：承重机制是用 `start.time = at[i]` 重拟合 KM，本教程仅用 `survival` + `ggplot2` 复现全部：
+
+## Example
+
+![](../images/Clinics/ConditionalSurvPlot_demo.png){fig-alt="条件生存 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`survival`; `ggplot2`; `survminer`; `patchwork`; `RColorBrewer`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(survival)
+  library(ggplot2)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+300 个模拟患者，`futime` 截顶 8 年（Exponential hazard 0.28/年）约 62% 事件——时间以年计，匹配参考的 0-5 年条件网格与 6 年窗口：
+
+```{r load data}
+suppressPackageStartupMessages({library(survival); library(ggplot2); library(survminer); library(patchwork); library(RColorBrewer)})
+set.seed(18301)
+n <- 300
+dat <- data.frame(futime = pmin(8, rexp(n, rate = 0.28)), fustat = rbinom(n, 1, 0.62))
+at <- 0:5; surv.cut <- 6
+mycol <- brewer.pal(6, "Set1")
+basekm <- survfit(Surv(futime, fustat) ~ 1, data = dat, type = "kaplan-meier",
+                  error = "greenwood", conf.type = "plain")
+```
+
+## Visualization
+
+### 曲线、概率矩阵与风险表
+
+三面板堆叠：条件 KM 阶梯曲线（每个"已存活 s 年"一条，`start.time` 重拟合使其在 1.0 重启）、按条件时间着色的下三角概率矩阵文字、风险表——连读，s 每升一档预后都抬升：
+
+```{r}
+#| label: fig-1.1CondSurv
+#| fig-cap: "300 个模拟患者的条件生存：以已存活 0-5 年为条件的 KM 阶梯曲线（上）、下三角条件概率矩阵（中，S(y | y0) = S(y)/S(y0)）与风险数（下）。"
+#| out.width: "70%"
+#| warning: false
+#| message: false
+#| fig-width: 6.5
+#| fig-height: 9
+
+## conditional curves: refit the KM with start.time = at[i] (each starts at 1.0)
+fitkm <- lapply(at, function(a)
+  survfit(Surv(futime, fustat) ~ 1, data = dat, start.time = a,
+          type = "kaplan-meier", error = "greenwood", conf.type = "plain"))
+curves <- do.call(rbind, lapply(seq_along(at), function(i) {
+  cs <- summary(fitkm[[i]], times = seq(0, surv.cut, 0.1))
+  data.frame(timept = cs$time, prob = cs$surv, condtime = at[i])
+}))
+curves$condtime <- factor(paste0(curves$condtime, " Year"), levels = paste0(at, " Year"))
+## conditional probability matrix: S(y | survived y0) = S(y) / S(y0)
+cs_mat <- sapply(at, function(y0) sapply(at, function(y)
+  if (y < y0) NA else summary(basekm, times = y)$surv / summary(basekm, times = y0)$surv))
+dimnames(cs_mat) <- list(con = at, years = at)
+mat <- data.frame(con = rep(at, times = length(at)),
+                  years = rep(at, each = length(at)),
+                  est = as.vector(cs_mat))
+mat$lab <- ifelse(is.na(mat$est), NA, sprintf("%.0f%%", mat$est * 100))
+risk <- summary(basekm, times = 0:surv.cut)$n.risk
+rk <- data.frame(time = 0:surv.cut, n = risk)
+
+p1 <- ggplot(curves, aes(timept, prob, colour = condtime)) +
+  geom_step(linewidth = 0.7, direction = "hv") +
+  geom_segment(x = 0, xend = max(at), y = 1, yend = 1, colour = mycol[length(at)],
+               linewidth = 0.6, linetype = 1) +
+  scale_colour_manual(values = mycol, name = "Given conditional\nsurvival") +
+  coord_cartesian(xlim = c(0, surv.cut), ylim = c(0, 1)) +
+  labs(x = "Years since surgery", y = "Conditional survival probability",
+       title = "Conditional survival up to 6 years (simulated)") +
+  theme_classic(base_size = 10) + theme(panel.border = element_rect(fill = NA, colour = "black"),
+                                        legend.position = "top")
+p2 <- ggplot(mat, aes(years, con)) +
+  geom_text(aes(label = lab, colour = con), size = 4, show.legend = FALSE) +
+  scale_y_reverse(breaks = at) + scale_x_continuous(breaks = at) +
+  scale_colour_gradientn(colours = mycol) +
+  labs(x = "Survival probability to reach X years", y = "Given years of survival") +
+  theme_classic(base_size = 10) +
+  theme(panel.border = element_rect(fill = NA, colour = "black"))
+p3 <- ggplot(rk, aes(time, "All")) +
+  geom_text(aes(label = n), size = 4, colour = "black") +
+  scale_x_continuous(breaks = 0:surv.cut) +
+  labs(x = "Years", y = "Number at risk") +
+  theme_classic(base_size = 10) +
+  theme(panel.border = element_rect(fill = NA, colour = "black"))
+p1 / p2 / p3 + plot_layout(ncol = 1, heights = c(5, 5, 1))
+```
+
+
+::: callout-tip
+**实践提示**
+
+-   用 `survfit(..., start.time = at[i])` 重拟合而非除以生存函数——重拟合的 KM 在条件时点处从 1.0 重启，且风险表携带正确的 Greenwood 方差。
+-   矩阵元是同一 base KM 的 `S(y) / S(y0)`；上三角（y < y0 无定义）留空，不要填 100%。
+-   输入时间必须已是年（条件网格与 `surv.cut` 以年为单位）——在页面内把天换算成年，轴才诚实。
+:::
+
+## 应用场景
+
+::: {#fig-CondSurvApplications1}
+![](../images/Clinics/ConditionalSurvPlot_demo.png){fig-alt="条件生存总览" fig-align="center" width="60%"}
+
+条件生存总览
+:::
+
+条件生存适用于任何有随访的队列：术后肿瘤（参考）、移植移植物存活、或一线治疗后无进展生存。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Latenstein AEJ, van Roessel S, van der Geest LGM, et al. Conditional Survival After Resection for Pancreatic Cancer: A Population-Based Study and Prediction Model. Ann Surg Oncol. 2020;27(7):2516-2524. doi:10.1245/s10434-020-08235-w

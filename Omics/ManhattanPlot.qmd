@@ -21,7 +21,7 @@ The horizontal axis of the Manhattan plot is the chromosome position, and the ve
 
 -   Programming language: R
 
--   Dependent packages: `qqman`; `tidyverse`; `aplot`
+-   Dependent packages: `qqman`; `tidyverse`; `aplot`; `ggrepel`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages
@@ -39,6 +39,7 @@ if (!requireNamespace("aplot", quietly = TRUE)) {
 library(qqman)
 library(tidyverse)
 library(aplot)
+library(ggrepel)
 ```
 
 ```{r}
@@ -282,6 +283,75 @@ p2 <-
 p1/p2
 ```
 
+### 3. Repelled Labels and Per-Chromosome Colour (ggplot2)
+
+The qqman route labels nothing. The FigureYa43 layout \[2\] rebuilds the Manhattan plot in ggplot2 to gain three things: alternating chromosome colours chosen by hand, a **red threshold line** with points above it enlarged (`size = pcut`), and `geom_label_repel()` labels carrying gene + rs-ID **with arrows**, constrained to the region above the threshold. The cumulative-offset x axis (`chrx` join) is what places chromosomes side by side:
+
+```{r}
+#| label: fig-3.1ManhattanRepel
+#| fig-cap: "Manhattan plot of 8 simulated chromosomes (2,500 SNPs each): red threshold at -log10(P) = 5, points above it enlarged and labeled with gene + rs-ID via ggrepel; alternating chromosome colours."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 5.2
+
+set.seed(4301)
+n_chr <- 8
+snp_per <- 2500
+gwas <- do.call(rbind, lapply(1:n_chr, function(cc) {
+  data.frame(CHR = cc, SNP = paste0("rs", cc, sample(1e5:9e5, snp_per)),
+             POS = sort(sample(1:7e7, snp_per)),
+             P_value = rexp(snp_per, 0.35),
+             gene = NA)
+}))
+gwas$P_value <- pmin(1, gwas$P_value)
+hits <- sample(nrow(gwas), 14)
+gwas$P_value[hits] <- 10^(-runif(14, 5.2, 9))
+gwas$gene[hits] <- paste0("GENE", 1:14)
+gwas$chr <- factor(gwas$CHR, levels = 1:n_chr)
+
+chrx <- gwas %>% group_by(chr) %>% summarise(chr_len = max(POS)) %>%
+  mutate(chrx = cumsum(chr_len) - chr_len) %>% select(-chr_len) %>% data.frame()
+gwas <- left_join(gwas, chrx, by = c("chr" = "chr")) %>%
+  mutate(SNPx = POS + chrx, SNPy = -log10(P_value))
+axisdf <- gwas %>% group_by(chr) %>% summarize(center = (max(SNPx) + min(SNPx)) / 2)
+logPcutoff <- 5
+gwas$pcut <- ifelse(gwas$SNPy > logPcutoff, "1", "0")
+gwas$label <- paste0(gwas$gene, "\n", gwas$SNP)
+gwas$label[is.na(gwas$gene)] <- NA
+mycol <- rep(c("#223D6C", "#D20A13"), length.out = n_chr)
+
+ggplot(gwas, aes(SNPx, SNPy)) +
+  geom_point(aes(colour = chr, size = pcut), alpha = 0.85) +
+  scale_colour_manual(values = mycol, guide = "none") +
+  scale_size_discrete(range = c(0.6, 2.2), guide = "none") +
+  geom_hline(yintercept = logPcutoff, colour = "red", linewidth = 0.4) +
+  geom_label_repel(data = subset(gwas, !is.na(label)),
+                   aes(label = label), size = 2.4,
+                   segment.colour = "black", segment.size = 0.35,
+                   arrow = arrow(angle = 20, length = unit(0.04, "inches")),
+                   min.segment.length = 0, na.rm = TRUE,
+                   box.padding = 0.35, max.overlaps = 30, show.legend = FALSE) +
+  scale_x_continuous(breaks = axisdf$center, labels = axisdf$chr,
+                     expand = expansion(mult = c(0, 0.02))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.06))) +
+  labs(x = "Chromosome", y = expression(-log[10](P)),
+       title = "GWAS Manhattan plot with repelled labels (simulated)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), panel.border = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(size = rel(0.85)))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Label only what passes the threshold, and put **gene + rs-ID on two lines** — one-line labels collide immediately at GWAS density.
+-   `max.overlaps = 30` keeps ggrepel from silently dropping labels in crowded top regions; check the dropped-label warning rather than trusting the plot.
+-   The chromosome offsets must come from a grouped `max(POS)` join, not from row order — an unsorted `POS` column scrambles the alternating colours.
+:::
+
 ### 13. Regional Association Panel (LocusZoom Style)
 
 A Manhattan plot answers "which locus"; a **regional association panel** answers "what is going on inside that locus". The LocusZoom convention \[13\] stacks three tracks on one shared x axis: the association signal with points coloured by LD (r^2) to a chosen sentinel variant, the gene models under it, and the local recombination rate as a line. The three tracks are read together: a secondary signal that sits in a different LD block from the sentinel is an independent association, and the same signal in the same block is not.
@@ -420,6 +490,8 @@ This figure shows the association between SNP loci in poplar trees and temperatu
 ## Reference
 
 \[1\] Sang Y, Long Z, Dan X, Feng J, Shi T, Jia C, Zhang X, Lai Q, Yang G, Zhang H, Xu X, Liu H, Jiang Y, Ingvarsson PK, Liu J, Mao K, Wang J. Genomic insights into local adaptation and future climate-induced vulnerability of a keystone forest tree in East Asia. Nat Commun. 2022 Nov 1;13(1):6541. doi: 10.1038/s41467-022-34206-8. PMID: 36319648; PMCID: PMC9626627.
+
+\[2\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
 \[13\] Pruim RJ, Welch RP, Sanna S, et al. LocusZoom: regional visualization of genome-wide association scan results. Bioinformatics. 2010;26(18):2336-2337. doi:10.1093/bioinformatics/btq419
 

@@ -553,7 +553,7 @@ p
 
 ### 8. 多组柱形图 + 亚组渐变色
 
-参考图编码了**三级分组**：大组（颜色）、组内亚组（同色渐变浅色）、误差条（mean ± SE）\[9\]。渐变效果通过在每大组基色内按亚组序号赋予浅色调实现。
+参考图编码了**三级分组**：大组（颜色）、组内亚组（同色渐变浅色）、误差条（mean ± SE）\[13\]。渐变效果通过在每大组基色内按亚组序号赋予浅色调实现。
 
 ```{r}
 #| label: fig-8.1SubgroupGradient
@@ -603,9 +603,299 @@ ggplot(summ_b, aes(subgroup, mean, fill = subgroup)) +
 ::: callout-tip
 **实践要点**
 
--   渐变色用 `col2rgb()` + `rgb()` 在基色内按亚组序号调亮——将每个亚组视觉上关联到大组颜色。
+-   渐变浅色按亚组序号取自大组基色（此处为硬编码的显式 hex；亚组多时可用 `colorRampPalette(c(浅色, 基色))(n)` 自行派生）——将每个亚组视觉上关联到大组颜色。
 -   `se = sd / sqrt(n)` 误差条是均值比较的标准；部分期刊要求用 `sd` 而非 `se`——查阅作者指南。
 -   组内比较括号可用 `ggsignif::geom_signif(comparisons = list(c("A1", "A2")))` 叠加在柱上。
+:::
+
+### 9. 细胞类型比例柱形图 + 分簇 Fisher 事后检验
+
+单细胞研究常用"每个簇在各条件中的细胞占比"概括组成变化。参考工作流 \[13\] 绘制堆积比例柱形图，对整个 簇 × 条件 列联表做 Fisher 精确检验，再用 one-vs-rest 事后检验回答*哪个*簇驱动了差异：`rstatix::row_wise_fisher_test()` 对每个簇做一次"该簇 vs 其余"的 Fisher 检验，并对 8 个 p 值做 BH 校正。
+
+```{r}
+#| label: fig-9.1CellPropSig
+#| fig-cap: "各簇细胞组成（WT 与 KO，模拟数据）。星号为各簇 BH 校正后的 one-vs-rest Fisher 检验；对完整表的整体 Fisher 精确检验 p < 0.0001（Monte-Carlo，B = 10^5）。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 5.5
+
+set.seed(2900)
+clusters <- paste0("C", 1:8)
+p0 <- c(0.18, 0.16, 0.14, 0.12, 0.11, 0.10, 0.10, 0.09)
+# KO 比例：无效应簇严格保持 p0，仅在 C2/C6/C8 之间重新分配
+p_ko <- p0
+p_ko[2] <- 0.05; p_ko[6] <- 0.22; p_ko[8] <- 0.08
+stopifnot(abs(sum(p_ko) - 1) < 1e-12)
+n_wt <- 900; n_ko <- 900
+mk_cells <- function(n, p, grp) {
+  data.frame(cluster = sample(clusters, n, replace = TRUE, prob = p),
+             group = grp,
+             run = sample(c("R1", "R2"), n, replace = TRUE))
+}
+cellinfo <- rbind(mk_cells(n_wt, p0, "WT"), mk_cells(n_ko, p_ko, "KO"))
+cellinfo$cluster <- factor(cellinfo$cluster, levels = clusters)
+
+tbl <- table(cellinfo$cluster, cellinfo$group)
+ft <- fisher.test(tbl, simulate.p.value = TRUE, B = 1e5)
+post <- rstatix::row_wise_fisher_test(tbl)
+
+cell.col <- c(WT = "#1A63A8", KO = "#FC6910")
+prop_df <- as.data.frame(tbl, stringsAsFactors = FALSE)
+colnames(prop_df) <- c("cluster", "group", "n")
+prop_df$cluster <- factor(prop_df$cluster, levels = clusters)
+prop_df$group <- factor(prop_df$group, levels = c("WT", "KO"))
+sig_df <- as.data.frame(post)
+sig_df$cluster <- factor(sig_df$group, levels = clusters)
+sig_df$lab <- ifelse(sig_df$p.adj.signif == "ns", "", sig_df$p.adj.signif)
+
+ggplot(prop_df, aes(cluster, n, fill = group)) +
+  geom_col(stat = "identity", position = "fill", width = 0.72,
+           colour = "grey25", linewidth = 0.2) +
+  geom_text(data = sig_df, aes(x = cluster, y = 1.05, label = lab),
+            inherit.aes = FALSE, size = 4.4, colour = "grey10") +
+  scale_fill_manual(values = cell.col, name = NULL) +
+  scale_y_continuous(breaks = seq(0, 1, 0.25), labels = scales::percent,
+                     expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Cluster", y = "Fraction of cells",
+       title = "Cell-type composition per cluster (KO vs WT)") +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top", plot.title = element_text(size = 11))
+```
+
+按测序批次（重复）分面可以观察组成变化是可复现的还是单批次假象——参考图第一面板的版式 \[13\]：
+
+```{r}
+#| label: fig-9.2CellPropRep
+#| fig-cap: "按测序重复分面的同一组成图：耗竭（C2）与富集（C6）在两批间保持一致。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 12
+#| fig-height: 3.8
+
+# same cells as the chunk above, now split by sequencing run
+ggplot(cellinfo, aes(run, fill = group)) +
+  geom_bar(position = "fill", width = 0.85, colour = "grey25", linewidth = 0.2) +
+  facet_wrap(~cluster, nrow = 1) +
+  scale_fill_manual(values = cell.col, name = NULL) +
+  scale_y_continuous(breaks = seq(0, 1, 0.5), labels = scales::percent) +
+  labs(x = "Replicate", y = "Fraction of cells") +
+  theme_classic(base_size = 11) +
+  theme(strip.background = element_rect(fill = "grey88", colour = NA),
+        strip.text = element_text(face = "bold"),
+        legend.position = "top",
+        axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+::: callout-tip
+**实践要点**
+
+-   `row_wise_fisher_test()` 要求列联表以类别为行、组为列；其 `group` 列是行名，`p.adj`/`p.adj.signif` 是 BH 校正结果——绘图请用 `p.adj.signif` 的星号，不要用原始 p 值。
+-   大 N 时 `fisher.test(..., simulate.p.value = TRUE)` 不可能返回小于 Monte-Carlo 地板 `1/(B + 1)` 的 p 值；此类结果应报告为 `p < 1/(B+1)`（此处 B = 10^5 即 `p < 0.0001`），不要照抄地板数值本身。
+-   保持两组样本量均衡：组总量不等时，每个无效应簇都会带上微小的系统性偏移，可能被分簇检验判为显著。
+:::
+
+### 10. 渐变填充柱形图（ggpattern）
+
+演示级图表有时用"办公软件式"渐变填充替代纯色——参考图 \[13\] 对每个区段使用双色调渐变。`ggpattern::geom_col_pattern()` 用 `pattern = "gradient"` 与两个端点色 `pattern_fill` / `pattern_fill2` 实现；`pattern_orientation = "radial"` 从区段中心向外辐射：
+
+```{r}
+#| label: fig-10.1RadialGradient
+#| fig-cap: "径向渐变柱：深色的转移癌区段承载白色百分比标签；数值为模拟的患病率数据。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5.2
+
+set.seed(2970)
+df_d <- data.frame(
+  Country = c("Japan", "USA", "England", "S. Korea", "China", "France", "Germany", "Australia"),
+  Metastatic = c(19, 24, 28, 33, 36, 31, 22, 27),
+  Localized = c(81, 76, 72, 67, 64, 69, 78, 73))
+df_d$ID <- seq_len(nrow(df_d))
+maxID <- nrow(df_d)
+
+plot.df.all <- reshape2::melt(df_d, id.var = c("Country", "ID"),
+                              value.name = "Percentage", variable.name = "Type")
+plot.df <- subset(plot.df.all, Type %in% c("Metastatic", "Localized"))
+plot.df1 <- subset(plot.df, Type == "Metastatic")
+type.color.1 <- c('#dbeffc', '#7bb8e5')   # 浅色区段（Localized）
+type.color.2 <- c('#a7d7f3', '#0079bb')   # 深色区段（Metastatic）
+barwidth <- 0.44
+
+ggplot() +
+  geom_col_pattern(data = plot.df, mapping = aes(ID, Percentage),
+                   width = barwidth, position = "stack",
+                   pattern = 'gradient', pattern_orientation = "radial",
+                   pattern_fill = type.color.1[1], pattern_fill2 = type.color.1[2],
+                   fill = NA) +
+  geom_col_pattern(data = plot.df1, mapping = aes(ID, Percentage),
+                   width = barwidth,
+                   pattern = 'gradient', pattern_orientation = "radial",
+                   pattern_fill = type.color.2[1], pattern_fill2 = type.color.2[2],
+                   fill = NA) +
+  geom_text(data = plot.df1, mapping = aes(x = ID, y = Percentage * 0.22,
+                                           label = paste0(Percentage, " %")),
+            size = 2.6, color = "white") +
+  scale_x_continuous(breaks = seq(1, maxID, 1),
+                     labels = stringr::str_wrap(plot.df1$Country, 9)) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 10), expand = c(0, 0)) +
+  labs(x = NULL, y = "Prevalence (%)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
+        panel.border = element_blank(), axis.line = element_line(colour = 'black'),
+        axis.text = element_text(colour = 'black', size = 9))
+```
+
+水平渐变需要一个技巧：ggpattern 只能沿一个方向在两色间插值，因此参考图把每根柱拆成左右两半并镜像渐变，形成中心对称的浅色条纹，再用 `geom_rect()` 补黑色描边：
+
+```{r}
+#| label: fig-10.2HorizontalGradient
+#| fig-cap: "水平渐变柱：由镜像的左右两半拼装，区段带黑色描边（ggpattern）。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5.2
+
+barwidth2 <- 0.22
+ggplot() +
+  geom_col_pattern(data = plot.df, mapping = aes(ID - barwidth2 / 2 + 0.002, Percentage),
+                   width = barwidth2, position = "stack",
+                   pattern = 'gradient', pattern_orientation = "horizontal",
+                   pattern_fill = type.color.1[2], pattern_fill2 = type.color.1[1], fill = NA) +
+  geom_col_pattern(data = plot.df, mapping = aes(ID + barwidth2 / 2 - 0.002, Percentage),
+                   width = barwidth2, position = "stack",
+                   pattern = 'gradient', pattern_orientation = "horizontal",
+                   pattern_fill = type.color.1[1], pattern_fill2 = type.color.1[2], fill = NA) +
+  geom_col_pattern(data = plot.df1, mapping = aes(ID - barwidth2 / 2 + 0.002, Percentage),
+                   width = barwidth2,
+                   pattern = 'gradient', pattern_orientation = "horizontal",
+                   pattern_fill = type.color.2[2], pattern_fill2 = type.color.2[1], fill = NA) +
+  geom_col_pattern(data = plot.df1, mapping = aes(ID + barwidth2 / 2 - 0.002, Percentage),
+                   width = barwidth2,
+                   pattern = 'gradient', pattern_orientation = "horizontal",
+                   pattern_fill = type.color.2[1], pattern_fill2 = type.color.2[2], fill = NA) +
+  geom_rect(data = plot.df1,
+            mapping = aes(xmin = ID - barwidth2, xmax = ID + barwidth2,
+                          ymin = 0, ymax = Percentage),
+            linewidth = 0.3, fill = NA, color = "black") +
+  geom_rect(data = df_d,
+            mapping = aes(xmin = ID - barwidth2, xmax = ID + barwidth2,
+                          ymin = Metastatic, ymax = 100),
+            linewidth = 0.3, fill = NA, color = "black") +
+  geom_text(data = plot.df1, mapping = aes(x = ID, y = Percentage * 0.22,
+                                           label = paste0(Percentage, " %")),
+            size = 2.6, color = "white") +
+  scale_x_continuous(breaks = seq(1, maxID, 1),
+                     labels = stringr::str_wrap(plot.df1$Country, 9)) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 10), expand = c(0, 0)) +
+  labs(x = NULL, y = "Prevalence (%)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
+        panel.border = element_blank(), axis.line = element_line(colour = 'black'),
+        axis.text = element_text(colour = 'black', size = 9))
+```
+
+::: callout-tip
+**实践要点**
+
+-   `pattern_fill`/`pattern_fill2` 只是渐变的两个端点——三色渐变超出其能力范围；更多色阶需手动用 `colorRampPalette()` 构造。
+-   渐变是纯装饰：它不编码柱高之外的任何信息。面向审稿人的图请用纯色填充，渐变留给幻灯片和封面。
+-   白色标签在深色端点上清晰，在 `pattern_fill2` 的浅色中心上不行——把标签锚定在较深的部分，或给文字加描边。
+:::
+
+### 11. 参考线柱形图与发散式灰/彩柱形图
+
+FigureYa39bar 的两种论文版式 \[13\]。第一种（NEJM 瀑布风格）给**每个癌种一种颜色**、在临床有意义的值处画虚线参考线（RECIST 边界 −30 与 +20，加零线），当一根柱远高于其余时——用 `coord_cartesian()` 裁剪 y 轴并在柱上标出真实值：
+
+```{r}
+#| label: fig-11.1ResponseBars
+#| fig-cap: "模拟的各癌种最佳肿瘤响应瀑布图：每癌种一色，-30/0/+20 处的 RECIST 虚线参考线；y 轴截断于 50，超出的柱标注真实值。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 5.5
+
+set.seed(3901)
+df1 <- data.frame(ID = c("NSCLC", "CRC", "Melanoma", "RCC", "HNSCC", "Breast",
+                         "Ovarian", "Prostate", "Pancreas", "HCC", "Cervix", "Sarcoma"),
+                  score = c(-58, -46, -39, -33, -28, -22, -18, -12, 8, 14, 19, 62))
+df1 <- df1[order(df1$score, decreasing = TRUE), ]
+df1$index <- seq_len(nrow(df1))
+
+ggplot(df1, aes(index, score, fill = ID)) +
+  geom_col(width = 0.8) +
+  scale_fill_brewer(type = "Qualitative", palette = "Paired") +
+  scale_y_continuous(breaks = seq(-100, 100, 10), expand = c(0, 0)) +
+  scale_x_continuous(expand = expansion(mult = c(0.01, 0))) +
+  geom_hline(yintercept = c(-30, 0, 20), linetype = 5, linewidth = 0.3) +
+  coord_cartesian(ylim = c(-90, 50)) +
+  geom_text(data = subset(df1, score > 50),
+            aes(index, 48, label = round(score)), size = 3.2) +
+  labs(x = NULL, y = "Maximum change in tumour size (%)",
+       title = "Response by tumour type (one colour per type)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), panel.border = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.line.x = element_blank(), axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "bottom") +
+  guides(fill = guide_legend(ncol = 4, title = NULL, override.aes = list(size = 3)))
+```
+
+第二种（Nature Medicine 富集风格）把带符号的 GSVA 风格 t 值画成**水平发散柱**，名字贴在每根柱旁，|t| 低于显著性阈值显示灰色，只有显著的才有颜色：
+
+```{r}
+#| label: fig-11.2DivergingBars
+#| fig-cap: "发散式 GSVA 风格 t 值柱（内皮细胞，肿瘤 vs 非肿瘤，模拟）：超过 |t| = 4 的柱按方向着色，其余灰色；名字贴在柱旁。"
+#| out.width: "65%"
+#| warning: false
+#| message: false
+#| fig-width: 5.5
+#| fig-height: 7.5
+
+df2 <- data.frame(ID = c("VEGFA", "ANGPT2", "CXCL8", "PDGFB", "MMP9", "TNFSF15",
+                         "ANGPT1", "TEK", "NID2", "COL4A1", "LAMA4", "SPARCL1",
+                         "KDR", "PECAM1", "VWF", "CDH5"),
+                  score = c(7.2, 5.8, 4.9, 4.1, 3.4, -2.6, -3.3, -4.2, -5.1,
+                            -6.3, 2.4, 1.8, 3.1, 2.8, -1.6, 1.2))
+df2$group <- cut(df2$score, breaks = c(-Inf, -4, 4, Inf), labels = c(1, 2, 3))
+df2 <- df2[order(df2$score, decreasing = FALSE), ]
+df2$index <- seq_len(nrow(df2))
+
+ggplot(df2, aes(index, score, fill = group)) +
+  geom_col(width = 0.8) +
+  scale_fill_manual(values = c("palegreen3", "snow3", "dodgerblue4")) +
+  scale_x_continuous(expand = expansion(add = 0.6)) +
+  scale_y_continuous(breaks = seq(-30, 20, 5)) +
+  coord_flip() +
+  geom_hline(yintercept = c(-4, 4), colour = "white", linetype = 2, linewidth = 0.3) +
+  geom_text(data = subset(df2, score > 0),
+            aes(index, -0.3, label = ID, colour = group), size = 3, hjust = "inward") +
+  geom_text(data = subset(df2, score < 0),
+            aes(index, 0.3, label = ID, colour = group), size = 3, hjust = "outward") +
+  scale_colour_manual(values = c("snow3", "black", "black")) +
+  labs(x = NULL, y = "t value of GSVA score, tumour vs non-malignant",
+       title = "Endothelial cells, tumour vs non-malignant") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(linewidth = 0.6, fill = NA),
+        axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  guides(fill = "none", colour = "none")
+```
+
+::: callout-tip
+**实践要点**
+
+-   `coord_cartesian(ylim = ...)` 裁的是*绘图*而非数据——高柱保持完整的 `geom_col` 高度，只有标签揭示真实值；`scale_y_continuous(limits = ...)` 则会把柱整根丢弃。
+-   发散版式里名字住在柱的**空白半区**（按符号取 hjust "inward"/"outward"），无需单独的轴标签；非显著用灰色把颜色预算留给发现。
+-   社区公认边界（RECIST ±30/+20）处的参考线带有网格线没有的含义——请在图注中引用其出处。
 :::
 
 ## 应用场景
@@ -666,5 +956,4 @@ ggplot(summ_b, aes(subgroup, mean, fill = subgroup)) +
 
 \[12\] Kassambara A (2023). rstatix: Pipe-Friendly Framework for Basic Statistical Tests. R package version 0.7.2, https://CRAN.R-project.org/package=rstatix.
 
-
-\[9\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+\[13\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

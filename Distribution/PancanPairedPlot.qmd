@@ -1,0 +1,128 @@
+---
+title: "Pan-Cancer Paired Line Plot"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+Paired tumour-adjacent designs (TCGA `-01A` vs `-11A` barcodes) need **one mini-panel per cancer type**: connecting lines join each patient's tumour and normal score, paired Wilcoxon stars sit above each panel, and dashed separators keep 20+ panels readable \[1\]. The reference scores samples with ssGSEA on a pathway gene set; this tutorial simulates the per-sample scores directly, so the whole page is dependency-free — swap in your own GSVA/ssGSEA score table for real data:
+
+## Example
+
+![](../images/Distribution/PancanPairedPlot_demo.png){fig-alt="Pan-Cancer Paired Line Plot DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+8 simulated cancer types x 20 paired patients with a planted tumour-vs-normal shift per type (BRCA/LUAD/KIRC/THCA/HNSC down, COAD/STAD/LIHC near zero - mixing significant and null panels, as any real pan-cancer sweep does):
+
+```{r load data}
+suppressPackageStartupMessages(library(dplyr))
+set.seed(19501)
+cancers <- c("BRCA", "LUAD", "KIRC", "THCA", "COAD", "STAD", "HNSC", "LIHC")
+n_pair <- 20
+rows <- list()
+for (cc in cancers) {
+  eff <- c(BRCA = -0.9, LUAD = -0.7, KIRC = -0.5, THCA = -0.4,
+           COAD = 0.3, STAD = 0.2, HNSC = -0.3, LIHC = 0.1)[cc]
+  tumor <- rnorm(n_pair, eff, 0.7); normal <- rnorm(n_pair, 0, 0.7)
+  rows[[cc]] <- data.frame(cancer = cc, patient = 1:n_pair,
+                           tissue = rep(c("Tumor", "Normal"), each = n_pair),
+                           score = c(tumor, normal))
+}
+pan <- do.call(rbind, rows)
+stars <- pan %>% group_by(cancer) %>%
+  summarise(p = wilcox.test(score[tissue == "Tumor"], score[tissue == "Normal"],
+                            paired = TRUE)$p.value, .groups = "drop") %>%
+  mutate(sym = cut(p, c(0, .0001, .001, .01, .05, 1), c("****", "***", "**", "*", "")))
+```
+
+## Visualization
+
+### 1. One Mini-Panel per Cancer Type
+
+The `par(fig = ...)` mosaic: connecting segments join each patient's paired scores, magenta = tumour, green = normal, paired-Wilcoxon stars on top, dashed separators between types - BRCA/LUAD/KIRC/THCA/HNSC fall significant, COAD/STAD/LIHC honestly read ns:
+
+```{r}
+#| label: fig-1.1PancanPaired
+#| fig-cap: "Paired tumour-vs-normal scores of 8 simulated cancer types (20 pairs each): connecting lines join paired samples, magenta = tumour, green = normal, paired Wilcoxon stars above each panel and dashed separators between types."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 12
+#| fig-height: 5
+
+nc <- length(cancers)
+left <- 0.045; right <- 0.995
+w <- (right - left) / nc
+ylim <- ceiling(max(abs(pan$score)))
+for (i in seq_len(nc)) {
+  cc <- cancers[i]
+  d <- pan[pan$cancer == cc, ]
+  x1 <- left + (i - 1) * w
+  par(fig = c(x1, x1 + w, 0.16, 0.86), mar = c(1, if (i == 1) 3 else 0.4, 2.4, 0.4),
+      bty = "n", mgp = c(1.5, .33, 0), las = 1, tcl = -0.25, new = TRUE)
+  plot(NA, NA, xlim = c(0.5, 2.5), ylim = c(-ylim, ylim),
+       xaxt = "n", yaxt = if (i == 1) "s" else "n", xlab = "", ylab = "")
+  abline(h = seq(-ylim, ylim, 2), col = "grey92")
+  abline(h = 0, col = "grey70", lty = 3)
+  if (i > 1) abline(v = 0.5, col = "#3B50A0", lty = 2, lwd = 1.2)
+  t_d <- d[d$tissue == "Tumor", ]; n_d <- d[d$tissue == "Normal", ]
+  segments(1, t_d$score, 2, n_d$score, col = "#6C99CE", lwd = 1.5)
+  points(rep(1, nrow(t_d)), t_d$score, pch = 19, col = "#BB61A1", cex = 0.9)
+  points(rep(2, nrow(n_d)), n_d$score, pch = 19, col = "#7EC09A", cex = 0.9)
+  text(1.5, ylim * 0.9, stars$sym[stars$cancer == cc], cex = 1.0, font = 2)
+  par(fig = c(x1, x1 + w, 0.08, 0.16), new = TRUE, mar = c(0, 0, 0, 0))
+  plot(0, 0, type = "n", axes = FALSE, xlab = "", ylab = "")
+  text(0.5, 0.5, cc, srt = 35, cex = 0.85, xpd = NA)
+}
+par(fig = c(0.005, 0.045, 0.16, 0.86), new = TRUE, mar = c(0, 0, 0, 0))
+plot(0, 0, type = "n", axes = FALSE, xlab = "", ylab = "")
+text(0.5, 0.5, "rRNA metabolic score (Z)", srt = 90, cex = 1.0, xpd = NA)
+par(fig = c(0, 1, 0, 0.09), new = TRUE, mar = c(0, 0, 0, 0))
+plot(0, 0, type = "n", axes = FALSE, xlab = "", ylab = "")
+legend("center", bty = "n", ncol = 3, cex = 0.95, pch = c(19, 19, NA),
+       lty = c(NA, NA, 1), lwd = c(NA, NA, 1.5),
+       col = c("#BB61A1", "#7EC09A", "#6C99CE"),
+       legend = c("Tumor", "Normal", "Paired sample"))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `wilcox.test(..., paired = TRUE)` only accepts the **x/y vector form** - the formula method rejects `paired = TRUE`; inside `dplyr::summarise()` pass the two group vectors explicitly.
+-   Lay out the mini-panels with `par(fig = c(...), new = TRUE)` per panel (plus a fig-strip for the shared y label and the legend) - `layout()` matrices with mixed row purposes silently invert row heights.
+-   Keep every panel on a **shared y scale** (`ylim` from the pooled data): free scales make a null panel look significant.
+:::
+
+## Applications
+
+::: {#fig-PancanPairedApplications1}
+![](../images/Distribution/PancanPairedPlot_demo.png){fig-alt="Paired pan-cancer mini-panels" fig-align="center" width="60%"}
+
+Paired pan-cancer mini-panels
+:::
+
+The mini-panel mosaic fits any paired pan-cancer metric: methylation beta differences, CNV burden of paired samples, or pre/post-treatment scores across many cohorts.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} The Cancer Genome Atlas Research Network. The Cancer Genome Atlas Pan-Cancer analysis project. Nat Genet. 2013;45(10):1113-1120. doi:10.1038/ng.2764 (source of the paired barcode design)

@@ -1,0 +1,142 @@
+---
+title: "单细胞 ATAC 共可达性弧线"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+Cicero 把启动子与跨单细胞共同开放（**共可达性**）的远端峰相连，在基因组座位上画成弧线、下方配基因模型轨道 \[1\]。原管线（monocle3 + cicero + Python umap-learn）在本仓库 lockfile 内装不上，本教程从模拟 `conns` 表复现**图**——弧线图与 Washu 导出；真实数据换入 `run_cicero()` 输出（列 `Peak1, Peak2, coaccess`，峰为 `chr_start_end`）即可：
+
+## Example
+
+![](../images/Omics/SciAtacPlot_demo.png){fig-alt="单细胞 ATAC 共可达性弧线 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`; `dplyr`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+1 Mb 模拟座位、26 个峰，一个启动子峰连 9 个远端峰（1 个负共可达性——Cicero 也报告的互斥模式）、六外显子基因模型。Washu 转换过滤 |coaccess| ≥ 0.5（demo 用 ≥ 0.25 保持可读）并写 BED 风格六列 interact 文件：
+
+```{r load data}
+suppressPackageStartupMessages({library(ggplot2); library(dplyr); library(patchwork)})
+set.seed(18501)
+locus_start <- 9773451; locus_end <- 10773451; locus_chr <- "chr2"
+## peaks along the locus
+n_peak <- 26
+peaks <- data.frame(id = sprintf("peaks%03d", 1:n_peak)) %>%
+  mutate(s = round(seq(locus_start + 5e4, locus_end - 5e4, length.out = n_peak)),
+         e = s + sample(300:900, n_peak, TRUE),
+         mid = (s + e) / 2)
+## promoter peak + planted co-accessibility to distal peaks
+promoter <- peaks$id[13]
+conns <- do.call(rbind, lapply(sample(peaks$id[-13], 9), function(p2) {
+  data.frame(Peak1 = promoter, Peak2 = p2,
+             coaccess = runif(1, 0.3, 0.95) * sample(c(1, 1, -0.4), 1, prob = c(4, 4, 1)))
+}))
+conns <- conns[abs(conns$coaccess) >= 0.25, ]
+## gene model: 6 exons (Cicero's plot_connections collapses transcripts to longest)
+gene_model <- data.frame(exon_start = c(10050000, 10120000, 10240000, 10360000, 10490000, 10610000),
+                         exon_end   = c(10054000, 10128000, 10247000, 10366000, 10496000, 10615000),
+                         gene = "MYH3-like", transcript = "tx1")
+## arc geometry: semicircle between linked peaks, height = |coaccess|
+arcs <- conns %>%
+  left_join(peaks, by = c("Peak1" = "id")) %>% rename(x1 = mid) %>%
+  left_join(peaks, by = c("Peak2" = "id")) %>% rename(x2 = mid) %>%
+  rowwise() %>%
+  do(data.frame(peak = . $Peak1, x = seq(.$x1, .$x2, length.out = 80),
+                y = sin(seq(0, pi, length.out = 80)) * abs(.$coaccess) * (.$x2 - .$x1) / 2,
+                coaccess = .$coaccess)) %>% ungroup()
+## the reference also exports a Washu "interact" track — fully reproducible here
+conns_washu <- conns %>%
+  left_join(peaks, by = c("Peak1" = "id")) %>% left_join(peaks, by = c("Peak2" = "id")) %>%
+  transmute(V1 = locus_chr, V2 = pmin(s.x, s.y), V3 = max(e.x, e.y),
+            V4 = paste0(locus_chr, ":", pmin(s.x, s.y), "-", max(e.x, e.y), ",",
+                        coaccess * 10),
+            V5 = row_number() * 2, V6 = ".") %>%
+  arrange(V1, V2, V3, V4)
+## written to a tempdir BED file for the Washu interact track
+write.table(conns_washu, file.path(tempdir(), "conns_washu.bed"),
+            sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+## Visualization
+
+### 细胞与共可达性弧线
+
+上：Cicero 会聚合的两群细胞的 LSI-UMAP。下：启动子与远端峰间的弧线——弧高随 |共可达性| × 基因组距离缩放、颜色按带符号分值、下方基因模型——同时（屏幕上不可见）在旁边写出 Washu `interact` 文件供浏览器视图：
+
+```{r}
+#| label: fig-1.1SciAtacArcs
+#| fig-cap: "模拟 1 Mb 座位的 Cicero 风格共可达性视图：两个模拟细胞群的 LSI-UMAP（上）与启动子-远端峰弧线按带符号共可达性着色、下配折叠基因模型（下）。"
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6.4
+
+p_umap <- ggplot(data.frame(dim1 = c(rnorm(120, -3), rnorm(120, 3)),
+                            dim2 = c(rnorm(120), rnorm(120, 1)),
+                            cluster = rep(c("HL60", "GM12878"), each = 120)),
+                 aes(dim1, dim2, colour = cluster)) +
+  geom_point(size = 1.1, alpha = 0.8) +
+  scale_colour_manual(values = c(HL60 = "#E41A1C", GM12878 = "#377EB8"), name = NULL) +
+  labs(x = "LSI_1", y = "LSI_2", title = "Cells (simulated LSI-UMAP)") +
+  theme_classic(base_size = 10) + theme(legend.position = "top")
+
+p_arcs <- ggplot() +
+  geom_path(data = arcs, aes(x, y, group = paste(peak, coaccess), colour = coaccess), linewidth = 0.7) +
+  geom_point(data = peaks, aes(mid, 0), shape = 21, fill = "#377EB8", colour = "black", size = 2.4) +
+  geom_rect(data = gene_model, aes(xmin = exon_start, xmax = exon_end, ymin = -0.32e6, ymax = -0.22e6),
+            fill = "#4DAF4A", colour = "black", linewidth = 0.25) +
+  geom_text(data = data.frame(x = mean(gene_model$exon_start), y = -0.42e6, lab = gene_model$gene[1]),
+            aes(x, y, label = lab), size = 3.4, fontface = "italic") +
+  scale_colour_gradient2(low = "#2166AC", mid = "grey80", high = "#B2182B", midpoint = 0,
+                         name = "Co-accessibility") +
+  scale_x_continuous(limits = c(locus_start, locus_end),
+                     labels = function(v) sprintf("%.1fMb", v / 1e6)) +
+  labs(x = NULL, y = NULL, title = "Cicero-style co-accessibility arcs at a simulated locus (chr2)") +
+  theme_classic(base_size = 10) +
+  theme(axis.line.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+p_umap / p_arcs + plot_layout(ncol = 1, heights = c(1, 1.4))
+```
+
+
+::: callout-tip
+**实践提示**
+
+-   Washu 导出是参考文档浏览器路线的可复现核心：六列——`chr, min(start), max(end), "chr:start-end,score*10", row_index*2, "."`——作为 interact/长程轨道载入；×10 缩放让小于 1 的分值在浏览器里可见。
+-   群体混合时按**细胞簇**分别计算共可达性（参考文档在自己的 demo 上也注明）：合并 HL60 样与免疫细胞会在簇特异峰之间产生假链接。
+-   绘图前过滤 `|coaccess| ≥ 0.25`——原始 Cicero 表含数千条近零链接，会把弧线图变成毛线球。
+:::
+
+## 应用场景
+
+::: {#fig-SciAtacApplications1}
+![](../images/Omics/SciAtacPlot_demo.png){fig-alt="共可达性弧线图" fig-align="center" width="60%"}
+
+共可达性弧线图
+:::
+
+弧线+基因模型版式适用于任何基因组连接视图：Hi-C 环、启动子捕获 Hi-C、eQTL 连锁或 ChIA-PET 互作。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Schep AN, Wu B, Buenrostro JD, Greenleaf WJ. chromVAR: inferring transcription-factor-associated accessibility from single-cell epigenomic data. Nat Methods. 2017;14(10):975-978. doi:10.1038/nmeth.4401 (Cicero's companion TF-variability analysis)

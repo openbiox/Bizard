@@ -1,0 +1,80 @@
+---
+title: "组合 AUC 的 GMM 聚类"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+在穷举筛选 2^k − 1 个基因组合模型后，参考文档用**高斯混合模型（GMM）**聚类（模型索引，AUC）散点，将"无用模型"与"高 AUC 尾部"分离——最优组合来自最高 AUC 簇 \[1\]。`mclust::Mclust()` 做聚类；本教程模拟 1023 个模型 AUC 并复现分类散点图：
+
+## Example
+
+![](../images/Distribution/GmmClusterPlot_demo.png){fig-alt="组合 AUC 的 GMM 聚类 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`mclust`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(mclust)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+1023 个模拟组合 AUC：大量高斯波瓣围绕 0.55（无用模型）加上递增的尾部到 ~0.72（GMM 须隔离的高 AUC 簇）。参考由 10 个候选 miRNA 的 1023 个逻辑回归模型的 `pROC::auc()` 得到：
+
+```{r load data}
+suppressPackageStartupMessages(library(mclust))
+set.seed(21901)
+n_models <- 1023
+aucDF <- data.frame(
+  model = 1:n_models,
+  auc = c(rnorm(700, 0.55, 0.04), rnorm(200, 0.60, 0.03),
+          rnorm(100, 0.66, 0.02), rnorm(23, 0.71, 0.01)))
+```
+
+## Visualization
+
+### GMM 分类 AUC 散点
+
+`Mclust(aucDF[, c("model", "auc")])` 默认 BIC 模型选择：点按 GMM 簇着色，高 AUC 尾部（最右簇）从无用模型质量中分离——最优组合来自最高 AUC 簇内：
+
+```{r}
+#| label: fig-1.1GmmCluster
+#| fig-cap: "1023 个模拟组合模型 AUC 的 GMM 聚类散点图：点按高斯混合簇着色（BIC 选择），分离无用模型质量与高 AUC 尾部。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+mod <- Mclust(aucDF[, c("model", "auc")])
+plot(mod, what = "classification")
+abline(h = 0.71, lty = 2, col = "grey40")
+```
+
+
+## 应用场景
+
+::: {#fig-GmmClusterApplications1}
+![](../images/Distribution/GmmClusterPlot_demo.png){fig-alt="模型 AUC 的 GMM 聚类" fig-align="center" width="60%"}
+
+模型 AUC 的 GMM 聚类
+:::
+
+GMM 筛选结果模式适用于任何穷举模型搜索：signature 组合、特征筛选扫描、或超参数网格。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Scrucca L, et al. mclust 5: clustering, classification and density estimation using Gaussian finite mixture models. R J. 2016;8(1):289-317. doi:10.32614/RJ-2016-021

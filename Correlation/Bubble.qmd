@@ -239,6 +239,56 @@ Applications of Bubble Plot
 
 This bubble plot demonstrates the agreement between extreme temperature anomalies estimated from mooring observations and historical temperature profile measurements. a. Bubble plot of the 95th percentile EHTA estimated from a mooring site and the corresponding historical temperature distribution measurements within a 5×5° grid box centered at the mooring site. Colors indicate observations from different locations, and dot size indicates observation depths from 10 to 1000 meters. b. Same as a, but for the 5th percentile ELTA. Note that ELTAs below -3°C (at the KEO site) are not plotted. c, d. Same as a(c) and b(d), but with different percentages (p) of EHTA measurements observed within AE (c) and ELTA measurements observed within CE (d). The solid black line with gray shading represents the corresponding linear regression with a 95% confidence level. \[2\]
 
+### 3. Bubble Grid: Motif P-Value Size × TF Expression Fill (FigureYa5bubbles)
+
+The FigureYa5bubbles grid \[7\] answers "which TF is enriched *and* expressed where" in one picture: rows = motifs/TFs, columns = stages, **dot size = -log10(P) of the motif enrichment**, **dot fill = the TF's expression (FPKM)**. The block below reproduces the geometry from a simulated Homer-style motif table:
+
+```{r}
+#| label: fig-3.1MotifBubbles
+#| fig-cap: "Bubble grid of 14 simulated motifs across 5 differentiation stages: dot size = -log10(P) of motif enrichment, fill = the TF's simulated FPKM; both clamped to the plotting range as in the reference."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 8
+
+set.seed(5011)
+motifs <- paste0("TF", sprintf("%02d", 1:14))
+types <- c("2cell", "4cell", "8cell", "ICM", "mESC")
+enrich <- expand.grid(motif = motifs, type = types, stringsAsFactors = FALSE)
+enrich$logP <- runif(nrow(enrich), 5, 50)   # this column already is -log10(P)
+tf_expr <- data.frame(
+  motif = rep(motifs, each = length(types)),
+  type = rep(types, length(motifs)),
+  FPKM = c(t(sapply(motifs, function(m) {
+    base <- runif(1, 2, 14)
+    rnorm(length(types), base, 2.5)
+  }))))
+enrich <- merge(enrich, tf_expr, by = c("motif", "type"))
+## clamp to the plotting range exactly like the reference (P and FPKM quantiles)
+enrich$logP <- pmin(pmax(enrich$logP, 10), 500)
+enrich$FPKM <- pmin(enrich$FPKM, 20)
+enrich$motif <- factor(enrich$motif, levels = rev(motifs))
+
+ggplot(enrich, aes(type, motif, size = logP)) +
+  geom_point(shape = 21, aes(fill = FPKM)) +
+  scale_size_continuous(range = c(1, 8), name = "-log10(P)") +
+  scale_fill_gradientn(colours = c("#2381B3", "#F0E366"), name = "TF FPKM") +
+  labs(x = NULL, y = NULL,
+       title = "Motif enrichment (-log10(P), size) vs TF expression (fill)") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom", legend.box = "vertical",
+        panel.grid.major = element_blank())
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The clamps matter as much as the mapping: a handful of extreme -log10(P) values flattens every other dot — clamp to the 90-95% quantile (the reference clamps to 10-500 and FPKM ≤ 20) and say so in the caption.
+-   `shape = 21` puts the fill *inside* a stroked circle — with a dark stroke the bubbles stay visible when fill sits at the light end of the ramp.
+-   For real Homer output, each `knownResults.txt` row order differs — merge on the motif name (paste of motif + p-value columns) against a fixed index, exactly as the reference does.
+:::
+
 ## Reference
 
 \[1\] Oh KK, Adnan M, Cho DH. Network pharmacology approach to decipher signaling pathways associated with target proteins of NSAIDs against COVID-19. Sci Rep. 2021 May 5;11(1):9606. doi: 10.1038/s41598-021-88313-5. PMID: 33953223; PMCID: PMC8100301.
@@ -257,3 +307,5 @@ This bubble plot demonstrates the agreement between extreme temperature anomalie
 
 
 \[8\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[7\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

@@ -16,16 +16,29 @@ Multiple Sequence Alignment (MSA) is a fundamental and crucial technique in bioi
 
 -   Programming language: R
 
--   Dependent packages: `ggmsa`
+-   Dependent packages: `ggmsa`, `pheatmap`, `ape`, `ggtree`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Install packages
 if (!requireNamespace("ggmsa", quietly = TRUE)) {
   install.packages("ggmsa")
 }
+if (!requireNamespace("pheatmap", quietly = TRUE)) {
+  install.packages("pheatmap")
+}
+if (!requireNamespace("ape", quietly = TRUE)) {
+  install.packages("ape")
+}
+if (!requireNamespace("ggtree", quietly = TRUE)) {
+  if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+  BiocManager::install("ggtree")
+}
 
 # Library packages
 library(ggmsa)
+library(pheatmap)
+library(ape)
+library(ggtree)
 ```
 
 ```{r}
@@ -242,6 +255,114 @@ p <- ggmsa(
 p
 ```
 
+### 4. From an Expression Cluster to a Gene Family: Heatmap + Tree + Alignment
+
+The FigureYa2 workflow answers a common discovery question \[7\]: an expression heatmap clusters some genes of unknown function together with a known gene family — are the unknowns really family members? The check runs the other direction: align the family's protein sequences, build a tree from the alignment distances, and see whether expression clusters and sequence clades agree. The three panels below reproduce that loop on a simulated 12-member family with two subfamilies (evolved from one ancestor by substitutions only, so the "alignment" is exact and needs no aligner — with real sequences run `msa::msa()` and `seqinr::dist.alignment()` as in the reference, or any standard MSA tool).
+
+Expression first: the two subfamilies are co-expressed, so a clustered heatmap with a group annotation separates them into two row blocks — the observation that starts the investigation.
+
+```{r}
+#| label: fig-4.1FamilyHeatmap
+#| fig-cap: "Expression heatmap of the 12-member simulated family (rows z-scored, complete linkage): the two co-expression blocks correspond to the two subfamilies."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+set.seed(2186)
+aas <- strsplit("ARNDCQEGHILKMFPSTWYV", "")[[1]]
+anc <- paste(sample(aas, 140, replace = TRUE), collapse = "")
+
+evolve <- function(seq, n_sub) {
+  s <- strsplit(seq, "")[[1]]
+  pos <- sample(length(s), n_sub)
+  s[pos] <- sample(aas, length(pos), replace = TRUE)
+  paste(s, collapse = "")
+}
+## two subfamilies: 22 substitutions shared within each lineage, 6 private per member
+fam_a <- anc; fam_b <- anc
+for (j in 1:22) { fam_a <- evolve(fam_a, 1); fam_b <- evolve(fam_b, 1) }
+seqs <- c(
+  setNames(vapply(1:6, function(j) evolve(fam_a, 6), ""), paste0("FAM1_M", 1:6)),
+  setNames(vapply(1:6, function(j) evolve(fam_b, 6), ""), paste0("FAM2_U", 1:6)))
+aln <- do.call(rbind, lapply(seqs, function(s) strsplit(s, "")[[1]]))
+rownames(aln) <- names(seqs)
+
+n_samp <- 18
+grp <- factor(rep(c("Group1", "Group2"), c(6, 12)))
+expr <- matrix(rnorm(12 * n_samp, sd = 0.7), 12, n_samp,
+               dimnames = list(rownames(aln), paste0("S", 1:n_samp)))
+expr[grep("FAM1", rownames(expr)), grp == "Group1"] <-
+  expr[grep("FAM1", rownames(expr)), grp == "Group1"] + 1.4
+expr[grep("FAM2", rownames(expr)), grp == "Group2"] <-
+  expr[grep("FAM2", rownames(expr)), grp == "Group2"] + 1.4
+
+ann_col <- data.frame(group = grp); rownames(ann_col) <- colnames(expr)
+pheatmap(expr, scale = "row", clustering_method = "complete",
+         annotation_col = ann_col,
+         annotation_colors = list(group = c(Group1 = "#F4A582", Group2 = "#92C5DE")),
+         color = colorRampPalette(c("navy", "white", "firebrick3"))(20),
+         show_colnames = FALSE, fontsize = 9)
+```
+
+Second, the alignment view: with no insertions or deletions in the simulation every member keeps the ancestor's 140 positions, so the alignment matrix is the sequences themselves; `ggmsa()` renders the first 60 positions. Subfamily 1's signature at positions 1–3 (`CSR…` vs `MSA…`) and the scattered private substitutions are exactly what a real family alignment shows.
+
+```{r}
+#| label: fig-4.2FamilyAlignment
+#| fig-cap: "First 60 alignment positions of the 12 family members (ggmsa, Chemistry_AA colouring): each subfamily carries shared diagnostic substitutions plus private ones."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 11
+#| fig-height: 4.6
+
+## write the member sequences as FASTA (the real workflow aligns member FASTAs)
+fa <- file.path(tempdir(), "family_msa.fasta")
+con <- file(fa, "w")
+for (nm in names(seqs)) writeLines(c(paste0(">", nm), seqs[[nm]]), con)
+close(con)
+ggmsa(fa, start = 1, end = 60, font = "DroidSansMono",
+      color = "Chemistry_AA", char_width = 0.5, seq_name = TRUE)
+```
+
+Third, the tree: a pairwise-identity distance (base R here; `seqinr::dist.alignment()` on a real MSA) feeds neighbour-joining (`ape::nj`), and `ggtree` \[2\] draws it with tips coloured by subfamily — the two expression clusters and the two sequence clades agree, which is the evidence the workflow exists to produce.
+
+```{r}
+#| label: fig-4.3FamilyTree
+#| fig-cap: "Neighbour-joining tree from pairwise sequence identity (ggtree): the two clades match the two expression blocks of the heatmap."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 6
+
+n <- nrow(aln)
+d <- matrix(0, n, n, dimnames = list(rownames(aln), rownames(aln)))
+for (i in 2:n) for (j in 1:(i - 1)) {
+  d[i, j] <- d[j, i] <- 1 - mean(aln[i, ] == aln[j, ])
+}
+tree <- nj(as.dist(d))
+sub <- ifelse(grepl("FAM1", tree$tip.label), "subfamily 1", "subfamily 2")
+xr <- max(ape::node.depth.edgelength(tree))
+ggtree(tree, size = 0.8) %<+% data.frame(label = tree$tip.label, sub = sub) +
+  geom_tippoint(aes(color = sub), size = 2.6) +
+  geom_tiplab(aes(color = sub), size = 3.2, offset = 0.02,
+              align = TRUE, linesize = 0.2, show.legend = FALSE) +
+  scale_color_manual(values = c("subfamily 1" = "#B2182B",
+                                "subfamily 2" = "#2166AC"), name = NULL) +
+  xlim(0, xr * 1.5) + theme(legend.position = "bottom")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Read the three panels together, always in this order: expression block → alignment signature → tree clade. A cluster that splits into two tree clades is evidence of a subfamily; a cluster that mixes clades usually means the expression pattern is condition-specific, not family-wide.
+-   The simulation evolves by substitutions only so the alignment is trivially correct; real proteins need a real aligner (`msa::msa()` with ClustalW, or MAFFT externally) — then convert with `msa::msaConvert(type = "seqinr::alignment")` for `dist.alignment()`.
+-   `ggtree` needs tip-label data attached with `%<+%`; colour the tips AND the labels the same way so the clade membership survives greyscale printing.
+-   For large families the reference switches to a circular layout — `ggtree(tree, layout = "circular") + geom_tiplab2(offset = .1)` with an expanded `xlim(-.2, 3)` — which keeps long tip labels inside the page; `msa::msaPrettyPrint()` additionally renders the alignment to LaTeX PDF for the supplementary figure.
+:::
+
 ## Implementations deliberately not used here
 
 This page draws its figures with ggplot2 rather than installing the skipped tools. Of the tools that the issue-435 inventory maps onto Omics/MultiSeqsAlignment.qmd, 1 is marked **skipped** here and used only as layout references, not as dependencies: 1 that has gone more than five years without an operational commit (cutoff 2021-11-07). Reproducing whatever still works would mean pinning abandoned code; installing the rest would mean pulling a whole analysis framework into a documentation build. The figure conventions were read off those tools, then re-implemented here so each panel can be inspected line by line.
@@ -263,3 +384,5 @@ This page draws its figures with ggplot2 rather than installing the skipped tool
 \[5\] Gouet P, Courcelle E, Stuart DI, Metoz F. ESPript: analysis of multiple sequence alignments in PostScript. Bioinformatics. 1999;15(4):305-308. doi:10.1093/bioinformatics/15.4.305
 
 \[6\] Hofmann K, Baron MD. Boxshade. EMBnet news. 1996;3(2):5.
+
+\[7\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

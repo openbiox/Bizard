@@ -1,0 +1,112 @@
+---
+title: "饼图矩阵"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+当每个"基因 × 条件"格都是**比例**时，一张小饼图矩阵比百分比热图更好读：每张饼的彩色弧即 altered 比例，网格保持基因行、条件列 \[1\]。参考图（泛癌 lncRNA 表观景观研究 Fig. 2A \[2\]）画出 top lncRNA 在各癌种的表观激活（EA，低甲基化）与表观沉默（ES，高甲基化）比例。本教程复现 ggplot 配方——每个分面一条堆叠柱经 `coord_polar` 变饼——于模拟数据：
+
+## Example
+
+![](../images/MosaicPieChart_demo.png){fig-alt="饼图矩阵 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages(library(ggplot2))
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+"简单输入"为基因 × 癌种 × 比例 × 类型的行（源文档自身的简化格式）：18 个模拟 lncRNA × 8 个癌种，EA 与 ES 比例由植入的基因/癌种倾向生成。无改变的组合直接缺席于数据（饼图无扇区）：
+
+```{r load data}
+set.seed(14001)
+genes <- sprintf("LNC%02d", 1:18)
+cancers <- c("BLCA", "BRCA", "COAD", "LUAD", "LUSC", "PRAD", "STAD", "THCA")
+gene_eff <- runif(18, 0.05, 0.6)
+cancer_eff <- runif(8, 0.4, 1.3)
+## EA = epigenetic activation (hypomethylation), ES = epigenetic silencing (hypermethylation)
+mk <- function(seed_shift) {
+  set.seed(14001 + seed_shift)
+  m <- pmin(0.98, as.vector(gene_eff) * rep(cancer_eff, each = 18) * runif(18 * 8, 0.1, 1.6))
+  dim(m) <- c(18, 8); dimnames(m) <- list(genes, cancers); m
+}
+ea <- mk(1); es <- mk(2)
+ea[sample(18 * 8, 36)] <- NA; es[sample(18 * 8, 42)] <- NA   # no alteration in some combos
+
+longify <- function(m, type) {
+  d <- expand.grid(gene = genes, cancer = cancers, stringsAsFactors = FALSE)
+  d$value <- as.vector(m)          # matrix fills column-major: gene within cancer
+  d$type <- type
+  d[!is.na(d$value), ]
+}
+gg_data <- rbind(longify(ea, "EA (hypomethylation)"),
+                 longify(es, "ES (hypermethylation)"))
+gg_data$gene <- factor(gg_data$gene, levels = genes)
+gg_data$cancer <- factor(gg_data$cancer, levels = cancers)
+```
+
+## Visualization
+
+### 饼图矩阵
+
+一条 `geom_col` + `coord_polar(theta = "y")` + `facet_grid(gene ~ cancer)` 即构建整张矩阵；粉弧为 EA 比例，绿弧为 ES。空环标记无改变的基因-癌种对——这是热图单一色阶会抹掉的第三种状态：
+
+```{r}
+#| label: fig-1.1PieMatrix
+#| fig-cap: "模拟 lncRNA 表观改变比例的饼图矩阵：行 = lncRNA，列 = 癌种；每张饼的粉弧为表观激活（低甲基化）比例，绿弧为沉默（高甲基化）比例；空环表示无改变的组合。"
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 10
+
+pink <- "#F814A7"; green <- "#177835"
+ggplot(gg_data, aes(x = 1, y = value, fill = type)) +
+  geom_col(width = 1, colour = "white", linewidth = 0.1) +
+  scale_fill_manual(values = c(`EA (hypomethylation)` = pink, `ES (hypermethylation)` = green),
+                    guide = guide_legend(title = NULL)) +
+  scale_y_continuous(breaks = seq(0, 1, length.out = 9), limits = c(0, 1)) +
+  facet_grid(gene ~ cancer) +
+  coord_polar(theta = "y") +
+  labs(x = NULL, y = NULL,
+       title = "lncRNA epigenetic alteration frequency by cancer type (simulated)") +
+  theme(strip.background = element_blank(),
+        strip.text.x = element_text(angle = 90, size = 7, hjust = 0),
+        strip.text.y = element_text(angle = 0, size = 7, hjust = 0.5),
+        panel.background = element_rect(fill = "white", colour = NA),
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_line(linewidth = 0.6),
+        panel.grid.major.y = element_line(linewidth = 0.9),
+        axis.text = element_blank(), axis.ticks = element_blank(),
+        legend.position = "top",
+        plot.title = element_text(size = 11))
+```
+
+
+## 应用场景
+
+::: {#fig-MosaicPieApplications1}
+![](../images/MosaicPieChart_demo.png){fig-alt="饼图比例矩阵" fig-align="center" width="60%"}
+
+饼图比例矩阵
+:::
+
+饼图矩阵适用于任何基因 × 条件比例表：甲基化改变比例、逐亚型的通路活性百分比、或逐簇的突变共现率。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Wang Z, Yang B, Zhang M, et al. lncRNA Epigenetic Landscape Analysis Identifies EPIC1 as an Oncogenic lncRNA that Interacts with MYC and Promotes Cell-Cycle Progression in Cancer. Cancer Cell. 2018;33(4):706-720. doi:10.1016/j.ccell.2018.03.006

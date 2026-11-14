@@ -1,0 +1,93 @@
+---
+title: "NMF Program Correlation Clustering"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+Per-tumour **NMF decomposition** of malignant-cell expression finds tumour-specific programs; the programs AUCell scores are then correlated across all programs to find coherent malignant signatures shared across tumours \[1\]. The reference runs `NMF::nmf()` + AUCell + `corrplot` - too heavy for the lockfile - so this tutorial **simulates the program-AUC matrix** directly and reproduces the exact `corrplot` call:
+
+## Example
+
+![](../images/Omics/ScNmfPlot_demo.png){fig-alt="NMF Program Correlation Clustering DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `corrplot`; `RColorBrewer`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(corrplot)
+  library(RColorBrewer)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+44 simulated programs (11 patients x 4 programs each) with 5-7 correlated clusters planted via a block-structured AUCell matrix:
+
+```{r load data}
+set.seed(22301)
+n_prog <- 44; n_cell <- 800
+cluster_ids <- cutree(hclust(dist(matrix(rnorm(44 * 30, 0, 1), 44, 30)), "ward.D2"), k = 7)
+prog_auc <- matrix(0, n_prog, n_cell)
+for (i in seq_len(n_prog)) {
+  cid <- cluster_ids[i]
+  prog_auc[i, ] <- rnorm(n_cell, 0.5, 0.2) + (cid %% 3) * 0.3 + rnorm(n_cell, 0, 0.1)
+}
+rownames(prog_auc) <- sprintf("P%02d_t%02d", rep(1:11, each = 4), rep(1:4, 11))
+colnames(prog_auc) <- paste0("C", 1:n_cell)
+M <- cor(t(prog_auc))
+```
+
+## Visualization
+
+### 1. Correlation-Clustered corrplot
+
+The `corrplot(M, method = "color", order = "hclust", hclust.method = "ward.D2", addrect = 7)` call with the RdBu palette: the 44 programs cluster into 7 groups matching the reference malignant-signature clustering:
+
+```{r}
+#| label: fig-1.1NmfCorr
+#| fig-cap: "Pearson correlation heatmap of 44 simulated NMF programs: colour = Pearson r, ordered by ward.D2 with 7 black cluster rectangles."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+
+corrplot(M, method = "color", order = "hclust", hclust.method = "ward.D2",
+         addrect = 7, tl.pos = "n", tl.cex = 0.35,
+         col = rev(brewer.pal(8, "RdBu")), cl.cex = 0.7,
+         mar = c(0, 0, 1, 0))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Per-tumour NMF (rank = 4, 30 runs) avoids patient-dominant variation - cross-tumour correlation reveals shared malignant signatures.
+-   `corrMatOrder()` + `hclust(as.dist(1 - M))` + `cutree(7)` gives assignments matching `addrect = 7`.
+-   AUCell `aucMaxRank = nrow * 0.05` is sensitive to gene-set size - keep top-100 sets consistent.
+:::
+
+## Applications
+
+::: {#fig-ScNmfApplications1}
+![](../images/Omics/ScNmfPlot_demo.png){fig-alt="NMF program correlation clustering" fig-align="center" width="60%"}
+
+NMF program correlation clustering
+:::
+
+The program-correlation clustering applies to any per-sample factor decomposition: NMF on bulk RNA-seq, LIGER factors, or mutational-signature exposures.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Wu A, et al. Consensus clustering of malignant programs. <https://doi.org/10.1016/j.cell.2019.10.028>

@@ -1,0 +1,151 @@
+---
+title: "基因组改变分数（FGA/FGG/FGL）"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+**基因组改变分数（FGA）**是 cBioPortal 对每个患者拷贝数负荷的汇总：|log2 比值|超过阈值的片段覆盖的基因组比例。按方向拆分即**获得分数（FGG）**与**丢失分数（FGL）**，参考文档将其与临床亚组做 ANOVA + Tukey 比较 \[1\]。本教程复现该算法（阈值 |log2R| > 0.2、按片段碱基加权）与参考的两种版式——堆叠与发散——于模拟分割表：
+
+## Example
+
+![](../images/Omics/FgaPlot_demo.png){fig-alt="基因组改变分数（FGA/FGG/FGL） DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`; `dplyr`; `tidyr`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+60 个模拟患者各 1-18 个 CNV 片段（`sample, chr, start, end, value`，Xena genomicSegment 格式）。每个患者都有几个超过 ±0.2 阈值的亚克隆 CNV；III-IV 期患者更多更强——FGA/FGG/FGL 条形须还原该模式：
+
+```{r load data}
+suppressPackageStartupMessages({library(ggplot2); library(dplyr); library(tidyr); library(patchwork)})
+set.seed(18001)
+## 60 patients, CNV segments with planted subgroup burden
+n_pat <- 60
+clin <- data.frame(
+  Patient = sprintf("P%02d", 1:n_pat),
+  Gender  = factor(rep(c("Female", "Male"), each = n_pat / 2)),
+  Stage   = factor(rep(c("Stage I-II", "Stage III-IV"), times = n_pat / 2)))
+seg <- do.call(rbind, lapply(1:n_pat, function(i) {
+  n_seg <- sample(18, 1)
+  len <- sample(2e6, n_seg)
+  start <- c(1, head(cumsum(len), -1))
+  data.frame(sample = clin$Patient[i],
+             chr = paste0("chr", sample(1:22, n_seg, TRUE)),
+             start = start, end = start + len,
+             value = rnorm(n_seg, 0, 0.12))
+}))
+## planted alterations: every patient gets a few subclonal CNVs, stage III-IV
+## patients get many more strong ones
+for (i in seq_len(n_pat)) {
+  rows <- which(seg$sample == clin$Patient[i])
+  n_alt <- 2 + if (clin$Stage[i] == "Stage III-IV") sample(4:8, 1) else 0
+  sel <- sample(rows, min(n_alt, length(rows)))
+  seg$value[sel] <- seg$value[sel] +
+    sample(c(-1, 1), length(sel), TRUE) * runif(length(sel), 0.22, if (clin$Stage[i] == "Stage III-IV") 0.7 else 0.32)
+}
+## per-patient FGA/FGG/FGL (cBioPortal algorithm, |log2R| > 0.2)
+fg <- do.call(rbind, lapply(clin$Patient, function(p) {
+  s <- seg[seg$sample == p, ]; s$bases <- s$end - s$start
+  tot <- sum(s$bases)
+  data.frame(Patient = p,
+             FGA = if (nrow(s)) sum(s$bases[abs(s$value) > 0.2]) / tot else 0,
+             FGG = sum(s$bases[s$value > 0.2]) / tot,
+             FGL = sum(s$bases[s$value < -0.2]) / tot)
+}))
+fg <- merge(fg, clin, by = "Patient")
+```
+
+## Visualization
+
+### 堆叠与发散亚组条形
+
+同一信息的两种视图：堆叠版汇总各亚组的 FGG + FGL（参考 Fig. 1 风格），发散版把获得（零下）与丢失（零上）分列并配 SE 误差线与逐指标 ANOVA 星号——植入的分期负荷在两图中都干净分离：
+
+```{r}
+#| label: fig-1.1FgaBars
+#| fig-cap: "60 个模拟患者的 FGA/FGG/FGL 按临床分期：堆叠 FGG+FGL 百分比（上）与发散获得/丢失版式配 SE 与分期 ANOVA 星号（下）；cBioPortal 算法 |log2R| > 0.2。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 6.5
+
+summ <- fg %>% pivot_longer(c(FGA, FGG, FGL), names_to = "metric", values_to = "frac") %>%
+  group_by(Stage, metric) %>%
+  summarise(mean = mean(frac), se = sd(frac) / sqrt(n()), .groups = "drop")
+p_stars <- function(x) cut(x, c(-Inf, 0.0001, 0.001, 0.01, 0.05, Inf),
+                           labels = c("****", "***", "**", "*", "ns"))
+## per-metric ANOVA across stage
+star_tab <- fg %>% pivot_longer(c(FGA, FGG, FGL), names_to = "metric", values_to = "frac") %>%
+  group_by(metric) %>% group_modify(~ {
+    m <- aov(frac ~ Stage, data = .x)
+    p <- summary(m)[[1]]$"Pr(>F)"[1]
+    data.frame(p = p, star = p_stars(p))
+  })
+p1 <- ggplot(summ %>% filter(metric != "FGA"),
+             aes(Stage, mean * 100, fill = metric)) +
+  geom_col(position = "stack", width = 0.35, colour = "grey25", linewidth = 0.2) +
+  scale_fill_manual(values = c(FGG = "#db5049", FGL = "#2082be"), name = NULL) +
+  labs(x = NULL, y = "Percent Genome Altered", title = "FGG + FGL by clinical stage (simulated)") +
+  theme_classic(base_size = 10) + theme(legend.position = "top")
+p2 <- ggplot(summ %>% filter(metric != "FGA") %>%
+               mutate(y = ifelse(metric == "FGG", -mean, mean),
+                      se2 = ifelse(metric == "FGG", -se, se)),
+             aes(Stage, y * 100, fill = metric)) +
+  geom_col(width = 0.35, colour = "grey25", linewidth = 0.2) +
+  geom_errorbar(aes(ymin = (y - se2) * 100, ymax = (y + se2) * 100), width = 0.12, linewidth = 0.3) +
+  geom_text(data = star_tab %>% mutate(x = 1.5,
+               ypos = ifelse(metric == "FGG",
+                             -max(summ$mean[summ$metric == "FGG"] + summ$se[summ$metric == "FGG"]),
+                             max(summ$mean[summ$metric == "FGL"] + summ$se[summ$metric == "FGL"]))) %>%
+               mutate(ypos = ypos * 115),
+            aes(x = x, y = ypos, label = star), inherit.aes = FALSE, size = 4) +
+  geom_hline(yintercept = 0, colour = "grey40") +
+  scale_fill_manual(values = c(FGG = "#f17d80", FGL = "#79BEDB"), name = NULL) +
+  labs(x = NULL, y = "Percent genome gained (-) / lost (+)",
+       title = "Diverging FGG/FGL with SE and stage ANOVA") +
+  theme_classic(base_size = 10) + theme(legend.position = "top")
+p1 / p2
+```
+
+
+::: callout-tip
+**实践提示**
+
+-   按**片段碱基**加权而非片段数——50 kb 的增益与 30 Mb 的缺失权重不同；cBioPortal 的分母是样本的已分析碱基总数。
+-   ±0.2 log2 阈值区分改变与噪声；浅测序调高、深数据调低——并注明所用阈值，不同阈值下的 FGA 不可比。
+-   亚组检验参考用单因素 ANOVA + Tukey HSD 逐指标进行；两亚组时 Wilcoxon 是诚实的等价物，星号应来自你实际跑的检验。
+:::
+
+## 应用场景
+
+::: {#fig-FgaApplications1}
+![](../images/Omics/FgaPlot_demo.png){fig-alt="拷贝数负荷按亚组" fig-align="center" width="60%"}
+
+拷贝数负荷按亚组
+:::
+
+任何逐样本负荷汇总都可复用此版式：突变 Mb 负荷、启动子高甲基化 CpG 比例、或 LOH 基因组比例。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Ciruelos C, et al. Differences in genomic alterations as a function of sex in ccRCC. Oncoscience (reference of the FGA/FGG/FGL layout). <https://www.nature.com/articles/oncsis201214>
