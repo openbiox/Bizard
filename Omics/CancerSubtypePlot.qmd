@@ -156,6 +156,22 @@ set.seed(3)
 nmf_res <- NMF::nmf(expr_nmf, rank = best_k, method = "brunet", nrun = 20, seed = 1)
 nmf_lab <- as.numeric(NMF::predict(nmf_res, "consensus"))   # 1..k per sample
 
+## align each method's cluster numbering to CC's via max-overlap matching
+## (standard label-permutation before agreement comparison)
+relabel_to <- function(lab, ref, k = 3) {
+  tab <- table(lab, ref)
+  pairs <- which(tab > 0, arr.ind = TRUE)
+  ord <- order(tab[pairs], decreasing = TRUE)
+  mapping <- integer(k); used_l <- integer(0); used_r <- integer(0)
+  for (r in seq_len(nrow(pairs))) {
+    a <- pairs[ord[r], 1]; b <- pairs[ord[r], 2]
+    if (!(a %in% used_l) && !(b %in% used_r)) {
+      mapping[a] <- b; used_l <- c(used_l, a); used_r <- c(used_r, b)
+    }
+  }
+  mapping[lab]
+}
+
 ord <- order(cc_lab, -rowSums(co))
 Heatmap(co[ord, ord], name = "Consensus\nfraction",
         col = colorRamp2(c(0, 0.5, 1), c("white", "#9ECAE1", "#2166AC")),
@@ -185,9 +201,9 @@ mk_pair <- function(a, b, la, lb) {
              row_i = rep(1:3, 3), col_i = rep(1:3, each = 3),
              n = tab$Freq[order(tab$b, tab$a)])
 }
-p1 <- mk_pair(cc_lab, nmf_lab, "CC", "CNMF")
-p2 <- mk_pair(cc_lab, snf_lab, "CC", "SNF")
-p3 <- mk_pair(nmf_lab, snf_lab, "CNMF", "SNF")
+p1 <- mk_pair(cc_lab, relabel_to(nmf_lab, cc_lab), "CC", "CNMF")
+p2 <- mk_pair(cc_lab, relabel_to(snf_lab, cc_lab), "CC", "SNF")
+p3 <- mk_pair(nmf_lab, relabel_to(snf_lab, nmf_lab), "CNMF", "SNF")
 pair_df <- rbind(cbind(p1, pair = "CC vs CNMF"),
                  cbind(p2, pair = "CC vs SNF"),
                  cbind(p3, pair = "CNMF vs SNF"))

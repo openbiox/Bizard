@@ -58,7 +58,13 @@ depth <- sapply(1:L, function(p) sum(reads$start <= p & reads$end >= p))
 cov_df <- data.frame(pos = seq_len(L), depth = depth)
 snv_reads <- subset(reads, !is.na(mismatch) & mismatch == snv_off)
 alt_frac <- nrow(snv_reads) / sum(reads$start <= snv_off & reads$end >= snv_off)
-cat(sprintf("SNV alt fraction: %.2f (%d alt reads)\n", alt_frac, nrow(snv_reads)))
+## per-lane alt fraction (tumour lanes carry the variant, normal does not)
+alt_lane <- sapply(c("Normal", "Tumour A", "Tumour B"), function(sm) {
+  rl <- subset(reads, sample == sm & start <= snv_off & reads$end >= snv_off)
+  mean(!is.na(rl$mismatch))
+})
+cat(sprintf("SNV alt fraction pooled %.2f | per lane:", alt_frac))
+cat(sprintf(" %s %.0f%%", names(alt_lane), 100 * alt_lane), "\n")
 ```
 
 ## Visualization
@@ -121,7 +127,8 @@ p_zcov <- ggplot(subset(cov_df, pos >= z0 & pos <= z1), aes(pos, depth)) +
   geom_area(fill = "#4472C4", alpha = 0.55) +
   geom_vline(xintercept = snv_off, linetype = "dashed", colour = "#B2182B") +
   annotate("text", x = snv_off + 6, y = max(depth) * 0.92,
-           label = sprintf("G>A, alt %.0f%%", alt_frac * 100),
+           label = sprintf("G>A: tumour lanes %s%%, normal 0%%",
+                           paste0(sort(unique(round(100 * alt_lane[2:3])), decreasing = TRUE), collapse = "/")),
            size = 3, colour = "#B2182B", hjust = 0) +
   labs(x = NULL, y = "Depth",
        title = sprintf("Zoom: chr7:%d-%d", locus_start + z0, locus_start + z1)) +
@@ -138,7 +145,7 @@ p_zpile <- ggplot(zr, aes(xmin = start, xmax = end,
   scale_fill_manual(values = c(`+` = "#4472C4", `-` = "#E08214"), name = "Strand") +
   scale_y_continuous(breaks = seq_along(lane_names), labels = lane_names,
                      expand = expansion(mult = c(0.05, 0.05))) +
-  scale_x_continuous(limits = c(z0, z1), expand = expansion(mult = c(0, 0))) +
+  coord_cartesian(xlim = c(z0, z1), expand = FALSE) +
   labs(x = "Offset in locus (bp)", y = NULL) +
   theme_bw(base_size = 10) +
   theme(panel.grid = element_blank())
