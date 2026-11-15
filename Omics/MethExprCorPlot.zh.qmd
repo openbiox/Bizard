@@ -63,7 +63,9 @@ res <- do.call(rbind, lapply(probe.anno$probe, function(p) {
   data.frame(probe = p, region = probe.anno$region[probe.anno$probe == p],
              rho = unname(ct$estimate), p.value = ct$p.value)
 }))
-res$significant <- res$p.value < 0.05
+## 60 个探针同时检验：应在探针间统一校正，而非逐个判断
+res$padj <- p.adjust(res$p.value, method = "BH")
+res$significant <- res$padj < 0.05
 res$region_col <- ifelse(grepl("TSS|5'UTR|1stExon", res$region),
                          "promoter", as.character(res$region))
 ```
@@ -76,7 +78,7 @@ res$region_col <- ifelse(grepl("TSS|5'UTR|1stExon", res$region),
 
 ```{r}
 #| label: fig-1.1MethExprSummary
-#| fig-cap: "每个 450K 探针与基因表达的 Spearman rho、按注释区域着色：启动子类探针（TSS1500/TSS200/5'UTR/1stExon）为负（沉默）、基因体为正、实心方块 = p<0.05。"
+#| fig-cap: "每个 450K 探针与基因表达的 Spearman rho、按注释区域着色：启动子类探针（TSS1500/TSS200/5'UTR/1stExon）为负（沉默）、基因体为正、实心方块 = 60 个探针整体 BH 校正后 p<0.05。"
 #| out.width: "85%"
 #| fig-width: 8
 #| fig-height: 5.6
@@ -89,7 +91,7 @@ ggplot(res, aes(probe, rho, colour = region, shape = significant)) +
                                  Body = "#2166AC", "3'UTR" = "#92C5DE"),
                       name = NULL) +
   scale_shape_manual(values = c(`TRUE` = 15, `FALSE` = 21),
-                     labels = c(`TRUE` = "p<0.05", `FALSE` = "p>=0.05")) +
+                     labels = c(`TRUE` = "BH p<0.05", `FALSE` = "BH p>=0.05")) +
   labs(x = NULL, y = "Spearman rho (methylation vs expression)") +
   theme_bw(base_size = 10) +
   theme(axis.text.x = element_text(angle = 90, size = 5.5, vjust = 0.5),
@@ -125,6 +127,15 @@ ggplot(df, aes(beta, expr)) +
   theme(panel.grid.minor = element_blank())
 ```
 
+::: callout-tip
+**实践要点**
+-   按注释表的区域列筛选探针，而不是只看距离：位于*相邻*基因 TSS 上游 800 bp 的探针并不是本基因的启动子。
+-   启动子甲基化抑制表达、基因体甲基化常呈正相关——把所有探针混在一起做一条“甲基化 vs 表达”相关，会把两种相反效应平均成噪声。
+-   报告 Spearman：beta 值被约束在 [0, 1]，其与表达的关系单调而非线性。
+-   一个基因有多个探针时，既给逐探针 rho 汇总，也给一个典型散点——汇总找规律，散点作实证。
+-   探针间要做多重检验校正。对全部 60 个探针统一做 BH 校正后，启动子/基因体对比完好保留——28 个启动子探针与 20 个基因体探针全部显著（\|rho\| 0.33-0.74、方向一致）——而混进来的 2 个近零效应 3'UTR 探针（\|rho\| ≈ 0.19-0.20）正是 FDR 程序所允许的（此处约 4% 的假发现）。功效依然约束结果：n = 120 时 80% 功效需要 \|rho\| ≥ 0.25；真实数据里单个基因的 5'UTR 常带 10-20 个探针而样本只有 ~11 例，此时需要 \|rho\| ≥ 0.76。
+-   XENA 式甲基化矩阵已存 beta 值；若从 IDAT 起步，先按探针归一化（beta = M/(M+U+100)），否则批次效应会伪装成相关。
+:::
 
 ## 应用场景
 

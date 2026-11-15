@@ -78,7 +78,7 @@ for (i in 1:(n_lnc - 1)) {
   }
 }
 ## step 2: Fisher test of the direction table per pair
-pairs$FDR <- NA; pairs$dirct <- NA
+pairs$p_raw <- NA; pairs$dirct <- NA
 for (i in seq_len(nrow(pairs))) {
   a <- pairs$V1[i]; b <- pairs$V2[i]
   tum.d <- expr.rank[a, tumsam] - expr.rank[b, tumsam]
@@ -88,9 +88,11 @@ for (i in seq_len(nrow(pairs))) {
   tmp <- matrix(c(sum(nor.d < 0), sum(nor.d > 0), sum(tum.d < 0), sum(tum.d > 0)),
                 2, 2, byrow = TRUE,
                 dimnames = list(c("Normal", "Tumour"), c("a<b", "a>b")))
-  pairs$FDR[i] <- p.adjust(fisher.test(tmp)$p.value, method = "BH")
+  pairs$p_raw[i] <- fisher.test(tmp)$p.value
   pairs$dirct[i] <- ifelse(avg1 * avg2 > 0, "same", "different")
 }
+## BH across ALL reversal tests (adjusting one p at a time is a no-op)
+pairs$FDR <- p.adjust(pairs$p_raw, method = "BH")
 outSel <- pairs[pairs$FDR < 0.1 & pairs$dirct == "same", ]
 
 par(mfrow = c(1, 2), mar = c(4, 4, 2.5, 1), las = 1)
@@ -105,10 +107,15 @@ plot(-log10(outSel$FDR), seq_len(nrow(outSel)), type = "n",
      xlab = "-log10(FDR) of reversal Fisher test", ylab = "",
      yaxt = "n", xlim = c(0, xr * 1.15), ylim = c(0, nrow(outSel) * 1.12),
      main = "Step 2: tumour-reversed pairs")
-points(-log10(outSel$FDR)[isdrv], seq_len(sum(isdrv)), pch = 19, col = "#B2182B")
-points(-log10(outSel$FDR)[!isdrv], seq_len(nrow(outSel))[!isdrv], pch = 17, col = "#4472C4")
-legend("topright", inset = c(0.01, 0.01), c("planted driver", "background"),
-       pch = c(19, 17), col = c("#B2182B", "#4472C4"), bty = "n", cex = 0.85)
+rows <- seq_len(nrow(outSel))
+points(-log10(outSel$FDR)[isdrv], rows[isdrv], pch = 19, col = "#B2182B")
+## only draw (and legend) the background class when it is actually present —
+## with this seed every surviving pair is a planted driver
+if (any(!isdrv)) points(-log10(outSel$FDR)[!isdrv], rows[!isdrv], pch = 17, col = "#4472C4")
+legend("topright", inset = c(0.01, 0.01),
+       legend = c("planted driver", "background")[c(TRUE, any(!isdrv))],
+       pch = c(19, 17)[c(TRUE, any(!isdrv))],
+       col = c("#B2182B", "#4472C4")[c(TRUE, any(!isdrv))], bty = "n", cex = 0.85)
 ```
 
 ### 2. Per-Patient Dysregulation Calls

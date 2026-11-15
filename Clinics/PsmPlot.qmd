@@ -51,6 +51,8 @@ df.population$QoL <- 60 - 0.25 * (df.population$Age - 30) + rnorm(1000, 0, 9)
 
 mydata <- rbind(df.patients, df.population)
 mydata$GroupL <- mydata$Group == "CASE"
+all_case <- which(mydata$Group == "CASE")     # full case cohort
+all_ctrl <- which(mydata$Group == "CONTROL")  # full control cohort
 ```
 
 ## Matching (hand-implemented MatchIt equivalent)
@@ -113,8 +115,6 @@ The standard check: standardized mean differences of Age (and the male share) be
 
 ## SMD between cases and controls (before: all; after: matched pairs only)
 smd <- function(x, a, b) abs(mean(x[a]) - mean(x[b])) / sqrt((var(x[a]) + var(x[b])) / 2)
-all_case <- which(mydata$Group == "CASE")
-all_ctrl <- which(mydata$Group == "CONTROL")
 mydata$Male <- as.numeric(mydata$Sex == "Male")
 love <- rbind(
   data.frame(covariate = "Age", stage = "before",
@@ -144,8 +144,42 @@ ggplot(love, aes(smd, covariate, colour = stage)) +
 -   Match **without replacement** for 1:1 designs; reusing one control inflates the effective sample size and deflates variance.
 -   Report the match yield (here ~all cases matched) and drop unmatched cases explicitly — silently keeping them re-introduces the confounding.
 -   The **love plot** is the referee: standardised mean differences below 0.1 on every matched covariate is the community rule of thumb before comparing outcomes.
--   Compare outcomes on the matched pairs with a **paired** test — the pairing information from PSM is what buys the statistical power.
+-   Compare outcomes on the matched pairs with a test that respects the design: paired when the outcome is measured within the same unit, otherwise a weighted/stratified or plain two-sample test — never an unadjusted comparison of the full cohorts, which throws away the balance PSM just bought.
 :::
+
+### Outcome Comparison After Matching
+
+Balance only licenses the comparison; the deliverable is the effect estimate on the matched set. The QoL score is measured on independent patients and controls, so the matched comparison is an unweighted two-sample (Welch) t-test on the 250 matched pairs, shown next to the crude all-cohort difference it replaces:
+
+```{r}
+#| label: fig-3.1PsmOutcome
+#| fig-cap: "Quality-of-life difference (cancer patients minus population controls) before matching (all 250 cases vs all 1000 controls) and on the 250 matched pairs: with this simulated cohort age/sex confounding is mild (about 0.6 QoL points of the ~5.8-point gap), the balance diagnostics still have to decide whether the matched estimate is reported, and the 95% CIs show how much precision the 250-pair subset costs."
+#| out.width: "70%"
+#| fig-width: 6.4
+#| fig-height: 4.2
+
+qol_case <- mydata$QoL[all_case]
+qol_ctrl_all <- mydata$QoL[all_ctrl]
+qol_ctrl_m <- mydata$QoL[matched_ctrl]
+eff <- rbind(
+  data.frame(set = "All cohorts (crude)",
+             diff = mean(qol_case) - mean(qol_ctrl_all),
+             se = sqrt(var(qol_case) / length(qol_case) + var(qol_ctrl_all) / length(qol_ctrl_all))),
+  data.frame(set = "Matched pairs",
+             diff = mean(qol_case) - mean(qol_ctrl_m),
+             se = sqrt(var(qol_case) / length(qol_case) + var(qol_ctrl_m) / length(qol_ctrl_m))))
+eff$set <- factor(eff$set, levels = c("All cohorts (crude)", "Matched pairs"))
+cat("crude difference:", round(eff$diff[1], 2), " matched difference:", round(eff$diff[2], 2),
+    " matched Welch p =", format.pval(t.test(qol_case, qol_ctrl_m)$p.value, digits = 3), "\n")
+ggplot(eff, aes(diff, set)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_errorbar(aes(xmin = diff - 1.96 * se, xmax = diff + 1.96 * se),
+                width = 0.12, colour = "grey35") +
+  geom_point(size = 3.6, colour = "#B2182B") +
+  labs(x = "QoL difference, patients - controls (95% CI)", y = NULL) +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.minor = element_blank())
+```
 
 ## Application
 

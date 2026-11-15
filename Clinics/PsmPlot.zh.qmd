@@ -51,6 +51,8 @@ df.population$QoL <- 60 - 0.25 * (df.population$Age - 30) + rnorm(1000, 0, 9)
 
 mydata <- rbind(df.patients, df.population)
 mydata$GroupL <- mydata$Group == "CASE"
+all_case <- which(mydata$Group == "CASE")     # 全部病例
+all_ctrl <- which(mydata$Group == "CONTROL")  # 全部对照
 ```
 
 ## 匹配（手写 MatchIt 等价实现）
@@ -111,10 +113,8 @@ ggplot(jitter_df, aes(set, ps, colour = group)) +
 #| fig-width: 6.5
 #| fig-height: 4.8
 
-## SMD between cases and controls (before: all; after: matched pairs only)
+## 病例与对照的 SMD（匹配前：全部；匹配后：仅匹配对）
 smd <- function(x, a, b) abs(mean(x[a]) - mean(x[b])) / sqrt((var(x[a]) + var(x[b])) / 2)
-all_case <- which(mydata$Group == "CASE")
-all_ctrl <- which(mydata$Group == "CONTROL")
 mydata$Male <- as.numeric(mydata$Sex == "Male")
 love <- rbind(
   data.frame(covariate = "Age", stage = "before",
@@ -144,8 +144,42 @@ ggplot(love, aes(smd, covariate, colour = stage)) +
 -   1:1 设计**不放回**匹配；复用同一对照会虚增有效样本量、低估方差。
 -   报告匹配产率（此处几乎全部病例匹配）并显式丢弃未匹配病例——悄悄保留它们等于把混杂请回来。
 -   **Love 图**是裁判：每个匹配协变量的标准化均数差低于 0.1 才能比较结局。
--   匹配对上的结局用**配对**检验比较——PSM 的配对信息正是统计功效的来源。
+-   匹配对上的结局要用尊重设计的检验：同一单位内重复测量的结局用配对检验，否则用加权/分层或普通两样本检验——绝不能用全队列的未校正比较，那等于丢掉 PSM 刚换来的均衡。
 :::
+
+### 匹配后的结局比较
+
+均衡只是比较的前提；真正的交付物是匹配集上的效应估计。QoL 在独立病人与对照上各自测量，因此匹配比较采用不加权的两样本（Welch）t 检验，并与它所替代的全队列粗略差值并排展示：
+
+```{r}
+#| label: fig-3.1PsmOutcome
+#| fig-cap: "生活质量差值（癌症患者减一般人群对照）在匹配前（全部 250 例 vs 全部 1000 例对照）与 250 对匹配样本上的对比：本模拟队列的年龄/性别混杂较轻（约 5.8 分总差值中约 0.6 分来自混杂），是否报告匹配估计仍应由均衡诊断决定，95% CI 则显示 250 对子集付出的精度代价。"
+#| out.width: "70%"
+#| fig-width: 6.4
+#| fig-height: 4.2
+
+qol_case <- mydata$QoL[all_case]
+qol_ctrl_all <- mydata$QoL[all_ctrl]
+qol_ctrl_m <- mydata$QoL[matched_ctrl]
+eff <- rbind(
+  data.frame(set = "All cohorts (crude)",
+             diff = mean(qol_case) - mean(qol_ctrl_all),
+             se = sqrt(var(qol_case) / length(qol_case) + var(qol_ctrl_all) / length(qol_ctrl_all))),
+  data.frame(set = "Matched pairs",
+             diff = mean(qol_case) - mean(qol_ctrl_m),
+             se = sqrt(var(qol_case) / length(qol_case) + var(qol_ctrl_m) / length(qol_ctrl_m))))
+eff$set <- factor(eff$set, levels = c("All cohorts (crude)", "Matched pairs"))
+cat("crude difference:", round(eff$diff[1], 2), " matched difference:", round(eff$diff[2], 2),
+    " matched Welch p =", format.pval(t.test(qol_case, qol_ctrl_m)$p.value, digits = 3), "\n")
+ggplot(eff, aes(diff, set)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_errorbar(aes(xmin = diff - 1.96 * se, xmax = diff + 1.96 * se),
+                width = 0.12, colour = "grey35") +
+  geom_point(size = 3.6, colour = "#B2182B") +
+  labs(x = "QoL difference, patients - controls (95% CI)", y = NULL) +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.minor = element_blank())
+```
 
 ## 应用场景
 
