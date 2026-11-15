@@ -241,6 +241,38 @@ jobs:
             prompt   = FALSE,
             force    = FALSE
           )
+
+          # Re-inject the cache-bypass marker for 'export' (run 43710846307):
+          # renv's parallel graph installer builds install-order edges only
+          # over packages it must freshly install. export normally links from
+          # the package cache, so it left the fresh set and its dependent
+          # hiplotlib (GitHub source) built before its transitive dependency
+          # flextable existed — byte-compiling hiplotlib failed with
+          # "there is no package called 'flextable'" and rolled back 717
+          # packages. Cacheable = FALSE keeps export in the fresh-install set
+          # (restoring the flextable -> export -> hiplotlib ordering) at the
+          # cost of one small GitHub-source rebuild per restore. renv itself
+          # does not hash the Cacheable field, and snapshot() derives records
+          # from installed DESCRIPTIONs, so the marker must be re-added after
+          # every snapshot or the weekly refresh would drop it.
+          # Insert the marker as a one-line text edit rather than re-serializing
+          # the whole lockfile: full JSON round-trips either mangle structure
+          # (jsonlite auto-unboxes length-1 dependency arrays; renv's own
+          # lockfile_write() corrupts R$Repositories) or reorder keys. The
+          # inserted line is validated by the lockfile-parse below.
+          lines <- readLines("renv.lock")
+          at <- grep('^\\s*"export": \\{\\s*$', lines)
+          if (length(at) != 1L) {
+            stop("expected exactly one 'export' record in renv.lock; found ", length(at))
+          }
+          lines <- append(lines, "      \"Cacheable\": false,", after = at)
+          writeLines(lines, "renv.lock")
+
+          check <- jsonlite::fromJSON("renv.lock", simplifyVector = FALSE)
+          if (!identical(check$Packages$export$Cacheable, FALSE)) {
+            stop("Cacheable = FALSE was not persisted to renv.lock")
+          }
+          cat("export Cacheable marker re-injected\n")
           RS
 
       - name: Validate lockfile
