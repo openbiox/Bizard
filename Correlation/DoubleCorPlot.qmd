@@ -1,0 +1,141 @@
+---
+title: "Two-Cohort Correlation Triangle"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+Two cohorts, one correlation matrix: the **upper-right triangle** carries cohort A's pairwise correlations, the **lower-left** cohort B's — bubble area encodes |r|, fill encodes r with a separate colour scale per triangle, and pairs that fail significance in that cohort stay empty \[1\]. The reference (immune-cell correlations in KICH vs KIRC) draws it with a `ComplexHeatmap` `cell_fun`; this tutorial reproduces the recipe on two simulated immune-cell score matrices with planted module structure:
+
+## Example
+
+![](../images/DoubleCorPlot_demo.png){fig-alt="Two-Cohort Correlation Triangle DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ComplexHeatmap`; `circlize`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ComplexHeatmap)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+Fourteen immune-cell scores per sample for two simulated cohorts (n = 60 and n = 80), generated from shared cytotoxic/APC/myeloid module factors — cohort B with weaker coupling, so its correlations shrink toward zero and some cells drop below significance. `cor.test()` per pair gives R and P matrices; the merge overwrites the lower triangle of cohort A with cohort B:
+
+```{r load data}
+suppressPackageStartupMessages(library(circlize))
+set.seed(15201)
+cells <- c("aDC", "B cells", "CD8 T cells", "Cytotoxic lymphocytes", "DC",
+           "Eosinophils", "Macrophages", "Mast cells", "Neutrophils",
+           "NK cells", "pDC", "T cells", "T helper cells", "T regulatory cells")
+## cohort matrices: immune-cell scores from planted module factors
+## (cytotoxic / APC / myeloid; Tregs anti-correlate with cytotoxicity)
+mk <- function(seed, n, module_scale = 1) {
+  set.seed(seed)
+  f_cyt <- rnorm(n); f_apc <- rnorm(n); f_mye <- rnorm(n)
+  base <- cbind(
+    aDC = f_apc + rnorm(n, 0, 0.7), `B cells` = rnorm(n),
+    `CD8 T cells` = f_cyt + rnorm(n, 0, 0.6),
+    `Cytotoxic lymphocytes` = f_cyt + rnorm(n, 0, 0.6),
+    DC = f_apc + rnorm(n, 0, 0.8), Eosinophils = rnorm(n),
+    Macrophages = f_mye + rnorm(n, 0, 0.7), `Mast cells` = rnorm(n),
+    Neutrophils = f_mye + rnorm(n, 0, 0.9), `NK cells` = f_cyt + rnorm(n, 0, 0.8),
+    pDC = f_apc + rnorm(n, 0, 1.0), `T cells` = f_cyt + rnorm(n, 0, 0.7),
+    `T helper cells` = f_cyt + rnorm(n, 0, 0.8),
+    `T regulatory cells` = module_scale * (-f_cyt) + rnorm(n, 0, 0.9))
+  base <- base * module_scale + rnorm(n * length(cells), 0, 0.3)
+  colnames(base) <- cells
+  R <- P <- matrix(0, length(cells), length(cells), dimnames = list(cells, cells))
+  for (i in seq_along(cells)) for (j in seq_along(cells)) {
+    ct <- cor.test(base[, i], base[, j])
+    R[i, j] <- ct$estimate; P[i, j] <- ct$p.value
+  }
+  list(R = R, P = P)
+}
+d1 <- mk(15201, 60, 1.0)          # cohort A: strong cytotoxic/APC coupling
+d2 <- mk(15299, 80, 0.55)         # cohort B: weaker coupling
+## merge: upper right = cohort A, lower left = cohort B
+datR <- d1$R; datP <- d1$P
+for (i in seq_along(cells)) { datR[i, 1:i] <- d2$R[i, 1:i]; datP[i, 1:i] <- d2$P[i, 1:i] }
+datR[datP > 0.05] <- NA           # no bubble when not significant
+```
+
+## Visualization
+
+### 1. Split-Triangle Bubble Matrix
+
+The `cell_fun` draws each cell: grey frame, grey circle on the diagonal, cohort A bubbles above the diagonal (green-white-red scale), cohort B below (yellow-white-purple); the planted cytotoxic module lights up both triangles while Tregs go negative — and every non-significant pair is simply blank:
+
+```{r}
+#| label: fig-1.1DoubleCor
+#| fig-cap: "Two-cohort immune-cell correlation triangle (simulated): upper-right bubbles are cohort A (green-white-red), lower-left cohort B (yellow-white-purple); bubble radius = |r|, colour = r, and pairs with P > 0.05 stay empty."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7
+#| fig-height: 7.5
+
+suppressPackageStartupMessages(library(ComplexHeatmap))
+colCorRight <- colorRamp2(c(-1, 0, 1), c("green", "white", "#ef3b2c"))
+colCorLeft <- colorRamp2(c(-1, 0, 1), c("yellow", "white", "#762a83"))
+
+p1 <- Heatmap(datR, rect_gp = gpar(type = "none"), show_heatmap_legend = FALSE,
+              cell_fun = function(j, i, x, y, width, height, fill) {
+                grid.rect(x = x, y = y, width = width, height = height,
+                          gp = gpar(col = "grey", fill = NA))
+                if (i == j) {
+                  grid.circle(x = x, y = y, r = 0.5 * min(unit.c(width, height)),
+                              gp = gpar(fill = "grey", col = NA))
+                } else if (i > j) {
+                  if (!is.na(datR[i, j])) grid.circle(x = x, y = y,
+                      r = abs(datR[i, j]) / 2 * min(unit.c(width, height)),
+                      gp = gpar(fill = colCorLeft(datR[i, j]), col = NA))
+                } else {
+                  if (!is.na(datR[i, j])) grid.circle(x = x, y = y,
+                      r = abs(datR[i, j]) / 2 * min(unit.c(width, height)),
+                      gp = gpar(fill = colCorRight(datR[i, j]), col = NA))
+                }
+              },
+              cluster_rows = FALSE, cluster_columns = FALSE,
+              show_row_names = TRUE, show_column_names = TRUE,
+              row_names_side = "right", row_names_rot = 45,
+              row_names_gp = gpar(fontsize = 8), column_names_gp = gpar(fontsize = 8))
+lgdRight <- Legend(col_fun = colCorRight, title = "Cohort A", direction = "horizontal")
+lgdLeft <- Legend(col_fun = colCorLeft, title = "Cohort B", direction = "horizontal")
+draw(p1, annotation_legend_list = list(lgdRight, lgdLeft), annotation_legend_side = "top",
+     padding = unit(c(12, 12, 4, 4), "mm"))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The two matrices must share **identical row/column order** — with freshly computed correlations, verify with `identical(dimnames(d1$R), dimnames(d2$R))` before overwriting the lower triangle, or the two triangles describe different cell pairs.
+-   Blank cells are **significance filters, not missing data**; state the threshold (P > 0.05 here) in the caption, because an empty cell otherwise reads as r ≈ 0.
+-   One `cell_fun` covers both triangles — branch on `i > j` and use **two colour scales** (one per cohort) so readers can compare r values within a cohort, never across.
+:::
+
+## Applications
+
+::: {#fig-DoubleCorApplications1}
+![](../images/DoubleCorPlot_demo.png){fig-alt="Split-triangle correlation bubbles" fig-align="center" width="60%"}
+
+Split-triangle correlation bubbles
+:::
+
+Any pair of cohorts with the same variable set reuses this figure: primary vs metastatic, pre- vs post-treatment, or two omics platforms measuring the same panel.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Charoentong P, Finotello F, Angelova M, et al. Pan-cancer immunogenomic analyses reveal genotype-immunophenotype relationships and predictors of response to checkpoint blockade. Cell Rep. 2017;18(1):248-262. doi:10.1016/j.celrep.2016.12.019

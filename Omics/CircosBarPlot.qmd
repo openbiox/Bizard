@@ -1,0 +1,158 @@
+---
+title: "Circos Bar & Links"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+Two-track membership questions — *which features belong to which functional classes, and how do their abundances split across sample groups?* — land naturally on a **circos layout**: feature sectors with per-sample abundance heatmap rings, class sectors with a count bar, and arcs linking every feature to its class \[1\]. The reference builds this in Perl Circos with a dozen config files; this tutorial reproduces the same composite self-contained in R with **circlize** on simulated differential KOs (potato common-scab soils \[2\]):
+
+## Example
+
+![](../images/CircosBarPlot_demo.png){fig-alt="Circos Bar & Links DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `circlize`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+98 simulated differential KOs × 6 soil metagenomes (3 severe-scab GSH, 3 mild GSL). Each KO maps to one of 24 KEGG B-level classes; group-enrichment direction (log2FC of group means) colours the links, and per-class counts feed the inner bar ring. The abundance colour scale is banded, mimicking the reference's non-linear "fluorescent" legend:
+
+```{r load data}
+suppressPackageStartupMessages(library(dplyr))
+set.seed(14201)
+n_ko <- 98; n_cls <- 24
+ko <- sprintf("K%05d", sample(10000:99999, n_ko))
+cls_lab <- c("Carbo","Energy","Lipid","Nucleo","AA","Glycan","MetaOth","MetaOth",
+             "Repli","Repair","Transl","Fold","Signal","Membr","Motil",
+             "EnvInfo","EnvInfo","EnvInfo","Xenobio","Stress","Immune",
+             "Biofilm","Quorum","Chemo")
+## KO -> B-class mapping
+ko_cls <- sample(n_cls, n_ko, replace = TRUE, prob = c(rep(1.6, 6), rep(0.8, n_cls - 6)))
+sm <- c("GSH1","GSH2","GSH3","GSL4","GSL5","GSL6")   # severe vs mild common-scab soils
+## relative abundances: planted group effects (GSH-up for 35 KOs, GSL-up for 25)
+grp_eff <- sample(n_ko, 35)
+ab <- matrix(exp(rnorm(n_ko * 6, log(8e-4), 0.9)), n_ko, 6, dimnames = list(ko, sm))
+ab[grp_eff, 1:3] <- ab[grp_eff, 1:3] * 3.2
+ab[setdiff(1:n_ko, grp_eff)[1:25], 4:6] <- ab[setdiff(1:n_ko, grp_eff)[1:25], 4:6] * 2.4
+log2fc <- log2(rowMeans(ab[, 1:3]) / rowMeans(ab[, 4:6]))
+dir_col <- ifelse(log2fc > 0, "#D7301F", "#1A9641")   # GSH-enriched red, GSL green
+## per-class KO counts for the inner bar ring (zero-filled: some classes get none)
+cnt <- data.frame(cls_id = ko_cls, gsh = log2fc > 0) %>%
+  group_by(cls_id) %>% summarise(gsh = sum(gsh), gsl = sum(!gsh), .groups = "drop")
+cnt <- merge(data.frame(cls_id = seq_len(n_cls)), cnt, by = "cls_id", all.x = TRUE)
+cnt[is.na(cnt)] <- 0
+## coordinates: KO i spans [2i-2, 2i]; class j spans [5j-5, 5j]
+ko_cx  <- 2 * seq_len(n_ko) - 1
+cls_cx <- 5 * seq_len(n_cls) - 2.5
+```
+
+## Visualization
+
+### 1. Heatmap Rings, Links, and Class Bars
+
+The composite: hs1 carries six per-sample abundance rings over the 98 KOs (outer → inner = GSH1 → GSL6), each KO arcs to its class on hs2 in red (GSH-enriched) or green (GSL-enriched), and the inner stacked bars count how many differential KOs each class holds — the carbohydrate/energy classes carry the severe-scab signal:
+
+```{r}
+#| label: fig-1.1CircosBar
+#| fig-cap: "Circos composite of simulated differential KOs vs KEGG B-classes: six per-sample abundance heatmap rings on the KO sector (GSH1-3 severe, GSL4-6 mild scab, outer to inner), links coloured by enrichment direction (red GSH, green GSL), and stacked per-class KO counts as inner bars."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 8
+
+suppressPackageStartupMessages(library(circlize))
+brk <- colorRamp2(c(0, 5e-4, 1e-3, 2e-3, 4e-3),
+                  c("#FFFFFF", "#FEE8C8", "#FDBB84", "#E34A33", "#7F0000"))
+link_rou <- 0.60   # radius band the links run at (inside the heatmap rings)
+
+circos.par(start.degree = 90, gap.degree = c(6, 12), track.margin = c(0.004, 0.004),
+           cell.padding = c(0, 0, 0, 0))
+circos.initialize(factors = factor(c(rep("hs1", n_ko), rep("hs2", n_cls)), levels = c("hs1", "hs2")),
+                  xlim = cbind(c(0, 0), c(n_ko * 2, n_cls * 5)))
+## track 1: labels — KO ids every 10th on hs1, class names radially on hs2
+circos.track(ylim = c(0, 1), track.height = 0.09, bg.border = "black", bg.col = "grey97",
+             panel.fun = function(x, y) {
+               if (get.cell.meta.data("sector.index") == "hs1") {
+                 idx <- seq(5, n_ko, 10)
+                 circos.text(ko_cx[idx], 0.5, ko[idx], facing = "bending.inside",
+                             niceFacing = TRUE, cex = 0.32)
+               } else {
+                 circos.text(cls_cx, 0.5, cls_lab, facing = "inside",
+                             cex = 0.42, adj = c(0, 0.5))
+               }
+             })
+## tracks 2-7: one abundance heatmap ring per sample (drawn on hs1 only)
+for (s in seq_along(sm)) {
+  circos.track(ylim = c(0, 1), track.height = 0.055, bg.border = NA,
+               panel.fun = function(x, y) {
+                 if (get.cell.meta.data("sector.index") == "hs1") {
+                   for (i in seq_len(n_ko)) {
+                     x1 <- (i - 1) * 2
+                     circos.rect(x1, 0, x1 + 2, 1, col = brk(ab[i, s]), border = NA)
+                   }
+                 }
+               })
+}
+## links: each KO to its B-class, coloured by enrichment direction
+invisible(lapply(seq_len(n_ko), function(i) {
+  circos.link("hs1", ko_cx[i], "hs2", cls_cx[ko_cls[i]], rou1 = link_rou, rou2 = link_rou,
+              h = 0.30, col = adjustcolor(dir_col[i], alpha.f = 0.30),
+              border = NA, lwd = 0.4)
+}))
+## track 8: stacked per-class KO counts (GSH red / GSL green) on hs2
+circos.track(ylim = c(0, max(cnt$gsh + cnt$gsl)), track.height = 0.22, bg.border = "grey55",
+             panel.fun = function(x, y) {
+               if (get.cell.meta.data("sector.index") == "hs2") {
+                 circos.barplot(cbind(cnt$gsh, cnt$gsl), pos = cls_cx, bar_width = 3.2,
+                                col = c("#D7301F", "#1A9641"), border = NA)
+               }
+             })
+circos.clear()
+par(xpd = NA)
+legend("center", legend = sprintf("%d: %s", seq_along(sm), sm),
+       title = "Abundance ring (outer \u2192 inner)",
+       col = rep("grey55", 6), pch = 15, bty = "n", cex = 0.62, pt.cex = 1.2)
+legend("bottomright", legend = c("GSH-enriched (severe scab)", "GSL-enriched (mild)"),
+       fill = c("#D7301F", "#1A9641"), bty = "n", cex = 0.8,
+       title = "Links / inner bars")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Pin the link band with explicit `rou1`/`rou2` — links drawn at the default (current-track) radius dangle from whatever ring was drawn last and can cross the whole figure; compute the band from your track heights.
+-   Give the small sector extra `xlim` weight (classes span 5 units each here): circlize shares arc length in proportion to xlim, and a 24-class sector with default weighting leaves no room for readable labels.
+-   Call `circos.clear()` **before** the `legend()` calls — a live circos device redirects base-graphics output into the last track. Wrap the whole track sequence in one chunk so partial failures do not leave a broken device for later chunks.
+:::
+
+## Applications
+
+::: {#fig-CircosBarApplications1}
+![](../images/CircosBarPlot_demo.png){fig-alt="Feature-class circos with abundance rings" fig-align="center" width="60%"}
+
+Feature-class circos with abundance rings
+:::
+
+The feature-ring + link + class-bar layout serves any membership map: species to pathway, cell type to marker module, or metabolite to reaction class, wherever abundance and class membership are shown together.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Shi W, Li M, Wei G, et al. The occurrence of potato common scab correlates with the community composition and function of the geocaulosphere soil microbiome. Microbiome. 2019;7(1). doi:10.1186/s40168-019-0629-2

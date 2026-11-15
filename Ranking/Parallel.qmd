@@ -420,7 +420,130 @@ p
 
 This figure shows the methylation variation of different composites (cg236, cg292, and cg658) across different samples. The lines represent the numerical trend of each composite across samples, the dots represent the specific values, and the labels indicate the composite's name. The colors distinguish the different composites, and the fluctuations in their values across samples can be seen through the lines.
 
-## Applications
+### 3. The Metagene Profile: One Line per Sample Across Ordered Windows
+
+The FigureYa44 layout \[12\] is a profile plot in this page's line language with the axes replaced by **ordered genomic windows**: every gene is compressed to a fixed number of bins (3 kb upstream | gene body | 3 kb downstream), the per-window tag counts are averaged over thousands of genes, and each ChIP-seq sample is one line. IP-versus-input contrast is the classic reading. rtracklayer/bigWig extraction is outside this repository's lockfile, so the block below simulates the averaged window matrix — swap in your real per-window means and everything downstream is unchanged:
+
+```{r}
+#| label: fig-3.1Metagene
+#| fig-cap: "Metagene profile over 3,000 simulated genes: mean tag density across 100-bp upstream windows, the compressed gene body and 3-kb downstream windows, one line per sample (IP vs Input); dashed lines mark TSS and TTS."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+set.seed(4401)
+n_gene <- 3000
+resol <- 100
+span <- 3000
+gb_win <- 20
+up_win <- span / resol
+w_up <- seq_len(up_win)
+w_gb <- seq_len(gb_win)
+w_dn <- seq_len(up_win)
+pos_lab <- c(paste0("-", seq(span, resol, -resol)),
+             rep("gene body", gb_win),
+             paste0("+", seq(resol, span, resol)))
+axis_at <- c(1, up_win, up_win + gb_win, length(pos_lab))
+axis_lab <- c("-3 kb", "TSS", "TTS", "+3 kb")
+mk_profile <- function(amp_tss, amp_gb, noise) {
+  up <- exp(-(w_up - max(w_up))^2 / (2 * (up_win / 2.2)^2)) * amp_tss
+  gb <- (0.25 + 0.5 * seq(0, 1, length.out = gb_win)) * amp_gb
+  dn <- exp(-(w_dn - 1)^2 / (2 * (up_win / 2.5)^2)) * (amp_tss * 0.35)
+  pmax(0, c(up, gb, dn) + rnorm(length(up) + length(gb) + length(dn), 0, noise))
+}
+prof <- data.frame(
+  window = seq_along(pos_lab),
+  Cxxc1 = mk_profile(1.0, 0.55, 0.012),
+  Input = mk_profile(0.30, 0.18, 0.010))
+prof_long <- tidyr::pivot_longer(prof, cols = c(Cxxc1, Input),
+                                 names_to = "sample", values_to = "signal")
+ggplot(prof_long, aes(window, signal, colour = sample)) +
+  geom_line(linewidth = 1) +
+  geom_vline(xintercept = c(up_win + 0.5, up_win + gb_win + 0.5),
+             linetype = 2, colour = "grey55") +
+  annotate("rect", xmin = up_win + 0.5, xmax = up_win + gb_win + 0.5,
+           ymin = -Inf, ymax = Inf, alpha = 0.06, fill = "#2166AC") +
+  annotate("text", x = up_win / 2, y = max(prof_long$signal) * 1.02,
+           label = "3 kb upstream", size = 2.8, colour = "grey30") +
+  annotate("text", x = up_win + gb_win / 2, y = max(prof_long$signal) * 1.02,
+           label = "gene body (compressed)", size = 2.8, colour = "grey30") +
+  annotate("text", x = up_win + gb_win + up_win / 2, y = max(prof_long$signal) * 1.02,
+           label = "3 kb downstream", size = 2.8, colour = "grey30") +
+  scale_x_continuous(breaks = axis_at, labels = axis_lab,
+                     expand = expansion(mult = c(0.01, 0.01))) +
+  labs(x = NULL, y = "Mean tag density (simulated, 3,000 genes)",
+       title = "Metagene profile: IP vs Input over extended gene bodies",
+       colour = NULL) +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), legend.position = "top")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Plot the mean over genes, never the per-gene lines — a metagene's message *is* the average shape; per-gene spaghetti destroys it.
+-   Keep the gene-body compression honest: equal-length bodies resampled to the same bin count (here 20) is the standard; note it in the caption.
+-   Shade the gene-body region and mark TSS/TTS with dashed lines — the two boundaries are the only positions a reader can interpret without the caption.
+:::
+
+### 4. One Sample, Many Region Classes: the Single-bigWig Profile
+
+The sibling layout of §3 (FigureYa57profile_1bw \[13\]): **one bigWig sample**, several *region classes* — e.g. promoters grouped by CpG content (HCP / ICP / LCP) — each class averaged over its own BED file, one coloured line per class. The contrast is between genomic contexts instead of between samples; H3K4me3 at high-CpG promoters versus low-CpG promoters is the reference's textbook example. As in §3, the averaged window matrix is simulated here in place of the bigWig extraction:
+
+```{r}
+#| label: fig-4.1RegionProfile
+#| fig-cap: "Single-sample metagene profile by promoter class (simulated): mean H3K4me3 density over TSS +-2 kb for high- (HCP), intermediate- (ICP) and low-CpG (LCP) promoters; dashed lines mark TSS and the gene-body end."
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+set.seed(5701)
+resol <- 10
+span <- 2000
+up_win <- span / resol
+body_win <- 40
+amp <- c(HCP = 1.0, ICP = 0.45, LCP = 0.15)
+prof108 <- do.call(rbind, lapply(names(amp), function(cl) {
+  a <- amp[[cl]]
+  up <- exp(-(seq_len(up_win) - max(seq_len(up_win)))^2 / (2 * (up_win / 2.0)^2)) * a
+  body <- rep(0.15 * a + 0.1, body_win)
+  dn <- rep(0.08 * a, up_win)
+  data.frame(window = seq_len(up_win + body_win + up_win),
+             signal = pmax(0, c(up, body, dn) +
+                             rnorm(length(up) + body_win + up_win, 0, 0.015)),
+             region = cl)
+}))
+prof108$region <- factor(prof108$region, levels = c("HCP", "ICP", "LCP"))
+ggplot(prof108, aes(window, signal, colour = region)) +
+  geom_line(linewidth = 1.1) +
+  geom_vline(xintercept = c(up_win + 0.5, up_win + body_win + 0.5),
+             linetype = 2, colour = "grey55") +
+  annotate("text", x = up_win / 2, y = 1.05, label = "-2 kb", size = 2.9, colour = "grey30") +
+  annotate("text", x = up_win + body_win / 2, y = 1.05, label = "TSS + gene body", size = 2.9, colour = "grey30") +
+  annotate("text", x = up_win + body_win + up_win / 2, y = 1.05, label = "+2 kb", size = 2.9, colour = "grey30") +
+  scale_x_continuous(breaks = c(1, up_win, up_win + body_win, length(unique(prof108$window))),
+                     labels = c("-2 kb", "TSS", "TTS", "+2 kb"),
+                     expand = expansion(mult = c(0.01, 0.01))) +
+  scale_colour_manual(values = c(HCP = "darkorange", ICP = "navy", LCP = "darkgreen"), name = NULL) +
+  labs(x = NULL, y = "H3K4me3 tag density (simulated)",
+       title = "One sample, three CpG classes: promoter signal by region type") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), legend.position = "top")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Class the regions **before** extraction and keep one BED per class (the reference's `mm9_HCP_tss.bed` / ICP / LCP naming); averaging across classes destroys exactly the contrast the figure exists to show.
+-   With several classes, draw each line thinner and rely on the top legend — the three curves never touch, so colour alone carries identity here; check grey-scale separation before print.
+-   `span` and the gene-body bins must stay multiples of `resolution`, or the compressed body resampling misaligns TSS/TTS.
+:::
+
+## Applications## Applications
 
 ### 1. Basic Parallel Graph
 
@@ -474,4 +597,6 @@ Parallel plots illustrate cluster analysis of genes exhibiting Depot*[Dex] inter
 
 \[11\] Neuwirth, E. (2023). RColorBrewer: ColorBrewer Palettes. https://cran.r-project.org/package=RColorBrewer
 
+\[12\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 
+\[13\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

@@ -1,0 +1,121 @@
+---
+title: "Effect-Size Breakpoint Scan"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+When a covariate's effect bends — exposure HRs that fall once enough lymph nodes are examined — a single regression line hides the threshold. The reference scans HR-vs-covariate estimates, smooths them (`lowess`, bandwidth 2/3), and applies the **Chow test** (`strucchange::Fstats` + `breakpoints()`) to locate the change point, then draws the piecewise fit \[1\]. This tutorial reproduces the two-panel readout on simulated per-covariate-value Cox fits:
+
+## Example
+
+![](../images/Omics/BreakpointPlot_demo.png){fig-alt="Effect-Size Breakpoint Scan DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `survival`; `strucchange`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(survival)
+  library(strucchange)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+Simulated HR estimates at ELN counts 1-20 (80 patients each, planted effect change at ELN = 10) with Cox confidence intervals — the smoothed curve must bend where the simulation bends:
+
+```{r load data}
+suppressPackageStartupMessages({library(survival); library(strucchange)})
+set.seed(19201)
+## ELN (examined lymph node) count vs HR of an exposure, planted break at ELN=10
+eln_count <- 1:20
+true_hr <- c(seq(2.6, 1.0, length.out = 10), seq(1.0, 0.55, length.out = 10))
+Coxoutput <- do.call(rbind, lapply(seq_along(eln_count), function(i) {
+  k <- eln_count[i]
+  x <- rbinom(80, 1, 0.4)
+  t <- pmin(90, pmax(2, qweibull(runif(80), 1, 50 / exp(log(true_hr[i]) * x))))
+  sub <- data.frame(x = x, t = t, e = rbinom(80, 1, 0.7))
+  m <- coxph(Surv(t, e) ~ x, data = sub)
+  ci <- summary(m)$conf.int
+  data.frame(ELN = k, HR = ci[1, "exp(coef)"], lower = ci[1, "lower .95"], upper = ci[1, "upper .95"])
+}))
+jco <- c("#E64B35", "#4DBBD5", "#00A087", "#F39B7F")
+hr.lowess <- lowess(Coxoutput$HR ~ Coxoutput$ELN, f = 2/3)
+```
+
+## Visualization
+
+### 1. HR Sweep, Lowess, and the Detected Breakpoint
+
+Panel A: per-count HR with CI arrows, the lowess spine, and the detected breakpoint dashed at ELN = 10. Panel B: two-piece linear fits of the smoothed curve meeting exactly at the break — the "more is better until it isn't" story in one glance:
+
+```{r}
+#| label: fig-1.1Breakpoint
+#| fig-cap: "Effect-size breakpoint scan of simulated HR estimates across ELN counts 1-20: per-count Cox HRs with CI arrows, lowess spine and Chow-test breakpoint at ELN = 10 (top), with the two-piece linear fit of the smoothed curve (bottom)."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 5.5
+#| fig-height: 8
+
+f <- Fstats(hr.lowess$y ~ Coxoutput$ELN)
+bk <- breakpoints(f)$breakpoints
+cat("breakpoint at ELN =", Coxoutput$ELN[bk], "\n")
+
+par(mfrow = c(2, 1))
+par(bty = "o", mgp = c(1.5, .33, 0), mar = c(3, 4, 2, 1), las = 1, tcl = -0.25)
+plot(Coxoutput$ELN, Coxoutput$HR, pch = 19, cex = 0.9, col = jco[1],
+     xlab = "ELN count", ylab = "Hazard Ratio",
+     main = "HR vs ELN with lowess + breakpoint", ylim = c(0, max(Coxoutput$upper)))
+arrows(Coxoutput$ELN, Coxoutput$lower, Coxoutput$ELN, Coxoutput$upper,
+       angle = 90, code = 3, length = 0.04, col = "grey55")
+lines(hr.lowess, col = jco[2], lwd = 2)
+abline(v = Coxoutput$ELN[bk], lty = 2, col = jco[3], lwd = 1.5)
+text(Coxoutput$ELN[bk] + 0.6, max(Coxoutput$upper) * 0.95,
+     sprintf("breakpoint: ELN = %d", Coxoutput$ELN[bk]), adj = 0, cex = 0.85, col = jco[3])
+## piecewise regression of the smoothed curve (clean data frame, not $-formulas)
+sm <- data.frame(ELN = Coxoutput$ELN, y = hr.lowess$y)
+seg_lm <- lm(y ~ ELN, data = sm, subset = seq_along(ELN) <= bk)
+seg_lm2 <- lm(y ~ ELN, data = sm, subset = seq_along(ELN) > bk)
+plot(hr.lowess$x, hr.lowess$y, type = "n", xlab = "ELN count", ylab = "lowess(HR)",
+     main = "Piecewise fit at the detected breakpoint")
+points(hr.lowess$x, hr.lowess$y, pch = 16, cex = 0.8, col = "grey40")
+cli <- seq(min(Coxoutput$ELN), Coxoutput$ELN[bk], length.out = 40)
+cli2 <- seq(Coxoutput$ELN[bk], max(Coxoutput$ELN), length.out = 40)
+lines(cli, predict(seg_lm, newdata = data.frame(ELN = cli)), col = jco[1], lwd = 2)
+lines(cli2, predict(seg_lm2, newdata = data.frame(ELN = cli2)), col = jco[2], lwd = 2)
+abline(v = Coxoutput$ELN[bk], lty = 2, col = jco[3])
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Fit piecewise regressions from a **clean data frame** (`lm(y ~ ELN, data = sm, subset = ...)`), never from `$`-composed formulas — `predict()` then ignores `newdata` because the terms carry the `df$col` name.
+-   `breakpoints()` returns the observation **index**, not the covariate value — map back through the sorted covariate before labelling the figure.
+-   The lowess bandwidth (f = 2/3 here) decides how much structure the breakpoint test sees: tighten it and noise becomes "change points"; loosen it and the true bend smooths away. Report f with the figure.
+:::
+
+## Applications
+
+::: {#fig-BreakpointApplications1}
+![](../images/Omics/BreakpointPlot_demo.png){fig-alt="Effect-size breakpoint scan" fig-align="center" width="60%"}
+
+Effect-size breakpoint scan
+:::
+
+The HR-sweep + breakpoint readout fits any dosing/threshold question: node yield in oncological surgery, marker positivity cutoffs, or drug dose-response inflections.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Zeileis A, Kleiber C, Krämer W, Hornik K. Testing and dating of structural changes in practice. Comput Stat Data Anal. 2003;44(1-2):109-123. doi:10.1016/S0167-9473(03)00030-6

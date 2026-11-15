@@ -1,0 +1,87 @@
+---
+title: "GMM Clustering of Combination AUCs"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+After exhaustively screening 2^k - 1 gene-combination models, the reference clusters the (model index, AUC) scatter with a **Gaussian mixture model (GMM)** to separate the "useless model" mass from the "high-AUC tail" - the optimal combination comes from the highest-AUC cluster \[1\]. `mclust::Mclust()` does the clustering; this tutorial simulates 1023 model AUCs with a planted tail and reproduces the classified scatter:
+
+## Example
+
+![](../images/Distribution/GmmClusterPlot_demo.png){fig-alt="GMM Clustering of Combination AUCs DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `mclust`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(mclust)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+1023 simulated combination AUCs: a large Gaussian lobe around 0.55 plus an increasing tail up to ~0.72 (the planted high-AUC cluster GMM must isolate):
+
+```{r load data}
+suppressPackageStartupMessages(library(mclust))
+set.seed(21901)
+n_models <- 1023
+aucDF <- data.frame(
+  model = 1:n_models,
+  auc = c(rnorm(700, 0.55, 0.04), rnorm(200, 0.60, 0.03),
+          rnorm(100, 0.66, 0.02), rnorm(23, 0.71, 0.01)))
+```
+
+## Visualization
+
+### 1. GMM-Classified AUC Scatter
+
+`Mclust(aucDF[, c("model", "auc")])` with default BIC model selection: points coloured by GMM cluster, the high-AUC tail separated from the useless-model mass:
+
+```{r}
+#| label: fig-1.1GmmCluster
+#| fig-cap: "GMM clustering of 1023 simulated combination-model AUCs over model index: points coloured by Gaussian-mixture cluster (BIC-selected), separating the useless-model mass from the high-AUC tail."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5
+
+mod <- Mclust(aucDF[, c("model", "auc")])
+plot(mod, what = "classification")
+abline(h = 0.71, lty = 2, col = "grey40")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `Mclust()` with no explicit `G` uses BIC to select both the number of clusters (1-9) and the covariance model.
+-   The best combination comes from the **highest-AUC cluster**, not the global maximum.
+-   With 1023 combinations and a median-split + log-rank, the winning P is maximally selected - validate independently.
+:::
+
+## Applications
+
+::: {#fig-GmmClusterApplications1}
+![](../images/Distribution/GmmClusterPlot_demo.png){fig-alt="GMM clustering of model AUCs" fig-align="center" width="60%"}
+
+GMM clustering of model AUCs
+:::
+
+The GMM-over-screening-results pattern fits any exhaustive model search: signature combinations, feature-selection sweeps, or hyperparameter grids.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Scrucca L, et al. mclust 5: clustering, classification and density estimation using Gaussian finite mixture models. R J. 2016;8(1):289-317. doi:10.32614/RJ-2016-021

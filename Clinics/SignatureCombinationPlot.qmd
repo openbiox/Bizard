@@ -1,0 +1,139 @@
+---
+title: "Signature Combination Search"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+From a pre-screened gene panel (here the top-10 by importance), the reference **exhaustively tests all 2^10 − 1 = 1023 combinations**: each combination builds an equal-weight Cox risk score, splits patients at the median into high/low risk, and records the log-rank P — the winning signature maximises −log10(P) with as few genes as possible \[1\]. The reference ranks the panel with `randomForestSRC::rfsrc()` importance (see `RfSurvivalPlot`); this tutorial reproduces all three readouts with `survival` alone, ranking by univariate −log10(P):
+
+## Example
+
+![](../images/Clinics/SignatureCombinationPlot_demo.png){fig-alt="Signature Combination Search DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `survival`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(survival)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+180 simulated patients × 30 genes with five planted prognostic genes. The univariate screen, the top-10 ranking, and the 1013-combination sweep must agree that the planted genes dominate the winning combinations:
+
+```{r load data}
+suppressPackageStartupMessages({library(survival)})
+set.seed(19801)
+n <- 180; n_gene <- 30
+genes <- sprintf("G%02d", 1:n_gene)
+expr <- matrix(rnorm(n * n_gene), n, n_gene, dimnames = list(NULL, genes))
+sig_genes <- c("G02", "G07", "G14", "G21", "G27")
+sig_coef <- c(0.5, -0.45, 0.4, -0.35, 0.55)
+full <- rep(0, n_gene); full[match(sig_genes, genes)] <- sig_coef
+lp <- as.vector(scale(as.vector(expr %*% full)))
+lam <- exp(0.8 * lp)
+OS.time <- pmin(180, pmax(2, qweibull(runif(n), 1, 80 / lam)))
+OS <- rbinom(n, 1, 0.6)
+surv <- data.frame(OS = OS, OS.time = OS.time)
+## univariate Cox per gene
+uv <- do.call(rbind, lapply(genes, function(g) {
+  m <- coxph(Surv(OS.time, OS) ~ expr[, g])
+  ci <- summary(m)$conf.int
+  data.frame(gene = g, HR = ci[1, 1], p = summary(m)$coefficients[1, 5])
+}))
+# NOTE: name the importance vector explicitly - summary(m)$coefficients rownames
+# are all "expr[, g]" duplicates and would poison names(imp)
+imp <- -log10(pmax(uv$p, 1e-16))
+names(imp) <- uv$gene
+imp <- imp / max(imp)
+top10 <- head(names(sort(imp, decreasing = TRUE)), 10)
+stopifnot(length(top10) == 10)
+```
+
+## Visualization
+
+### 1. Screen, Ranking, and Combination Sweep
+
+The three reference readouts: the univariate Cox volcano (red = p < 0.05), the top-10 importance lollipop (5 planted genes at top), and the top-20 combinations by −log10(log-rank P) — the 5-gene combination wins, exactly the parsimony the reference searches for:
+
+```{r}
+#| label: fig-1.1SigComb
+#| fig-cap: "Signature combination search on 180 simulated patients: univariate Cox volcano (left), top-10 importance lollipop (middle, five planted genes on top) and the top-20 gene combinations by -log10(log-rank P) (right) - the 5-gene combination wins."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 3.5
+
+results <- list(); k <- 0
+for (m in 2:10) {
+  combs <- combn(top10, m)
+  for (j in seq_len(ncol(combs))) {
+    cg <- combs[, j]
+    cv <- scale(expr[, cg]) %*% rep(1, length(cg))   # equal-weight risk score
+    grp <- ifelse(cv > median(cv), "HRisk", "LRisk")
+    fitd <- survdiff(Surv(OS.time, OS) ~ grp)
+    p <- 1 - pchisq(fitd$chisq, length(fitd$n) - 1)
+    k <- k + 1
+    results[[k]] <- data.frame(ngene = length(cg), p = p)
+  }
+}
+res <- do.call(rbind, results)
+res$lp <- -log10(pmax(res$p, 1e-16))
+top20 <- head(res[order(-res$lp), ], 20)
+
+par(mfrow = c(1, 3))
+par(bty = "o", mgp = c(1.5, .33, 0), mar = c(4, 4, 2.5, 1), las = 1, tcl = -0.25)
+plot(uv$HR, -log10(pmax(uv$p, 1e-16)), pch = 19,
+     col = ifelse(uv$p < 0.05, "#E53435", "#21498D"), cex = 0.8,
+     xlim = c(-1, 3), xlab = "Univariate Cox coefficient (log HR)",
+     ylab = "-log10(P)", main = "Univariate screen")
+abline(h = -log10(0.05), lty = 2, col = "grey55")
+par(mar = c(4, 6, 2.5, 1))
+imp10 <- sort(imp[top10], decreasing = FALSE)
+plot(NA, NA, xlim = c(0, max(imp10)), ylim = c(0.5, 10.5), yaxt = "n",
+     xlab = "Variable Importance", ylab = "", main = "Top-10 importance")
+for (i in seq_along(imp10)) lines(c(0, imp10[i]), c(i, i), col = "steelblue", lwd = 2.5)
+axis(2, at = seq_along(imp10), labels = names(imp10), las = 1, cex.axis = 0.75)
+par(mar = c(3, 5, 2.5, 2.5))
+top20o <- top20[order(top20$lp), ]
+barplot(top20o$lp, horiz = TRUE, col = "#E53435",
+        names.arg = paste0(top20o$ngene, " gene(s)"), las = 1, cex.names = 0.7, xlab = "")
+axis(3, las = 1)
+mtext("-log10(KM p)", side = 3, line = 2, cex = 0.85)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Name intermediate vectors explicitly: `summary(coxph(~ expr[, g]))$coefficients` rownames are all the literal `"expr[, g]"`, which poisons `names(imp)` and silently breaks `combn()`.
+-   The sweep is 2^k − 1 model fits — beyond ~15 genes it explodes (the reference caps the panel at 10); pre-screen hard before looping.
+-   Median-split + log-rank on a score built from the **same data** is maximally optimistically biased — validate the winning combination on an independent cohort before believing it.
+:::
+
+## Applications
+
+::: {#fig-SigCombApplications1}
+![](../images/Clinics/SignatureCombinationPlot_demo.png){fig-alt="Exhaustive signature sweep" fig-align="center" width="60%"}
+
+Exhaustive signature sweep
+:::
+
+The screen → rank → sweep loop fits any small candidate panel: immune-score gene sets, lncRNA panels, or metabolite ratios.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Simon RM, Subramanian J, Li MC, Mancuso S. Using cross-validation to evaluate multivariate prediction procedures. Nat Rev Genet. 2011;12(10):743. doi:10.1038/nrg2731 (why the winning combination needs external validation)

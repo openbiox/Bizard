@@ -73,7 +73,7 @@ ekegg <- enrichKEGG(
   organism = 'hsa'
 )
 # KEGG results default to Entrez ID; manually convert to Symbol to match plotting data format
-ekegg <- setReadable(ekegg, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
+ekegg <- setReadable(ekegg, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID")
 
 # 3. Data Cleaning and Merging
 # Extract GO results (Rename ONTOLOGY to Category)
@@ -369,9 +369,164 @@ stopifnot(sum(up$FDR < 0.05) + sum(dn$FDR < 0.05) >= 10)
 
 -   The negative-`Count` trick keeps both arms on one scale so the eye compares arm lengths directly.
 -   `facet_grid(..., scales = "free_y", space = "free_y")` lets each arm sort its own terms without empty padding rows.
--   With real results, build the two arms with `clusterProfiler::compare_eGO()` / `compareEGO()` and feed the merged frame to the same ggplot2 layers — no enrichplot dependency needed.
+-   With real results, build the two arms with `clusterProfiler::compareCluster()` and feed the merged frame to the same ggplot2 layers — no enrichplot dependency needed.
 :::
 
+### 4. Pathway-Activity DE Dot Plot Across Cell Types
+
+The FigureYa318 layout \[2\] asks the two-group question **per cell type and per pathway at once**: rows = cell types, columns = pathways (grouped by a classification colour strip), dot size = FDR bins, dot colour = log2 fold change of the pathway activity score. The reference computes AUCell scores per cell and limma contrasts per cell type; here the same geometry is reproduced from simulated per-cell activity scores tested with Wilcoxon rank-sum and Bonferroni correction — swap in your own AUCell/GSVA score matrix for real data.
+
+```{r}
+#| label: fig-4.1PathwayDEDot
+#| fig-cap: "Pathway-activity differential dot plot (12 pathways x 4 cell types): dot size = Bonferroni-FDR bins, colour = log2 fold change of the activity score; the bottom strip groups pathways into Immune / Metabolism / Signaling / Proliferation."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 11
+#| fig-height: 6
+
+set.seed(3181)
+paths <- c("HALLMARK_INTERFERON_GAMMA", "HALLMARK_TNFA_SIGNALING", "HALLMARK_COMPLEMENT",
+           "HALLMARK_GLYCOLYSIS", "HALLMARK_OXIDATIVE_PHOSPH", "HALLMARK_FATTY_ACID",
+           "HALLMARK_MAPK", "HALLMARK_PI3K", "HALLMARK_NOTCH",
+           "HALLMARK_E2F", "HALLMARK_G2M", "HALLMARK_APOPTOSIS")
+class.df <- data.frame(
+  geneset = paths,
+  Classification = c("Immune", "Immune", "Immune",
+                     "Metabolism", "Metabolism", "Metabolism",
+                     "Signaling", "Signaling", "Signaling",
+                     "Proliferation", "Proliferation", "Proliferation"))
+cts <- c("CD8 T", "Macro", "Fibro", "Cancer")
+n_pc <- 40
+path_mean <- setNames(c(0.55, 0.5, 0.45, 0.35, 0.4, 0.3, 0.25, 0.3, 0.2, 0.2, 0.25, 0.3), paths)
+scores_ctl <- do.call(rbind, lapply(cts, function(ct) {
+  m <- sapply(paths, function(pw) rnorm(n_pc, path_mean[pw], 0.12))
+  data.frame(cell = ct, m, check.names = FALSE)
+}))
+scores_tr <- scores_ctl
+immune_hit <- scores_tr$cell %in% c("CD8 T", "Macro")
+scores_tr$HALLMARK_INTERFERON_GAMMA[immune_hit] <-
+  scores_tr$HALLMARK_INTERFERON_GAMMA[immune_hit] + 0.28
+scores_tr$HALLMARK_TNFA_SIGNALING[immune_hit] <-
+  scores_tr$HALLMARK_TNFA_SIGNALING[immune_hit] + 0.32
+scores_tr$HALLMARK_E2F[] <- scores_tr$HALLMARK_E2F[] - 0.22
+## null pathways get small cell-type-specific offsets in the treated arm so
+## their near-zero log2FC scatter stays visible on the white midpoint
+set.seed(3182)
+null_paths <- setdiff(paths, c("HALLMARK_INTERFERON_GAMMA", "HALLMARK_TNFA_SIGNALING", "HALLMARK_E2F"))
+for (pw in null_paths) {
+  off <- rnorm(length(cts), 0, 0.07); names(off) <- cts
+  sel <- scores_tr$cell %in% cts
+  scores_tr[sel, pw] <- scores_tr[sel, pw] + off[scores_tr$cell[sel]]
+}
+
+DP.list <- lapply(cts, function(ct) {
+  do.call(rbind, lapply(paths, function(pw) {
+    a <- scores_ctl$cell == ct; b <- scores_tr$cell == ct
+    data.frame(Celltypes = ct, Pathway = pw,
+               logFC = mean(scores_tr[[pw]][b]) - mean(scores_ctl[[pw]][a]),
+               p.val = wilcox.test(scores_tr[[pw]][b], scores_ctl[[pw]][a])$p.value)
+  }))
+})
+DPs <- do.call(rbind, DP.list)
+DPs$adj.P.Val <- p.adjust(DPs$p.val, method = "bonferroni")
+
+plot.data <- DPs
+plot.data$FDR <- cut(plot.data$adj.P.Val, breaks = c(0, 1e-10, 1e-6, 1e-3, 1),
+                     include.lowest = TRUE,
+                     labels = c("<1e-10", "1e-10~1e-6", "1e-6~1e-3", ">1e-3"))
+plot.data$FDR <- factor(as.character(plot.data$FDR),
+                        levels = c("<1e-10", "1e-10~1e-6", "1e-6~1e-3", ">1e-3"))
+plot.data$Pathway <- factor(sub("HALLMARK_", "", plot.data$Pathway),
+                            levels = sub("HALLMARK_", "", class.df$geneset))
+plot.data$Celltypes <- factor(plot.data$Celltypes, levels = rev(cts))
+
+color <- c("#4682B4", "#FFFFFF", "#CD2626")
+class.color <- c("Immune" = "#D58986", "Metabolism" = "#80554C",
+                 "Signaling" = "#71AC7A", "Proliferation" = "#E8D4B4")
+p1 <- ggplot(plot.data, aes(Pathway, Celltypes, color = logFC, size = FDR)) +
+  geom_point() +
+  scale_color_gradient2(low = color[1], mid = color[2], high = color[3],
+                        limits = c(-0.35, 0.35), name = "log2FC (score)") +
+  scale_size_manual(values = c("<1e-10" = 4.4, "1e-10~1e-6" = 3.6,
+                               "1e-6~1e-3" = 2.8, ">1e-3" = 1.6),
+                    name = "Bonferroni FDR", drop = FALSE) +
+  geom_hline(yintercept = seq(0.5, length(cts) - 0.5, 1), colour = "grey80") +
+  geom_vline(xintercept = seq(0.5, length(paths) - 0.5, 1), colour = "grey80") +
+  theme_classic(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        axis.line = element_blank())
+## the classification strip must share p1's column order: keep geneset as a
+## factor with the same level order, never a bare character vector
+class.df$geneset <- factor(sub("HALLMARK_", "", class.df$geneset),
+                           levels = sub("HALLMARK_", "", paths))
+p2 <- ggplot(class.df, aes(geneset, 1, fill = Classification)) +
+  geom_tile() +
+  scale_fill_manual(values = class.color, name = NULL) +
+  theme_void(base_size = 10) +
+  theme(legend.position = "bottom", legend.direction = "horizontal",
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7.5),
+        legend.key.size = unit(3, "mm"),
+        legend.margin = margin(0, 0, 0, 0))
+cowplot::plot_grid(p1, p2, ncol = 1, align = "v", axis = "lr",
+                   rel_heights = c(10, 1.9))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Keep the strip and the dot plot on the **same factor levels** — the strip's x axis is a plain character vector in most drafts, which silently re-sorts alphabetically and desynchronises the two panels.
+-   Bonferroni over pathways x cell types is what the reference uses; with `rstatix` the same workflow is `group_by(Celltypes, Pathway) |> wilcox_test() |> adjust_pvalue(method = "bonferroni")`.
+-   Dots at the white midpoint are invisible on a white panel: either plant real per-cell-type variability (as done here) or outline non-significant dots.
+:::
+
+### 5. Gene-Concept Circular Network (GOplot-Style)
+
+The GOplot package behind FigureYa52 \[2\] is no longer on CRAN, but its signature figure — genes linked to the top enriched terms, gene nodes coloured by log2 fold change — is exactly `enrichplot::cnetplot()` on a `clusterProfiler::enrichGO()` result with `foldChange` attached. Two steps matter: `simplify()` first (BP terms are massively redundant and the network becomes unreadable), and pass the named log2FC vector so gene nodes carry the direction:
+
+```{r}
+#| label: fig-5.1GeneConceptNet
+#| fig-cap: "Gene-concept network of 3 top enriched BP terms (clusterProfiler + enrichplot): term hubs sized by member count, gene nodes coloured by log2 fold change (blue = up, red = down); simulated IFN-gamma response gene set."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 7
+
+set.seed(5201)
+de_genes <- data.frame(
+  SYMBOL = c("IFNG", "TNF", "IL2", "STAT1", "CXCL9", "CXCL10", "IRF1", "GBP1",
+             "CD8A", "GZMB", "PRF1", "LAG3", "PDCD1", "CTLA4", "ISG15", "MX1"),
+  log2fc = c(1.6, 1.4, 1.2, 1.1, 1.5, 1.3, 1.0, 0.9, 1.2, 1.5, 1.1, -1.0, -0.9, -0.8, 1.0, 0.8))
+## simplify() first: BP terms are massively redundant and the gene-concept
+## network is unreadable without it; cnetplot's `layout`/`circular` args moved
+## in clusterProfiler >= 4.x, so the default layout is used here
+ego52 <- clusterProfiler::enrichGO(gene = de_genes$SYMBOL, OrgDb = "org.Hs.eg.db",
+                                   keyType = "SYMBOL", ont = "BP",
+                                   pvalueCutoff = 0.01, qvalueCutoff = 0.05,
+                                   readable = TRUE)
+ego52 <- clusterProfiler::simplify(ego52, cutoff = 0.6, by = "p.adjust")
+geneList52 <- de_genes$log2fc; names(geneList52) <- de_genes$SYMBOL
+enrichplot::cnetplot(ego52, showCategory = 3, foldChange = geneList52,
+                     color_edge = "grey") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom",
+        panel.background = element_rect(fill = "white", colour = NA))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `simplify()` (semantic redundancy removal) before any gene-concept network: without it a 16-gene input yields hundreds of near-identical BP terms and the three you display are arbitrary.
+-   `readable = TRUE` in `enrichGO()` maps ENTREZ IDs back to symbols — the network is only useful when gene nodes carry names a reader knows.
+-   In clusterProfiler >= 4.x the old `circular = TRUE` / `colorEdge` arguments are gone (`layout`/`color_edge`); the `...` errors are silent-looking signature changes worth checking with `args(clusterProfiler::cnetplot)`.
+
+-   **Merging redundant GO terms (FigureYa80)**: beyond `simplify()`, cluster the enriched terms by semantic similarity — `GOSemSim::godata('org.Hs.eg.db', ont = "BP")` then `mgeneSim(termIDs, semData, measure = "Wang")` — and cut the `hclust(dist(1 - sim))` tree at a similarity threshold (the reference reviews the dendrogram by hand); report one representative term per cluster, and pre-filter terms with huge gene sets (BgRatio numerator > 300) before clustering.
+:::-   **Gene-set × gene-set overlap map (FigureYa83)**: pairwise Fisher tests between every pair of term gene sets rendered as an upper-triangle-only heatmap — run `corrplot(..., order = "hclust", hclust.method = "ward.D2")` once just to obtain the cluster order, zero out `lower.tri`, then redraw with `image()`. Three tiers of stars come from **q-value quantile splits** (not fixed 0.05/0.01), exact-zero p values need a `p < 1e-150 = NA` guard against `-Inf` under `-log10`, and self-comparisons give `Inf` odds ratios that must be dropped.
+:::
+
+## Reference
 
 \[1\] 生信医道. 超好看的单细胞GO，KEGG富集分析图！确定不来看看吗？ \[Internet\]. 微信公众号: 生信医道. 2025 \[cited 2025 Dec 30\]. Available from: <https://mp.weixin.qq.com/s/pY1S0EJQAhdezvxeNt-SzA>
 

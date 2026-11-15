@@ -1,0 +1,96 @@
+---
+title: "DNA 甲基化年龄加速"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+**DNA 甲基化年龄**（DNAmAge）从 CpG beta 值估计，在癌症中偏离实际年龄——**差值**（加速 vs 减速）即表观遗传年龄读数 \[1\]。参考用 ChAMP + `wateRmelon::agep()` 处理 TCGA 450K 数据；甲基化处理太重无法入锁，本教程**直接模拟 DNAmAge 输出**并以 base graphics 复现镜像柱状图：
+
+## Example
+
+![](../images/Omics/DnaAgePlot_demo.png){fig-alt="DNA 甲基化年龄加速 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：base R
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# base graphics only
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+20 个样本的模拟 DNAmAge 输出（按差值降序排列）：`dnamage`（表观遗传钟）、`cage`（实际年龄）及其差值分类为加速（红）或减速（蓝）。参考由 ChAMP 过滤的 450K 数据 + `wateRmelon::agep()` 计算：
+
+```{r load data}
+set.seed(21501)
+n_da <- 20
+cage <- round(runif(n_da, 30, 75))
+dnamage <- round(cage + rnorm(n_da, 8, 15), 1)
+dnamage <- pmax(5, dnamage)
+diff <- dnamage - cage
+agestatus <- ifelse(diff > 0, "Accelerated", "Decelerated")
+o <- order(diff, decreasing = TRUE)
+da <- data.frame(cage = cage[o], dnamage = dnamage[o], diff = diff[o],
+                 agestatus = agestatus[o], row.names = sprintf("S%02d", 1:n_da))
+da$colr <- ifelse(da$agestatus == "Accelerated", adjustcolor("#E31A1C", 0.8),
+                  adjustcolor("#1F78B4", 0.8))
+```
+
+## Visualization
+
+### 镜像 DNAmAge 柱状图
+
+base graphics 镜像柱状图：DNAmAge 柱从 y = 0 向上延伸、实际年龄柱向下（取负值）、彩色差值柱叠加两者——加速样本（红）与减速样本（蓝）一目了然：
+
+```{r}
+#| label: fig-1.1DnaAge
+#| fig-cap: "20 个模拟样本的 DNA 甲基化年龄 vs 实际年龄镜像柱状图、按差值降序排列：向上柱 = DNAmAge、向下柱 = 实际年龄、彩色差值柱标记加速（红）vs 减速（蓝）样本。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 5.5
+
+barplot(t(da[, c("dnamage", "cage")]), beside = FALSE,
+        col = c("#99999940", "#66666640"), border = NA,
+        ylim = c(-80, 150), axes = FALSE, xaxt = "n", space = 0.4)
+axis(2, las = 1, cex.axis = 0.8)
+barplot(da$diff, col = da$colr, add = TRUE, space = 0.4, axes = FALSE, xaxt = "n")
+bp <- barplot(t(da[, c("dnamage", "cage")]), beside = FALSE,
+        col = c("#99999940", "#66666640"), border = NA,
+        ylim = c(-80, 150), axes = FALSE, xaxt = "n", space = 0.4)
+lines(bp, lowess(da$diff)$y, lwd = 1.5, col = "grey20")
+axis(1, at = seq(0.7, n_da, by = 2) + 0.4, labels = rownames(da)[seq(1, n_da, by = 2)],
+     cex.axis = 0.65, tick = FALSE)
+text(1, 120, "DNA methylation age", cex = 0.85, adj = 0, font = 2)
+text(1, -70, "Chronological age", cex = 0.85, adj = 0, font = 2)
+legend("topright", bty = "n", cex = 0.75, pch = 15,
+       col = c(adjustcolor("#E31A1C", 0.8), adjustcolor("#1F78B4", 0.8)),
+       legend = c("Accelerated", "Decelerated"))
+```
+
+
+## 应用场景
+
+::: {#fig-DnaAgeApplications1}
+![](../images/Omics/DnaAgePlot_demo.png){fig-alt="DNAmAge 加速" fig-align="center" width="60%"}
+
+DNAmAge 加速
+:::
+
+DNAmAge 加速在衰老、癌症和环境暴露研究中都有报告；镜像柱状图也适用于任何配对表观遗传钟输出。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Luo Y, Zhang J. DNAmAge acceleration in cervical SCC. Clin Epigenetics. <https://doi.org/10.1186/s13148-020-00929-z>

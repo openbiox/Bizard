@@ -273,6 +273,200 @@ ggdraw(combined)
 - `insert_xaxis_grob()` / `insert_yaxis_grob()` 来自 cowplot，且保持主面板尺寸；等价做法是 `patchwork::plot_layout` 配合 `design`——两者都需要对齐坐标范围。
 :::
 
-## 参考文献
+### 4. 小效应量筛选的尺寸编码火山图（PDUI 风格）
+
+可变多聚腺苷化筛选（FigureYa321 背后的 TC3A PDUI 分析 \[1\]）产生的**效应量很小**——有意义的 3'UTR 使用偏移是 ΔPDUI ≈ 0.1 而不是 1——常规的 |log2FC| ≥ 1 阈值完全不起作用。参考编码方式：y = −log10 校正 P，x = ΔPDUI（放宽到 ±0.05 阈值），**点大小 = |ΔPDUI × −log10 P|**，让效应与显著性共同决定视觉权重。下块在与参考一致的 `limma` 流程上运行模拟 PDUI 矩阵：
+
+```{r}
+#| label: fig-4.1PduiVolcano
+#| fig-cap: "模拟 3'UTR 使用（PDUI）事件的尺寸编码火山图：颜色 = 方向阈值（|ΔPDUI| > 0.05 且校正 P < 0.1），点大小 = |ΔPDUI × -log10 P|；两侧最强的偏移事件带标签。"
+#| out.width: "75%"
+#| warning: false
+#| message: false
+#| fig-width: 6.8
+#| fig-height: 5.6
+
+set.seed(3211)
+n_ev <- 400; n_s <- 60
+PDUI <- matrix(runif(n_ev * n_s, 0.2, 0.8), n_ev, n_s)
+rownames(PDUI) <- paste0("chr", sample(1:22, n_ev, replace = TRUE), "_",
+                         sample(1:9, n_ev, replace = TRUE), "|EV", 1:n_ev, "|")
+grp <- factor(rep(c("LIVING", "DEAD"), each = n_s / 2), levels = c("LIVING", "DEAD"))
+hit <- sample(n_ev, 18)
+PDUI[hit[1:9], grp == "DEAD"] <- pmin(1, PDUI[hit[1:9], grp == "DEAD"] + 0.2)   # 3'UTR 缩短
+PDUI[hit[10:18], grp == "DEAD"] <- pmax(0, PDUI[hit[10:18], grp == "DEAD"] - 0.2)
+
+design <- model.matrix(~0 + grp); colnames(design) <- levels(grp)
+fit <- limma::lmFit(PDUI, design)
+fit2 <- limma::contrasts.fit(fit, limma::makeContrasts(DEAD - LIVING, levels = design))
+fit2 <- limma::eBayes(fit2)
+DEGs <- limma::topTable(fit2, coef = 1, n = Inf)
+DEGs$SYMBOL <- gsub(".+\\|(EV[0-9]+)\\|.*", "\\1", rownames(DEGs))
+
+plot.data <- DEGs
+plot.data$logPadj <- -log(plot.data$adj.P.Val)
+plotgene <- rownames(plot.data)[c(which.max(plot.data$logFC), which.min(plot.data$logFC))]
+plot.data$label <- ifelse(rownames(plot.data) %in% plotgene, plot.data$SYMBOL, NA)
+plot.data$status <- "NoSig"
+plot.data$status[plot.data$logFC < -0.05 & plot.data$logPadj > 1] <- "Down"
+plot.data$status[plot.data$logFC > 0.05 & plot.data$logPadj > 1] <- "Up"
+plot.data$status <- factor(plot.data$status, levels = c("Up", "Down", "NoSig"))
+plot.data$size_v <- abs(plot.data$logFC * plot.data$logPadj)
+palette_volcano <- c(Up = "#D93F3C", Down = "#184A8C", NoSig = "#B3B3B3")
+
+ggplot(plot.data, aes(logFC, logPadj, color = status)) +
+  geom_point(alpha = 0.9, aes(size = size_v)) +
+  scale_size_continuous(range = c(1, 7), guide = "none") +
+  scale_color_manual(values = palette_volcano, drop = FALSE, name = NULL) +
+  geom_label_repel(data = subset(plot.data, !is.na(label)),
+                   aes(label = label), size = 3.4, fontface = "bold",
+                   box.padding = 0.5, show.legend = FALSE) +
+  geom_point(data = subset(plot.data, !is.na(label)), shape = 1,
+             stroke = 0.6, color = "black", size = 2.6) +
+  geom_vline(xintercept = c(-0.05, 0.05), colour = "grey40", linetype = "longdash", lwd = 0.25) +
+  geom_hline(yintercept = 1, colour = "grey40", linetype = "longdash", lwd = 0.25) +
+  labs(x = "delta PDUI (DEAD - LIVING)", y = "-log10 adjusted P",
+       title = "3'UTR usage shift by vital status (simulated TC3A-style PDUI)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), legend.position = "top")
+```
+
+::: callout-tip
+**实践要点**
+
+-   效应量小时，尺寸通道承担主要信息：`|效应 × -log10(P)|` 随证据二次增长，能把双重强的事件从拥挤的中心拉出来——请在图注中说明，否则读者会以为 size 是第三个变量。
+-   阈值必须匹配量表尺度：ΔPDUI 的阈值在 ±0.05（使用比例取值 [0, 1]）；照抄转录组火山图的 ±1 阈值会把图清空。
+-   两个带标签的事件作为阅读锚点——每个方向一个——其余交给颜色。
+:::
+
+### 5. 分层"酷炫"火山图（FigureYa59volcanoV2）
+
+当筛选结果要交给下游功能验证时，参考文档的高级火山图 \[1\] 一次编码**三个显著性层级**：点色随嵌套门槛加深（|logFC| > 1.5 且 P < 0.05 → > 2.5 且 P < 1e-4 → > 5 且 P < 1e-5），点大小随层级增大，选去做功能验证的基因按通路重新着色、加黑圈并打标签。门槛由数据驱动，图在大动态范围下无需轴截断：
+
+```{r}
+#| label: fig-5.1TieredVolcano
+#| fig-cap: "900 个模拟事件的分层火山图：|logFC| = 1.5/2.5/5 与校正 P = 0.05/1e-4/1e-5 的嵌套门槛决定颜色深浅与点大小；按通路着色、黑圈、带标签的点为验证候选。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 6.2
+
+set.seed(5901)
+n_v2 <- 900
+v2 <- data.frame(
+  gsym = paste0("G", 1:n_v2),
+  logFC = rnorm(n_v2, 0, 1.4),
+  adjP = 10^(-rexp(n_v2, 0.9)))
+v2$adjP <- pmin(1, v2$adjP)
+sel <- sample(n_v2, 10)
+v2$adjP[sel[1:6]] <- 10^(-runif(6, 5, 12)); v2$logFC[sel[1:4]] <- rnorm(4, 4.5, 0.7)
+v2$adjP[sel[7:10]] <- 10^(-runif(4, 5, 10)); v2$logFC[sel[7:10]] <- rnorm(4, -4.5, 0.7)
+v2$pathway <- sample(c("Pathway A", "Pathway B", "Pathway C"), n_v2, TRUE,
+                     prob = c(0.05, 0.05, 0.9))
+v2$pathway[sel] <- rep(c("Pathway A", "Pathway B"), c(6, 4))
+selected <- v2[sel, ]
+selected$pathway <- factor(selected$pathway, levels = c("Pathway A", "Pathway B"))
+
+logFCcut <- 1.5; pvalCut <- 0.05
+logFCcut2 <- 2.5; pvalCut2 <- 1e-4
+logFCcut3 <- 5; pvalCut3 <- 1e-5
+pathcol <- c("Pathway A" = "darkgreen", "Pathway B" = "chocolate4", "Pathway C" = "blueviolet")
+
+v2$y <- -log10(v2$adjP)
+v2$tier <- 1
+v2$tier[abs(v2$logFC) > logFCcut & v2$adjP < pvalCut] <- 2
+v2$tier[abs(v2$logFC) > logFCcut2 & v2$adjP < pvalCut2] <- 3
+v2$tier[abs(v2$logFC) > logFCcut3 & v2$adjP < pvalCut3] <- 4
+v2$col <- "grey75"
+v2$col[v2$tier == 2] <- "grey45"
+v2$col[v2$tier == 3 & v2$logFC > 0] <- "#F49A9A"
+v2$col[v2$tier == 3 & v2$logFC < 0] <- "#8FB2E0"
+v2$col[v2$tier == 4 & v2$logFC > 0] <- "#D93F3C"
+v2$col[v2$tier == 4 & v2$logFC < 0] <- "#184A8C"
+v2$col[sel] <- pathcol[v2$pathway[sel]]
+v2$size <- c(1, 1.6, 2.2, 3)[v2$tier]
+lab_df <- selected
+lab_df$y <- -log10(lab_df$adjP)
+
+ggplot(v2, aes(logFC, y)) +
+  geom_point(colour = v2$col, size = v2$size, alpha = 0.9) +
+  geom_vline(xintercept = c(-logFCcut, logFCcut), linetype = "dashed", colour = "grey40") +
+  geom_hline(yintercept = -log10(pvalCut), linetype = "dashed", colour = "grey40") +
+  geom_point(data = lab_df, aes(logFC, y), shape = 21, colour = "black",
+             size = 3.4, fill = NA, stroke = 0.8, inherit.aes = FALSE) +
+  geom_label_repel(data = lab_df, aes(label = gsym, colour = pathway),
+                   size = 3.2, fontface = "bold", box.padding = 0.5,
+                   show.legend = FALSE, max.overlaps = 20) +
+  scale_colour_manual(values = pathcol, name = "Selected pathway") +
+  labs(x = "log2 fold change", y = "-log10 adjusted P",
+       title = "Tiered volcano: thresholds at 1.5/2.5/5 and 0.05/1e-4/1e-5") +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+::: callout-tip
+**实践要点**
+
+-   分层赋值写成**显式有序表**（`tier <- 1; tier[gate2] <- 2; ...`）——每行一个门槛可审计；四重阈值的 `ifelse()` 链不可审计。
+-   验证候选带*三重*编码（通路色、黑圈、标签）——标签被 repel 推走时黑圈仍会存活，两者都要保留。
+-   在图注中逐字写出门槛；"更显著"会诱导读者发明你没有用过的阈值。
+:::
+
+### 6. 富集分数轴上的气泡火山图（FigureYa75bubble_volcano）
+
+FigureYa75 的火山图把常规的 logFC x 轴换成通路词条的**富集分数**，招牌手法——**只有选中的通路（此处 A/C/H/E）气泡变大**：其余词条保持大小 1 的灰点，让视线落在候选上。位于 p = 0.05 虚线之上、|score| = 1.5 门槛之外的词条标注词条 ID；输入的 y 轴已是 −log10(P)，无需再变换：
+
+```{r}
+#| label: fig-6.1BubbleVolcano
+#| fig-cap: "40 个模拟富集词条的气泡火山图：x = 富集分数，y = -log10(P)；仅四个选中通路的气泡有大小（着色），其余为灰色小点；虚线门槛在 p = 0.05 与 |score| = 1.5；过线的选中词条带标签。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 5.8
+
+## freeze:auto 只在新会话中重跑新 chunk——在此重新挂载包
+suppressPackageStartupMessages({library(ggplot2)})
+set.seed(7501)
+n_bv <- 40
+bv <- data.frame(
+  ID = paste0("Term", sprintf("%02d", 1:n_bv)),
+  score = rnorm(n_bv, 0, 1.2),
+  `-log10P` = rexp(n_bv, 0.45) + 0.3,   # 本列已是 -log10(P) 量纲，与参考输入一致
+  size = sample(4:14, n_bv, TRUE),
+  check.names = FALSE)   # 原样保留 "-log10P" 列名
+sel <- c("PathwayA", "PathwayC", "PathwayH", "PathwayE")
+bv$group <- sample(c(sel, paste0("Other", 1:4)), n_bv, TRUE,
+                   prob = c(0.15, 0.15, 0.15, 0.15, 0.1, 0.1, 0.1, 0.1))
+cols.code <- setNames(c("#1B9E77", "#D95F02", "#7570B3", "#E7298A",
+                        rep("grey65", 4)), c(sel, paste0("Other", 1:4)))
+bv$size[!bv$group %in% sel] <- 1.4
+bv$`-log10P` <- pmax(bv$`-log10P`, 0.5)
+
+ggplot(bv, aes(score, `-log10P`)) +
+  geom_point(aes(colour = group, size = size), alpha = 0.75) +
+  geom_hline(yintercept = -log10(0.05), linetype = 2, linewidth = 0.5) +
+  geom_vline(xintercept = c(-1.5, 1.5), linetype = 2, linewidth = 0.5) +
+  geom_text(data = subset(bv, group %in% sel & `-log10P` > 2),
+            aes(label = ID, colour = group), size = 2.8, vjust = -0.9,
+            show.legend = FALSE) +
+  scale_colour_manual(values = cols.code, name = NULL) +
+  scale_size_continuous(range = c(1.5, 9), guide = "none") +
+  scale_y_continuous(breaks = seq(0, 15, 3), expand = expansion(mult = c(0, 0.06))) +
+  labs(x = "Enrichment score", y = bquote(~-Log[10] ~ "P value"),
+       title = "Bubble volcano: bubbles sized only for the selected pathways",
+       colour = NULL) +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+::: callout-tip
+**实践要点**
+
+-   输入的 `-log10P` 列**已经变换过**——再套对数 y 轴会把图压平；保持线性 y、按整数间隔断轴。
+-   大小即选择是整张图的窍门：让每个气泡都按基因数放大，40 个灰圆会与四个候选竞争；此处只有候选拥有 `size > 1.4`。
+-   列名 `-log10P` 以连字符开头——建数据框时用 `check.names = FALSE`，否则后续所有 `$` 访问静默返回 NULL。
+:::
+
+## 参考文献## 参考文献
 
 \[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

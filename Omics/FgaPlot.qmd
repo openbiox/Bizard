@@ -1,0 +1,150 @@
+---
+title: "Fraction Genome Altered (FGA/FGG/FGL)"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+**Fraction Genome Altered (FGA)** is cBioPortal's per-patient summary of copy-number burden: the fraction of the profiled genome covered by segments with |log2 ratio| above a threshold. Splitting that fraction by direction gives the **fraction gained (FGG)** and **fraction lost (FGL)**, which the reference compares across clinical subgroups with ANOVA + Tukey \[1\]. This tutorial reproduces the algorithm (threshold |log2R| > 0.2, segment-base weighting) and both reference layouts — stacked and diverging — on a simulated segmentation table:
+
+## Example
+
+![](../images/Omics/FgaPlot_demo.png){fig-alt="Fraction Genome Altered (FGA/FGG/FGL) DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `dplyr`; `tidyr`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+60 simulated patients with 1-18 CNV segments each (`sample, chr, start, end, value` in log2 space, the Xena `genomicSegment` format). Every patient carries a few subclonal CNVs beyond the ±0.2 threshold; stage III-IV patients get many more and stronger ones — the pattern the FGA/FGG/FGL bars must recover:
+
+```{r load data}
+suppressPackageStartupMessages({library(ggplot2); library(dplyr); library(tidyr); library(patchwork)})
+set.seed(18001)
+## 60 patients, CNV segments with planted subgroup burden
+n_pat <- 60
+clin <- data.frame(
+  Patient = sprintf("P%02d", 1:n_pat),
+  Gender  = factor(rep(c("Female", "Male"), each = n_pat / 2)),
+  Stage   = factor(rep(c("Stage I-II", "Stage III-IV"), times = n_pat / 2)))
+seg <- do.call(rbind, lapply(1:n_pat, function(i) {
+  n_seg <- sample(18, 1)
+  len <- sample(2e6, n_seg)
+  start <- c(1, head(cumsum(len), -1))
+  data.frame(sample = clin$Patient[i],
+             chr = paste0("chr", sample(1:22, n_seg, TRUE)),
+             start = start, end = start + len,
+             value = rnorm(n_seg, 0, 0.12))
+}))
+## planted alterations: every patient gets a few subclonal CNVs, stage III-IV
+## patients get many more strong ones
+for (i in seq_len(n_pat)) {
+  rows <- which(seg$sample == clin$Patient[i])
+  n_alt <- 2 + if (clin$Stage[i] == "Stage III-IV") sample(4:8, 1) else 0
+  sel <- sample(rows, min(n_alt, length(rows)))
+  seg$value[sel] <- seg$value[sel] +
+    sample(c(-1, 1), length(sel), TRUE) * runif(length(sel), 0.22, if (clin$Stage[i] == "Stage III-IV") 0.7 else 0.32)
+}
+## per-patient FGA/FGG/FGL (cBioPortal algorithm, |log2R| > 0.2)
+fg <- do.call(rbind, lapply(clin$Patient, function(p) {
+  s <- seg[seg$sample == p, ]; s$bases <- s$end - s$start
+  tot <- sum(s$bases)
+  data.frame(Patient = p,
+             FGA = if (nrow(s)) sum(s$bases[abs(s$value) > 0.2]) / tot else 0,
+             FGG = sum(s$bases[s$value > 0.2]) / tot,
+             FGL = sum(s$bases[s$value < -0.2]) / tot)
+}))
+fg <- merge(fg, clin, by = "Patient")
+```
+
+## Visualization
+
+### 1. Stacked and Diverging Subgroup Bars
+
+Left concept in two views: the stacked layout totals FGG + FGL per subgroup (the reference's Fig. 1 style), and the diverging layout splits gained (below zero) from lost (above zero) with SE bars and the per-metric stage-ANOVA star — the planted stage burden separates cleanly on both:
+
+```{r}
+#| label: fig-1.1FgaBars
+#| fig-cap: "FGA/FGG/FGL of 60 simulated patients by clinical stage: stacked FGG+FGL percent per subgroup (top) and the diverging gained/lost layout with SE bars and stage-ANOVA stars (bottom); cBioPortal algorithm with |log2R| > 0.2."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 6.5
+
+summ <- fg %>% pivot_longer(c(FGA, FGG, FGL), names_to = "metric", values_to = "frac") %>%
+  group_by(Stage, metric) %>%
+  summarise(mean = mean(frac), se = sd(frac) / sqrt(n()), .groups = "drop")
+p_stars <- function(x) cut(x, c(-Inf, 0.0001, 0.001, 0.01, 0.05, Inf),
+                           labels = c("****", "***", "**", "*", "ns"))
+## per-metric ANOVA across stage
+star_tab <- fg %>% pivot_longer(c(FGA, FGG, FGL), names_to = "metric", values_to = "frac") %>%
+  group_by(metric) %>% group_modify(~ {
+    m <- aov(frac ~ Stage, data = .x)
+    p <- summary(m)[[1]]$"Pr(>F)"[1]
+    data.frame(p = p, star = p_stars(p))
+  })
+p1 <- ggplot(summ %>% filter(metric != "FGA"),
+             aes(Stage, mean * 100, fill = metric)) +
+  geom_col(position = "stack", width = 0.35, colour = "grey25", linewidth = 0.2) +
+  scale_fill_manual(values = c(FGG = "#db5049", FGL = "#2082be"), name = NULL) +
+  labs(x = NULL, y = "Percent Genome Altered", title = "FGG + FGL by clinical stage (simulated)") +
+  theme_classic(base_size = 10) + theme(legend.position = "top")
+p2 <- ggplot(summ %>% filter(metric != "FGA") %>%
+               mutate(y = ifelse(metric == "FGG", -mean, mean),
+                      se2 = ifelse(metric == "FGG", -se, se)),
+             aes(Stage, y * 100, fill = metric)) +
+  geom_col(width = 0.35, colour = "grey25", linewidth = 0.2) +
+  geom_errorbar(aes(ymin = (y - se2) * 100, ymax = (y + se2) * 100), width = 0.12, linewidth = 0.3) +
+  geom_text(data = star_tab %>% mutate(x = 1.5,
+               ypos = ifelse(metric == "FGG",
+                             -max(summ$mean[summ$metric == "FGG"] + summ$se[summ$metric == "FGG"]),
+                             max(summ$mean[summ$metric == "FGL"] + summ$se[summ$metric == "FGL"]))) %>%
+               mutate(ypos = ypos * 115),
+            aes(x = x, y = ypos, label = star), inherit.aes = FALSE, size = 4) +
+  geom_hline(yintercept = 0, colour = "grey40") +
+  scale_fill_manual(values = c(FGG = "#f17d80", FGL = "#79BEDB"), name = NULL) +
+  labs(x = NULL, y = "Percent genome gained (-) / lost (+)",
+       title = "Diverging FGG/FGL with SE and stage ANOVA") +
+  theme_classic(base_size = 10) + theme(legend.position = "top")
+p1 / p2
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Weight by **segment bases**, not segment counts — a 50 kb gain and a 30 Mb loss count differently; the cBioPortal denominator is the total profiled bases of the sample.
+-   The ±0.2 log2 threshold is what separates "altered" from noise; with shallow sequencing raise it, with deep data lower it — and say which you used, because FGA values are not comparable across thresholds.
+-   For subgroup testing the reference uses one-way ANOVA + Tukey HSD per metric; with two subgroups a Wilcoxon test is the honest equivalent, and stars should come from the test you actually ran.
+:::
+
+## Applications
+
+::: {#fig-FgaApplications1}
+![](../images/Omics/FgaPlot_demo.png){fig-alt="Copy-number burden by subgroup" fig-align="center" width="60%"}
+
+Copy-number burden by subgroup
+:::
+
+Any per-sample burden summary re-uses this layout: mutational megabase (Mb) burden, fraction of promoter hypermethylated CpGs, or fraction of genome with loss of heterozygosity.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Ciruelos C, et al. Differences in genomic alterations as a function of sex in ccRCC. Oncoscience (reference of the FGA/FGG/FGL layout). <https://www.nature.com/articles/oncsis201214>

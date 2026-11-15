@@ -1,0 +1,95 @@
+---
+title: "Connectivity Map (CMap)"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+The Connectivity Map (CMap) ranks perturbation drugs by how strongly their expression signature **mimics** (negative score) or **reverses** (positive score) a query disease signature \[1\]. FigureYa131 plots the ranked connectivity scores as a diverging bar chart with significance gating. This tutorial reproduces that layout on simulated drug perturbation scores:
+
+## Example
+
+![](../images/Clinics/CmapPlot_demo.png){fig-alt="CMapPlot DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+Simulated CMap connectivity scores for 20 drugs against a disease signature: negative scores mean the drug mimics the disease state, positive scores mean it reverses it. Only drugs whose Fisher p-value passes 0.05 are drawn at full opacity:
+
+```{r load data}
+set.seed(13101)
+drugs_cm <- paste0("Drug", LETTERS[1:20])
+cmap_scores <- rnorm(20, 0, 1.8)
+cmap_scores[sample(20, 5)] <- cmap_scores[sample(20, 5)] + rnorm(5, 0, 0.3)
+pval_cm <- 10^(-rexp(20, 1.2))
+names(cmap_scores) = drugs_cm; names(pval_cm) = drugs_cm
+ord <- order(cmap_scores)
+cmap_df <- data.frame(drug = factor(drugs_cm[ord], levels = drugs_cm[ord]),
+                      score = cmap_scores[ord], p = pval_cm[ord])
+cmap_df$sig <- cmap_df$p < 0.05
+cmap_df$direction <- ifelse(cmap_df$score < 0, "mimics", "reverses")
+```
+
+## Visualization
+
+### 1. Diverging Connectivity Bar Chart
+
+```{r}
+#| label: fig-1.1CmapBar
+#| fig-cap: "CMap-style connectivity scores (simulated): blue bars mimic the disease signature, red bars reverse it; opaque bars pass Fisher p < 0.05; faded bars are not significant."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5.5
+
+ggplot(cmap_df, aes(score, drug, fill = direction, alpha = sig)) +
+  geom_col(width = 0.7) +
+  geom_vline(xintercept = 0, linewidth = 0.4) +
+  scale_fill_manual(values = c(mimics = "#2166AC", reverses = "#B2182B"), name = NULL) +
+  scale_alpha_manual(values = c(`TRUE` = 1, `FALSE` = 0.35), guide = "none") +
+  labs(x = "CMap connectivity score (simulated)", y = NULL,
+       title = "Drug perturbation connectivity (CMap-style)") +
+  theme_bw(base_size = 10) + theme(panel.grid = element_blank())
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The CMap convention is: **negative score = mimics the disease** (a drug that makes healthy cells look like tumour cells may be oncogenic); **positive score = reverses the disease** (a potential therapeutic). Always state the sign convention in the caption.
+-   `alpha = sig` fades non-significant drugs rather than dropping them — the reader sees the full ranking and can judge how much weight to give each bar.
+-   Real CMap queries return 1000+ drugs: draw only the top N mimics and top N reversers, or the bar chart becomes unreadable.
+:::
+
+## Applications
+
+::: {#fig-CmapApplications1}
+![](../images/Clinics/CmapPlot_demo.png){fig-alt="CmapPlot Application" fig-align="center" width="60%"}
+
+CMap connectivity scores
+:::
+
+The same diverging bar chart applies to any ranked perturbation list: CRISPR knockout scores, RNAi screens, or drug combination synergy Z-scores.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Subramanian A, Narayan R, Corsello SM, et al. A next generation connectivity map: L1000 platform and the processing of computational task. Cell. 2017;171(6):1437-1452. doi:10.1016/j.cell.2017.10.049

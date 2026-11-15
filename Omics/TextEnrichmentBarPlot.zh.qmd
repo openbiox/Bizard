@@ -370,9 +370,164 @@ stopifnot(sum(up$FDR < 0.05) + sum(dn$FDR < 0.05) >= 10)
 
 -   负 `Count` 手法使两臂同处一尺度，两臂长度可直读对比。
 -   `facet_grid(..., scales = "free_y", space = "free_y")` 允许两臂各自排 term 而不产生空行。
--   真实结果用 `clusterProfiler::compare_eGO()`/`compareEGO()` 构建两臂后，直接喂给同一组 ggplot2 图层即可——无需依赖 enrichplot。
+-   真实结果用 `clusterProfiler::compareCluster()` 构建两臂后，直接喂给同一组 ggplot2 图层即可——无需依赖 enrichplot。
 :::
 
+### 4. 跨细胞类型的通路活性差异点图
+
+FigureYa318 版式 \[2\] 同时问"每个细胞类型 × 每条通路"的两组问题：行 = 细胞类型，列 = 通路（按分类色条分组），点大小 = FDR 分档，点颜色 = 通路活性得分的 log2 倍数变化。参考流程对每个细胞逐条计算 AUCell 得分、按细胞类型做 limma 对比；此处用模拟的逐细胞活性得分 + Wilcoxon 秩和检验 + Bonferroni 校正复现同一几何结构——真实数据请替换为你自己的 AUCell/GSVA 得分矩阵。
+
+```{r}
+#| label: fig-4.1PathwayDEDot
+#| fig-cap: "通路活性差异点图（12 通路 × 4 细胞类型）：点大小 = Bonferroni-FDR 分档，颜色 = 活性得分 log2 倍数变化；底部色条把通路分为 Immune / Metabolism / Signaling / Proliferation。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 11
+#| fig-height: 6
+
+set.seed(3181)
+paths <- c("HALLMARK_INTERFERON_GAMMA", "HALLMARK_TNFA_SIGNALING", "HALLMARK_COMPLEMENT",
+           "HALLMARK_GLYCOLYSIS", "HALLMARK_OXIDATIVE_PHOSPH", "HALLMARK_FATTY_ACID",
+           "HALLMARK_MAPK", "HALLMARK_PI3K", "HALLMARK_NOTCH",
+           "HALLMARK_E2F", "HALLMARK_G2M", "HALLMARK_APOPTOSIS")
+class.df <- data.frame(
+  geneset = paths,
+  Classification = c("Immune", "Immune", "Immune",
+                     "Metabolism", "Metabolism", "Metabolism",
+                     "Signaling", "Signaling", "Signaling",
+                     "Proliferation", "Proliferation", "Proliferation"))
+cts <- c("CD8 T", "Macro", "Fibro", "Cancer")
+n_pc <- 40
+path_mean <- setNames(c(0.55, 0.5, 0.45, 0.35, 0.4, 0.3, 0.25, 0.3, 0.2, 0.2, 0.25, 0.3), paths)
+scores_ctl <- do.call(rbind, lapply(cts, function(ct) {
+  m <- sapply(paths, function(pw) rnorm(n_pc, path_mean[pw], 0.12))
+  data.frame(cell = ct, m, check.names = FALSE)
+}))
+scores_tr <- scores_ctl
+immune_hit <- scores_tr$cell %in% c("CD8 T", "Macro")
+scores_tr$HALLMARK_INTERFERON_GAMMA[immune_hit] <-
+  scores_tr$HALLMARK_INTERFERON_GAMMA[immune_hit] + 0.28
+scores_tr$HALLMARK_TNFA_SIGNALING[immune_hit] <-
+  scores_tr$HALLMARK_TNFA_SIGNALING[immune_hit] + 0.32
+scores_tr$HALLMARK_E2F[] <- scores_tr$HALLMARK_E2F[] - 0.22
+## 零效应通路在处理臂上加入小的细胞类型特异偏移，
+## 使其接近 0 的 log2FC 散布在白色中点上仍然可见
+set.seed(3182)
+null_paths <- setdiff(paths, c("HALLMARK_INTERFERON_GAMMA", "HALLMARK_TNFA_SIGNALING", "HALLMARK_E2F"))
+for (pw in null_paths) {
+  off <- rnorm(length(cts), 0, 0.07); names(off) <- cts
+  sel <- scores_tr$cell %in% cts
+  scores_tr[sel, pw] <- scores_tr[sel, pw] + off[scores_tr$cell[sel]]
+}
+
+DP.list <- lapply(cts, function(ct) {
+  do.call(rbind, lapply(paths, function(pw) {
+    a <- scores_ctl$cell == ct; b <- scores_tr$cell == ct
+    data.frame(Celltypes = ct, Pathway = pw,
+               logFC = mean(scores_tr[[pw]][b]) - mean(scores_ctl[[pw]][a]),
+               p.val = wilcox.test(scores_tr[[pw]][b], scores_ctl[[pw]][a])$p.value)
+  }))
+})
+DPs <- do.call(rbind, DP.list)
+DPs$adj.P.Val <- p.adjust(DPs$p.val, method = "bonferroni")
+
+plot.data <- DPs
+plot.data$FDR <- cut(plot.data$adj.P.Val, breaks = c(0, 1e-10, 1e-6, 1e-3, 1),
+                     include.lowest = TRUE,
+                     labels = c("<1e-10", "1e-10~1e-6", "1e-6~1e-3", ">1e-3"))
+plot.data$FDR <- factor(as.character(plot.data$FDR),
+                        levels = c("<1e-10", "1e-10~1e-6", "1e-6~1e-3", ">1e-3"))
+plot.data$Pathway <- factor(sub("HALLMARK_", "", plot.data$Pathway),
+                            levels = sub("HALLMARK_", "", class.df$geneset))
+plot.data$Celltypes <- factor(plot.data$Celltypes, levels = rev(cts))
+
+color <- c("#4682B4", "#FFFFFF", "#CD2626")
+class.color <- c("Immune" = "#D58986", "Metabolism" = "#80554C",
+                 "Signaling" = "#71AC7A", "Proliferation" = "#E8D4B4")
+p1 <- ggplot(plot.data, aes(Pathway, Celltypes, color = logFC, size = FDR)) +
+  geom_point() +
+  scale_color_gradient2(low = color[1], mid = color[2], high = color[3],
+                        limits = c(-0.35, 0.35), name = "log2FC (score)") +
+  scale_size_manual(values = c("<1e-10" = 4.4, "1e-10~1e-6" = 3.6,
+                               "1e-6~1e-3" = 2.8, ">1e-3" = 1.6),
+                    name = "Bonferroni FDR", drop = FALSE) +
+  geom_hline(yintercept = seq(0.5, length(cts) - 0.5, 1), colour = "grey80") +
+  geom_vline(xintercept = seq(0.5, length(paths) - 0.5, 1), colour = "grey80") +
+  theme_classic(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        axis.line = element_blank())
+## 分类色条必须与点图共享同一套因子水平——草稿里它常是裸字符向量，
+## 会被字母序静默重排，导致两面板列错位
+class.df$geneset <- factor(sub("HALLMARK_", "", class.df$geneset),
+                           levels = sub("HALLMARK_", "", paths))
+p2 <- ggplot(class.df, aes(geneset, 1, fill = Classification)) +
+  geom_tile() +
+  scale_fill_manual(values = class.color, name = NULL) +
+  theme_void(base_size = 10) +
+  theme(legend.position = "bottom", legend.direction = "horizontal",
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7.5),
+        legend.key.size = unit(3, "mm"),
+        legend.margin = margin(0, 0, 0, 0))
+cowplot::plot_grid(p1, p2, ncol = 1, align = "v", axis = "lr",
+                   rel_heights = c(10, 1.9))
+```
+
+::: callout-tip
+**实践要点**
+
+-   色条与点图必须使用**同一套因子水平**——多数草稿里色条的 x 轴是裸字符向量，会被字母序静默重排，两面板列错位。
+-   参考流程用通路 × 细胞类型上的 Bonferroni 校正；用 `rstatix` 可写成 `group_by(Celltypes, Pathway) |> wilcox_test() |> adjust_pvalue(method = "bonferroni")`。
+-   白色中点上的点在白底面板里不可见：要么像本例这样植入真实的细胞类型间变异，要么给非显著的点加描边。
+:::
+
+### 5. 基因-概念环形网络（GOplot 风格）
+
+FigureYa52 背后的 GOplot 包已从 CRAN 下架 \[2\]，但其招牌图——基因连到 top 富集通路、基因节点按 log2 倍数变化着色——正是 `enrichplot::cnetplot()` 在 `clusterProfiler::enrichGO()` 结果上带 `foldChange` 的输出。两步关键：先 `simplify()`（BP 通路冗余极重，不去重网络不可读），并传入带名字的 log2FC 向量让基因节点携带方向：
+
+```{r}
+#| label: fig-5.1GeneConceptNet
+#| fig-cap: "3 个 top 富集 BP 通路的基因-概念网络（clusterProfiler + enrichplot）：通路枢纽节点大小 = 成员数，基因节点按 log2 倍数变化着色（蓝 = 上调、红 = 下调）；模拟的 IFN-γ 响应基因集。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 7
+
+set.seed(5201)
+de_genes <- data.frame(
+  SYMBOL = c("IFNG", "TNF", "IL2", "STAT1", "CXCL9", "CXCL10", "IRF1", "GBP1",
+             "CD8A", "GZMB", "PRF1", "LAG3", "PDCD1", "CTLA4", "ISG15", "MX1"),
+  log2fc = c(1.6, 1.4, 1.2, 1.1, 1.5, 1.3, 1.0, 0.9, 1.2, 1.5, 1.1, -1.0, -0.9, -0.8, 1.0, 0.8))
+## 先 simplify()：BP 通路冗余极重，不去重基因-概念网络不可读；
+## clusterProfiler >= 4.x 中 cnetplot 的 `layout`/`circular` 参数已迁移，
+## 这里使用默认布局
+ego52 <- clusterProfiler::enrichGO(gene = de_genes$SYMBOL, OrgDb = "org.Hs.eg.db",
+                                   keyType = "SYMBOL", ont = "BP",
+                                   pvalueCutoff = 0.01, qvalueCutoff = 0.05,
+                                   readable = TRUE)
+ego52 <- clusterProfiler::simplify(ego52, cutoff = 0.6, by = "p.adjust")
+geneList52 <- de_genes$log2fc; names(geneList52) = de_genes$SYMBOL
+enrichplot::cnetplot(ego52, showCategory = 3, foldChange = geneList52,
+                     color_edge = "grey") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom",
+        panel.background = element_rect(fill = "white", colour = NA))
+```
+
+::: callout-tip
+**实践要点**
+
+-   任何基因-概念网络前先 `simplify()`（语义冗余去除）：不做时 16 个基因输入会产生数百个近乎相同的 BP 通路，展示的 3 条通路纯属任意。
+-   `enrichGO()` 的 `readable = TRUE` 把 ENTREZ ID 映射回基因符号——网络只有在基因节点携带读者认识的符号时才有用。
+-   clusterProfiler >= 4.x 中旧的 `circular = TRUE` / `colorEdge` 参数已移除（改为 `layout`/`color_edge`）——这类"签名静默变更"值得用 `args(clusterProfiler::cnetplot)` 核对。
+
+-   **合并冗余 GO 词条（FigureYa80）**：除 `simplify()` 外，还可按语义相似度聚类词条——`GOSemSim::godata('org.Hs.eg.db', ont = "BP")` 后 `mgeneSim(termIDs, semData, measure = "Wang")`——再在 `hclust(dist(1 - sim))` 树上按相似度阈值切割（参考文档人工审读树状图后定簇）；每簇报告一个代表词条，聚类前先过滤基因数过大的词条（BgRatio 分子 > 300）。
+:::-   **基因集 × 基因集重叠图（FigureYa83）**：对所有词条基因集两两做 Fisher 检验，画成只留上三角的热图——先跑一次 `corrplot(..., order = "hclust", hclust.method = "ward.D2")` 仅为取聚类顺序，清零 `lower.tri` 后用 `image()` 重画。三级星号来自 **q 值分位数切分**（而非固定 0.05/0.01）；精确 0 的 p 值在 `-log10` 下会出 `-Inf`，需 `p < 1e-150 = NA` 守卫；自比较的 OR 为 `Inf`，必须剔除。
+:::
+
+## 参考文献
 
 \[1\] 生信医道. 超好看的单细胞GO，KEGG富集分析图！确定不来看看吗？ \[Internet\]. 微信公众号: 生信医道. 2025 \[cited 2025 Dec 30\]. Available from: <https://mp.weixin.qq.com/s/pY1S0EJQAhdezvxeNt-SzA>
 

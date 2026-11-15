@@ -267,6 +267,73 @@ legend("bottomleft", bty = "n", cex = 0.7, lty = 1, lwd = 2,
 -   When the interaction score is a *combined* probability across evidence classes (as ComPPI reports per location), combine as `1 - prod(1 - x_i * x_hub)` — the probability that at least one evidence chain holds — before drawing.
 :::
 
+### 6. GO Semantic-Similarity "Friend" Screen (FigureYa68friendsV2)
+
+When a pathway of interest still holds too many candidates, FigureYa68friendsV2 \[7\] ranks them by how many "friends" each gene has: `GOSemSim::mgeneSim()` computes the Wang semantic similarity of every pair (Molecular Function and Cellular Component ontologies), the two matrices are combined by geometric mean `sqrt(MF x CC)`, and a boxplot of each gene's similarity to all others — ordered by its mean — exposes the hub. The dashed line marks the 0.75 "strong friend" cut:
+
+```{r}
+#| label: fig-6.1FriendsSim
+#| fig-cap: "GO semantic-similarity friend screen of 8 simulated formin-family genes (Wang method, sqrt(MF*CC) combination): boxes show each gene's similarity distribution to the others, ordered by mean; the dashed line marks 0.75."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 7.5
+#| fig-height: 5.2
+
+## freeze:auto re-executes only new chunks in a fresh session — re-attach here
+suppressPackageStartupMessages({library(GOSemSim); library(org.Hs.eg.db); library(ggplot2)})
+set.seed(6801)
+id_gsym <- data.frame(
+  ENTREZID = c("55929", "50488", "50807", "23533", "10476", "22880", "254263", "55865"),
+  SYMBOL = c("FMNL1", "FMNL2", "FMNL3", "DIAPH1", "DIAPH2", "DIAPH3", "WHAMM", "GRB10"))
+mf <- godata('org.Hs.eg.db', ont = "MF", computeIC = FALSE)
+cc <- godata('org.Hs.eg.db', ont = "CC", computeIC = FALSE)
+simmf <- mgeneSim(id_gsym$ENTREZID, semData = mf, measure = "Wang",
+                  drop = NULL, combine = "BMA")
+simcc <- mgeneSim(id_gsym$ENTREZID, semData = cc, measure = "Wang",
+                  drop = NULL, combine = "BMA")
+comlist <- intersect(rownames(simcc), rownames(simmf))
+simmf <- simmf[comlist, comlist]
+simcc <- simcc[comlist, comlist]
+fsim <- sqrt(simmf * simcc)
+rownames(id_gsym) <- id_gsym$ENTREZID
+id_gsym <- id_gsym[comlist, ]
+rownames(fsim) <- id_gsym[rownames(fsim), "SYMBOL"]
+colnames(fsim) <- id_gsym[colnames(fsim), "SYMBOL"]
+
+## mean similarity to the OTHER genes (self-similarity = 1 is dropped)
+simlong <- do.call(rbind, lapply(seq_len(nrow(fsim)), function(i) {
+  data.frame(Var1 = rownames(fsim)[i], value = fsim[i, -i])
+}))
+m <- tapply(simlong$value, simlong$Var1, mean)
+simlong$Var1 <- factor(simlong$Var1, levels = names(sort(m)))
+f <- function(y) {
+  r <- quantile(y, probs = c(0.05, 0.25, 0.5, 0.75, 0.95))
+  r[3] <- mean(y)
+  names(r) <- c("ymin", "lower", "middle", "upper", "ymax")
+  r
+}
+ggplot(simlong, aes(Var1, value, fill = factor(Var1))) +
+  stat_summary(fun.data = f, geom = "boxplot") +
+  geom_hline(aes(yintercept = 0.75), linetype = "dashed") +
+  coord_flip() +
+  scale_fill_brewer(palette = "Set3", guide = "none") +
+  labs(x = NULL, y = "GO semantic similarity to the other genes (Wang, sqrt(MF*CC))",
+       title = "Friend count via GO semantic similarity (simulated FMNL1 pulldown)") +
+  theme_bw(base_size = 11) +
+  theme(axis.text = element_text(face = "bold"))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Drop the **self-similarity** (diagonal = 1) before computing each gene's mean — leaving it in inflates every hub candidate identically and hides the ranking.
+-   GO annotations evolve; today's Wang similarities will not exactly reproduce a 2012 pulldown figure (the reference itself says so) — recompute and re-read the ranking on current annotations.
+-   The 0.75 cut is data-dependent: draw the dashed line, but justify the threshold by the gap in the distributions rather than by convention.
+-   **PPI module finding (FigureYa53)**: overlay expression modules on a STRING adjacency by computing a TOM-style distance on the PPI matrix (the reference's custom `TOMdist1()`), then `hclust` + `WGCNA::dynamicTreeCut` (`minClusterSize` ≈ 5) — export node/edge/module CSVs so Cytoscape can take over for publication layouts.
+-   **Immune-cell correlation network (FigureYa81)**: nodes = cell types with size `-log10(logrank P)` and centre colour by HR direction, edges filtered to significant Spearman pairs with colour = correlation sign and width = `-log10(P)`; choose the cluster count for node colouring from a `corrplot(corr, order = "hclust", addrect = k)` pre-view, and build the p-value matrix with a pairwise `cor.test` loop (Hmisc's `rcorr` caps its precision).
+:::
+
 ## Reference
 
 \[1\] K. Contrepois, S. Wu, K. J. Moneghetti, D. Hornburg, et al., [Molecular Choreography of Acute Exercise](https://doi.org/10.1016/j.cell.2020.04.043). Cell. 2020;181(5):1112-1130.e16.
@@ -281,3 +348,5 @@ legend("bottomleft", bty = "n", cex = 0.7, lty = 1, lwd = 2,
 
 \[6\] Veres DV, Gyurkó DM, Thaler B, Szalay KZ, Fazekas D, Korcsmáros T, Csermely P. ComPPI: a cellular compartment-specific database for protein-protein interaction network analysis. Nucleic Acids Res. 2015;43(D1):D485-D493. doi:10.1093/nar/gku1007
 
+
+\[7\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

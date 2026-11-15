@@ -17,12 +17,12 @@ author:
 
 -   编程语言：R（第二部分附 Python 对应物与 R↔Python 映射表）
 
--   依赖包：`tidyverse`; `colorspace`; `RColorBrewer`; `viridisLite`; `paletteer`; `ggsci`; `patchwork`
+-   依赖包：`tidyverse`; `colorspace`; `RColorBrewer`; `viridisLite`; `paletteer`; `ggsci`; `patchwork`; `png`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 # Installing necessary packages
 pkgs <- c("tidyverse", "colorspace", "RColorBrewer", "viridisLite",
-          "paletteer", "ggsci", "patchwork")
+          "paletteer", "ggsci", "patchwork", "png")
 for (pkg in pkgs) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     install.packages(pkg, repos = "https://cloud.r-project.org")
@@ -36,6 +36,7 @@ library(RColorBrewer)
 library(viridisLite)
 library(ggsci)
 library(patchwork)
+library(png)
 
 # The standard 8-color Okabe-Ito palette (Okabe & Ito 2008; black variant popularized by Wong 2011)
 okabe <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
@@ -706,6 +707,143 @@ embed |>
         legend.position = "bottom")
 ```
 
+## Visualization · 第三部分 — 向心仪的图借一套配色
+
+当某篇已发表论文的配色恰好是你想要的效果，直接从图像中提取它，别靠肉眼猜 hex 码——FigureYa 合集用 `rPlotter::extract_colours()` 演示了这一工作流 \[14\]。那个包需要 EBImage 并从 GitHub 安装，而同样的工作只需要本页工具箱里的两件工具：用 `png::readPNG()` 读入像素，用基础 `kmeans()` 聚类。流程是：对像素网格抽样、剔除消色差像素（白色背景、黑色文字、灰色抗锯齿边缘）、对剩下的 RGB 三元组以 k = 可见色相数做 k-means、按像素数给聚类中心排序——主色排最前。
+
+为了让示例自包含，下面的"参考图"由代码自己生成；实践中把 `readPNG()` 指向任意一张你心仪的论文图即可：
+
+```{r}
+#| label: pal-extract-ref
+#| fig-cap: "作为取色来源的替代'参考图'——五个簇、每簇一个色相、白底黑字。"
+#| fig-alt: "五个模拟样本簇的散点图，每簇一种饱和色，并带各簇回归线。"
+#| out.width: "75%"
+#| warning: false
+#| message: false
+#| fig-width: 6.2
+#| fig-height: 4.6
+
+set.seed(2828)
+ref_cols <- c("#E64B35", "#4DBBD5", "#00A087", "#3C5488", "#7E6148")
+sim_pts <- purrr::map_dfr(1:5, function(i) {
+  tibble(x = rnorm(90, c(1, 2.4, 3.8, 5.2, 6.6)[i], 0.34),
+         y = rnorm(90, c(1, 3.4, 2.1, 4.2, 1.6)[i], 0.42),
+         cl = factor(i))
+})
+p_ref <- ggplot(sim_pts, aes(x, y, colour = cl)) +
+  geom_point(size = 1.7, alpha = 0.85, show.legend = FALSE) +
+  geom_smooth(method = "lm", linewidth = 0.7, se = FALSE, show.legend = FALSE) +
+  scale_colour_manual(values = ref_cols) +
+  labs(title = "Figure 2 | Simulated reference figure", x = NULL, y = NULL) +
+  theme_bw(base_size = 13) +
+  theme(panel.grid = element_blank())
+# 写入临时文件；下一个 chunk 读回像素
+ref_png <- file.path(tempdir(), "bizard_ref_figure.png")
+ggsave(ref_png, p_ref, width = 6.2, height = 4.6, dpi = 200)
+p_ref
+```
+
+```{r}
+#| label: pal-extract
+#| fig-cap: "从参考图提取的调色板：剔除消色差像素后对 RGB 做 k-means（k = 5），按像素数排序。"
+#| fig-alt: "从参考图经 k-means 提取的五个色块：浅蓝、棕、深蓝、青、红，各带 hex 标签。"
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 3
+
+img  <- png::readPNG(ref_png)                     # 高 x 宽 x 4，取值 [0, 1]
+px   <- img[, , 1:3]
+dim(px) <- c(dim(px)[1] * dim(px)[2], 3)
+px   <- px[seq(1, nrow(px), by = 2), ]            # 每两个像素抽一个
+mx   <- apply(px, 1, max); mn <- apply(px, 1, min)
+keep <- mx < 0.94 & mx > 0.10 & (mx - mn) > 0.10  # 剔除白背景、黑文字、灰色抗锯齿
+pxk  <- px[keep, ]
+
+set.seed(2828)
+km <- kmeans(pxk, centers = 5, nstart = 20)
+ord <- order(table(km$cluster), decreasing = TRUE)
+pal_ext <- rgb(km$centers[ord, 1], km$centers[ord, 2], km$centers[ord, 3])
+
+tibble(col = pal_ext, x = seq_along(pal_ext)) |>
+  ggplot(aes(x, .82, fill = col)) +
+  geom_tile(width = 1, height = .72, colour = "grey35", linewidth = .25) +
+  scale_fill_identity() +
+  scale_x_continuous(breaks = seq_along(pal_ext), labels = pal_ext, expand = c(.01, 0)) +
+  coord_cartesian(ylim = c(.42, 1.05)) +
+  labs(title = "k-means palette extracted from the reference figure (k = 5)",
+       x = NULL, y = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(plot.title = element_text(size = 10.5, colour = "grey20"),
+        axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.x = element_text(size = 7.6, colour = "grey20", angle = 45, hjust = 1),
+        panel.grid = element_blank())
+```
+
+五个色相几乎原样保留。接下来是两个收尾步骤。第一，插值：`colorRampPalette()` 在调色板的子集内部合成过渡色——即 FigureYa 配方里的"增色"步骤 \[14\]——供设计需要比提取集更多档位时使用。第二，任何借来的调色板都背负同一义务：它是**美学产物，未经检验**——采纳前请先跑第二部分的检查，因为提取过程不为 CVD 区分度或亮度单调性做任何优化：
+
+```{r}
+#| label: pal-extract-cvd
+#| fig-cap: "提取调色板在正常视觉、绿色盲（deutan）与红色盲（protan）模拟下的表现（colorspace::deutan/protan）：CVD 模拟下棕色与深蓝的区分度明显下降。"
+#| fig-alt: "同一组五个提取色在正常视觉、绿色盲与红色盲模拟下的三条色带；缺陷模拟下多个色相互相靠拢。"
+#| out.width: "95%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 3.6
+
+cvd_rows <- list(
+  "normal vision"       = pal_ext,
+  "deuteranopia"        = deutan(pal_ext),
+  "protanopia"          = protan(pal_ext))
+purrr::imap_dfr(cvd_rows, ~ tibble(col = .x, x = seq_along(.x), pal = .y)) |>
+  mutate(pal = factor(pal, levels = names(cvd_rows))) |>
+  ggplot(aes(x, 1, fill = col)) +
+  geom_tile(width = 1, height = .8, colour = "white", linewidth = .3) +
+  facet_wrap(~pal, ncol = 1, strip.position = "left") +
+  scale_fill_identity() + scale_y_continuous(expand = c(0, 0)) +
+  theme_minimal(base_size = 11) +
+  theme(axis.text = element_blank(), axis.title = element_blank(), panel.grid = element_blank(),
+        strip.text.y.left = element_text(angle = 0, hjust = 0, size = 10),
+        strip.background = element_blank(), panel.spacing.y = unit(3, "mm"))
+```
+
+```{r}
+#| label: pal-extract-interp
+#| fig-cap: "colorRampPalette(pal[1:4], alpha = TRUE)(9)：在前四个提取色相内部插值出的九个过渡色。"
+#| fig-alt: "九个插值色组成的色带，覆盖提取调色板中浅蓝到深蓝的范围。"
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 8.5
+#| fig-height: 3
+
+pal_plus <- colorRampPalette(pal_ext[1:4], alpha = TRUE)(9)
+tibble(col = pal_plus, x = seq_along(pal_plus)) |>
+  ggplot(aes(x, .82, fill = col)) +
+  geom_tile(width = 1, height = .72, colour = "grey35", linewidth = .25) +
+  scale_fill_identity() +
+  scale_x_continuous(breaks = seq_along(pal_plus), labels = pal_plus, expand = c(.01, 0)) +
+  coord_cartesian(ylim = c(.42, 1.05)) +
+  labs(title = "colorRampPalette(pal[1:4], alpha = TRUE)(9): transition colors",
+       x = NULL, y = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(plot.title = element_text(size = 10.5, colour = "grey20"),
+        axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        axis.text.x = element_text(size = 7.6, colour = "grey20", angle = 45, hjust = 1),
+        panel.grid = element_blank())
+```
+
+::: callout-tip
+**图像取色的实用提示**
+
+-   消色差像素（白背景、黑文字、灰色抗锯齿）会自成巨型聚类并污染 k-means 中心——聚类前先用 `(max - min) > 0.10` 的饱和度过滤剔掉它们。
+-   JPEG 压缩伪影会模糊所有边缘；优先用矢量图的 PNG 截图，大图加大抽样步长。
+-   k 取参考图中*肉眼可见*的色相数，而非固定值；务必 `nstart = 20`——k-means 对初始化敏感。
+-   提取的调色板不继承任何感知保证：进入正式图之前先做 CVD 模拟与亮度跨度检查（第二部分），且按含义而非像素数重排颜色。
+:::
+
 ## Visualization · 第三部分 — 全文一套配色
 
 最后一项纪律：一篇论文是一个*系统*，而非图形的集合。为每种含义定义一套配色，在所有面板与所有图形类型中复用，并记录十六进制码。下面的三联图在同一份数据的箱线图、折线图与柱状图中使用同样的四种颜色代表同样的四组——保留组标签，并共享一个图例。
@@ -788,3 +926,5 @@ c3 <- ggplot(counts, aes(g, n, fill = g)) + geom_col(width = .6, show.legend = F
 \[12\] Okabe M, Ito K. Color Universal Design (CUD): How to make figures and presentations that are friendly to colorblind people. 2008. <https://jfly.uni-koeln.de/color/>
 
 \[13\] W3C. Web Content Accessibility Guidelines (WCAG) 2.2. W3C Recommendation, 2023. <https://www.w3.org/TR/WCAG22/>
+
+\[14\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

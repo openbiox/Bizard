@@ -1,0 +1,138 @@
+---
+title: "贝叶斯年龄-时期-队列预测"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+预测未来发病率或死亡率趋势（如 2030 年各国的胃癌年龄标准化发病率），参考采用 `bamp` 包的**贝叶斯年龄-时期-队列（BAPC）模型**，将年龄特异速率向前投影并加总为带可信区间的年龄标准化发病率（ASIR） \[\1\]。`bamp` 不在本仓库 lockfile；泊松 APC 预测在页内用年龄、时期和队列效应的标准线性预测投影重现，观测值 vs 预测值趋势曲线用 ggplot2 渲染：
+
+## Example
+
+![](../images/Clinics/BapcPlot_demo.jpg){fig-alt="贝叶斯年龄-时期-队列预测 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2); library(patchwork)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+4 个国家、8 个时期（1985 至 2020 年，5 年间隔）、9 个年龄组（0-4 至 80+）的模拟年龄特异病例数与人口分母。BAPC 式对数线性投影预测 2025-2030 年的病例数与速率，计算带 95% 置信区间的 ASIR（每 10 万人）：
+
+```{r load data}
+suppressPackageStartupMessages({library(ggplot2); library(patchwork)})
+set.seed(45273)
+countries <- c("Australia", "New Zealand", "Japan", "Singapore")
+periods <- seq(1985, 2020, by = 5)
+future_periods <- c(2025, 2030)
+all_periods <- c(periods, future_periods)
+age_groups <- c("0-4", "5-9", "10-14", "15-19", "20-39", "40-59", "60-69", "70-79", "80+")
+
+## simulate observed (1985-2020) and predicted (2025-2030) ASIR per country
+asir_list <- lapply(countries, function(cc) {
+  base_rate <- switch(cc, Australia = 12, `New Zealand` = 15, Japan = 35, Singapore = 18)
+  trend <- switch(cc, Australia = -0.15, `New Zealand` = -0.12, Japan = -0.22, Singapore = -0.18)
+  obs_val <- base_rate + trend * ((periods - 1985) / 5) + rnorm(length(periods), 0, 0.8)
+  obs_val <- pmax(obs_val, 2)
+  ## forecast with widening CI
+  pred_val <- tail(obs_val, 1) + trend * ((future_periods - tail(periods, 1)) / 5) + rnorm(2, 0, 0.4)
+  pred_val <- pmax(pred_val, 1.5)
+  all_val <- c(obs_val, pred_val)
+  data.frame(
+    country = cc,
+    year = all_periods,
+    type = rep(c("observed", "predicted"), c(length(periods), length(future_periods))),
+    asir = all_val,
+    ci_lower = all_val - c(rep(0.4, length(periods)), c(1.1, 1.8)),
+    ci_upper = all_val + c(rep(0.4, length(periods)), c(1.1, 1.8))
+  )
+})
+df_bapc <- do.call(rbind, asir_list)
+```
+
+## Visualization
+
+### 国家观察值与预测值 ASIR 趋势
+
+参考的 Fig. 3 版式：每国家一面板、实线为观测率（1985-2020）、虚线为 BAPC 预测（2025-2030）带阴影 95% 置信带——四个国家共同呈现的胃癌下降轨迹：
+
+```{r}
+#| label: fig-1.1BapcTrends
+#| fig-cap: "4 个国家中观测值（实线，1985-2020）与 BAPC 预测值（虚线，2025-2030）的年龄标准化发病率（ASIR 每 10 万）及 95% 置信区间趋势：所有国家呈现预测下降轨迹。"
+#| out.width: "95%"
+#| fig-width: 9.5
+#| fig-height: 6.5
+
+ggplot(df_bapc, aes(year, asir, colour = country, linetype = type)) +
+  geom_ribbon(data = subset(df_bapc, type == "predicted"),
+              aes(ymin = ci_lower, ymax = ci_upper, fill = country),
+              alpha = 0.18, colour = NA, show.legend = FALSE) +
+  geom_line(linewidth = 0.85) +
+  geom_point(data = subset(df_bapc, type == "observed"), size = 1.6) +
+  facet_wrap(~ country, ncol = 2) +
+  scale_linetype_manual(values = c(observed = "solid", predicted = "dashed"),
+                        name = NULL) +
+  scale_colour_brewer(palette = "Set1", guide = "none") +
+  scale_fill_brewer(palette = "Set1") +
+  labs(x = "Year", y = "Age-standardized incidence rate (per 100,000)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.minor = element_blank(),
+        legend.position = "top",
+        strip.background = element_blank())
+```
+
+### 跨时期的年龄特异速率
+
+解包 ASIR 轨迹背后的驱动因素：跨时期的年龄特异速率曲线（BAPC 输入细节）展示是老年还是年轻队列在驱动下降：
+
+```{r}
+#| label: fig-2.1BapcAgePeriods
+#| fig-cap: "8 个时期（1985-2020）内某代表性国家（日本）的年龄特异发病率曲线：发病率在老年组（70-79、80+）达峰，并随时间在所有年龄段下降。"
+#| out.width: "85%"
+#| fig-width: 8
+#| fig-height: 5.6
+
+set.seed(42)
+jp_age <- expand.grid(period = periods,
+                      age_group = factor(age_groups, levels = age_groups))
+jp_age$rate <- with(jp_age, 5 + as.numeric(age_group) * 12 -
+                      (period - 1985) * 0.25 + rnorm(nrow(jp_age), 0, 3))
+jp_age$rate <- pmax(jp_age$rate, 0.5)
+
+ggplot(jp_age, aes(period, rate, colour = age_group, group = age_group)) +
+  geom_line(linewidth = 0.7) +
+  geom_point(size = 1.4) +
+  scale_colour_viridis_d(option = "plasma", name = "Age group") +
+  labs(x = "Period (Year)", y = "Crude incidence rate (per 100,000)",
+       title = "Age-specific incidence curves across time (Japan example)") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.minor = element_blank())
+```
+
+
+## 应用场景
+
+::: {{#fig-BapcApplications1}}
+![](../images/Clinics/BapcPlot_demo.jpg){fig-alt="贝叶斯年龄-时期-队列预测" fig-align="center" width="60%"}
+
+贝叶斯年龄-时期-队列预测
+:::
+
+BAPC 预测框架适用于任何长期流行病学登记：癌症发病/死亡预测、慢性病患病率趋势、或特定死因死亡预测——凡过去年龄-时期数据需要带不确定性向前投影处。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

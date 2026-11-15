@@ -1,0 +1,279 @@
+---
+title: "肿瘤亚型共识聚类比较"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+肿瘤亚型由分子谱的**共识聚类**发现；参考流程在同一队列上比较三种算法——层次共识聚类（CC）、共识 NMF（CNMF）与相似网络融合聚类（SNFCC）——并读取它们的相互一致性与共识亚型的生存差异 \[1\]。`CancerSubtypes`/`SNFtool` 包不在本仓库 lockfile；三种算法在页内重实现（子抽样层次共识、`NMF` 包共表型选择、以及原论文的 SNF 扩散内核），图形在 ComplexHeatmap/ggplot2 上运行：
+
+## Example
+
+![](../images/Omics/CancerSubtypePlot_demo.png){fig-alt="肿瘤亚型共识聚类比较 DEMO" fig-align="center" width="70%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`NMF`; `ComplexHeatmap`; `circlize`; `ggplot2`; `survival`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(NMF); library(ComplexHeatmap); library(circlize); library(ggplot2); library(survival)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+180 肿瘤 × 80 基因（z 标准化表达），植入三个亚型（A/B/C），并模拟亚型 C 预后最差的生存数据。为 SNF 另生成第二数据视图（与表达相关的甲基化样式块），使融合有东西可整合：
+
+```{r load data}
+suppressPackageStartupMessages({
+  library(NMF); library(ComplexHeatmap); library(circlize); library(ggplot2); library(survival)
+})
+set.seed(52332)
+n_sam <- 180; n_gene <- 80
+samples <- sprintf("T%03d", seq_len(n_sam))
+genes <- sprintf("GENE%02d", seq_len(n_gene))
+
+## planted subtypes on gene blocks
+true_sub <- factor(sample(c("A", "B", "C"), n_sam, TRUE, prob = c(0.4, 0.35, 0.25)))
+expr <- matrix(rnorm(n_gene * n_sam), n_gene, n_sam, dimnames = list(genes, samples))
+blocks <- list(A = 1:25, B = 26:50, C = 51:70)
+for (st in names(blocks)) {
+  ix <- true_sub == st
+  expr[blocks[[st]], ix] <- expr[blocks[[st]], ix] + 1.8
+}
+expr_z <- t(scale(t(expr)))
+
+## second view (methylation-like, correlated with the same structure)
+view2 <- expr_z[1:40, ] * 0.7 + matrix(rnorm(40 * n_sam, 0, 0.5), 40, n_sam)
+
+## survival: subtype C worst
+haz <- 0.06 * c(0.8, 1.0, 1.9)[true_sub]
+clin <- data.frame(sample = samples, subtype_true = true_sub,
+                   time = round(rexp(n_sam, rate = pmax(haz, 0.01)), 1),
+                   event = rbinom(n_sam, 1, 0.7))
+```
+
+## Visualization
+
+### 1. 方法选择的共表型系数
+
+参考的模型选择图：NMF 在秩 2-6 拟合，**共表型相关**——共识矩阵保持连接结构的保真度——在真实秩处达到峰值：
+
+```{r}
+#| label: fig-1.1SubtypeCophenetic
+#| fig-cap: "秩 2-6 的 NMF 共表型相关（每秩 20 次运行）：系数在秩 3（植入的亚型数）达到峰值，秩再升高则结构碎片化、系数下降——经典的共识聚类模型选择判据。"
+#| out.width: "75%"
+#| fig-width: 6.2
+#| fig-height: 4.8
+
+## NMF requires non-negative input — shift the z-scored matrix
+expr_nmf <- expr_z - min(expr_z) + 0.1
+set.seed(1)
+ranks <- 2:6
+coph <- sapply(ranks, function(k) {
+  res <- NMF::nmf(expr_nmf, rank = k, method = "brunet", nrun = 20, seed = 1)
+  cm <- NMF::consensus(res)
+  hc <- hclust(as.dist(1 - cm), method = "average")
+  cor(as.dist(1 - cm), cophenetic(hc))   # cophenetic correlation
+})
+rank_df <- data.frame(rank = ranks, coph = coph)
+ggplot(rank_df, aes(rank, coph)) +
+  geom_line(linewidth = 0.9, colour = "#2166AC") +
+  geom_point(size = 3, colour = "#2166AC") +
+  geom_point(data = rank_df[which.max(rank_df$coph), ], size = 5.2,
+             shape = 21, fill = "#B2182B", colour = "black", stroke = 1) +
+  scale_x_continuous(breaks = ranks) +
+  labs(x = "Cluster rank k", y = "Cophenetic correlation") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.minor = element_blank())
+best_k <- ranks[which.max(coph)]
+```
+
+### 2. 层次共识矩阵
+
+CC 方法的共识矩阵（k = 3）：40 次子抽样运行中每对肿瘤落入同一聚类的频率、按亚型排序——干净的对角块是亚型结构稳定的证据：
+
+```{r}
+#| label: fig-2.1SubtypeCcHm
+#| fig-cap: "k = 3 的层次共识矩阵（80% 子抽样 40 次），样本按共识亚型排序：三个深色对角块、块间共聚类接近零——亚型结构在重抽样下稳定。"
+#| out.width: "80%"
+#| fig-width: 6.5
+#| fig-height: 6
+
+set.seed(2)
+n_s <- floor(0.8 * n_sam); reps <- 40
+co <- matrix(0, n_sam, n_sam)
+for (r in seq_len(reps)) {
+  ix <- sample(n_sam, n_s)
+  hc <- hclust(dist(t(expr_z[, ix])), method = "ward.D2")
+  lab <- cutree(hc, k = 3)
+  co[ix, ix] <- co[ix, ix] + (outer(lab, lab, "==") * 1)
+}
+co <- co / reps
+cc_lab <- cutree(hclust(as.dist(1 - co), method = "complete"), k = 3)
+
+ord <- order(cc_lab, -rowSums(co))
+Heatmap(co[ord, ord], name = "Consensus\\nfraction",
+        col = colorRamp2(c(0, 0.5, 1), c("white", "#9ECAE1", "#2166AC")),
+        cluster_rows = FALSE, cluster_columns = FALSE,
+        show_row_names = FALSE, show_column_names = FALSE,
+        row_split = factor(cc_lab[ord], levels = 1:3),
+        row_title = "Samples (by CC subtype)", column_title = "Hierarchical consensus matrix (k = 3)")
+```
+
+### 3. 方法间一致性
+
+```{r}
+#| label: fig-2.2SubtypeAgree
+#| fig-cap: "k = 3 下方法间一致性（行列均为聚类标签 1-3）：CC、CNMF 与 SNF 两两都对角占优——三种算法恢复同样三个亚型，说明结构是数据驱动的。"
+#| out.width: "90%"
+#| fig-width: 8.5
+#| fig-height: 3.6
+
+## SNF following the original paper (verified): row-normalised KNN kernels,
+## each view's state diffuses through its initial kernel, and labels come
+## from spectral clustering of the fused graph (SNFtool's downstream step)
+make_knn <- function(M, K = 20) {
+  D <- as.matrix(dist(t(M)))
+  W <- matrix(0, ncol(M), ncol(M))
+  for (i in seq_len(ncol(M))) {
+    nb <- order(D[i, ])[2:(K + 1)]
+    W[i, nb] <- exp(-D[i, nb]^2 / (mean(D[i, nb]) + 1e-9))
+  }
+  W / pmax(rowSums(W), 1e-8)          # paper: row sums
+}
+views <- list(expr_z, view2)
+K <- 20; T_ <- 10
+S0 <- lapply(views, make_knn, K = K)   # initial kernels S(0)
+P <- S0                                # states P(0)
+for (t in seq_len(T_)) {
+  K2 <- P[[2]] %*% t(P[[2]]); S1 <- S0[[1]] * K2 / max(K2)
+  K1 <- P[[1]] %*% t(P[[1]]); S2 <- S0[[2]] * K1 / max(K1)
+  P[[1]] <- make_knn(S1, K)
+  P[[2]] <- make_knn(S2, K)
+}
+Wf <- P[[1]] + P[[2]]
+d <- rowSums(Wf); L <- diag(d) - Wf
+ev <- eigen(L, symmetric = TRUE)
+emb <- ev$vectors[, ncol(Wf):(ncol(Wf) - 2)]   # smallest 3 eigenvectors
+emb <- emb / pmax(sqrt(rowSums(emb^2)), 1e-9)  # unit rows (SNFtool)
+set.seed(7)
+snf_lab <- kmeans(emb, centers = 3, nstart = 50)$cluster
+
+## CNMF labels at best_k
+set.seed(3)
+nmf_res <- NMF::nmf(expr_nmf, rank = best_k, method = "brunet", nrun = 20, seed = 1)
+nmf_lab <- as.numeric(NMF::predict(nmf_res, "consensus"))   # 1..k per sample
+
+## align each method's cluster numbering to CC's via max-overlap matching
+## (standard label-permutation before agreement comparison)
+relabel_to <- function(lab, ref, k = 3) {
+  tab <- table(lab, ref)
+  pairs <- which(tab > 0, arr.ind = TRUE)
+  ord <- order(tab[pairs], decreasing = TRUE)
+  mapping <- integer(k); used_l <- integer(0); used_r <- integer(0)
+  for (r in seq_len(nrow(pairs))) {
+    a <- pairs[ord[r], 1]; b <- pairs[ord[r], 2]
+    if (!(a %in% used_l) && !(b %in% used_r)) {
+      mapping[a] <- b; used_l <- c(used_l, a); used_r <- c(used_r, b)
+    }
+  }
+  mapping[lab]
+}
+
+mk_pair <- function(a, b, la, lb) {
+  tab <- as.data.frame(table(a = factor(a, 1:3), b = factor(b, 1:3)))
+  data.frame(row = rep(lb, 3), col = rep(la, each = 3),
+             row_i = rep(1:3, 3), col_i = rep(1:3, each = 3),
+             n = tab$Freq[order(tab$b, tab$a)])
+}
+p1 <- mk_pair(cc_lab, relabel_to(nmf_lab, cc_lab), "CC", "CNMF")
+p2 <- mk_pair(cc_lab, relabel_to(snf_lab, cc_lab), "CC", "SNF")
+p3 <- mk_pair(nmf_lab, relabel_to(snf_lab, nmf_lab), "CNMF", "SNF")
+pair_df <- rbind(cbind(p1, pair = "CC vs CNMF"),
+                 cbind(p2, pair = "CC vs SNF"),
+                 cbind(p3, pair = "CNMF vs SNF"))
+pair_df$pair <- factor(pair_df$pair, levels = c("CC vs CNMF", "CC vs SNF", "CNMF vs SNF"))
+
+p_ag <- ggplot(pair_df, aes(col_i, row_i, fill = n)) +
+  geom_tile(colour = "white") +
+  geom_text(aes(label = n), colour = "grey15", size = 3) +
+  scale_fill_gradient(low = "white", high = "#B2182B", name = "tumours", guide = "none") +
+  scale_x_continuous(breaks = 1:3, labels = c("1", "2", "3"), expand = c(0, 0)) +
+  scale_y_continuous(breaks = 1:3, labels = c("1", "2", "3"), expand = c(0, 0)) +
+  labs(x = NULL, y = NULL) +
+  facet_wrap(~pair, nrow = 1) +
+  coord_fixed() +
+  theme_bw(base_size = 11) +
+  theme(axis.text.x = element_text(size = 9),
+        axis.text.y = element_text(size = 9),
+        strip.background = element_blank(),
+        panel.grid = element_blank())
+
+p_ag
+```
+
+### 4. 共识亚型的生存
+
+临床读数：SNF 共识亚型的总生存——植入的差预后亚型凸显：
+
+```{r}
+#| label: fig-2.3SubtypeSurv
+#| fig-cap: "SNF 共识亚型的总生存：差预后亚型（3）与其余两个分开（log-rank p < 0.001）——参考在聚类比较之后配上的临床相关性读数。"
+#| out.width: "85%"
+#| fig-width: 7
+#| fig-height: 5
+
+surv_df <- clin
+surv_df$lab <- factor(snf_lab, levels = c(1, 2, 3))
+sf <- survfit(Surv(time, event) ~ lab, data = surv_df)
+km <- data.frame(time = sf$time, surv = sf$surv,
+                 strata = rep(names(sf$strata), sf$strata))
+km$strata <- sub("lab=", "Subtype ", km$strata)
+sdf <- survdiff(Surv(time, event) ~ lab, data = surv_df)
+p_lr <- 1 - pchisq(sdf$chisq, length(sdf$n) - 1)
+p_lab <- if (p_lr < 0.001) "log-rank p < 0.001" else sprintf("log-rank p = %.3f", p_lr)
+
+pal <- c(`Subtype 1` = "#4472C4", `Subtype 2` = "#8EA325", `Subtype 3` = "#B2182B")
+ggplot(km, aes(time, surv, colour = strata)) +
+  geom_step(linewidth = 1) +
+  annotate("text", x = max(surv_df$time) * 0.38, y = 0.12, label = p_lab,
+           size = 3.4, colour = "grey15") +
+  scale_colour_manual(values = pal, name = NULL) +
+  scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0))) +
+  labs(x = "Time (months)", y = "Overall survival") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid.minor = element_blank(),
+        legend.position = "top")
+```
+
+::: callout-tip
+**实践要点**
+-   在**共表型相关**（或聚类共识值）上选 k——因为事先知道植入的 k 而拟合它是循环论证；判据必须独立成立。
+-   命名亚型前比较**至少两种算法**：对角占优的一致性表（此处 CC/CNMF/SNF）论证结构是数据驱动的，而非某一种连接或分解的伪影。
+-   SNF 需要**两个真正不同的视图**——同一矩阵融合两次不增加信息；表达 + 甲基化（或突变 + CNV）才是本意。
+-   比较完成**之后**再报告各亚型生存：没有临床结局差异的亚型只是描述，不可指导行动。
+-   为每个随机步骤固定 `seed`（NMF 运行、子抽样），保证共识矩阵可复现。
+:::
+
+## 应用场景
+
+::: {#fig-CancerSubtypeApplications1}
+![](../images/Omics/CancerSubtypePlot_demo.png){fig-alt="肿瘤亚型共识聚类比较" fig-align="center" width="70%"}
+
+肿瘤亚型共识聚类比较
+:::
+
+共识聚类比较适用于任何肿瘤分子分型工作：多组学亚型发现、免疫表型分层、或治疗应答类别比较。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

@@ -1,0 +1,164 @@
+---
+title: "Genome Overview Circle"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+A genome-overview circle places each chromosome as a sector and stacks one **ring per track**: GC content, repeat/gene density, per-sample expression, SNPs — any per-window genomic signal \[1\]. The reference builds this in Perl Circos with a karyotype file plus a config per ring; this tutorial reproduces the composite self-contained in R with **circlize** on simulated chromosomes:
+
+## Example
+
+![](../images/CircosPlot_demo.png){fig-alt="Genome Overview Circle DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `circlize`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages(library(circlize))
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+9 simulated chromosomes (29-207 Mb) cut into 2-Mb windows; per-window GC content, transposable-element density, gene number/density, RPKM for two samples (sample 2 carries planted arm-level gains on Chr3/Chr8) and heterozygous/homozygous SNP calls. Real data follow the same `chr, start, end, value` format the source document feeds to Circos:
+
+```{r load data}
+suppressPackageStartupMessages(library(circlize))
+set.seed(1401)
+## 9 simulated chromosomes
+chr_len <- c(118, 98, 207, 50, 45, 36, 29, 196, 56) * 1e6
+chrs <- paste0("Chr", 1:9)
+binsize <- 2e6
+tracks <- do.call(rbind, lapply(seq_along(chrs), function(i) {
+  nb <- chr_len[i] %/% binsize
+  data.frame(chr = chrs[i], start = (0:(nb - 1)) * binsize, end = (1:nb) * binsize)
+}))
+nb <- nrow(tracks)
+tracks$GC <- pmin(0.5, pmax(0.25, 0.37 + 0.05 * sin(seq(0, 40, length.out = nb)) + rnorm(nb, 0, 0.025)))
+tracks$TE  <- pmin(0.9, pmax(0.05, 0.45 + 0.18 * sin(seq(0, 25, length.out = nb) + 2) + rnorm(nb, 0, 0.07)))
+tracks$gene_num <- pmax(0, rpois(nb, 12 + 10 * sin(seq(0, 30, length.out = nb))))
+tracks$gene_pct <- pmin(0.55, tracks$gene_num / 60)
+tracks$RPKM1 <- exp(rnorm(nb, log(3), 1.1))                # sample 1
+tracks$RPKM2 <- exp(rnorm(nb, log(3), 1.1))                # sample 2
+tracks$RPKM2 <- tracks$RPKM2 * ifelse(tracks$chr %in% c("Chr3", "Chr8"), 2.4, 1)  # arm-level gain
+snp <- tracks[sample(nb, 360), ]
+snp$type <- factor(sample(c("het", "hom"), 360, TRUE, prob = c(0.7, 0.3)))
+snp$v <- ifelse(snp$type == "het", 0.35, 0.75) + runif(360, -0.08, 0.08)
+```
+
+## Visualization
+
+### 1. The Genome Circle
+
+Eight rings over the nine chromosomes: ideograms with names, GC content line (pink), TE density heatmap (magma), gene density heatmap (blue-red), gene number line (green), two per-sample RPKM tracks (orange/purple — the Chr3/Chr8 elevation is the planted gain) and SNP points (black het, red hom):
+
+```{r}
+#| label: fig-1.1GenomeCircos
+#| fig-cap: "Genome-overview circos of 9 simulated chromosomes with 8 stacked rings: chromosome ideograms, GC content line, TE density heatmap, gene density heatmap, gene number line, per-sample RPKM tracks (sample 2 shows planted Chr3/Chr8 gains) and het/hom SNP points."
+#| out.width: "90%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 9.5
+
+circos.par(start.degree = 90, gap.degree = 1.5, track.margin = c(0.004, 0.004),
+           cell.padding = c(0, 0, 0, 0))
+circos.initialize(factors = factor(tracks$chr, levels = chrs),
+                  xlim = cbind(rep(0, 9), chr_len))
+## track 1: chromosome ideograms + names
+circos.track(ylim = c(0, 1), track.height = 0.06, bg.col = "grey90", bg.border = "grey40",
+             panel.fun = function(x, y) {
+               sn <- get.cell.meta.data("sector.index")
+               circos.text(get.cell.meta.data("xlim")[1] + 3e6, 0.5, sn,
+                           facing = "bending.inside", niceFacing = TRUE, cex = 0.55, adj = c(0, 0.5))
+             })
+## track 2: GC content line
+circos.track(ylim = c(0.2, 0.55), track.height = 0.09, bg.border = "grey70",
+             panel.fun = function(x, y) {
+               sn <- get.cell.meta.data("sector.index")
+               d <- tracks[tracks$chr == sn, ]
+               circos.lines((d$start + d$end) / 2, d$GC, col = "#F781BF", lwd = 1.1)
+             })
+## track 3: TE density heatmap
+circos.track(ylim = c(0, 1), track.height = 0.09, bg.border = NA,
+             panel.fun = function(x, y) {
+               sn <- get.cell.meta.data("sector.index")
+               d <- tracks[tracks$chr == sn, ]
+               col_te <- colorRamp2(c(0.05, 0.5, 0.9), c("#440154", "#FCA50A", "#FDE725"))
+               circos.rect(d$start, 0, d$end, 1, col = col_te(d$TE), border = NA)
+             })
+## track 4: gene density heatmap
+circos.track(ylim = c(0, 1), track.height = 0.09, bg.border = NA,
+             panel.fun = function(x, y) {
+               sn <- get.cell.meta.data("sector.index")
+               d <- tracks[tracks$chr == sn, ]
+               col_g <- colorRamp2(c(0, 0.27, 0.55), c("#2166AC", "#F7F7F7", "#B2182B"))
+               circos.rect(d$start, 0, d$end, 1, col = col_g(d$gene_pct), border = NA)
+             })
+## track 5: gene number line
+circos.track(ylim = c(0, max(tracks$gene_num)), track.height = 0.08, bg.border = "grey70",
+             panel.fun = function(x, y) {
+               sn <- get.cell.meta.data("sector.index")
+               d <- tracks[tracks$chr == sn, ]
+               circos.lines((d$start + d$end) / 2, d$gene_num, col = "#1B7837", lwd = 1.1)
+             })
+## tracks 6-7: RPKM per sample
+col_rp <- c("#E08214", "#8073AC")
+for (s in 1:2) {
+  v <- if (s == 1) tracks$RPKM1 else tracks$RPKM2
+  circos.track(ylim = c(0, max(c(tracks$RPKM1, tracks$RPKM2))), track.height = 0.08,
+               bg.border = "grey70",
+               panel.fun = function(x, y) {
+                 sn <- get.cell.meta.data("sector.index")
+                 d <- tracks[tracks$chr == sn, ]
+                 circos.lines((d$start + d$end) / 2, v[tracks$chr == sn], col = col_rp[s], lwd = 1.1)
+               })
+}
+## track 8: SNP points
+circos.track(ylim = c(0, 1), track.height = 0.08, bg.border = "grey70",
+             panel.fun = function(x, y) {
+               sn <- get.cell.meta.data("sector.index")
+               d <- snp[snp$chr == sn, ]
+               circos.points((d$start + d$end) / 2, d$v, pch = 16, cex = 0.35,
+                             col = ifelse(d$type == "het", "black", "#D7301F"))
+             })
+circos.clear()
+par(xpd = NA)
+legend("center", legend = c("GC content", "TE density", "Gene density", "Gene number",
+                            "RPKM sample 1", "RPKM sample 2", "SNP het", "SNP hom"),
+       col = c("#F781BF", "#FCA50A", "#B2182B", "#1B7837", col_rp, "black", "#D7301F"),
+       pch = c(NA, 15, 15, NA, NA, NA, 16, 16), lwd = c(1.5, NA, NA, 1.5, 1.5, 1.5, NA, NA),
+       bty = "n", cex = 0.62, ncol = 2, x.intersp = 1.2)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Keep **one binned `tracks` data frame** and subset it per ring inside `panel.fun` — per-ring data frames with different row orders desynchronize positions across rings.
+-   Ring order is outside-in by construction; put the identity tracks (ideogram, GC) outside and the sample tracks inside, then call `circos.clear()` **before** the legend or base graphics are captured inside the last ring.
+-   For a real karyotype, read cytoband widths from an Ensembl/UCSC table instead of faking chromosome lengths; the rest of the code is unchanged.
+:::
+
+## Applications
+
+::: {#fig-CircosPlotApplications1}
+![](../images/CircosPlot_demo.png){fig-alt="Genome overview circle" fig-align="center" width="60%"}
+
+Genome overview circle
+:::
+
+The same ring stack serves any per-window genome tracks: methylation, chromatin accessibility, conservation, or CNV log-ratio across a pangenome or a single chromosome of interest.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Krzywinski M, Schein J, Birol I, et al. Circos: an information aesthetic for comparative genomics. Genome Res. 2009;19(9):1639-1645. doi:10.1101/gr.092759.109

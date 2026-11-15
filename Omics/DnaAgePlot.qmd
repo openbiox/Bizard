@@ -1,0 +1,103 @@
+---
+title: "DNA Methylation Age Acceleration"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+**DNA methylation age** (DNAmAge) estimated from CpG beta values diverges from chronological age in cancer - the **difference** (accelerated vs decelerated) is the epigenetic-age readout \[1\]. The reference uses ChAMP + `wateRmelon::agep()` on TCGA 450K data; the methylation processing is too heavy for this lockfile, so the tutorial **simulates the DNAmAge output** directly and reproduces the mirrored barplot in base graphics - for real data, run ChAMP first and skip straight to the plotting block:
+
+## Example
+
+![](../images/Omics/DnaAgePlot_demo.png){fig-alt="DNA Methylation Age Acceleration DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: base R
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+# base graphics only
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+Simulated DNAmAge output for 20 samples (sorted by descending difference): `dnamage`, `cage`, and their difference classified as accelerated (red) or decelerated (darkblue):
+
+```{r load data}
+set.seed(21501)
+n_da <- 20
+cage <- round(runif(n_da, 30, 75))
+dnamage <- round(cage + rnorm(n_da, 8, 15), 1)
+dnamage <- pmax(5, dnamage)
+diff <- dnamage - cage
+agestatus <- ifelse(diff > 0, "Accelerated", "Decelerated")
+o <- order(diff, decreasing = TRUE)
+da <- data.frame(cage = cage[o], dnamage = dnamage[o], diff = diff[o],
+                 agestatus = agestatus[o], row.names = sprintf("S%02d", 1:n_da))
+da$colr <- ifelse(da$agestatus == "Accelerated", adjustcolor("#E31A1C", 0.8),
+                  adjustcolor("#1F78B4", 0.8))
+```
+
+## Visualization
+
+### 1. Mirrored DNAmAge Barplot
+
+The base-graphics mirrored barplot: DNAmAge bars extend upward from y = 0, chronological age bars extend downward, and the coloured difference bars overlay both:
+
+```{r}
+#| label: fig-1.1DnaAge
+#| fig-cap: "Mirrored barplot of DNA methylation age vs chronological age for 20 simulated samples: upward bars = DNAmAge, downward bars = chronological age, coloured difference bars mark accelerated (red) vs decelerated (blue) samples."
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 5.5
+
+barplot(t(da[, c("dnamage", "cage")]), beside = FALSE,
+        col = c("#99999940", "#66666640"), border = NA,
+        ylim = c(-80, 150), axes = FALSE, xaxt = "n", space = 0.4)
+axis(2, las = 1, cex.axis = 0.8)
+barplot(da$diff, col = da$colr, add = TRUE, space = 0.4, axes = FALSE, xaxt = "n")
+bp <- barplot(t(da[, c("dnamage", "cage")]), beside = FALSE,
+        col = c("#99999940", "#66666640"), border = NA,
+        ylim = c(-80, 150), axes = FALSE, xaxt = "n", space = 0.4)
+lines(bp, lowess(da$diff)$y, lwd = 1.5, col = "grey20")
+axis(1, at = seq(0.7, n_da, by = 2) + 0.4, labels = rownames(da)[seq(1, n_da, by = 2)],
+     cex.axis = 0.65, tick = FALSE)
+text(1, 120, "DNA methylation age", cex = 0.85, adj = 0, font = 2)
+text(1, -70, "Chronological age", cex = 0.85, adj = 0, font = 2)
+legend("topright", bty = "n", cex = 0.75, pch = 15,
+       col = c(adjustcolor("#E31A1C", 0.8), adjustcolor("#1F78B4", 0.8)),
+       legend = c("Accelerated", "Decelerated"))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `wateRmelon::agep()` uses Horvath 353-CpG coefficients by default; 450K covers all 353 CpGs.
+-   The mirrored barplot uses `barplot(..., add = TRUE, space = 0)` twice with matching `space`.
+-   DNAmAge acceleration correlates with chronic inflammation; validate before interpreting.
+:::
+
+## Applications
+
+::: {#fig-DnaAgeApplications1}
+![](../images/Omics/DnaAgePlot_demo.png){fig-alt="DNAmAge acceleration" fig-align="center" width="60%"}
+
+DNAmAge acceleration
+:::
+
+DNAmAge acceleration is reported in aging, cancer, and environmental-exposure studies; the mirrored barplot also serves any paired epigenetic-clock output.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Luo Y, Zhang J. DNAmAge acceleration in cervical SCC. Clin Epigenetics. <https://doi.org/10.1186/s13148-020-00929-z>

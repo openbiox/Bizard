@@ -31,6 +31,9 @@ if (!requireNamespace("BiocManager", quietly = TRUE)) {
 if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
 if (!requireNamespace("circlize", quietly = TRUE)) install.packages("circlize")
 if (!requireNamespace("igraph", quietly = TRUE)) install.packages("igraph")
+if (!requireNamespace("ggraph", quietly = TRUE)) install.packages("ggraph")
+if (!requireNamespace("tidygraph", quietly = TRUE)) install.packages("tidygraph")
+if (!requireNamespace("ggrepel", quietly = TRUE)) install.packages("ggrepel")
 
 # Install CellChat from GitHub (jinworks/CellChat is the current maintained fork)
 if (!requireNamespace("CellChat", quietly = TRUE)) {
@@ -42,6 +45,9 @@ if (!requireNamespace("CellChat", quietly = TRUE)) {
 library(CellChat)
 library(ggplot2)
 library(circlize)
+library(ggraph)
+library(tidygraph)
+library(ggrepel)
 ```
 
 ```{r session info}
@@ -289,6 +295,7 @@ ggplot(lr_df, aes(cell_pair, pair, size = pval, colour = mean)) +
 -   CellPhoneDB permutation P values are one-sided (larger = more random); `scale_size_continuous(trans = "reverse")` flips the axis so larger points = more significant.
 -   The colour scale represents the **mean of the two partners' normalised expression**, which is what CellPhoneDB reports as `scale_factor`.
 -   `expand.grid()` creates all pair combinations; subset to significant interactions (e.g. P < 0.05) before plotting for cleaner figures.
+-   For the network-scale view of the same table, section 7 renders the FigureYa310 edge-bundled chord (two-level dendrogram + `geom_conn_bundle`).
 :::
 
 
@@ -387,7 +394,7 @@ for (s in cts) for (r in cts) if (s != r) {
           col = col, lwd = 0.6 + abs(d) / 12)
   }
 }
-text(rep(0, length(cts)), pos[, 2] * 1.22, cts, cex = 0.8, col = "#24364A")
+text(pos[, 1] * 1.22, pos[, 2] * 1.22, cts, cex = 0.8, col = "#24364A")
 title("STIM vs CTRL differential circle", line = 0.2, cex.main = 1, font.main = 2)
 legend("bottomleft", legend = c("up in STIM", "up in CTRL"),
        col = c("#C0272D", "#1F5FA6"), lwd = 3, bty = "n", cex = 0.75)
@@ -402,7 +409,93 @@ legend("bottomleft", legend = c("up in STIM", "up in CTRL"),
 :::
 
 
-## References
+### 7. Two-Group Differential Communication as an Edge-Bundled Chord
+
+The FigureYa310 layout \[6\] reads like a chord diagram but is a **hierarchical edge bundle**: radial tree arms root → cell type → gene, and the ligand–receptor interactions are drawn as bundles connecting a source-cell ligand leaf to a target-cell receptor leaf. Colour carries the ligand's log2 fold change between the two conditions (red = up in STIM), node size the expressing fraction, and the open-vs-filled shape separates ligands from receptors. The input is the same differential table as the §5 dot plot (CellPhoneDB `means`/`pvalues` files plus per-cell-type DE, or the simulated stand-in below); the bundle view adds the *hierarchy* — you see at a glance which cell-type pair a gene belongs to.
+
+```{r}
+#| label: fig-7.1CPDBBundle
+#| fig-cap: "Differential ligand-receptor communication as an edge-bundled chord (ggraph): radial tree arms per cell type, bundles coloured by ligand log2 fold change (red = up in STIM), leaf size = expressing fraction, open = ligand, filled = receptor."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 9
+
+set.seed(3101)
+cells <- c("Cancer", "T CD4", "T CD8", "Macro", "Fibro")
+lrs <- expand.grid(ligand = c("EGFR", "ERBB2", "MET", "TGFB1", "CXCL12", "CCL5",
+                              "VEGFA", "FGF2", "WNT5A", "DLL4"),
+                   receptor = c("EGFR", "ERBB3", "MET", "TGFBR1", "CXCR4", "CCR5",
+                                "KDR", "FGFR1", "FZD4", "NOTCH1"), stringsAsFactors = FALSE)
+lrs <- lrs[sample(nrow(lrs), 22), ]
+lrs$source <- sample(cells, 22, replace = TRUE, prob = c(0.4, 0.15, 0.15, 0.15, 0.15))
+lrs$target <- sample(cells, 22, replace = TRUE, prob = c(0.1, 0.2, 0.2, 0.3, 0.2))
+lrs$logFC <- rnorm(22, 0, 1)
+lrs$logFC[lrs$source == "Cancer"] <- lrs$logFC[lrs$source == "Cancer"] + 0.8
+lrs$logFC <- pmin(pmax(lrs$logFC, -2), 2)
+lrs$frac <- runif(22, 0.1, 0.9)
+lrs$from <- paste0(lrs$ligand, "_", lrs$source, "_ligand")
+lrs$to <- paste0(lrs$receptor, "_", lrs$target, "_receptor")
+celltypes <- unique(c(lrs$source, lrs$target))
+
+vert <- rbind(
+  data.frame(name = unique(lrs$from), celltype = gsub(".*_(.+)_ligand", "\\1", unique(lrs$from)),
+             type = "ligand", frac = lrs$frac[match(unique(lrs$from), lrs$from)],
+             label = gsub("_.*", "", unique(lrs$from))),
+  data.frame(name = unique(lrs$to), celltype = gsub(".*_(.+)_receptor", "\\1", unique(lrs$to)),
+             type = "receptor", frac = NA,
+             label = gsub("_.*", "", unique(lrs$to))))
+vert <- vert[!duplicated(vert$name), ]
+vert$frac[is.na(vert$frac)] <- runif(sum(is.na(vert$frac)), 0.1, 0.9)
+head_df <- data.frame(
+  name = c("root", paste0(celltypes, "_ligand"), paste0(celltypes, "_receptor")),
+  celltype = c("root", celltypes, celltypes),
+  type = c("root", rep("ligand", length(celltypes)), rep("receptor", length(celltypes))),
+  frac = 0.5, label = c("root", celltypes, celltypes))
+vert_all <- rbind(head_df, vert)
+
+## tree edges only (root -> cell-type arms -> gene nodes); the ligand-receptor
+## interactions are NOT tree edges, they go into get_con() as node index pairs
+## (parallel edges would break the dendrogram layout)
+edges <- unique(rbind(
+  data.frame(from = "root", to = paste0(celltypes, "_ligand")),
+  data.frame(from = "root", to = paste0(celltypes, "_receptor")),
+  data.frame(from = paste0(lrs$source, "_ligand"), to = lrs$from),
+  data.frame(from = paste0(lrs$target, "_receptor"), to = lrs$to)))
+g <- graph_from_data_frame(edges, directed = TRUE, vertices = vert_all)
+from_m <- match(lrs$from, vert_all$name)
+to_m <- match(lrs$to, vert_all$name)
+
+## precompute the bundle data on the CIRCULAR layout (matching the ggraph call)
+## and attach per-connection logFC via con.id - ggraph does not propagate edge
+## attributes into geom_conn_bundle
+bundle <- get_con(from = from_m, to = to_m)(
+  create_layout(g, layout = "dendrogram", circular = TRUE))
+bundle$logFC <- lrs$logFC[bundle$con.id]
+
+cell.col <- setNames(c("#8DD3C7", "#BEBADA", "#FB8072", "#80B1D3", "#FDB462")[1:length(celltypes)], celltypes)
+ggraph(g, layout = "dendrogram", circular = TRUE) +
+  geom_conn_bundle(data = bundle, aes(colour = logFC),
+                   width = 1.1, tension = 0.6, alpha = 0.85) +
+  geom_node_point(aes(size = frac, filter = leaf, colour = celltype, shape = type)) +
+  geom_node_text(aes(x = x * 1.08, y = y * 1.08, label = label, filter = leaf),
+                 size = 2.6, repel = TRUE, segment.size = 0.2, max.overlaps = 20) +
+  scale_edge_colour_gradientn(colours = c("#3E52C5", "#FFFFFF", "#B91129"),
+                              limits = c(-2, 2), name = "ligand log2FC") +
+  scale_shape_manual(values = c("ligand" = 1, "receptor" = 19), name = NULL) +
+  scale_colour_manual(values = cell.col, name = NULL) +
+  theme_void()
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The graph must stay a **tree**: only root → cell-type arm → gene edges belong in it, and `unique()` them — a gene that appears in several interactions has one parent per arm, and parallel edges make the dendrogram layout collapse into a line.
+-   Compute the bundle with `get_con(from, to)(create_layout(g, layout = "dendrogram", circular = TRUE))` — the layout must carry the same `circular` flag as the `ggraph()` call, or the two layers silently land in different coordinate systems.
+-   Colour bundles by the ligand's condition effect (the sender's biology); colouring by the receptor side mixes two stories in one plot.
+:::
+
 ## References
 
 \[1\] Jin S, Guerrero-Juarez CF, Zhang L, et al. Inference and analysis of cell-cell communication using CellChat. *Nature Communications*. 2021;12(1):1088. <https://doi.org/10.1038/s41467-021-21246-9>
@@ -414,3 +507,5 @@ legend("bottomleft", legend = c("up in STIM", "up in CTRL"),
 \[4\] Efremova M, Gong C. CellPhoneDB: inferring intercellular communication network from single-cell transcriptomics data. *Nat Methods*. 2018;15(6):431-432.
 
 \[5\] Xiaofan Lu, et al. FigureYa267scCellChat reference figure: differential interaction comparison between conditions. FigureYapy/FigureYa documentation. <https://ying-ge.github.io/FigureYa/>
+
+\[6\] Xiaofan Lu, et al. FigureYa310CPDBChordGramV2 reference figure: CellPhoneDB differential communication as a circular edge-bundled chord. FigureYa documentation. <https://ying-ge.github.io/FigureYa/>

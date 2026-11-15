@@ -1,0 +1,86 @@
+---
+title: "NMF 程序相关聚类"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+逐肿瘤恶性细胞表达的 **NMF 分解**发现肿瘤特异程序；程序的 AUCell 评分跨所有程序做相关以发现跨肿瘤共享的一致恶性 signature \[1\]。参考跑 `NMF::nmf()` + AUCell + `corrplot`——太重无法入锁——本教程**直接模拟程序-AUC 矩阵**（44 个程序带块相关结构）并复现精确的 `corrplot` 调用：
+
+## Example
+
+![](../images/Omics/ScNmfPlot_demo.png){fig-alt="NMF 程序相关聚类 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`corrplot`; `RColorBrewer`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(corrplot)
+  library(RColorBrewer)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+44 个模拟程序（11 个肿瘤 × 4 个程序）带 5-7 个相关簇的块结构 AUCell 矩阵。参考由逐肿瘤 NMF + AUCell 评分的恶性细胞得到：
+
+```{r load data}
+set.seed(22301)
+n_prog <- 44; n_cell <- 800
+cluster_ids <- cutree(hclust(dist(matrix(rnorm(44 * 30, 0, 1), 44, 30)), "ward.D2"), k = 7)
+prog_auc <- matrix(0, n_prog, n_cell)
+for (i in seq_len(n_prog)) {
+  cid <- cluster_ids[i]
+  prog_auc[i, ] <- rnorm(n_cell, 0.5, 0.2) + (cid %% 3) * 0.3 + rnorm(n_cell, 0, 0.1)
+}
+rownames(prog_auc) <- sprintf("P%02d_t%02d", rep(1:11, each = 4), rep(1:4, 11))
+colnames(prog_auc) <- paste0("C", 1:n_cell)
+M <- cor(t(prog_auc))
+```
+
+## Visualization
+
+### 相关聚类 corrplot
+
+`corrplot(M, method = "color", order = "hclust", hclust.method = "ward.D2", addrect = 7)` 配 RdBu 调色板：44 个程序聚成 7 组（黑色矩形）匹配参考的恶性 signature 聚类：
+
+```{r}
+#| label: fig-1.1NmfCorr
+#| fig-cap: "44 个模拟 NMF 程序（AUCell 评分）的 Pearson 相关热图：颜色 = Pearson r、按 ward.D2 层次聚类排序并加 7 个黑色簇矩形（corrplot addrect）。"
+#| out.width: "80%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+
+corrplot(M, method = "color", order = "hclust", hclust.method = "ward.D2",
+         addrect = 7, tl.pos = "n", tl.cex = 0.35,
+         col = rev(brewer.pal(8, "RdBu")), cl.cex = 0.7,
+         mar = c(0, 0, 1, 0))
+```
+
+
+## 应用场景
+
+::: {#fig-ScNmfApplications1}
+![](../images/Omics/ScNmfPlot_demo.png){fig-alt="NMF 程序相关聚类" fig-align="center" width="60%"}
+
+NMF 程序相关聚类
+:::
+
+程序相关聚类适用于任何逐样本因子分解：bulk RNA-seq 的 NMF、LIGER 整合因子、或突变 signature 暴露。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Wu A, et al. Consensus clustering of malignant programs. <https://doi.org/10.1016/j.cell.2019.10.028>

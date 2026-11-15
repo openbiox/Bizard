@@ -1,0 +1,141 @@
+---
+title: "m6A 峰识别（IP vs Input）"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+m<sup>6</sup>A-seq 通过在每一个基因组窗口比较 **m6A 免疫沉淀文库与等量 input 文库**的读数来识别修饰区域；IP 显著富集的窗口合并后即峰（peak）\[1\]。参考流程（源自斑鱼母源 mRNA 清除研究 \[2\]）是一个 bash pipeline，统计逻辑藏在两个辅助脚本里——本教程在 R 中重实现其峰识别半程（逐窗口 Fisher 精确检验 + BH 校正 + 相邻窗口合并），并补上原文留给读者的可视化：
+
+## Example
+
+![](../images/M6aPeakPlot_demo.png){fig-alt="m6A 峰识别（IP vs Input） DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`; `dplyr`; `tidyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+3 条模拟转录本各 160 个 100 bp 滑动窗口（注释为 5'UTR / CDS / 3'UTR）。两条转录本在终止密码子/3'UTR（m6A 经典沉积区）植入了富集，一条未修饰。Fisher 检验将每个窗口的 IP 与 input 计数对照两文库大小——与参考 `callPeak.R` 完全一致：
+
+```{r load data}
+set.seed(13301)
+## 3 transcripts x 160 windows (100 bp); regions: 5'UTR 1-20, CDS 21-110, 3'UTR 111-160
+n_tr <- 3; n_w <- 160
+lib_in <- 9.4e6; lib_ip <- 9.0e6
+regions <- c(rep("5'UTR", 20), rep("CDS", 90), rep("3'UTR", 50))
+tr_names <- sprintf("Transcript_%s", c("A", "B", "C"))
+enrich <- list(
+  A = c(rep(1, 95), rep(3.2, 15), rep(5.5, 25), rep(1, 25)),  # stop-codon shoulder + 3'UTR peak
+  B = c(rep(1, 20), rep(1.5, 80), rep(5.0, 40), rep(1, 20)),  # modest CDS, strong 3'UTR
+  C = c(rep(1, 4), rep(3.2, 8), rep(1, 148)))                  # rare 5'UTR peak
+win <- do.call(rbind, lapply(seq_len(n_tr), function(t) {
+  base <- pmax(1, rnbinom(n_w, size = 2, mu = 6))
+  inp  <- base + rpois(n_w, 2)
+  ip   <- rpois(n_w, inp * enrich[[t]] * (lib_ip / lib_in))
+  data.frame(transcript = tr_names[t], window = 1:n_w,
+             start = 1:n_w * 100 - 99, end = 1:n_w * 100,
+             region = regions, input = inp, ip = ip)
+}))
+## per-window Fisher exact (IP vs input counts against library sizes)
+win$p <- mapply(function(i, n) fisher.test(matrix(c(i, lib_ip - i, n, lib_in - n), 2))$p.value,
+                win$ip, win$input)
+win$padj <- p.adjust(win$p, "BH")
+win$sig <- win$padj < 0.05 & win$ip / pmax(win$input, 1) > 2
+## merge adjacent significant windows into peaks (gap <= 5 windows)
+peaks <- do.call(rbind, lapply(tr_names, function(tr) {
+  d <- win[win$transcript == tr & win$sig, ]
+  if (!nrow(d)) return(data.frame(transcript = character(0), ps = integer(0), pe = integer(0)))
+  brk <- c(0, which(diff(d$window) > 5), nrow(d))
+  do.call(rbind, lapply(seq_len(length(brk) - 1), function(k) {
+    seg <- d[seq(brk[k] + 1, brk[k + 1]), ]
+    data.frame(transcript = tr, ps = min(seg$start), pe = max(seg$end))
+  }))
+}))
+cat("peaks called:", nrow(peaks), "\n"); print(peaks)
+```
+
+## Visualization
+
+### IP 与 Input 覆盖轨迹
+
+input（灰）与 IP（红）逐窗口读数，调用的峰以色带标出：通过 Fisher + BH 的富集恰好落在植入的 3'UTR/终止密码子区——图即调用质量的检验。
+
+```{r}
+#| label: fig-1.1M6aTracks
+#| fig-cap: "m6A IP 与 input 在 3 条模拟转录本上的覆盖：色带为合并后的显著峰（BH FDR < 0.05，IP/input > 2）；两条转录本植入 3'UTR 富集，一条未修饰。"
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5.5
+
+suppressPackageStartupMessages(library(tidyr))
+cov_long <- win %>% select(transcript, window, input, ip) %>%
+  tidyr::pivot_longer(-c(transcript, window), names_to = "lib", values_to = "count")
+ggplot(cov_long, aes(window, count, colour = lib, group = lib)) +
+  geom_rect(data = peaks, aes(xmin = ps / 100, xmax = pe / 100, ymin = -Inf, ymax = Inf),
+            inherit.aes = FALSE, fill = "#FDE0DD", colour = NA) +
+  geom_line(linewidth = 0.45, alpha = 0.85) +
+  facet_wrap(~transcript, ncol = 1, scales = "free_x") +
+  scale_colour_manual(values = c(input = "grey45", ip = "#B2182B"), name = NULL,
+                      labels = c(input = "Input", ip = "m6A IP")) +
+  labs(x = "100-bp window along transcript", y = "Read count (window)",
+       title = "m6A IP vs input coverage with called peaks (simulated)") +
+  theme_bw(base_size = 10) + theme(panel.grid = element_blank(), legend.position = "top")
+```
+
+### 峰在各转录本区域的分布
+
+按区域汇总显著窗口一眼读出生物学：m6A 信号集中在 3'UTR 与终止密码子邻近的 CDS，5'UTR 峰罕见——这是任何峰集的标准区域富集摘要：
+
+```{r}
+#| label: fig-1.2M6aRegions
+#| fig-cap: "每个转录本区域的显著窗口数（按转录本堆叠）：模拟的 m6A 峰集中在 3'UTR 与 CDS（终止密码子邻近），5'UTR 罕见。"
+#| out.width: "70%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4
+
+reg_sum <- win %>% filter(sig) %>% count(region, transcript) %>%
+  mutate(region = factor(region, levels = c("5'UTR", "CDS", "3'UTR")))
+ggplot(reg_sum, aes(region, n, fill = transcript)) +
+  geom_col(width = 0.55, colour = "grey25", linewidth = 0.2) +
+  scale_fill_manual(values = setNames(c("#B2182B", "#2166AC", "#7F7F7F"), tr_names), name = NULL) +
+  labs(x = NULL, y = "Significant windows (FDR < 0.05)",
+       title = "Peak distribution across transcript regions") +
+  theme_bw(base_size = 10) + theme(panel.grid = element_blank(), legend.position = "right")
+```
+
+
+## 应用场景
+
+::: {#fig-M6aPeakApplications1}
+![](../images/M6aPeakPlot_demo.png){fig-alt="m6A IP 与 input 峰识别" fig-align="center" width="60%"}
+
+m6A IP 与 input 峰识别
+:::
+
+同样的窗口计数 + Fisher + 合并循环适用于任何 IP-over-input 富集实验：m5C、m1A、pseudoU 测序，或无需 peak caller 的窄 ChIP-seq。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Zhao Y, Dominski M, Gutierrez-Beltran E, et al. m6A-dependent maternal mRNA clearance facilitates zebrafish maternal-to-zygotic transition. Nature. 2017;542(7642):475-478. doi:10.1038/nature21355

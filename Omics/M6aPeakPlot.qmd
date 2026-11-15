@@ -1,0 +1,148 @@
+---
+title: "m6A Peak Calling (IP vs Input)"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+m<sup>6</sup>A-seq identifies modified transcript regions by comparing **m6A-immunoprecipitated reads against a size-matched input** at each genomic window; windows with significant IP enrichment are merged into peaks \[1\]. The reference workflow (from the zebrafish maternal-mRNA-clearance study \[2\]) is a bash pipeline whose statistics live in two helper scripts — this tutorial re-implements the peak-calling half in R (per-window Fisher exact test + BH correction + adjacent-window merge) and adds the visualization the source doc leaves to the reader:
+
+## Example
+
+![](../images/M6aPeakPlot_demo.png){fig-alt="m6A Peak Calling (IP vs Input) DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `dplyr`; `tidyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+Sliding-window read counts for 3 simulated transcripts (160 windows of 100 bp, annotated as 5'UTR / CDS / 3'UTR). Two transcripts carry planted m6A enrichment at the stop-codon / 3'UTR, the canonical m6A deposition zone; one is unmodified. The Fisher test compares each window's IP and input counts against the two library sizes, exactly as the reference `callPeak.R` does:
+
+```{r load data}
+set.seed(13301)
+## 3 transcripts x 160 windows (100 bp); regions: 5'UTR 1-20, CDS 21-110, 3'UTR 111-160
+n_tr <- 3; n_w <- 160
+lib_in <- 9.4e6; lib_ip <- 9.0e6
+regions <- c(rep("5'UTR", 20), rep("CDS", 90), rep("3'UTR", 50))
+tr_names <- sprintf("Transcript_%s", c("A", "B", "C"))
+enrich <- list(
+  A = c(rep(1, 95), rep(3.2, 15), rep(5.5, 25), rep(1, 25)),  # stop-codon shoulder + 3'UTR peak
+  B = c(rep(1, 20), rep(1.5, 80), rep(5.0, 40), rep(1, 20)),  # modest CDS, strong 3'UTR
+  C = c(rep(1, 4), rep(3.2, 8), rep(1, 148)))                  # rare 5'UTR peak
+win <- do.call(rbind, lapply(seq_len(n_tr), function(t) {
+  base <- pmax(1, rnbinom(n_w, size = 2, mu = 6))
+  inp  <- base + rpois(n_w, 2)
+  ip   <- rpois(n_w, inp * enrich[[t]] * (lib_ip / lib_in))
+  data.frame(transcript = tr_names[t], window = 1:n_w,
+             start = 1:n_w * 100 - 99, end = 1:n_w * 100,
+             region = regions, input = inp, ip = ip)
+}))
+## per-window Fisher exact (IP vs input counts against library sizes)
+win$p <- mapply(function(i, n) fisher.test(matrix(c(i, lib_ip - i, n, lib_in - n), 2))$p.value,
+                win$ip, win$input)
+win$padj <- p.adjust(win$p, "BH")
+win$sig <- win$padj < 0.05 & win$ip / pmax(win$input, 1) > 2
+## merge adjacent significant windows into peaks (gap <= 5 windows)
+peaks <- do.call(rbind, lapply(tr_names, function(tr) {
+  d <- win[win$transcript == tr & win$sig, ]
+  if (!nrow(d)) return(data.frame(transcript = character(0), ps = integer(0), pe = integer(0)))
+  brk <- c(0, which(diff(d$window) > 5), nrow(d))
+  do.call(rbind, lapply(seq_len(length(brk) - 1), function(k) {
+    seg <- d[seq(brk[k] + 1, brk[k + 1]), ]
+    data.frame(transcript = tr, ps = min(seg$start), pe = max(seg$end))
+  }))
+}))
+cat("peaks called:", nrow(peaks), "\n"); print(peaks)
+```
+
+## Visualization
+
+### 1. IP vs Input Coverage Tracks
+
+Per-window read counts for the input (grey) and IP (red) libraries with called peaks shaded: the enrichment that survives Fisher + BH is exactly the planted 3'UTR/stop-codon region — the figure is the calling quality check.
+
+```{r}
+#| label: fig-1.1M6aTracks
+#| fig-cap: "m6A IP vs input coverage along three simulated transcripts: shaded bands are merged significant peaks (BH FDR < 0.05, IP/input > 2); two transcripts carry planted 3'UTR enrichment, one is unmodified."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9
+#| fig-height: 5.5
+
+suppressPackageStartupMessages(library(tidyr))
+cov_long <- win %>% select(transcript, window, input, ip) %>%
+  tidyr::pivot_longer(-c(transcript, window), names_to = "lib", values_to = "count")
+ggplot(cov_long, aes(window, count, colour = lib, group = lib)) +
+  geom_rect(data = peaks, aes(xmin = ps / 100, xmax = pe / 100, ymin = -Inf, ymax = Inf),
+            inherit.aes = FALSE, fill = "#FDE0DD", colour = NA) +
+  geom_line(linewidth = 0.45, alpha = 0.85) +
+  facet_wrap(~transcript, ncol = 1, scales = "free_x") +
+  scale_colour_manual(values = c(input = "grey45", ip = "#B2182B"), name = NULL,
+                      labels = c(input = "Input", ip = "m6A IP")) +
+  labs(x = "100-bp window along transcript", y = "Read count (window)",
+       title = "m6A IP vs input coverage with called peaks (simulated)") +
+  theme_bw(base_size = 10) + theme(panel.grid = element_blank(), legend.position = "top")
+```
+
+### 2. Peaks Across Transcript Regions
+
+Collapsing significant windows by transcript region recovers the biology in one glance: the m6A signal concentrates at the 3'UTR and stop-codon-adjacent CDS, with rare 5'UTR peaks — the standard region-enrichment summary for any peak set:
+
+```{r}
+#| label: fig-1.2M6aRegions
+#| fig-cap: "Significant windows per transcript region, stacked by transcript: the simulated m6A peaks concentrate in the 3'UTR and CDS (stop-codon adjacent), with a rare 5'UTR peak."
+#| out.width: "70%"
+#| warning: false
+#| message: false
+#| fig-width: 6
+#| fig-height: 4
+
+reg_sum <- win %>% filter(sig) %>% count(region, transcript) %>%
+  mutate(region = factor(region, levels = c("5'UTR", "CDS", "3'UTR")))
+ggplot(reg_sum, aes(region, n, fill = transcript)) +
+  geom_col(width = 0.55, colour = "grey25", linewidth = 0.2) +
+  scale_fill_manual(values = setNames(c("#B2182B", "#2166AC", "#7F7F7F"), tr_names), name = NULL) +
+  labs(x = NULL, y = "Significant windows (FDR < 0.05)",
+       title = "Peak distribution across transcript regions") +
+  theme_bw(base_size = 10) + theme(panel.grid = element_blank(), legend.position = "right")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   A per-window Fisher test on **one IP vs one input** library is statistically fragile — with no replicates the reference author warns p-values overstate confidence; treat called peaks as candidates and validate against motif (DRACH) or replicate data.
+-   Filter low-count windows before testing (the reference keeps windows with > 1/20 of the max count) — near-zero windows produce Fisher p-values dominated by rounding, not enrichment.
+-   Merge adjacent significant windows **before** reporting: a merged peak coordinates bed file is the deliverable, not a list of windows; the merge gap (here 5 windows = 500 bp) sets peak granularity.
+:::
+
+## Applications
+
+::: {#fig-M6aPeakApplications1}
+![](../images/M6aPeakPlot_demo.png){fig-alt="m6A IP vs input peak calling" fig-align="center" width="60%"}
+
+m6A IP vs input peak calling
+:::
+
+The same window-count + Fisher + merge loop applies to any IP-over-input enrichment assay: m5C, m1A, pseudoU sequencing, or narrow ChIP-seq without a peak caller.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Zhao Y, Dominski M, Gutierrez-Beltran E, et al. m6A-dependent maternal mRNA clearance facilitates zebrafish maternal-to-zygotic transition. Nature. 2017;542(7642):475-478. doi:10.1038/nature21355

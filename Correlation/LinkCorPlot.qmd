@@ -1,0 +1,119 @@
+---
+title: "Butterfly Correlation Heatmap"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+The reference **butterfly correlation** (via the GitHub-only `ggcor` package) arranges two groups gene-to-pathway correlations as a mirrored heatmap with **links from one gene to all pathways** \[1\]. This tutorial **re-implements the layout in plain ggplot2** (ggcor is GitHub-only) from a simulated pathway-score matrix:
+
+## Example
+
+![](../images/Correlation/LinkCorPlot_demo.png){fig-alt="Butterfly Correlation Heatmap DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ggplot2`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+One gene correlated against 12 pathways in two simulated cohorts - the butterfly puts cohort A below and cohort B above, with links radiating from the query gene:
+
+```{r load data}
+suppressPackageStartupMessages({library(ggplot2); library(dplyr)})
+set.seed(22801)
+pathways <- paste0("Path", sprintf("%02d", 1:12))
+n_sam <- 80
+gene_a <- rnorm(n_sam)
+pathA <- do.call(cbind, lapply(pathways, function(p)
+  gene_a * runif(1, -0.8, 0.8) + rnorm(n_sam, 0, 0.6)))
+colnames(pathA) <- pathways
+gene_b <- rnorm(n_sam)
+pathB <- do.call(cbind, lapply(pathways, function(p)
+  gene_b * runif(1, -0.5, 0.5) + rnorm(n_sam, 0, 0.8)))
+colnames(pathB) <- pathways
+corr_test <- function(expr_vec, score_mat) {
+  do.call(rbind, lapply(pathways, function(p) {
+    ct <- cor.test(expr_vec, score_mat[, p])
+    data.frame(pathway = p, r = as.numeric(ct$estimate), p = ct$p.value)
+  }))
+}
+cA <- corr_test(gene_a, pathA); cA$cohort <- "Cohort A"
+cB <- corr_test(gene_b, pathB); cB$cohort <- "Cohort B"
+all_c <- rbind(cA, cB)
+all_c$sig <- cut(all_c$p, c(0, 0.001, 0.01, 0.05, 1),
+                 labels = c("p<0.001", "p<0.01", "p<0.05", "ns"))
+all_c$absw <- cut(abs(all_c$r), c(0, 0.25, 0.5, 0.75, 1),
+                  labels = c("0.25", "0.50", "0.75", "1.00"))
+```
+
+## Visualization
+
+### 1. Butterfly Correlation Links
+
+The ggplot2 re-implementation: tiles for the correlation matrix with links radiating from the query gene to each significant pathway:
+
+```{r}
+#| label: fig-1.1LinkCor
+#| fig-cap: "Butterfly correlation heatmap of a query gene against 12 simulated pathways in two cohorts: line colour = significance class, linewidth = |r| bin, radiating from the query gene."
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 4.5
+
+ggplot(all_c, aes(pathway, cohort)) +
+  geom_tile(fill = "grey95", colour = "grey70", linewidth = 0.3) +
+  geom_segment(aes(x = pathway, xend = pathway,
+                   y = ifelse(cohort == "Cohort A", 1.15, 1.85),
+                   yend = ifelse(cohort == "Cohort A", 2.0, 1.0),
+                   colour = sig, linewidth = absw, linetype = sig),
+               data = all_c[all_c$p < 0.05, ], alpha = 0.8) +
+  scale_colour_manual(values = c("p<0.001" = "#B2182B", "p<0.01" = "#EF8A62",
+                                 "p<0.05" = "#67A9CF"), name = "Significance") +
+  scale_linetype_manual(values = c("p<0.001" = "solid", "p<0.01" = "solid",
+                                   "p<0.05" = "22"), guide = "none") +
+  scale_linewidth_manual(values = c("0.25" = 0.3, "0.50" = 0.6, "0.75" = 0.9, "1.00" = 1.2), guide = "none") +
+  labs(x = NULL, y = NULL, title = "Gene-to-pathway correlation butterfly (simulated)") +
+  theme_classic(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.border = element_rect(fill = NA, colour = "grey40"))
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The `ggcor` package (GitHub-only) cannot enter the lockfile - the butterfly layout is reproducible in plain ggplot2.
+-   Two correlation matrices sharing the same pathway set can be arranged as a **butterfly** (one cohort per side) for cross-cohort comparison.
+-   Bin |r| and P into **ordered categories** rather than mapping continuous values - the categorical encoding keeps gradients readable.
+:::
+
+## Applications
+
+::: {#fig-LinkCorApplications1}
+![](../images/Correlation/LinkCorPlot_demo.png){fig-alt="Butterfly correlation heatmap" fig-align="center" width="60%"}
+
+Butterfly correlation heatmap
+:::
+
+The butterfly layout fits any 1-to-many correlation display: one gene against a pathway panel, one drug against target pathways.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Wang S, et al. Siglec15 as a therapeutic target. Theranostics. <https://www.thno.org/v11p0543.htm>

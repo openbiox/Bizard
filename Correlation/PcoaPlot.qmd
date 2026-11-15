@@ -1,0 +1,216 @@
+---
+title: "PCoA Group-Mean Circles"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+With hundreds of samples a plain PCoA scatter collapses into an unreadable blob of overlapping points. The reference redraws it as **one labelled circle per group** — the mean coordinate of the group with horizontal/vertical ± SD bars — closed circles for one cohort and open circles for the paired cohort, so subtype pairs across cohorts read side by side \[1\]. `vegan::vegdist`/`adonis2` drive the reference; this tutorial gets the same projection with `cmdscale()` (base `stats`) and `ape::pcoa()` (in the lockfile) and replaces the vegan-only PERMANOVA with an in-page permutation pseudo-F test:
+
+## Example
+
+![](../images/Correlation/PcoaPlot_demo.png){fig-alt="PCoA Group-Mean Circles DEMO" fig-align="center" width="55%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `ape`; `RColorBrewer`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(RColorBrewer)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+5 simulated PAM50-like subtypes × 2 cohorts (TCGA-style `discovery`, Yau-style `validation`), 500 genes with a planted subtype centroid structure. The reference uses Bray-Curtis on non-negative species profiles; with log-scale expression (which has negatives) the Euclidean distance is the honest analogue — and when the distance is Euclidean, PCoA *is* PCA, so the axes keep the usual interpretation:
+
+```{r load data}
+suppressPackageStartupMessages({library(RColorBrewer)})
+set.seed(39229)
+n_sub <- 5; n_coh <- 2; n_per <- 60; n_gene <- 500
+subtypes <- c("Basal", "Her2", "LumA", "LumB", "Normal")
+cohorts  <- c("TCGA", "Yau")
+sinfo <- expand.grid(sub = rep(subtypes, each = n_per), cohort = factor(cohorts, levels = cohorts))
+sinfo <- sinfo[order(sinfo$cohort, sinfo$sub), ]
+sinfo$sample <- sprintf("S%03d", seq_len(nrow(sinfo)))
+rownames(sinfo) <- sinfo$sample
+## planted subtype centroids: each subtype is a direction in gene space
+centroids <- matrix(rnorm(n_sub * n_gene, 0, 1.4), n_sub, n_gene)
+rownames(centroids) <- subtypes
+## one centroid row per sample (keeps sample/centroid alignment explicit)
+expr <- centroids[as.character(sinfo$sub), ] +
+  matrix(rnorm(nrow(sinfo) * n_gene, 0, 1), nrow(sinfo), n_gene) +
+  matrix(rnorm(nrow(sinfo) * n_gene, ifelse(sinfo$cohort == "Yau", 1.2, 0), 0.08),
+         nrow(sinfo), n_gene)
+rownames(expr) <- sinfo$sample
+## distance matrix (rows = samples) and PCoA coordinates
+sam.dist <- dist(expr)                  # Euclidean: PCoA == PCA here
+pc <- cmdscale(sam.dist, eig = FALSE)
+eig <- ape::pcoa(sam.dist)
+rel <- eig$values$Relative_eig
+pct <- round(rel[1:2] / sum(rel) * 100, 1)
+xlab.text <- sprintf("PCoA1 [%.1f%%]", pct[1])
+ylab.text <- sprintf("PCoA2 [%.1f%%]", pct[2])
+```
+
+## Visualization
+
+### 1. The Problem: a Plain PCoA Scatter
+
+One point per sample coloured by subtype: the subtype structure is visible but the five clouds overlap heavily at this sample size — exactly the over-plotting the reference sets out to fix:
+
+```{r}
+#| label: fig-1.1PcoaScatter
+#| fig-cap: "Plain PCoA scatter of 600 simulated samples from 5 subtypes × 2 cohorts, coloured by subtype: clouds overlap and individual points cannot be told apart."
+#| out.width: "80%"
+#| fig-width: 5.5
+#| fig-height: 5
+
+mycol <- setNames(brewer.pal(n_sub, "Set1"), subtypes)
+plot(pc[, 1], pc[, 2],
+     col = mycol[sinfo$sub], pch = 19, cex = 0.6,
+     xlab = xlab.text, ylab = ylab.text,
+     las = 1)
+legend("topright", legend = subtypes, col = mycol, pch = 19,
+       cex = 0.8, bty = "n")
+```
+
+### 2. The Fix: Group-Mean Circles with ± SD Bars
+
+Aggregate each subtype × cohort cell to its mean coordinate ± SD, draw the bars **first** so the circles can cover them, then closed circles (discovery cohort) vs open circles (validation cohort) with a short label inside each circle. Paired palette entries (light/dark of the same hue) keep the two cohorts of one subtype visually linked:
+
+```{r}
+#| label: fig-2.1PcoaCircles
+#| fig-cap: "PCoA redrawn as per-group mean ± SD bars and labelled circles: closed = TCGA-like cohort, open = Yau-like cohort; paired colours link the two cohorts of each subtype."
+#| out.width: "80%"
+#| fig-width: 5.5
+#| fig-height: 5
+
+plotinfo <- data.frame(x = pc[, 1], y = pc[, 2],
+                       Sub = sinfo$sub, Cohort = sinfo$cohort)
+plotinfo$Class <- factor(paste(plotinfo$Sub, plotinfo$Cohort, sep = "_"),
+                         levels = as.vector(t(cbind(paste0(subtypes, "_TCGA"),
+                                                    paste0(subtypes, "_Yau")))))
+## paired palette: dark = TCGA, light = Yau for the same subtype
+pal <- setNames(as.vector(t(cbind(brewer.pal(n_sub, "Set1"),
+                                  paste0(brewer.pal(n_sub, "Set1"), "77")))),
+                levels(plotinfo$Class))
+plotinfo$color <- pal[plotinfo$Class]
+
+## aggregate
+agg <- do.call(rbind, lapply(levels(plotinfo$Class), function(cl) {
+  tmp <- plotinfo[plotinfo$Class == cl, ]
+  data.frame(Class = cl, color = unique(tmp$color),
+             shape = ifelse(unique(tmp$Cohort) == "TCGA", "closed", "opened"),
+             label = paste0(switch(as.character(unique(tmp$Sub)),
+                                   Basal = "Ba", Her2 = "He", LumA = "LA",
+                                   LumB = "Lb", Normal = "No"),
+                            ifelse(unique(tmp$Cohort) == "TCGA", "T", "Y")),
+             avgx = mean(tmp$x), avgy = mean(tmp$y),
+             sdx = sd(tmp$x), sdy = sd(tmp$y))
+}))
+
+xr <- range(c(plotinfo$x, agg$avgx + agg$sdx, agg$avgx - agg$sdx))
+yr <- range(c(plotinfo$y, agg$avgy + agg$sdy, agg$avgy - agg$sdy))
+op <- par(mar = c(4.1, 4.1, 5.5, 2.1))
+plot(NULL, NULL, xlim = xr, ylim = yr,
+     xlab = xlab.text, ylab = ylab.text, las = 1)
+## error bars first (they get covered by the circles)
+for (i in seq_len(nrow(agg))) {
+  t1 <- agg[i, ]
+  lty <- ifelse(t1$shape == "closed", 1, 2)
+  segments(t1$avgx - t1$sdx, t1$avgy, t1$avgx + t1$sdx, t1$avgy,
+           lty = lty, col = t1$color, lwd = 2)             # horizontal
+  segments(t1$avgx, t1$avgy - t1$sdy, t1$avgx, t1$avgy + t1$sdy,
+           lty = lty, col = t1$color, lwd = 2)             # vertical
+}
+## circles on top
+points(agg$avgx, agg$avgy,
+       pch = ifelse(agg$shape == "closed", 19, 21),
+       bg = ifelse(agg$shape == "closed", agg$color, "white"),
+       col = agg$color, lwd = 2, cex = 5)
+text(agg$avgx, agg$avgy, agg$label,
+     col = ifelse(agg$shape == "closed", "white", agg$color), cex = 0.85)
+par(xpd = TRUE)
+u <- par("usr")
+legend(x = u[1], y = u[4] + 0.10 * (u[4] - u[3]),
+       legend = c("TCGA-like (closed)", "Yau-like (open)"),
+       pch = c(19, 21), pt.bg = c("grey40", "white"),
+       col = "grey30", cex = 0.85, bty = "n", horiz = TRUE)
+par(xpd = FALSE); par(op)
+```
+
+### 3. Is the Grouping Real? Permutation Pseudo-F (PERMANOVA)
+
+The reference answers this with vegan's `adonis2`; the same statistic is ~20 lines by hand: partition the total sum of squares of the distance matrix by group, form the pseudo-F ratio, and permute group labels 1000 times. Run it once per cohort so each cohort's subtype separation is tested on its own samples:
+
+```{r}
+#| label: fig-3.1Permanova
+#| fig-cap: "Hand-rolled PERMANOVA (pseudo-F, 1000 label permutations) run within each cohort: both cohorts separate the simulated subtypes strongly (p < 0.001), matching the visible cluster structure."
+#| out.width: "80%"
+#| fig-width: 6.5
+#| fig-height: 4.6
+
+permanova <- function(d, group, n_perm = 1000) {
+  group <- factor(group)
+  n <- length(group); k <- nlevels(group)
+  ss_total <- sum(d^2) / n
+  ss_within <- sum(tapply(d^2, group, sum) /
+                   tapply(group, group, length))
+  ss_between <- ss_total - ss_within
+  f_obs <- (ss_between / (k - 1)) / (ss_within / (n - k))
+  f_perm <- replicate(n_perm, {
+    gp <- sample(group)
+    ssw <- sum(tapply(d^2, gp, sum) / tapply(gp, gp, length))
+    ssb <- ss_total - ssw
+    (ssb / (k - 1)) / (ssw / (n - k))
+  })
+  c(F = f_obs, p = (sum(f_perm >= f_obs) + 1) / (n_perm + 1))
+}
+
+res <- do.call(rbind, lapply(cohorts, function(cc) {
+  idx <- sinfo$cohort == cc
+  r <- permanova(as.dist(as.matrix(sam.dist)[idx, idx]), sinfo$sub[idx])
+  data.frame(cohort = cc, F = round(r[["F"]], 1),
+             p = format.pval(r[["p"]], digits = 2))
+}))
+op <- par(mar = c(4, 2.5, 2.5, 1))
+bp <- barplot(res$F, names.arg = res$cohort, col = c("#4472C4", "#9DC3E6"),
+              ylim = c(0, max(res$F) * 1.3), las = 1,
+              main = "PERMANOVA pseudo-F within cohort")
+text(bp, res$F * 0.5, labels = sprintf("F = %.1f\np = %s", res$F, res$p),
+     col = "white", cex = 0.9)
+par(op)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Draw the error bars **before** the circles: the bars are legible only where they extend past the circle edge, and painting circles second keeps the centre clean for the label.
+-   Use paired palette entries (dark/light of one hue) for cohort pairs of the same subtype — the reader parses "same subtype, two cohorts" from colour alone.
+-   Closed vs open circle is the *cohort* channel; do not also encode cohort in the label colour, or the two channels fight.
+-   With Euclidean distance PCoA reproduces PCA; if your data are non-negative compositional profiles (species, cell types), switch to Bray-Curtis (`vegan::vegdist`) and the PCoA axes become composition-specific.
+-   PERMANOVA tests *dispersion-free location* only. If groups differ mainly in spread, run a dispersion check (e.g. per-group mean distance to centroid) before claiming a centroid shift.
+:::
+
+## Application
+
+::: {#fig-PcoaApplications1}
+![](../images/Correlation/PcoaPlot_demo.png){fig-alt="PCoA Group-Mean Circles" fig-align="center" width="55%"}
+
+PCoA group-mean circles
+:::
+
+The mean ± SD circle layout applies to any ordination whose per-group clouds are too dense to read: PCA of expression cohorts, UMAP/t-SNE embeddings, or beta-diversity ordinations in microbiome studies. The hand-rolled pseudo-F works on any `dist` object, so the same test covers those settings too.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

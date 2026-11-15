@@ -1,0 +1,141 @@
+---
+title: "TMB and Ti/Tv Spectrum"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+Tumour mutation burden (**TMB**, non-synonymous mutations per Mb) spans two orders of magnitude across cancer types, and each tumour's **Ti/Tv composition** (the six substitution classes) fingerprints its mutational process — spontaneous deamination skews C>T, UV exposure skews C>A \[1\]. The reference figure packs one point per tumour into cohort columns ordered by median TMB, with a thin stacked Ti/Tv strip under each column sharing the sample order. This tutorial reproduces the full composite with base graphics on simulated cohorts:
+
+## Example
+
+![](../images/TmbTitvPlot_demo.png){fig-alt="TMB and Ti/Tv Spectrum DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages(library(dplyr))
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+Per-sample TMB for 8 simulated cohorts (log-normal around planted medians, ordered THCA → SKCM) plus per-sample Dirichlet Ti/Tv fractions with cohort-specific concentrations — THCA gets a deamination-heavy profile (C>T dominant) and SKCM a UV profile (C>A dominant). With real data, both tables come from `maftools`: TMB from `getSampleSummary()` (divided by the ~35 Mb exome) and fractions from `titv(maf, plot = FALSE)$fraction.contribution`:
+
+```{r load data}
+set.seed(13901)
+cohorts <- c("THCA", "KIRC", "PRAD", "BRCA", "COAD", "STAD", "LUAD", "SKCM")
+med_tmb <- c(0.4, 0.9, 1.4, 2.2, 4.5, 7.0, 8.5, 15)
+n_sm    <- c(70, 60, 65, 90, 60, 55, 70, 80)
+cls <- c("C>T", "T>C", "C>A", "C>G", "T>A", "T>G")
+npg <- c("#E64B35", "#4DBBD5", "#00A087", "#3C5488", "#F39B7F", "#8491B4")
+names(npg) <- cls
+## Dirichlet concentrations per cohort: THCA spontaneous deamination (C>T),
+## SKCM UV signature (C>A) — the etiologies the Ti/Tv strip must reveal
+conc <- list(
+  THCA = c(22, 4, 1.5, 1.5, 2.5, 1.5),
+  KIRC = c(5, 4, 3, 2, 3, 2),  PRAD = c(7, 4, 2.5, 2, 2.5, 1.8),
+  BRCA = c(6, 4, 3.5, 2, 3, 2), COAD = c(10, 4, 2, 2, 3, 2),
+  STAD = c(6, 4, 4, 2, 3.5, 2), LUAD = c(5, 4, 5, 2, 3.5, 2),
+  SKCM = c(3, 2, 18, 1.5, 2.5, 1.5))
+TMB.dat <- do.call(rbind, lapply(seq_along(cohorts), function(i) {
+  data.frame(cohort = cohorts[i], Tumor_Sample_Barcode = sprintf("%s_%03d", cohorts[i], 1:n_sm[i]),
+             TMB = pmax(0.05, exp(rnorm(n_sm[i], log(med_tmb[i]), 0.75))))
+}))
+titv.dat <- do.call(rbind, lapply(cohorts, function(cc) {
+  k <- match(cc, cohorts)
+  g <- matrix(rgamma(n_sm[k] * 6, shape = rep(conc[[cc]], times = n_sm[k]), rate = 3),
+              ncol = 6, byrow = TRUE)
+  f <- g / rowSums(g); colnames(f) <- cls
+  data.frame(Tumor_Sample_Barcode = sprintf("%s_%03d", cc, 1:n_sm[k]), f, check.names = FALSE)
+}))
+```
+
+## Visualization
+
+### 1. TMB Scatter with Ti/Tv Strips
+
+The composite: samples sorted ascending inside each cohort slot show the within-cohort distribution shape; grey segments mark cohort medians; the strips underneath re-use the same left-to-right sample order so per-cohort mutational signatures line up with the TMB they accompany — THCA reads deamination (red C>T), SKCM reads UV (green C>A):
+
+```{r}
+#| label: fig-1.1TmbTitv
+#| fig-cap: "Tumour mutation burden across 8 simulated cohorts (log10(TMB+1), ordered by ascending median; grey segments = medians) with per-cohort Ti/Tv fraction strips sharing the sample order: THCA is C>T-dominant (deamination), SKCM is C>A-dominant (UV)."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 10
+#| fig-height: 5.5
+
+tcga.cohort.med <- TMB.dat %>% group_by(cohort) %>% summarise(median = median(TMB)) %>%
+  as.data.frame() %>% .[order(.$median), ]
+TMB.dat$cohort <- factor(TMB.dat$cohort, levels = tcga.cohort.med$cohort)
+TMB.dat <- TMB.dat[order(TMB.dat$cohort, TMB.dat$TMB), ]
+TMB.plot <- lapply(split(TMB.dat, TMB.dat$cohort), function(x)
+  data.frame(x = seq(0, 1, length.out = nrow(x)), TMB = x$TMB))
+sampleorder <- lapply(split(TMB.dat, TMB.dat$cohort), `[[`, "Tumor_Sample_Barcode")
+titv.dat2 <- lapply(tcga.cohort.med$cohort, function(cc) {
+  tmp <- titv.dat[match(sampleorder[[cc]], titv.dat$Tumor_Sample_Barcode), cls]
+  t(tmp)                                   # 6 x n, each column a sample
+})
+tcga.cohort.med$logmed <- log10(tcga.cohort.med$median + 1)
+nc <- length(cohorts)
+
+## scatter panel; strip x-positions derived from par("usr")/par("plt") so the
+## Ti/Tv strips align exactly with each cohort's slot on the scatter
+par(mar = c(11, 2.5, 2, 0), mgp = c(3, 0.6, 0))
+y_lims <- range(log10(TMB.dat$TMB + 1))
+plot(NA, NA, xlim = c(0, nc), ylim = y_lims, xaxt = "n", yaxt = "n", xaxs = "r",
+     ylab = "", xlab = "", main = "Tumour mutation burden across cohorts (simulated)")
+mtext("log10(TMB+1)", side = 2, line = 1.4, cex = 0.9)
+invisible(lapply(seq_len(nc), function(i) {
+  tmp <- TMB.plot[[i]]
+  points(tmp$x + i - 1, log10(tmp$TMB + 1), pch = 16, cex = 0.4, col = "black")
+  segments(i - 1, tcga.cohort.med$logmed[i], i, tcga.cohort.med$logmed[i], col = "grey45", lwd = 2)
+}))
+axis(side = 1, at = seq(0.5, nc - 0.5, 1), labels = tcga.cohort.med$cohort,
+     las = 2, cex.axis = 0.8, tick = FALSE)
+axis(side = 2, at = 0:2, las = 2)
+usr <- par("usr"); pltr <- par("plt")
+devx <- function(u) pltr[1] + (u - usr[1]) / (usr[2] - usr[1]) * (pltr[2] - pltr[1])
+invisible(lapply(seq_len(nc), function(i) {
+  par(fig = c(devx(i - 1), devx(i), 0.03, 0.17), new = TRUE, mar = c(0, 0, 0, 0))
+  barplot(titv.dat2[[i]], col = npg[rownames(titv.dat2[[i]])],
+          names.arg = rep("", ncol(titv.dat2[[i]])), axes = FALSE, space = 0, border = NA)
+  box()
+}))
+par(fig = c(0, 0.1, 0.03, 0.22), new = TRUE, mar = c(0, 0, 0, 0))
+plot(NA, NA, xlim = c(0, 1), ylim = c(0, 1), axes = FALSE)
+legend("center", fill = npg, legend = names(npg), bty = "n", cex = 0.8)
+```
+
+::: callout-tip
+**Practice tips**
+
+-   Keep one **sample order** for both panels: sort samples ascending by TMB inside each cohort, then `match()` the Ti/Tv table to that order — a mismatched strip silently describes different tumours than the dots above it.
+-   The strips are inset with `par(fig = ...)`; derive their x-coordinates from `par("usr")`/`par("plt")` of the scatter **after** plotting it — hard-coding device fractions drifts out of alignment the moment margins change.
+-   TMB here uses the classic fixed ~35 Mb exome denominator; when cohorts use different capture kits, normalize per panel or the cross-cohort medians are not comparable.
+:::
+
+## Applications
+
+::: {#fig-TmbTitvApplications1}
+![](../images/TmbTitvPlot_demo.png){fig-alt="TMB + Ti/Tv pan-cancer layout" fig-align="center" width="60%"}
+
+TMB + Ti/Tv pan-cancer layout
+:::
+
+The column-packed scatter + signature strip layout generalizes to any per-sample quantitative trait with a compositional profile: mutational burden with signature exposures, CNV burden with breakpoint spectra, or drug IC50 with target-expression fractions.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Lawrence MS, Stojanov P, Polak P, et al. Mutational heterogeneity in cancer and the search for new cancer-associated genes. Nature. 2013;499(7457):214-218. doi:10.1038/nature12213

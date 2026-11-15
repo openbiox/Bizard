@@ -1,0 +1,177 @@
+---
+title: "表达相关与生存最优截断"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+两个免疫标志物，一张图：**CD274 (PD-L1) vs CD8A 散点**承载二者的相关性（回归置信带）、以点形区分的 MSI 状态，且在页边给出**每一个候选表达截断的 log-rank 得分曲线**——峰值（蓝色箭头）定义生存最优的四象限分组（I–IV）及人群占比 \[1\]。本教程在模拟数据上复现结直肠免疫过载研究 Fig. 1C \[2\]：
+
+## Example
+
+![](../images/SurvCorPlot_demo.png){fig-alt="表达相关与生存最优截断 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`survival`; `shape`; `ggplot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+if (!requireNamespace("shape", quietly = TRUE)) {
+  install.packages("shape", repos = "https://cloud.r-project.org")
+}
+suppressPackageStartupMessages({
+  library(ggplot2)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+280 个模拟肿瘤：CD274 与 CD8A log2 表达经一个潜在免疫活性因子相关联，少数样本带 MSI 状态；生存时间植入生物学——CD8A 高预后好、PD-L1 高/CD8A 低（免疫抑制象限）最差——使 logrank 峰落在数据范围内：
+
+```{r load data}
+suppressPackageStartupMessages(library(survival))
+set.seed(14301)
+n <- 280
+z1 <- rnorm(n)                                   # latent immune activity
+CD274 <- round(2.2 + 0.9 * z1 + rnorm(n, 0, 1.1), 2)
+CD8A  <- round(0.5 * z1 + rnorm(n, 0, 1.5) + 0.4 * (CD274 > 3), 2)
+msi <- sample(n, 40)
+expr <- data.frame(CD274 = CD274, CD8A = CD8A, row.names = sprintf("S%03d", 1:n))
+## planted biology: CD8A-high tumours do better; PD-L1-high/CD8A-low
+## (immunosuppressed quadrant II) do worst -> interior logrank peaks
+haz <- exp(0.15 * scale(CD274)[, 1] - 0.55 * (CD8A > 0.5) +
+           0.45 * (CD274 > 2 & CD8A <= 0.5))
+surv <- data.frame(OS.time = pmin(2400, pmax(30, qweibull(runif(n), 1, 900 / haz))),
+                   OS = rbinom(n, 1, 0.55), row.names = rownames(expr))
+exprsurv <- cbind.data.frame(surv, expr)
+```
+
+## Visualization
+
+### 散点 + 页边 log-rank 得分条
+
+`layout()` 组合图：上方与右侧条带展示 CD274 与 CD8A 每个候选截断的 log-rank U 统计量（黑色小柱），蓝箭头标出生存最优峰；散点内蓝色虚线施加截断（灰虚线 = 中位数），象限标签 I–IV 带人群占比，阴影带为回归 95% 置信域：
+
+```{r}
+#| label: fig-1.1SurvCor
+#| fig-cap: "模拟 CD274 与 CD8A 表达散点：MSI/MSS 点形、中位数与生存最优截断线、回归及 95% 置信域、象限占比 I-IV，页边 log-rank 得分条峰值（箭头）选出截断。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 7.2
+#| fig-height: 7.2
+
+suppressPackageStartupMessages(library(shape))   # Arrows()
+## log-rank score for every candidate cutpoint — dependency-free
+## reimplementation of survMisc::cutp: the score is the survdiff chi-square of
+## the high/low split at each unique expression value; the peak marks the
+## survival-optimal cut-off (on real data survMisc::cutp(coxph) gives the
+## same curve on the U-statistic scale)
+logrank_curve <- function(gene) {
+  vals <- sort(unique(exprsurv[[gene]]))
+  vals <- vals[-length(vals)]                # last value would leave an empty group
+  score <- vapply(vals, function(v) {
+    grp <- exprsurv[[gene]] > v
+    survdiff(Surv(OS.time, OS) ~ grp, data = exprsurv)$chisq
+  }, numeric(1))
+  data.frame(cut = vals, score = score)
+}
+lr.CD274 <- logrank_curve("CD274")
+peak.CD274 <- lr.CD274$cut[which.max(lr.CD274$score)]
+peak.CD274.score <- max(lr.CD274$score)
+lr.CD8A <- logrank_curve("CD8A")
+peak.CD8A <- lr.CD8A$cut[which.max(lr.CD8A$score)]
+peak.CD8A.score <- max(lr.CD8A$score)
+
+## quadrant percentages (peak-based grouping, I-IV naming as the paper)
+lefttop.pct <- paste0("III (", round(sum(expr$CD274 < peak.CD274 & expr$CD8A > peak.CD8A) / n, 2) * 100, "%)")
+leftbottom.pct <- paste0("I (", round(sum(expr$CD274 <= peak.CD274 & expr$CD8A <= peak.CD8A) / n, 2) * 100, "%)")
+righttop.pct <- paste0("IV (", round(sum(expr$CD274 >= peak.CD274 & expr$CD8A >= peak.CD8A) / n, 2) * 100, "%)")
+rightbottom.pct <- paste0("II (", round(sum(expr$CD274 > peak.CD274 & expr$CD8A < peak.CD8A) / n, 2) * 100, "%)")
+
+cor <- cor.test(expr$CD274, expr$CD8A, method = "pearson")
+r <- round(cor$estimate, 2)
+p <- ifelse(cor$p.value < 0.001, " < 0.001", paste0(" = ", round(cor$p.value, 3)))
+reg <- lm(CD8A ~ CD274, data = expr[order(expr$CD274), ])
+ci <- as.data.frame(predict(reg, newdata = expr[order(expr$CD274), ], interval = "confidence"))
+
+blue <- "#4F81BD"; red <- "#E53435"; lblue <- "#5bc0eb"; dblue <- "#1d00ff"; pink <- "#FF7FBF"
+ylim <- range(expr$CD8A); xlim <- range(expr$CD274)
+layout(matrix(c(1,1,1,1,2,
+                3,3,3,3,4,
+                3,3,3,3,4,
+                3,3,3,3,4,
+                3,3,3,3,4), byrow = TRUE, nrow = 5))
+## area 1: x-gene logrank scores
+par(bty = "n", mgp = c(2, 0.5, 0), mar = c(0.6, 4.1, 2.1, 0), tcl = -0.25, xpd = TRUE)
+plot(NULL, NULL, xlim = xlim, ylim = c(0, max(lr.CD274$score) + 5),
+     xaxt = "n", yaxt = "n", ann = FALSE)
+rect(lr.CD274$cut - 0.012, 0, lr.CD274$cut + 0.012, lr.CD274$score, col = "black")
+Arrows(peak.CD274, peak.CD274.score + 5, peak.CD274, peak.CD274.score + 3,
+       arr.length = 0.2, lwd = 2, col = blue, arr.type = "triangle")
+## area 2: spacer
+par(bty = "n", mar = c(4.1, 4.1, 0, 0))
+plot(0, 0, col = "white", xaxt = "n", yaxt = "n", xlab = "", ylab = "")
+## area 3: main scatter
+par(bty = "o", mgp = c(2, 0.5, 0), mar = c(4.1, 4.1, 0, 0), tcl = -0.25,
+    font.axis = 2, las = 1); par(xpd = FALSE)
+mss.sam <- setdiff(rownames(expr), sprintf("S%03d", msi))
+msi.sam <- sprintf("S%03d", msi)
+plot(expr[mss.sam, "CD274"], expr[mss.sam, "CD8A"], ylim = ylim, xlim = xlim,
+     xlab = expression(italic(CD274) ~ "(PD-L1) Gene Expression"),
+     ylab = expression(italic(CD8A) ~ " Gene Expression"),
+     cex.lab = 1.3, cex.axis = 1.1, col = "grey40", cex = 1.0, pch = 19)
+points(expr[msi.sam, "CD274"], expr[msi.sam, "CD8A"], col = "black", cex = 1.6, pch = 17)
+abline(h = median(expr$CD8A), lty = 2, col = "grey60", lwd = 2)
+abline(v = median(expr$CD274), lty = 2, col = "grey60", lwd = 2)
+abline(v = peak.CD274, lty = 2, col = blue, lwd = 2)
+abline(h = peak.CD8A, lty = 2, col = blue, lwd = 2)
+polygon(round(c(sort(expr$CD274), rev(sort(expr$CD274))), 2),
+        round(c(ci$lwr, rev(ci$upr)), 2), col = adjustcolor("grey70", 0.6), border = NA)
+lines(x = xlim, y = xlim * reg$coefficients[2] + reg$coefficients[1], lwd = 2)
+xmin <- par("usr")[1]; xmax <- par("usr")[2]; ymin <- par("usr")[3]; ymax <- par("usr")[4]
+text(xmin + 0.2, ymin + 0.45, adj = 0,
+     bquote(~italic(r) ~ " = " ~ .(r) ~ ", " ~ italic(P) ~ .(p)), cex = 1.2)
+text(xmin + (peak.CD274 - xmin) / 2, ymin + (peak.CD8A - ymin) / 2,
+     bquote(bold(.(leftbottom.pct))), cex = 1.3, col = lblue)
+text(peak.CD274 + (xmax - peak.CD274) / 2, ymin + (peak.CD8A - ymin) / 2,
+     bquote(bold(.(rightbottom.pct))), cex = 1.3, col = pink)
+text(xmin + (peak.CD274 - xmin) / 2, peak.CD8A + (ymax - peak.CD8A) / 2,
+     bquote(bold(.(lefttop.pct))), cex = 1.3, col = dblue)
+text(peak.CD274 + (xmax - peak.CD274) / 2, peak.CD8A + (ymax - peak.CD8A) / 2,
+     bquote(bold(.(righttop.pct))), cex = 1.3, col = red)
+legend("bottomright", legend = c("MSI", "MSS"), col = c("black", "grey40"),
+       pch = c(17, 19), cex = 1.1, title = expression(bold("MSI Status")),
+       bty = "o", xpd = TRUE, inset = c(0, -0.02))
+## area 4: y-gene logrank scores
+par(bty = "n", mgp = c(2, 0.5, 0), mar = c(4.1, 0.6, 0, 2.1), tcl = -0.25, xpd = TRUE)
+plot(NULL, NULL, xlim = c(0, max(lr.CD8A$score) + 5), ylim = ylim,
+     xaxt = "n", yaxt = "n", ann = FALSE)
+rect(0, lr.CD8A$cut - 0.03, lr.CD8A$score, lr.CD8A$cut + 0.03, col = "black")
+Arrows(peak.CD8A.score + 5, peak.CD8A, peak.CD8A.score + 3, peak.CD8A,
+       arr.length = 0.2, lwd = 2, col = blue, arr.type = "triangle")
+```
+
+
+## 应用场景
+
+::: {#fig-SurvCorApplications1}
+![](../images/SurvCorPlot_demo.png){fig-alt="相关 + 生存最优截断" fig-align="center" width="60%"}
+
+相关 + 生存最优截断
+:::
+
+散点 + 页边得分版式适用于任何需要双侧生存最优分层的两标志物组合：PD-1 vs CTLA4、增殖 vs 免疫评分、或两个模型的风险评分。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\] Fakih M, Ouyang C, Wang C, et al. Immune overdrive signature in colorectal tumor subset predicts poor clinical outcome. J Clin Invest. 2019;129(10):4464-4476. doi:10.1172/JCI127046

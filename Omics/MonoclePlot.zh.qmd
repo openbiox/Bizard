@@ -1,0 +1,143 @@
+---
+title: "Monocle 拟时序发育轨迹 UMAP"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+Monocle 沿**拟时序轨迹**对单细胞排序以重建发育或分化谱系，可视化为映射在 UMAP 嵌入上的树或轨迹图，细胞按拟时序进展着色 \[\1\]。`Monocle` 与 Seurat 不在本仓库 lockfile；拟时序值与轨迹分支在此模拟，轨迹 UMAP 散点在 ggplot2 上运行：
+
+## Example
+
+![](../images/Omics/MonoclePlot_demo.png){fig-alt="Monocle 拟时序发育轨迹 UMAP DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`; `patchwork`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2); library(patchwork)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+1500 个单细胞带分支轨迹（根状态分裂为两个发育命运）。拟时序值（0 到 20）沿路径分配、并注释分支状态：
+
+```{r load data}
+suppressPackageStartupMessages({library(ggplot2); library(patchwork)})
+set.seed(47283)
+n_cell <- 1500
+branch <- sample(c("State 1", "State 2", "State 3"), n_cell, TRUE, prob = c(0.4, 0.3, 0.3))
+## 根状态覆盖早期拟时序，末端命运覆盖较晚区段
+t_val <- ifelse(branch == "State 1", runif(sum(branch == "State 1"), 0, 10),
+                runif(sum(branch != "State 1"), 7, 20))
+
+## branched UMAP coords
+umap1 <- ifelse(branch == "State 1", t_val * 0.4 + rnorm(n_cell, 0, 0.4),
+                ifelse(branch == "State 2", 8 + (t_val - 10) * 0.5 + rnorm(n_cell, 0, 0.4),
+                       8 - (t_val - 10) * 0.3 + rnorm(n_cell, 0, 0.4)))
+umap2 <- ifelse(branch == "State 1", t_val * 0.3 + rnorm(n_cell, 0, 0.4),
+                ifelse(branch == "State 2", 3 + (t_val - 10) * 0.6 + rnorm(n_cell, 0, 0.4),
+                       3 - (t_val - 10) * 0.6 + rnorm(n_cell, 0, 0.4)))
+
+mono_df <- data.frame(
+  UMAP1 = umap1,
+  UMAP2 = umap2,
+  pseudotime = t_val,
+  branch = branch
+)
+
+## CD8 T 细胞亚群（FigureYa40lineage）：naive LEF1+ 在根部、
+## CX3CR1+ 记忆性跨中段、效应 GZMK+ / LAYN+ 各占据一条末端分支
+mono_df$majorCluster <- with(mono_df, ifelse(
+  pseudotime < 7, "CD8-LEF1",
+  ifelse(pseudotime < 12, "CD8-CX3CR1",
+         ifelse(branch == "State 2", "CD8-GZMK", "CD8-LAYN"))))
+```
+
+## Visualization
+
+### UMAP 上的拟时序梯度与分支状态
+
+参考的主要交付物：双 UMAP 散点图，分别按拟时序进展（viridis 梯度）与发育分支状态着色：
+
+```{r}
+#| label: fig-1.1MonocleUmap
+#| fig-cap: "UMAP 嵌入上的单细胞拟时序轨迹（Monocle 风格）：细胞按拟时序进展（左，viridis 梯度）与发育分支状态（右，3 状态）着色。"
+#| out.width: "100%"
+#| fig-width: 10
+#| fig-height: 4.6
+
+p1 <- ggplot(mono_df, aes(UMAP1, UMAP2, colour = pseudotime)) +
+  geom_point(size = 0.8, alpha = 0.85) +
+  scale_colour_viridis_c(option = "viridis", name = "Pseudotime") +
+  labs(title = "Pseudotime progression") +
+  theme_bw(base_size = 10) + theme(panel.grid = element_blank())
+
+p2 <- ggplot(mono_df, aes(UMAP1, UMAP2, colour = branch)) +
+  geom_point(size = 0.8, alpha = 0.85) +
+  scale_colour_brewer(palette = "Set1", name = "Branch state") +
+  labs(title = "Developmental branches") +
+  theme_bw(base_size = 10) + theme(panel.grid = element_blank())
+
+p1 + p2
+```
+
+### 2. CD8 亚群映射到轨迹上（FigureYa40lineage）
+
+FigureYa40lineage 对各 CD8 T 细胞亚群分别跑 Monocle、并改用 **majorCluster** 给轨迹着色：把已知亚群映射到分支状态上，可读出哪些群体占据哪些分支——此处 naive LEF1+ 位于根部、记忆 CX3CR1+ 位于中段拟时序、效应 GZMK+/LAYN+ 分裂进入两条末端命运：
+
+```{r}
+#| label: fig-2.1MonocleCluster
+#| fig-cap: "同一轨迹上的 CD8 T 细胞亚群（左）：LEF1+（naive）在根部、CX3CR1+（记忆）横跨中段拟时序、GZMK+/LAYN+（效应/耗竭）占据两条末端分支；右，各分支状态的亚群构成——每个晚期状态由一个效应亚群主导。"
+#| out.width: "100%"
+#| fig-width: 10
+#| fig-height: 4.6
+
+p3 <- ggplot(mono_df, aes(UMAP1, UMAP2, colour = majorCluster)) +
+  geom_point(size = 0.8, alpha = 0.85) +
+  scale_colour_manual(values = c(`CD8-LEF1` = "#4472C4", `CD8-CX3CR1` = "#8EA325",
+                                 `CD8-GZMK` = "#E08214", `CD8-LAYN` = "#B2182B"),
+                      name = "Subcluster") +
+  labs(title = "Cells coloured by subcluster") +
+  theme_bw(base_size = 10) + theme(panel.grid = element_blank())
+
+comp <- as.data.frame(table(branch = mono_df$branch,
+                            cluster = mono_df$majorCluster))
+comp$branch <- factor(comp$branch, levels = c("State 1", "State 2", "State 3"))
+p4 <- ggplot(comp, aes(branch, Freq, fill = cluster)) +
+  geom_col(position = "fill", width = 0.72, colour = "white", linewidth = 0.3) +
+  scale_fill_manual(values = c(`CD8-LEF1` = "#4472C4", `CD8-CX3CR1` = "#8EA325",
+                               `CD8-GZMK` = "#E08214", `CD8-LAYN` = "#B2182B"),
+                    name = "Subcluster") +
+  labs(x = NULL, y = "Fraction of cells") +
+  theme_bw(base_size = 10) +
+  theme(panel.grid.minor = element_blank(), legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 2, byrow = TRUE))
+
+p3 + p4
+```
+
+
+## 应用场景
+
+::: {{#fig-MonocleApplications1}}
+![](../images/Omics/MonoclePlot_demo.png){fig-alt="Monocle 拟时序发育轨迹 UMAP" fig-align="center" width="60%"}
+
+Monocle 拟时序发育轨迹 UMAP
+:::
+
+拟时序轨迹适用于任何动态单细胞过程：干细胞分化、免疫细胞激活、或癌细胞演化。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

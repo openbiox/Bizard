@@ -1,0 +1,112 @@
+---
+title: "蝴蝶相关热图"
+author:
+  - "**[编辑]** ZCode (GLM) — AI 生成，独立 AI 复核"
+---
+
+参考的**蝴蝶相关**（通过 GitHub-only 的 `ggcor` 包）将两组基因-通路相关排列为镜像热图并配**从一个基因到所有通路的连线**：线颜色 = 符号、线型 = 显著性类别、线宽 = |r| 分档 \[1\]。参考计算 ssGSEA 通路评分后对一个基因做 Pearson 检验；本教程**用纯 ggplot2 重实现该版式**（ggcor 依赖仅存于 GitHub）从模拟通路评分矩阵：
+
+## Example
+
+![](../images/Correlation/LinkCorPlot_demo.png){fig-alt="蝴蝶相关热图 DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   系统要求：跨平台（Linux/MacOS/Windows）
+
+-   编程语言：R
+
+-   依赖包：`ggplot2`; `dplyr`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## 数据准备
+
+一个基因（Siglec15 类）与两个模拟队列（免疫 signature 与膀胱癌通路）中的 12 条通路做相关。蝴蝶图将队列 A 放在下三角、队列 B 放在上三角、连线从对角基因格辐射到各通路：
+
+```{r load data}
+suppressPackageStartupMessages({library(ggplot2); library(dplyr)})
+set.seed(22801)
+pathways <- paste0("Path", sprintf("%02d", 1:12))
+n_sam <- 80
+gene_a <- rnorm(n_sam)
+pathA <- do.call(cbind, lapply(pathways, function(p)
+  gene_a * runif(1, -0.8, 0.8) + rnorm(n_sam, 0, 0.6)))
+colnames(pathA) <- pathways
+gene_b <- rnorm(n_sam)
+pathB <- do.call(cbind, lapply(pathways, function(p)
+  gene_b * runif(1, -0.5, 0.5) + rnorm(n_sam, 0, 0.8)))
+colnames(pathB) <- pathways
+corr_test <- function(expr_vec, score_mat) {
+  do.call(rbind, lapply(pathways, function(p) {
+    ct <- cor.test(expr_vec, score_mat[, p])
+    data.frame(pathway = p, r = as.numeric(ct$estimate), p = ct$p.value)
+  }))
+}
+cA <- corr_test(gene_a, pathA); cA$cohort <- "Cohort A"
+cB <- corr_test(gene_b, pathB); cB$cohort <- "Cohort B"
+all_c <- rbind(cA, cB)
+all_c$sig <- cut(all_c$p, c(0, 0.001, 0.01, 0.05, 1),
+                 labels = c("p<0.001", "p<0.01", "p<0.05", "ns"))
+all_c$absw <- cut(abs(all_c$r), c(0, 0.25, 0.5, 0.75, 1),
+                  labels = c("0.25", "0.50", "0.75", "1.00"))
+```
+
+## Visualization
+
+### 蝴蝶相关连线
+
+ggplot2 重实现：相关矩阵的瓦片 + 从查询基因辐射到每个显著通路的连线——线颜色 = 显著性类别、线宽 = |r| 分档、不显著对保留灰色瓦片：
+
+```{r}
+#| label: fig-1.1LinkCor
+#| fig-cap: "查询基因与 12 条模拟通路在两个队列中的蝴蝶相关热图：线颜色 = 显著性类别、线宽 = |r| 分档、从查询基因辐射到各通路；不显著对保留灰色瓦片。"
+#| out.width: "85%"
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 4.5
+
+ggplot(all_c, aes(pathway, cohort)) +
+  geom_tile(fill = "grey95", colour = "grey70", linewidth = 0.3) +
+  geom_segment(aes(x = pathway, xend = pathway,
+                   y = ifelse(cohort == "Cohort A", 1.15, 1.85),
+                   yend = ifelse(cohort == "Cohort A", 2.0, 1.0),
+                   colour = sig, linewidth = absw, linetype = sig),
+               data = all_c[all_c$p < 0.05, ], alpha = 0.8) +
+  scale_colour_manual(values = c("p<0.001" = "#B2182B", "p<0.01" = "#EF8A62",
+                                 "p<0.05" = "#67A9CF"), name = "Significance") +
+  scale_linetype_manual(values = c("p<0.001" = "solid", "p<0.01" = "solid",
+                                   "p<0.05" = "22"), guide = "none") +
+  scale_linewidth_manual(values = c("0.25" = 0.3, "0.50" = 0.6, "0.75" = 0.9, "1.00" = 1.2), guide = "none") +
+  labs(x = NULL, y = NULL, title = "Gene-to-pathway correlation butterfly (simulated)") +
+  theme_classic(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.border = element_rect(fill = NA, colour = "grey40"))
+```
+
+
+## 应用场景
+
+::: {#fig-LinkCorApplications1}
+![](../images/Correlation/LinkCorPlot_demo.png){fig-alt="蝴蝶相关热图" fig-align="center" width="60%"}
+
+蝴蝶相关热图
+:::
+
+蝴蝶版式适用于任何 1 对多的相关展示：一个基因 vs 通路面板、一个药物 vs 靶通路、或一个标记 vs 细胞类型评分。
+
+## 参考文献
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
+
+\[2\} Wang S, et al. Siglec15 as a therapeutic target. Theranostics. <https://www.thno.org/v11p0543.htm>

@@ -1,0 +1,124 @@
+---
+title: "Supervised Clustering"
+author:
+  - "**[Editor]** ZCode (GLM) — AI-generated, independently AI-reviewed;"
+---
+
+Supervised clustering trains a nearest-centroid classifier on labelled samples and projects the classifier onto a held-out test set; the test-set heatmap ordered by **predicted class** — with both true and predicted labels annotated — is the reference figure \[1\]. This tutorial runs the full loop on a simulated 40-gene, two-class panel:
+
+## Example
+
+![](../images/Correlation/SupervisedClusterPlot_demo.png){fig-alt="SupervisedClusterPlot DEMO" fig-align="center" width="60%"}
+
+## Setup
+
+-   System Requirements: Cross-platform (Linux/MacOS/Windows)
+
+-   Programming language: R
+
+-   Dependent packages: `pheatmap`; `ggplot2`
+
+```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
+suppressPackageStartupMessages({
+  library(pheatmap)
+  library(ggplot2)
+})
+```
+
+```{r}
+sessioninfo::session_info("attached")
+```
+
+## Data Preparation
+
+Training and test matrices over 40 marker genes for two classes (A/B), with a class-specific 20-gene block planted in each:
+
+```{r load data}
+set.seed(11601)
+n_tr <- 60; n_te <- 40
+genes_sc <- paste0("SG", 1:40)
+lab_tr <- factor(rep(c("A", "B"), each = n_tr / 2))
+expr_tr <- matrix(rnorm(n_tr * 40, 6, 1), n_tr, 40, dimnames = list(NULL, genes_sc))
+expr_tr[lab_tr == "A", 1:20] <- expr_tr[lab_tr == "A", 1:20] + 1.2
+expr_tr[lab_tr == "B", 21:40] <- expr_tr[lab_tr == "B", 21:40] + 1.2
+lab_te <- factor(rep(c("A", "B"), each = n_te / 2))
+expr_te <- matrix(rnorm(n_te * 40, 6, 1), n_te, 40, dimnames = list(NULL, genes_sc))
+expr_te[lab_te == "A", 1:20] <- expr_te[lab_te == "A", 1:20] + 1.2
+expr_te[lab_te == "B", 21:40] <- expr_te[lab_te == "B", 21:40] + 1.2
+```
+
+## Visualization
+
+### 1. Nearest-Centroid Prediction
+
+```{r}
+#| label: fig-1.1CentroidPred
+#| fig-cap: "Nearest-centroid classification of the test set: each sample's correlation to the class-A vs class-B centroid decides its predicted class (accuracy printed)."
+#| out.width: "60%"
+#| warning: false
+#| message: false
+#| fig-width: 5.5
+#| fig-height: 4.5
+
+cent <- cbind(A = colMeans(expr_tr[lab_tr == "A", ]),
+              B = colMeans(expr_tr[lab_tr == "B", ]))
+pred_sc <- factor(apply(expr_te, 1, function(x) {
+  cs <- apply(cent, 2, function(cen) cor(x, cen))
+  names(which.max(cs))
+}), levels = c("A", "B"))
+cat("held-out accuracy:", round(mean(pred_sc == lab_te), 2), "\n")
+
+pred_df <- data.frame(True = lab_te, Predicted = pred_sc)
+pred_df$correct <- pred_df$True == pred_df$Predicted
+ggplot(pred_df, aes(True, fill = correct)) +
+  geom_bar(position = "dodge", width = 0.6) +
+  scale_fill_manual(values = c(`TRUE` = "#4D9342", `FALSE` = "#B2182B"),
+                    name = "Correct", labels = c("No", "Yes")) +
+  labs(y = "Test samples", title = "Nearest-centroid prediction accuracy") +
+  theme_bw(base_size = 11) + theme(panel.grid = element_blank())
+```
+
+### 2. Test-Set Heatmap Ordered by Predicted Class
+
+```{r}
+#| label: fig-2.1SupClustHeat
+#| fig-cap: "Test-set heatmap (genes x samples, row-scaled) ordered by predicted class: annotation bars show True and Predicted labels; concordance between the two bars is the visual accuracy read."
+#| out.width: "100%"
+#| warning: false
+#| message: false
+#| fig-width: 9.5
+#| fig-height: 5.5
+
+ann <- data.frame(True = lab_te, Predicted = pred_sc)
+rownames(ann) <- paste0("T", 1:n_te)
+ord_sc <- order(pred_sc, lab_te)
+pheatmap(t(scale(t(expr_te[ord_sc, genes_sc]))), cluster_cols = FALSE,
+         annotation_col = ann[ord_sc, ],
+         annotation_colors = list(Predicted = c(A = "#B2182B", B = "#2166AC"),
+                                  True = c(A = "#B2182B", B = "#2166AC")),
+         show_colnames = FALSE, fontsize = 8,
+         color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+         main = "Supervised clustering of test set (nearest centroid)")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   `scale(t(expr_te[ord, ]))` normalises per gene, not per sample — per-sample scaling would destroy the class signal.
+-   Keep the True and Predicted annotation bars in the **same colour scheme** so concordance/discordance reads at a glance.
+-   The nearest-centroid classifier is the simplest supervised method; for noisy data, swap in a shrunken-centroid (`pamr`) or elastic-net logistic model while keeping the same heatmap front end.
+:::
+
+## Applications
+
+::: {#fig-SupervisedClusterApplications1}
+![](../images/Correlation/SupervisedClusterPlot_demo.png){fig-alt="SupervisedClusterPlot Application" fig-align="center" width="60%"}
+
+Test-set supervised clustering
+:::
+
+The train-predict-heatmap loop applies to any binary molecular classifier: PAM50 subtyping, MSI prediction, or drug-response class assignment.
+
+## Reference
+
+\[1\] Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005

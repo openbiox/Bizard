@@ -93,7 +93,61 @@ fig.show()
 
 The rendered figure is interactive: hovering a ribbon shows the exact patient count, hovering a node the total in/outflow.
 
+## Application: Three-Stage Mutation Flow
+
+The FigureYapy edition of the Sankey routes a **long categorical table** (one row per event: gene → mutation class → subtype) through `go.Sankey`, turning `groupby().size()` counts into link values and colouring every ribbon with its source node's colour at 40% alpha \[1\]. That is the natural shape for variant-annotation tables: which mutation classes feed which tumour subtypes, traced back to the genes that carry them.
+
+```{python}
+#| label: fig-py-sankey-lnc
+#| fig-cap: "Gene → mutation class → subtype flow from a long table: link width = number of events, ribbon colour = source node at 40% alpha"
+#| width: 88%
+#| fig-align: center
+rng = np.random.default_rng(25)
+mut_classes = ['missense', 'nonsense', 'frameshift', 'splice-site', 'silent']
+subtypes = ['Luminal', 'Basal', 'Her2']
+rows = []
+for g in [f'LNC{i:02d}' for i in range(1, 13)]:
+    for _ in range(int(rng.integers(2, 6))):
+        rows.append((g, f'mut: {rng.choice(mut_classes)}',
+                     f'sub: {rng.choice(subtypes)}'))
+flow_df = pd.DataFrame(rows, columns=['Gene', 'Mutation', 'Subtype'])
+
+def hex_to_rgba(h, a=0.4):
+    return f'rgba({int(h[1:3], 16)}, {int(h[3:5], 16)}, {int(h[5:7], 16)}, {a})'
+
+stages = [flow_df[c] for c in flow_df.columns]
+stage_nodes = [list(dict.fromkeys(s)) for s in stages]
+all_nodes = [n for s in stage_nodes for n in s]
+idx = {n: i for i, n in enumerate(all_nodes)}
+palette = ['#66c2a5', '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854',
+           '#ffd92f', '#b3b3b3', '#e5c494', '#386cb0', '#f0027f',
+           '#bf5b17', '#666666']
+node_col = {n: palette[i % len(palette)] for i, n in enumerate(all_nodes)}
+
+links = []
+for a, b in [(0, 1), (1, 2)]:
+    cnt = (flow_df.groupby([flow_df.columns[a], flow_df.columns[b]])
+           .size().reset_index(name='n'))
+    for r in cnt.itertuples(index=False):
+        links.append((idx[getattr(r, flow_df.columns[a])],
+                      idx[getattr(r, flow_df.columns[b])], r.n))
+
+fig = go.Figure(data=[go.Sankey(
+    node=dict(label=all_nodes, pad=12, thickness=16,
+              color=[node_col[n] for n in all_nodes]),
+    link=dict(source=[l[0] for l in links],
+              target=[l[1] for l in links],
+              value=[l[2] for l in links],
+              color=[hex_to_rgba(node_col[all_nodes[l[0]]]) for l in links]))])
+fig.update_layout(title_text='Mutation events: gene → class → subtype',
+                  font_size=10, width=880, height=520)
+fig.show()
+```
+
+Two pitfalls this edition guards against: an identical label in two stages is merged into **one** node by plotly, so stage prefixes (`mut:`, `sub:`) keep the columns distinct; and node order follows first appearance in the data, so ordering the input table by stage controls the layout.
+
 ## References
 
 1. Plotly Technologies Inc. Sankey diagram in Python. https://plotly.com/python/sankey-diagram/
 2. Schmidt, M. The Sankey diagram in energy and material flow accounting. *Journal of Industrial Ecology* (2008).
+3. FigureYapy. FigureYa25Plus_Sankey_py. https://github.com/ying-ge/FigureYapy/tree/main/FigureYa25Plus_Sankey_py
