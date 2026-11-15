@@ -1,11 +1,15 @@
 # Bizard: A Biomedical Visualization Atlas
 
+> **Contributions are welcome — from humans and AI agents alike.** 🧑‍🔬🤖
+> Every tutorial, chart, translation, and fix counts, whether it was written by a researcher, a developer, or an autonomous agent working on your behalf.
+> Issues and pull requests are the front door: open an issue to propose a chart or report a bug, or send a PR against the relevant `<Category>/*.qmd`.
+> Agents: start from [Bizard AI Skills](#bizard-ai-skills) — the skill package or the MCP server both cover search, adaptation, and the contribution workflow.
+
 [![Open Source Love](https://badges.frapsoft.com/os/v1/open-source.svg?v=103)](https://github.com/ellerbrock/open-source-badges/) 
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://GitHub.com/openbiox/Bizard/graphs/commit-activity)
 [![Render and deploy site to Github Page](https://github.com/openbiox/Bizard/actions/workflows/quarto-publish.yml/badge.svg?branch=main)](https://github.com/openbiox/Bizard/actions/workflows/quarto-publish.yml)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/openbiox/Bizard)
-[![Ask
-DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/openbiox/Bizard)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-8A2BE2)](https://deepwiki.com/openbiox/Bizard)
 [![npm](https://img.shields.io/npm/v/@openbiox/bizard-mcp)](https://www.npmjs.com/package/@openbiox/bizard-mcp)
 
 <a href="https://doi.org/10.1002/imm3.70038"><img src="images/paper/iMetaMed-cover.jpg" alt="iMetaMed Vol 2, Issue 2 cover: Bai Ze, the legendary beast, over an ink-wash landscape, holding a scroll of biomedical data charts" width="260" align="right"/></a>
