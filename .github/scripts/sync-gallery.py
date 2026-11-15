@@ -104,6 +104,12 @@ DIR_LEVEL2_OVERRIDES = {
 # Their Level2 comes from the sidebar section that links the page.
 HIPLOT_LEVEL2 = ("BASICS", "OMICS", "CLINICS", "MAP")
 
+# Canonical Level1 values (see DIR_LEVEL1 plus the Hiplot special case).
+# Level1 feeds the gallery filters and the MCP bundle's category counts;
+# casing drift like "Clinics"/"CORRELATION" (PR #456) silently splits the
+# categories those consumers read.
+CANONICAL_LEVEL1 = ("BASICS", "OMICS", "CLINICS", "HIPLOT", "PYTHON", "JULIA")
+
 # Chunks calling these functions render an interactive htmlwidget (or
 # plotly) figure — no static figure-html PNG exists to reference.
 NO_PNG_FUNCTIONS = (
@@ -470,6 +476,24 @@ def cross_language_mismatches(root):
     return mismatches
 
 
+def level1_violations(root):
+    """Report gallery rows whose Level1 is not a canonical category.
+
+    Collect_missing() derives Level1 from DIR_LEVEL1, but hand-edited rows
+    (and rows added by other tooling) never pass through it, so casing
+    drift only surfaces when consumers break. Validate the CSVs directly.
+    """
+    violations = []
+    for name in ("gallery_data.csv", "gallery_data_zh.csv"):
+        text = load_csv_text(os.path.join(root, "files", name))
+        for r in csv.reader(text.splitlines()):
+            if len(r) < 8 or not r[0] or r[0] == "Id":
+                continue
+            if r[6] not in CANONICAL_LEVEL1:
+                violations.append((name, r[0], r[6]))
+    return violations
+
+
 def append_rows(csv_text, new_lines):
     """Append lines using the EOL of the file's last line (keep trailing EOL)."""
     if not csv_text:
@@ -496,8 +520,14 @@ def check(root):
     mismatches = cross_language_mismatches(root)
     for id_, reason, en_path, zh_path in mismatches:
         print(f"LANGUAGE MISMATCH: Id {id_} — {reason}: en={en_path} zh={zh_path}")
+    level1_bad = level1_violations(root)
+    for name, id_, value in level1_bad:
+        print(f"LEVEL1 INVALID: {name} Id {id_} — {value!r} not in {list(CANONICAL_LEVEL1)}")
     if mismatches:
         print(f"--check failed: {len(mismatches)} cross-language row mismatch(es)")
+        return 1
+    if level1_bad:
+        print(f"--check failed: {len(level1_bad)} non-canonical Level1 value(s)")
         return 1
     if placeable:
         print(f"--check failed: {len(placeable)} placeable row(s) missing, {len(manual)} manual")

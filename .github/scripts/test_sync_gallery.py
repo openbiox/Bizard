@@ -386,6 +386,26 @@ def test_check_fails_on_cross_language_path_mismatch(capsys):
         assert "LANGUAGE MISMATCH" in capsys.readouterr().out
 
 
+def test_check_fails_on_non_canonical_level1(capsys):
+    """PR #456 added rows with Level1 "Clinics"/"CORRELATION"; --check must
+    catch casing drift in hand-edited rows, in either CSV."""
+    check = sync_gallery.check
+
+    with tempfile.TemporaryDirectory() as tmp:
+        make_root(tmp)
+        assert sync_gallery.update(tmp) == 0
+        en_path = os.path.join(tmp, "files", "gallery_data.csv")
+        text = open(en_path, newline="").read()
+        broken = text.replace(",OMICS,", ",Clinics,", 1)
+        assert broken != text
+        with open(en_path, "w", newline="") as fh:
+            fh.write(broken)
+        assert check(tmp) == 1
+        out = capsys.readouterr().out
+        assert "LEVEL1 INVALID" in out
+        assert "'Clinics'" in out
+
+
 def test_update_appends_rows_to_both_csvs_preserving_eol():
     update = sync_gallery.update
 
