@@ -1488,6 +1488,64 @@ cowplot::plot_grid(plotlist = plist, ncol = 3)
 -   `aes(x = .data[[symbol]])`（embrace + bang-bang）把列名放在变量里且无 rlang 歧义——`aes_string()` 已被软弃用。
 :::
 
+### 4.12 共因子峰重叠相关（FigureYa115cofactor）
+
+参考文档的共因子发现方法把每个 ChIP-seq 实验的峰集合当作基因组上的 0/1 向量，在**实验之间**对向量做相关：结合同一增强子景观的共因子在大量峰上共现，Pearson r 亮到高位，无关因子接近零 \[20\]。参考文档用 bedtools/intervene shell 步骤构建重叠矩阵；同一统计量只需要 0/1 存在矩阵，因此本页在 400 个 bin 上模拟 8 个因子——两对植入的共因子对共享多数峰、一个因子与其中一对部分重叠、其余独立——并画两版：先 corrplot 椭圆，再聚类 pheatmap（分开成两个 chunk：`pheatmap` 基于 grid、无视 `par(mfrow)`，两族图形不能共用一个设备区域）：
+
+```{r}
+#| label: fig-4.12CofactorCorr
+#| fig-cap: "8 个 ChIP-seq 实验间的峰重叠相关（corrplot 椭圆）：植入的共因子对（Meis1/Prep、Egr1/Nab2）达到 r ≈ 0.7-0.8，部分重叠的 Cbfb 在 0.4 附近，独立因子接近 0。"
+#| out-width: "70%"
+#| fig-width: 5.5
+#| fig-height: 5
+suppressPackageStartupMessages({
+  library(corrplot); library(pheatmap)
+})
+set.seed(52341)
+n_bin <- 400
+factors <- c("Meis1", "Prep", "Egr1", "Nab2", "Cbfb",
+             "Hoxa9", "Fli1", "Runx1")
+## 峰存在矩阵：共因子对共享 ~70% 的峰
+peak_mat <- sapply(factors, function(f) rbinom(n_bin, 1, 0.06))
+peak_mat[, "Prep"] <- peak_mat[, "Meis1"]
+idx_p <- sample(n_bin, 15)
+peak_mat[idx_p, "Prep"] <- 1 - peak_mat[idx_p, "Prep"]
+peak_mat[, "Nab2"] <- peak_mat[, "Egr1"]
+idx_n <- sample(n_bin, 12)
+peak_mat[idx_n, "Nab2"] <- 1 - peak_mat[idx_n, "Nab2"]
+peak_mat[, "Cbfb"] <- ifelse(peak_mat[, "Meis1"] == 1 & runif(n_bin) < 0.55, 1,
+                             rbinom(n_bin, 1, 0.05))
+
+cor_mat <- cor(peak_mat)
+corrplot(cor_mat, method = "ellipse", type = "upper",
+         tl.col = "black", tl.srt = 45, cl.cex = 0.6, tl.cex = 0.75)
+```
+
+```{r}
+#| label: fig-4.12CofactorHclust
+#| fig-cap: "同一相关矩阵的聚类 pheatmap（数值打印）：共因子对折叠成对角块——聚类与椭圆读出的分组一致。"
+#| out-width: "80%"
+#| fig-width: 6.5
+#| fig-height: 5
+pheatmap(cor_mat,
+         color = colorRampPalette(c("#2166AC", "white", "#B2182B"))(50),
+         cluster_rows = TRUE, cluster_cols = TRUE,
+         display_numbers = TRUE, number_format = "%.2f",
+         fontsize = 8, fontsize_number = 7, border_color = "white",
+         legend = FALSE,
+         main = "Pearson r of peak co-occurrence")
+```
+
+::: callout-tip
+**实践要点**
+
+-   相关性算在**存在向量**上而非峰计数上——峰数多一倍的因子不是两倍共因子；共现关注的是相同的基因组位点。
+-   稀疏 0/1 向量上的 Pearson 会低估"共同缺失"：当两个因子在多数位点都沉默时，峰集合上的 Jaccard 是更诚实的重叠统计量——把它作为稳健性检查一并报告（参考文档的 intervene 步骤两者都算）。
+-   相关热图按聚类排序而非字母序：共因子对应折叠成对角块，这正是图的证据。
+-   真实流程里的 bin 是所有因子的峰并集（`bedtools multiinter`）；只用某一个因子的固定位点网格做相关，会漏掉该因子峰之外的结合。
+-   **设备族坑（本节初稿实测）**：`pheatmap` 走 grid 绘制、无视 `par(mfrow)`——在 base 图形面板之后调用会覆盖它们；base 与 grid 图形分放在不同 chunk，或用 `gridExtra` 拼装。
+:::
+
 ## 应用场景
 
 ### 1. 基础热图
@@ -1542,3 +1600,4 @@ cowplot::plot_grid(plotlist = plist, ncol = 3)
 17. Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 18. Xiaofan Lu, et al. FigureYa144DiagHeatmap 参考图：对角分割热图。FigureYa 文档。https://ying-ge.github.io/FigureYa/\
 19. Xiaofan Lu, et al. FigureYa266panHeatmap 参考图：泛癌调控因子 log2FC 热图（ward.D 聚类）。FigureYa 文档。https://ying-ge.github.io/FigureYa/
+20. Xiaofan Lu, et al. FigureYa115cofactor 参考图：共因子 ChIP-seq 实验间的峰重叠相关矩阵。FigureYa 文档。https://ying-ge.github.io/FigureYa/

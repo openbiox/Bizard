@@ -106,7 +106,64 @@ plt.tight_layout()
 plt.show()
 ```
 
+## 应用：队列均衡环形表
+
+FigureYapy 版把环形图阵列变成**随机化核查表**：行 = 处理组、列 = 基线临床特征，每个格子画该特征在组内的类别占比环形图，底行给出每个特征的 Fisher（2×2）/卡方（更多类别）p 值 \[1\]。一眼即可看出组间是否均衡——CONSORT 式流程报告里的一整排柱状图由此浓缩成一张表。
+
+```{python}
+#| label: fig-py-donut-table
+#| fig-cap: "队列均衡表：每个格子环形展示一个基线特征在某组内的构成；底行为每个特征的 Fisher/卡方 p 值"
+#| out-width: "100%"
+#| fig-width: 8
+#| fig-height: 5
+rng = np.random.default_rng(196)
+features = ['Sex', 'Stage', 'ECOG']
+cats = {'Sex': ['Male', 'Female'], 'Stage': ['I-II', 'III-IV'],
+        'ECOG': ['0', '>=1']}
+n_arm = {'Arm A': 120, 'Arm B': 120}
+# Arm B 略重：偏移 Stage/ECOG 的构成
+probs = {'Arm A': {'Stage': [0.65, 0.35], 'ECOG': [0.5, 0.5]},
+         'Arm B': {'Stage': [0.5, 0.5], 'ECOG': [0.6, 0.4]}}
+pat = pd.DataFrame([
+    (arm, rng.choice(cats['Sex'], p=[0.55, 0.45]),
+     rng.choice(cats['Stage'], p=probs[arm]['Stage']),
+     rng.choice(cats['ECOG'], p=probs[arm]['ECOG']))
+    for arm in n_arm for _ in range(n_arm[arm])],
+    columns=['Arm'] + features)
+
+from scipy.stats import chi2_contingency, fisher_exact
+arms = list(n_arm)
+fig, axes = plt.subplots(2, 3, figsize=(8, 5),
+                         subplot_kw=dict(aspect='equal'),
+                         gridspec_kw=dict(wspace=0.5, hspace=0.75))
+col_colors = {'Sex': ['#8da0cb', '#e78ac3'],
+              'Stage': ['#66c2a5', '#fc8d62'],
+              'ECOG': ['#a6d854', '#ffd92f']}
+for j, f in enumerate(features):
+    axes[0, j].set_title(f, fontsize=10, fontweight='bold')
+    for i, arm in enumerate(arms):
+        shares = pat.loc[pat.Arm == arm, f].value_counts(
+            normalize=True).reindex(cats[f], fill_value=0)
+        axes[i, j].pie(shares, labels=cats[f],
+                       colors=col_colors[f], labeldistance=1.18,
+                       autopct='%.0f%%', pctdistance=0.76,
+                       startangle=90, counterclock=False,
+                       wedgeprops=dict(width=0.45, edgecolor='white', linewidth=2),
+                       textprops=dict(fontsize=7.5))
+        axes[i, j].text(0, 0, f'{arm}\nn = {n_arm[arm]}', ha='center',
+                        va='center', fontsize=8)
+        tbl = pd.crosstab(pat.Arm, pat[f])[cats[f]].values
+        p = (fisher_exact(tbl)[1] if tbl.shape == (2, 2)
+             else chi2_contingency(tbl).pvalue)
+        axes[1, j].text(0, -1.55, f'p = {p:.2e}', ha='center',
+                        fontsize=9, fontweight='bold')
+plt.show()
+```
+
+参考文献手工维护版式（`GridSpec` + 手工图例坐标轴）；p 值行直接用 `scipy.stats`——2×2 用 Fisher，更大表用卡方。别忘了饼图比较角度的局限：这张表能成立，是因为每个环形图最多 3 个类别，且读者比较的是**均衡性**而非估计份额。
+
 ## 参考文献
 
 1. Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. *Computing in Science & Engineering*, 9(3), 90-95.
 2. From Data to Viz. Pie chart. https://www.data-to-viz.com/caveat/pie.html
+3. FigureYapy. FigureYa196Plus_PanPie_py. https://github.com/ying-ge/FigureYapy/tree/main/FigureYa196Plus_PanPie_py

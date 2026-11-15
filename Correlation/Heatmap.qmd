@@ -1484,7 +1484,65 @@ cowplot::plot_grid(plotlist = plist, ncol = 3)
 -   `aes(x = .data[[symbol]])` (embrace + bang-bang) keeps the column name in a variable without rlang quirks — `aes_string()` is soft-deprecated.
 :::
 
-## Application## Applications
+### 4.12 Cofactor Peak-Overlap Correlation (FigureYa115cofactor)
+
+The reference's cofactor discovery treats each ChIP-seq experiment's peak set as a binary vector over the genome and correlates those vectors **between experiments**: cofactors binding the same enhancer landscape co-occur at many peaks and light up at high Pearson r, while unrelated factors sit near zero \[20\]. The reference builds the overlap matrix with bedtools/intervene shell steps; the same statistic needs only the binary presence matrix, so the page simulates 8 factors over 400 bins — two planted cofactor pairs sharing most peaks, one factor partially overlapping a pair, the rest independent — and draws it twice: first as corrplot ellipses, then as the clustered pheatmap (in separate chunks: `pheatmap` is grid-based and ignores `par(mfrow)`, so the two families cannot share one device region):
+
+```{r}
+#| label: fig-4.12CofactorCorr
+#| fig-cap: "Peak-overlap correlation between 8 ChIP-seq experiments (corrplot ellipses): planted cofactor pairs (Meis1/Prep, Egr1/Nab2) reach r ≈ 0.7-0.8, the partial partner (Cbfb) sits near 0.4 and independent factors near 0."
+#| out-width: "70%"
+#| fig-width: 5.5
+#| fig-height: 5
+suppressPackageStartupMessages({
+  library(corrplot); library(pheatmap)
+})
+set.seed(52341)
+n_bin <- 400
+factors <- c("Meis1", "Prep", "Egr1", "Nab2", "Cbfb",
+             "Hoxa9", "Fli1", "Runx1")
+## peak-presence matrix: cofactor pairs share ~70% of their peaks
+peak_mat <- sapply(factors, function(f) rbinom(n_bin, 1, 0.06))
+peak_mat[, "Prep"] <- peak_mat[, "Meis1"]
+idx_p <- sample(n_bin, 15)
+peak_mat[idx_p, "Prep"] <- 1 - peak_mat[idx_p, "Prep"]
+peak_mat[, "Nab2"] <- peak_mat[, "Egr1"]
+idx_n <- sample(n_bin, 12)
+peak_mat[idx_n, "Nab2"] <- 1 - peak_mat[idx_n, "Nab2"]
+peak_mat[, "Cbfb"] <- ifelse(peak_mat[, "Meis1"] == 1 & runif(n_bin) < 0.55, 1,
+                             rbinom(n_bin, 1, 0.05))
+
+cor_mat <- cor(peak_mat)
+corrplot(cor_mat, method = "ellipse", type = "upper",
+         tl.col = "black", tl.srt = 45, cl.cex = 0.6, tl.cex = 0.75)
+```
+
+```{r}
+#| label: fig-4.12CofactorHclust
+#| fig-cap: "The same correlation matrix as a clustered pheatmap with printed values: the cofactor pairs collapse into diagonal blocks — the clustering agrees with the ellipse reading."
+#| out-width: "80%"
+#| fig-width: 6.5
+#| fig-height: 5
+pheatmap(cor_mat,
+         color = colorRampPalette(c("#2166AC", "white", "#B2182B"))(50),
+         cluster_rows = TRUE, cluster_cols = TRUE,
+         display_numbers = TRUE, number_format = "%.2f",
+         fontsize = 8, fontsize_number = 7, border_color = "white",
+         legend = FALSE,
+         main = "Pearson r of peak co-occurrence")
+```
+
+::: callout-tip
+**Practice tips**
+
+-   The correlation is computed on the **presence vectors**, not on peak counts — a factor with twice as many peaks is not twice the cofactor; co-occurrence is about the same genomic loci.
+-   Pearson on sparse binary vectors underestimates shared absence: when both factors are silent at most loci, Jaccard on the peak sets is the more honest overlap statistic — report it as a sanity check (the reference's intervene step computes both).
+-   Cluster the correlation heatmap, don't order alphabetically: the cofactor pairs should collapse into diagonal blocks, which is the figure's evidence.
+-   In the real workflow the bins are unioned peaks across all factors (`bedtools multiinter`); correlating on a fixed locus grid from one factor only hides binding outside that factor's peaks.
+-   **Device-family pitfall (verified in this page's first draft)**: `pheatmap` draws through grid and ignores `par(mfrow)` — calling it after base-graphics panels overwrites them; keep base and grid graphics in separate chunks or compose with `gridExtra`.
+:::
+
+## Applications
 
 ### 1. Basic Heatmap
 
@@ -1539,3 +1597,4 @@ Abbreviations: ARS: Autonomous Replicating Sequence, FKH: Forkhead, ORC: Origin 
 17. Xiaofan Lu, et al. FigureYa: A Standardized Visualization Framework for Enhancing Biomedical Data Interpretation and Research Efficiency. iMetaMed. 2025. doi:10.1002/imm3.70005
 18. Xiaofan Lu, et al. FigureYa144DiagHeatmap reference figure: diagonally split heatmap. FigureYapy/FigureYa documentation. https://ying-ge.github.io/FigureYa/\
 19. Xiaofan Lu, et al. FigureYa266panHeatmap reference figure: pan-cancer regulator log2FC heatmap with ward.D clustering. FigureYapy/FigureYa documentation. https://ying-ge.github.io/FigureYa/
+20. Xiaofan Lu, et al. FigureYa115cofactor reference figure: ChIP-seq peak-overlap correlation matrix between cofactor experiments. FigureYa documentation. https://ying-ge.github.io/FigureYa/
