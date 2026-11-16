@@ -16,11 +16,11 @@ author:
 
 -   编程语言：R
 
--   依赖包：`circlize`; `ComplexHeatmap`
+-   依赖包：`circlize`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 suppressPackageStartupMessages({
-  library(circlize); library(ComplexHeatmap)
+  library(circlize)
 })
 ```
 
@@ -30,7 +30,7 @@ sessioninfo::session_info("attached")
 
 ## 数据准备
 
-8 条染色体、带 cytoband 风格片段表与逐片段拷贝数状态（植入 chr7q 扩增与 chr12p 缺失），另有 400 个基因的表达 log2FC——扩增片段内的基因上调、缺失片段内的基因下调：
+8 条染色体、带 cytoband 风格片段表与逐片段拷贝数状态（植入 chr7q 扩增与 chr12p 缺失），另有约 230 个模拟基因的表达 log2FC——扩增片段内的基因上调、缺失片段内的基因下调：
 
 ```{r load data}
 suppressPackageStartupMessages({library(circlize)})
@@ -56,9 +56,12 @@ genes <- do.call(rbind, lapply(seq_len(nrow(seg)), function(k) {
   data.frame(Chr = seg$Chr[k],
              Start = round(seq(seg$Start[k], seg$End[k], length.out = n_g), 1))
 }))
-## globally unique names: per-chromosome running index
-genes$gene <- unlist(lapply(split(seq_len(nrow(genes)), genes$Chr), function(ix)
-  sprintf("%s_G%02d", sub("chr", "", genes$Chr[ix][1]), seq_along(ix))))
+## 基因名按原染色体顺序做逐染色体累计编号
+## （split() 会按字母序重排，导致前缀错配）
+genes$gene <- unlist(lapply(chrs, function(chr) {
+  ix <- which(genes$Chr == chr)
+  sprintf("%s_G%02d", sub("chr", "", chr), seq_along(ix))
+}))
 genes$lfc <- rnorm(nrow(genes), 0, 0.4)
 genes$lfc[genes$Chr == "chr7" & genes$Start >= 60] <- genes$lfc[genes$Chr == "chr7" & genes$Start >= 60] + 1.7
 genes$lfc[genes$Chr == "chr12" & genes$End <= 60] <- genes$lfc[genes$Chr == "chr12" & genes$End <= 60] - 1.4
@@ -67,7 +70,8 @@ genes$lfc[genes$Chr == "chr12" & genes$End <= 60] <- genes$lfc[genes$Chr == "chr
 seg_g <- seg[, c("Chr", "Start", "End", "CNV")]
 gene_g <- genes[, c("Chr", "Start", "Start", "lfc")]
 colnames(gene_g) <- c("Chr", "Start", "End", "lfc")
-cnv_col <- c(Gain = "#B2182B", Loss = "#2166AC", Neutral = "grey85")
+## 与已发布 demo 配色对齐的浅色填充
+cnv_col <- c(Gain = "#E0A0A0", Loss = "#A0A0E0", Neutral = "grey85")
 ```
 
 ## Visualization
@@ -78,7 +82,7 @@ cnv_col <- c(Gain = "#B2182B", Loss = "#2166AC", Neutral = "grey85")
 
 ```{r}
 #| label: fig-1.1OmiccircosRing
-#| fig-cap: "8 条染色体的多组学 circos（Mb 尺度）：按拷贝数状态着色的弧段（红 Gain / 蓝 Loss / 灰 Neutral）与内环的基因表达 log2FC 散点；chr7q Gain 与 chr12p Loss 分别与同向的基因散点对齐，即植入的多组学一致性。"
+#| fig-cap: "8 条染色体的多组学 circos（Mb 尺度）：按拷贝数状态着色的弧段（浅红 Gain / 浅蓝 Loss / 灰 Neutral）与内环的基因表达 log2FC 散点；chr7q Gain 与 chr12p Loss 分别与同向的基因散点对齐，即植入的多组学一致性。"
 #| out.width: "90%"
 #| fig-width: 7.5
 #| fig-height: 7.5
@@ -98,7 +102,7 @@ circos.genomicTrack(gene_g, ylim = c(-2.4, 2.4), track.height = 0.24,
     panel.fun = function(region, value, ...) {
       circos.points((region[, 1] + region[, 2]) / 2, value$lfc,
                     pch = 16, cex = 0.42,
-                    col = ifelse(value$lfc > 0, "#B2182B", "#2166AC"))
+                    col = ifelse(value$lfc > 0, cnv_col["Gain"], cnv_col["Loss"]))
       circos.lines(c(0, 200), c(0, 0), col = "grey60", lty = 2)
 })
 legend("bottomright", bty = "n", pch = 15, pt.cex = 2.2, cex = 0.85,
@@ -112,7 +116,7 @@ legend("bottomright", bty = "n", pch = 15, pt.cex = 2.2, cex = 0.85,
 
 ```{r}
 #| label: fig-2.1OmiccircosZoom
-#| fig-cap: "chr7 放大：q 臂的 Gain 弧段（红）携带上调散点；仅标注效应最强的基因（|log2FC| > 1.9），每个坐标只标一个名字。"
+#| fig-cap: "chr7 放大：q 臂的 Gain 弧段（浅红）携带上调散点；仅标注效应最强的基因（|log2FC| > 1.9），每个坐标只标一个名字。"
 #| out.width: "85%"
 #| fig-width: 6.5
 #| fig-height: 6.5
@@ -136,7 +140,7 @@ circos.genomicTrack(zoom_gene, ylim = c(-2.4, 2.4), track.height = 0.3,
     panel.fun = function(region, value, ...) {
       circos.points((region[, 1] + region[, 2]) / 2, value$lfc,
                     pch = 16, cex = 0.6,
-                    col = ifelse(value$lfc > 0, "#B2182B", "#2166AC"))
+                    col = ifelse(value$lfc > 0, cnv_col["Gain"], cnv_col["Loss"]))
       circos.lines(c(0, 200), c(0, 0), col = "grey60", lty = 2)
       ## label only the strongest-effect genes so labels never collide
       show <- abs(value$lfc) > 1.9

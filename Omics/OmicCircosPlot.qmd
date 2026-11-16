@@ -16,11 +16,11 @@ The reference's OmicCircos ring stacks **genomic tracks on one coordinate system
 
 -   Programming language: R
 
--   Dependent packages: `circlize`; `ComplexHeatmap`
+-   Dependent packages: `circlize`
 
 ```{r packages setup, message=FALSE, warning=FALSE, output=FALSE}
 suppressPackageStartupMessages({
-  library(circlize); library(ComplexHeatmap)
+  library(circlize)
 })
 ```
 
@@ -30,7 +30,7 @@ sessioninfo::session_info("attached")
 
 ## Data Preparation
 
-Eight chromosomes with cytoband-style segment tables and per-segment copy-number states (planted amplification on chr7q and deletion on chr12p), plus 400 genes with expression log2FC values — amplified segments carry up-regulated genes, deleted segments down-regulated ones:
+Eight chromosomes with cytoband-style segment tables and per-segment copy-number states (planted amplification on chr7q and deletion on chr12p), plus about 230 simulated genes with expression log2FC values — amplified segments carry up-regulated genes, deleted segments down-regulated ones:
 
 ```{r load data}
 suppressPackageStartupMessages({library(circlize)})
@@ -54,11 +54,8 @@ seg$CNV[seg$Chr == "chr12" & seg$End <= 60] <- "Loss"
 genes <- do.call(rbind, lapply(seq_len(nrow(seg)), function(k) {
   n_g <- sample(3:8, 1)
   data.frame(Chr = seg$Chr[k],
-             Start = round(seq(seg$Start[k], seg$End[k], length.out = n_g), 1),
-             gene = sprintf("%s_G%02d", sub("chr", "", seg$Chr[k]),
-                            sum(sapply(seg$Chr, function(c) sum(sub("chr", "", c) == sub("chr", "", seg$Chr[k]) & TRUE))) * 0 + seq_len(n_g)))
+             Start = round(seq(seg$Start[k], seg$End[k], length.out = n_g), 1))
 }))
-## globally unique names: per-chromosome running index
 ## per-chromosome running index, iterated in the ORIGINAL chromosome order
 ## (split() sorts alphabetically and would mis-assign prefixes)
 genes$gene <- unlist(lapply(chrs, function(chr) {
@@ -72,9 +69,9 @@ genes$lfc[genes$Chr == "chr12" & genes$End <= 60] <- genes$lfc[genes$Chr == "chr
 ## circlize genomic helpers need Chr FIRST and Mb-scale coordinates
 seg_g <- seg[, c("Chr", "Start", "End", "CNV")]
 gene_g <- genes[, c("Chr", "Start", "Start", "lfc")]
-gene_g <- gene_g[, c("Chr", "Start", "Start", "lfc")]
 colnames(gene_g) <- c("Chr", "Start", "End", "lfc")
-cnv_col <- c(Gain = "#B2182B", Loss = "#2166AC", Neutral = "grey85")
+## pastel fills matched to the published demo's ring colours
+cnv_col <- c(Gain = "#E0A0A0", Loss = "#A0A0E0", Neutral = "grey85")
 ```
 
 ## Visualization
@@ -85,7 +82,7 @@ The reference's ring: outer chromosome base, segment arcs coloured by CNV state,
 
 ```{r}
 #| label: fig-1.1OmiccircosRing
-#| fig-cap: "Multi-omics circos across 8 chromosomes (Mb scale): arcs coloured by copy-number state (red Gain / blue Loss) with gene-level expression log2FC scattered on the inner ring; the chr7q Gain and chr12p Loss line up with the co-directed gene scatter, the planted multi-omics concordance."
+#| fig-cap: "Multi-omics circos across 8 chromosomes (Mb scale): arcs coloured by copy-number state (light red Gain / light blue Loss) with gene-level expression log2FC scattered on the inner ring; the chr7q Gain and chr12p Loss line up with the co-directed gene scatter, the planted multi-omics concordance."
 #| out.width: "90%"
 #| fig-width: 7.5
 #| fig-height: 7.5
@@ -105,7 +102,7 @@ circos.genomicTrack(gene_g, ylim = c(-2.4, 2.4), track.height = 0.24,
     panel.fun = function(region, value, ...) {
       circos.points((region[, 1] + region[, 2]) / 2, value$lfc,
                     pch = 16, cex = 0.42,
-                    col = ifelse(value$lfc > 0, "#B2182B", "#2166AC"))
+                    col = ifelse(value$lfc > 0, cnv_col["Gain"], cnv_col["Loss"]))
       circos.lines(c(0, 200), c(0, 0), col = "grey60", lty = 2)
 })
 legend("bottomright", bty = "n", pch = 15, pt.cex = 2.2, cex = 0.85,
@@ -119,7 +116,7 @@ The reference's plus-panel: enlarging the most rearranged chromosome resolves th
 
 ```{r}
 #| label: fig-2.1OmiccircosZoom
-#| fig-cap: "chr7 zoom: the q-arm Gain arcs (red) carry the up-scattered genes; only the top-effect genes (|log2FC| > 1.9) are labelled, one name per coordinate."
+#| fig-cap: "chr7 zoom: the q-arm Gain arcs (light red) carry the up-scattered genes; only the top-effect genes (|log2FC| > 1.9) are labelled, one name per coordinate."
 #| out.width: "85%"
 #| fig-width: 6.5
 #| fig-height: 6.5
@@ -143,7 +140,7 @@ circos.genomicTrack(zoom_gene, ylim = c(-2.4, 2.4), track.height = 0.3,
     panel.fun = function(region, value, ...) {
       circos.points((region[, 1] + region[, 2]) / 2, value$lfc,
                     pch = 16, cex = 0.6,
-                    col = ifelse(value$lfc > 0, "#B2182B", "#2166AC"))
+                    col = ifelse(value$lfc > 0, cnv_col["Gain"], cnv_col["Loss"]))
       circos.lines(c(0, 200), c(0, 0), col = "grey60", lty = 2)
       ## label only the strongest-effect genes; subset x/y to match the
       ## label vector (unsubset x would recycle and misplace every name)
