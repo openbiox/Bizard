@@ -101,7 +101,8 @@ dd=datadist(LIHC)
 options(datadist="dd")
 ## 构建logist模型,绘制诺莫图
 f1 <- lrm(status ~ age + gender + stage , data =  LIHC)
-nom <- nomogram(f1, fun=plogis, lp=F, funlabel="Risk")
+## fun.at thins the Risk-axis ticks: the default 0.1-0.9 grid overlaps into a smear
+nom <- nomogram(f1, fun=plogis, lp=F, funlabel="Risk", fun.at=c(.1, .5, .9))
 plot(nom)
 ```
 
@@ -121,8 +122,13 @@ f2 <- psm(Surv(time,status) ~ age+gender+stage,data =  LIHC, dist='lognormal')
 med <- Quantile(f2) # 计算中位生存时间
 surv <- Survival(f2) # 构建生存概率函数
 ## 绘制COX回归中位生存时间的Nomogram图
-nom <- nomogram(f2, fun=function(x) med(lp=x),funlabel="Median Survival Time")
+## fun.at thins the tick labels: the default grid overlaps into a smear; scipen
+## keeps 100000/200000 from printing as 1e+05/2e+05
+old <- options(scipen = 999)
+nom <- nomogram(f2, fun=function(x) med(lp=x),funlabel="Median Survival Time",
+                fun.at=c(50000, 100000, 200000))
 plot(nom)
+options(old)
 ```
 
 我们还可以使用诺莫图对预测的3年-5年-生存概率进行绘制。
@@ -134,14 +140,20 @@ plot(nom)
 #| warning: false
 #| message: false
 #| fig-width: 10
-#| fig-height: 5
+#| fig-height: 7
 
 ## LIHC数据的time是以”天“为单位,此处绘制3年，5年的生存概率
+## fun.at thins the Median Survival Time ticks (default grid overlaps); scipen keeps
+## 100000/200000 from printing as 1e+05/2e+05. fig-height 7 separates the age and
+## gender row labels, which collide at 5.
+old <- options(scipen = 999)
 nom <- nomogram(f2, fun=list(function(x) surv(1095, x),
                              function(x) surv(1825, x),
                              function(x) med(lp=x)),
-                funlabel=c("3-year Survival Probability", "5-year Survival Probability","Median Survival Time"))
+                funlabel=c("3-year Survival Probability", "5-year Survival Probability","Median Survival Time"),
+                fun.at=list(seq(.2, .9, by=.1), seq(.1, .9, by=.1), c(50000, 100000, 200000)))
 plot(nom, xfrac=.2)
+options(old)
 ```
 
 ### 2. 美化诺莫图

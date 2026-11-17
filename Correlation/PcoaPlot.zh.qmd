@@ -162,14 +162,23 @@ par(xpd = FALSE); par(op)
 permanova <- function(d, group, n_perm = 1000) {
   group <- factor(group)
   n <- length(group); k <- nlevels(group)
-  ss_total <- sum(d^2) / n
-  ss_within <- sum(tapply(d^2, group, sum) /
-                   tapply(group, group, length))
+  D <- as.matrix(d)^2
+  ## Anderson (2001) SS decomposition on ordered pairs:
+  ## SS_total = sum_ij d2_ij / N;  SS_within = sum_g sum_ij(in g) d2_ij / n_g.
+  ## (The /2 scale cancels in the F ratio; the previous tapply() call silently
+  ## recycled the group index over the n(n-1)/2 distance values, corrupting
+  ## the within-group sum and driving pseudo-F negative.)
+  ss_total <- sum(D) / n
+  ss_within <- sum(vapply(split(seq_len(n), group), function(idx) {
+    sum(D[idx, idx]) / length(idx)
+  }, numeric(1)))
   ss_between <- ss_total - ss_within
   f_obs <- (ss_between / (k - 1)) / (ss_within / (n - k))
   f_perm <- replicate(n_perm, {
-    gp <- sample(group)
-    ssw <- sum(tapply(d^2, gp, sum) / tapply(gp, gp, length))
+    gp <- sample(seq_len(n))
+    ssw <- sum(vapply(split(gp, group), function(idx) {
+      sum(D[idx, idx]) / length(idx)
+    }, numeric(1)))
     ssb <- ss_total - ssw
     (ssb / (k - 1)) / (ssw / (n - k))
   })
