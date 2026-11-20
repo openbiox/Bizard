@@ -57,41 +57,59 @@ The composite: faceted lollipop of marker expression per cluster, 100% stacked b
 ```{r}
 #| label: fig-1.1ScMarker
 #| fig-cap: "Single-cell marker composite of 9 simulated clusters: faceted lollipop of marker expression per cluster (top), 100% stacked bar of tissue preference (middle), and pheatmap of marker genes x clusters (bottom)."
-#| out.width: "95%"
+#| out.width: "88%"
 #| warning: false
 #| message: false
-#| fig-width: 14
-#| fig-height: 9
+#| fig-width: 10
+#| fig-height: 10.5
 
-ave_long <- do.call(rbind, lapply(1:4, function(j)
+ave_long <- do.call(rbind, lapply(seq_along(markers), function(j)
   data.frame(cluster = rownames(AveExpr), marker = markers[j],
              expr = AveExpr[, j], facet = paste0("Cluster ", 0:(n_clus - 1)))))
 ave_long$facet <- factor(ave_long$facet, levels = paste0("Cluster ", 0:(n_clus - 1)))
+ave_long$marker <- factor(ave_long$marker, levels = markers)  # match Panel C column order
 ave_long$cluster_f <- factor(ave_long$cluster, levels = rownames(AveExpr))
+
+## Panel A: 3x3 faceted lollipop (no empty grid slot), dots tinted by marker
 p1 <- ggplot(ave_long, aes(marker, expr)) +
-  geom_segment(aes(x = marker, xend = marker, y = 0, yend = expr), linewidth = 0.6) +
-  geom_point(size = 2.5, colour = "#E64B35") +
-  facet_wrap(~facet, ncol = 5) +
-  coord_flip() + scale_y_continuous(position = "right") +
+  geom_hline(yintercept = 0, colour = "grey85", linewidth = 0.3) +
+  geom_segment(aes(xend = marker, y = 0, yend = expr), linewidth = 0.5, colour = "grey60") +
+  geom_point(aes(fill = marker), shape = 21, size = 2.6, colour = "grey25", stroke = 0.4) +
+  facet_wrap(~facet, ncol = 3) +
+  scale_fill_manual(values = c(CD3E = "#E64B35", MS4A1 = "#4DBBD5",
+                               GNLY = "#00A087", CD14 = "#3C5488"), guide = "none") +
   labs(x = NULL, y = "Mean expression", title = "Marker expression per cluster") +
-  theme_classic(base_size = 9)
+  theme_classic(base_size = 10) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7),
+        strip.background = element_blank(),
+        strip.text = element_text(face = "bold"))
+
 tc_df <- as.data.frame(TissueCount)
 tc_df$cluster <- rownames(TissueCount)
 tc_long <- reshape(tc_df, direction = "long", varying = 1:5, idvar = "cluster",
                    timevar = "tissue", times = tissues, v.names = "count")
 tc_long$cluster_f <- factor(tc_long$cluster, levels = rownames(TissueCount))
+
+## Panel B: keep cluster labels on the x axis so bars map back to Panel A/C
 p2 <- ggplot(tc_long, aes(cluster_f, count, fill = tissue)) +
-  geom_bar(stat = "identity", position = "fill", width = 0.7) +
-  scale_y_continuous(position = "right", labels = scales::percent) +
+  geom_bar(stat = "identity", position = "fill", width = 0.72) +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0)) +
   scale_fill_brewer(palette = "Set3") +
-  labs(x = NULL, y = "Tissue proportion", title = "Tissue preference per cluster") +
-  theme_classic(base_size = 9) + theme(axis.text.x = element_blank())
+  labs(x = "Cluster", y = "Tissue proportion", title = "Tissue preference per cluster", fill = NULL) +
+  theme_classic(base_size = 10) +
+  theme(axis.text.x = element_text(size = 8),
+        legend.key.size = ggplot2::unit(0.35, "cm"),
+        legend.text = element_text(size = 8),
+        legend.margin = ggplot2::margin(0, 0, 0, 0))
+
+## Panel C: taller heatmap, readable row labels
 pheatmap(AveExpr, scale = "none", color = colorRampPalette(c("#2166AC", "white", "#B2182B"))(64),
          cluster_rows = FALSE, cluster_cols = FALSE,
+         fontsize_row = 9, fontsize_col = 10,
          main = "Marker genes x clusters", border_color = "grey80", silent = TRUE) |>
   ggplotify::as.ggplot() -> ph
 
-p1 / p2 / ph + plot_layout(heights = c(3, 1.2, 1.6))
+p1 / p2 / ph + plot_layout(heights = c(3.2, 1.0, 1.5))
 ```
 
 ::: callout-tip
