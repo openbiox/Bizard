@@ -246,6 +246,8 @@ Figure 6 中点击任意基因即可打开其 NCBI 页面。
 - `onclick_fanyi`：由 fanyi 包提供，可根据基因信息数据框创建自定义点击展示函数。
 :::
 
+由于 `fanyi::gene_summary()` 需要通过网络访问 NCBI E-utilities，下方代码块会先尝试在线查询，失败时回退到本地 `org.Hs.eg.db` 注释——因此无论是否联网，图形都能正常渲染（离线时点击卡片显示基因描述而非 NCBI 摘要）。
+
 ```{r}
 #| label: fig-2.2Fanyi
 #| fig-cap: "点击前50显著基因显示注释信息卡片"
@@ -260,7 +262,22 @@ df_limma$entrez <- mapIds(org.Hs.eg.db, keys = df_limma$X,
                     column = "ENTREZID", keytype = "SYMBOL",
                     multiVals = "first")
 top_eg <- df_limma$entrez[order(df_limma$P.Value)][1:50]
-gs <- gene_summary(top_eg)
+## fanyi::gene_summary() 会在渲染时实时访问 NCBI E-utilities，导致离线/CI 环境
+## 渲染失败。先尝试在线查询；失败时回退到 org.Hs.eg.db 本地注释表，保证页面
+## 始终可以离线渲染。
+gs <- tryCatch(
+  gene_summary(top_eg),
+  error = function(e) {
+    ok <- !is.na(top_eg) & !duplicated(top_eg)
+    data.frame(
+      description = mapIds(org.Hs.eg.db, keys = as.character(top_eg[ok]),
+                           column = "GENENAME", keytype = "ENTREZID",
+                           multiVals = "first"),
+      summary = "NCBI Gene summary 需要网络访问；此处显示离线回退注释。",
+      stringsAsFactors = FALSE
+    )
+  }
+)
 
 # 定义点击函数：展示 description（基因全称）和 summary（摘要）
 onclick_fun <- onclick_fanyi(gs, c("description", "summary"))
@@ -334,7 +351,7 @@ FigureYa59Plus 把同一张火山图做成了**独立 Shiny 应用**（<https://
 **本地运行。** `shiny::runGitHub("ying-ge/FigureYa", subdir = "FigureYa59Plus_volcano_shiny")`——或克隆该目录后 `shiny::runApp()`。输入：`easy_input_limma.csv`（gene、logFC、P / adj.P）与 `easy_input_selected.csv`（基因 + 可选通路）；两列约定与 §5 分层火山一致，结果可在应用与静态图之间 1:1 迁移。
 :::
 
-## 应用场景## 应用场景
+## 应用场景
 
 ::: {#fig-iVolcanoApplications}
 ![](../images/Omics/iVolcanoPlot_fig8.png){fig-alt="通路与火山图联动应用" fig-align="center" width="60%"}

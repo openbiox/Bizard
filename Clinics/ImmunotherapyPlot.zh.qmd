@@ -37,7 +37,12 @@ sessioninfo::session_info("attached")
 200 名抗 PD-1 患者的模拟评分（110 非应答 / 90 应答）；植入的效应给出一个可用但非完美的 AUC——这正是真实 TIDE 风格预测器的水平：
 
 ```{r load data}
-sessioninfo::session_info("attached")
+set.seed(10601)
+n_it <- 200
+tide <- data.frame(
+  TIDE = c(rnorm(110, 0.35, 0.55), rnorm(90, -0.35, 0.55)),
+  Response = c(rep("Non-responder", 110), rep("Responder", 90)))
+tide$Response <- factor(tide$Response, levels = c("Responder", "Non-responder"))
 ```
 
 ## Visualization
@@ -53,12 +58,15 @@ sessioninfo::session_info("attached")
 #| fig-width: 6.5
 #| fig-height: 4.5
 
-set.seed(10601)
-n_it <- 200
-tide <- data.frame(
-  TIDE = c(rnorm(110, 0.35, 0.55), rnorm(90, -0.35, 0.55)),
-  Response = c(rep("Non-responder", 110), rep("Responder", 90)))
-tide$Response <- factor(tide$Response, levels = c("Responder", "Non-responder"))
+ggplot(tide, aes(Response, TIDE, fill = Response)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.85, linewidth = 0.35) +
+  geom_jitter(width = 0.15, size = 0.7, alpha = 0.45, colour = "grey25") +
+  scale_fill_manual(values = c(Responder = "#2166AC", `Non-responder` = "#B2182B"),
+                    name = NULL) +
+  labs(x = NULL, y = "TIDE 风格预测评分（模拟）",
+       title = "按应答类别的评分分离") +
+  theme_bw(base_size = 11) +
+  theme(panel.grid = element_blank(), legend.position = "top")
 ```
 
 ### 2. 预测 ROC
@@ -74,23 +82,22 @@ tide$Response <- factor(tide$Response, levels = c("Responder", "Non-responder"))
 #| fig-width: 6
 #| fig-height: 5.5
 
-#| label: fig-1.1TideBox
-#| fig-cap: "TIDE-style score by response class (simulated): non-responders score higher (higher tumour-intrinsic immune suppression); boxes carry jittered points."
-#| out.width: "70%"
-#| warning: false
-#| message: false
-#| fig-width: 6.5
-#| fig-height: 4.5
-
-ggplot(tide, aes(Response, TIDE, fill = Response)) +
-  geom_boxplot(outlier.shape = NA, alpha = 0.85, linewidth = 0.35) +
-  geom_jitter(width = 0.15, size = 0.7, alpha = 0.45, colour = "grey25") +
-  scale_fill_manual(values = c(Responder = "#2166AC", `Non-responder` = "#B2182B"),
-                    name = NULL) +
-  labs(x = NULL, y = "TIDE-style prediction score (simulated)",
-       title = "Score separation by response class") +
+roc_it <- pROC::roc(tide$Response, tide$TIDE,
+                    levels = c("Responder", "Non-responder"),
+                    direction = "<", quiet = TRUE)
+auc_txt <- sprintf("AUC = %.2f", as.numeric(roc_it$auc))
+ggplot(data.frame(fpr = 1 - roc_it$specificities, tpr = roc_it$sensitivities),
+       aes(fpr, tpr)) +
+  geom_line(colour = "#B2182B", linewidth = 1.1) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", colour = "grey45") +
+  annotate("text", x = 0.65, y = 0.1, label = auc_txt, size = 5, colour = "#B2182B") +
+  scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
+  labs(x = "假阳性率", y = "真阳性率",
+       title = "预测 ROC（模拟 TIDE 风格评分）") +
+  coord_fixed() +
   theme_bw(base_size = 11) +
-  theme(panel.grid = element_blank(), legend.position = "top")
+  theme(panel.grid = element_blank())
 ```
 
 ::: callout-tip
