@@ -247,6 +247,8 @@ In Figure 6, clicking any gene opens its NCBI page.
 - `onclick_fanyi`: Provided by the fanyi package, allows creating custom click-to-display functions based on a gene information data frame.
 :::
 
+Because `fanyi::gene_summary()` queries NCBI E-utilities over the network, the chunk below tries the live call first and falls back to locally available `org.Hs.eg.db` annotations when offline — so the figure always renders (clicked cards then show gene descriptions instead of NCBI summaries).
+
 ```{r}
 #| label: fig-2.2Fanyi
 #| fig-cap: "Click top 50 significant genes to display annotation information cards"
@@ -261,7 +263,22 @@ df_limma$entrez <- mapIds(org.Hs.eg.db, keys = df_limma$X,
                     column = "ENTREZID", keytype = "SYMBOL",
                     multiVals = "first")
 top_eg <- df_limma$entrez[order(df_limma$P.Value)][1:50]
-gs <- gene_summary(top_eg)
+## fanyi::gene_summary() queries NCBI E-utilities at render time, which breaks
+## offline/CI builds. Try the live query first; on failure fall back to a local
+## annotation table built from org.Hs.eg.db so the page always renders.
+gs <- tryCatch(
+  gene_summary(top_eg),
+  error = function(e) {
+    ok <- !is.na(top_eg) & !duplicated(top_eg)
+    data.frame(
+      description = mapIds(org.Hs.eg.db, keys = as.character(top_eg[ok]),
+                           column = "GENENAME", keytype = "ENTREZID",
+                           multiVals = "first"),
+      summary = "NCBI Gene summary requires network access; offline fallback annotation shown.",
+      stringsAsFactors = FALSE
+    )
+  }
+)
 
 # Define click function: display description (full gene name) and summary
 onclick_fun <- onclick_fanyi(gs, c("description", "summary"))
@@ -336,7 +353,7 @@ FigureYa59Plus ships the same volcano as a **standalone Shiny application** (`ap
 **Run it locally.** `shiny::runGitHub("ying-ge/FigureYa", subdir = "FigureYa59Plus_volcano_shiny")` — or clone the folder and `shiny::runApp()`. Inputs: `easy_input_limma.csv` (gene, logFC, P / adj.P) and `easy_input_selected.csv` (gene + optional pathway); both columns follow §5's tiered-volcano conventions, so results transfer 1:1 between the app and the static plot.
 :::
 
-## Application Scenarios## Application Scenarios
+## Application Scenarios
 
 ::: {#fig-iVolcanoApplications}
 ![](../images/Omics/iVolcanoPlot_fig8.png){fig-alt="Pathway and volcano plot linkage application" fig-align="center" width="60%"}
